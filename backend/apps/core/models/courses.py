@@ -1,7 +1,7 @@
-from backend.core import models
+from backend.apps.core import models
 
-from backend.core.models.people import Student, Teacher
-from backend.core.models.time import AcademicYear
+from backend.apps.core.models.people import Student, Teacher
+from backend.apps.core.models.time import AcademicYear
 from django.core.validators import MinValueValidator
 
 GRADE_LEVEL = [    

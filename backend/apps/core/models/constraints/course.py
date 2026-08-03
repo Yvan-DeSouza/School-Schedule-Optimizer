@@ -1,7 +1,7 @@
-from backend.core import models
-from backend.core.models.constraints.base import Qualification
-from backend.core.models.rooms import ROOM_TYPES
-from core.models.courses import Course
+from backend.apps.core import models
+from backend.apps.core.models.constraints.base import Qualification
+from backend.apps.core.models.rooms import ROOM_TYPES
+from backend.apps.core.models.courses import Course
 
 
 class CourseRoomRequirement(models.Model):

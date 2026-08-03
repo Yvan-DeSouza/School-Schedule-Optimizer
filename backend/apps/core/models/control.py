@@ -1,9 +1,9 @@
-from backend.core import models
+from backend.apps.core import models
 
-from backend.core.models.people import Teacher
-from backend.core.models.rooms import Room
-from backend.core.models.scheduling import TimeSlot
-from core.models.courses import Section
+from backend.apps.core.models.people import Teacher
+from backend.apps.core.models.rooms import Room
+from backend.apps.core.models.scheduling import TimeSlot
+from backend.apps.core.models.courses import Section
 
 class ManualOverride(models.Model):
     section = models.ForeignKey(Section, on_delete=models.CASCADE)

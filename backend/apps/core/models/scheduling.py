@@ -1,7 +1,7 @@
-from backend.core import models
-from backend.core.models.rooms import Room
-from backend.core.models.time import AcademicYear
-from core.models.courses import Section
+from backend.apps.core import models
+from backend.apps.core.models.rooms import Room
+from backend.apps.core.models.time import AcademicYear
+from backend.apps.core.models.courses import Section
 class TimeSlot(models.Model):
     day = models.CharField(max_length=20)
 

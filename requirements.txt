@@ -1,0 +1,13 @@
+asgiref==3.11.1
+Django==6.0.5
+django-cors-headers==4.9.0
+djangorestframework==3.17.1
+numpy==2.4.6
+pandas==3.0.3
+psycopg==3.3.4
+psycopg-binary==3.3.4
+python-dateutil==2.9.0.post0
+six==1.17.0
+sqlparse==0.5.5
+tzdata==2026.2
+python-dotenv==1.2.2

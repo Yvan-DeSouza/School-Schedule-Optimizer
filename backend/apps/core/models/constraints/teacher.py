@@ -1,10 +1,10 @@
-from backend.core import models
+from backend.apps.core import models
 
-from backend.core.models.constraints.base import Qualification
-from backend.core.models.scheduling import TimeSlot
-from backend.core.models.time import AcademicYear
-from core.models.courses import Course
-from core.models.people import Teacher
+from backend.apps.core.models.constraints.base import Qualification
+from backend.apps.core.models.scheduling import TimeSlot
+from backend.apps.core.models.time import AcademicYear
+from backend.apps.core.models.courses import Course
+from backend.apps.core.models.people import Teacher
 
 class TeacherQualification(models.Model):
     teacher = models.ForeignKey(Teacher, on_delete=models.CASCADE)

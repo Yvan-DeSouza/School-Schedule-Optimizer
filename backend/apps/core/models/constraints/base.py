@@ -1,9 +1,9 @@
-from backend.core import models
-from backend.core.models.rooms import ROOM_TYPES
-from backend.core.models.scheduling import TimeSlot
-from backend.core.models.time import AcademicYear
-from core.models.courses import Course
-from core.models.people import Counselor, Teacher
+from backend.apps.core import models
+from backend.apps.core.models.rooms import ROOM_TYPES
+from backend.apps.core.models.scheduling import TimeSlot
+from backend.apps.core.models.time import AcademicYear
+from backend.apps.core.models.courses import Course
+from backend.apps.core.models.people import Counselor, Teacher
 
 class HardConstraint(models.Model):
     name = models.CharField(max_length=200)

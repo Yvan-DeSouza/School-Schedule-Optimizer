@@ -1,7 +1,7 @@
-from backend.core import models
+from backend.apps.core import models
 
-from backend.core.models.courses import GRADE_LEVEL
-from backend.core.models.time import AcademicYear
+from backend.apps.core.models.courses import GRADE_LEVEL
+from backend.apps.core.models.time import AcademicYear
 
 class Student(models.Model):
     student_number = models.CharField(max_length=30, unique=True)

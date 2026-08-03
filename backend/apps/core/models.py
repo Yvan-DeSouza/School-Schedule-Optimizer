@@ -1,4 +1,4 @@
-from backend.core import models
+from backend.apps.core import models
 
 class Teacher(models.Model):
     name = models.CharField(max_length=100)
