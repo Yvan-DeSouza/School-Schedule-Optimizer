@@ -1,12 +1,8 @@
-from backend.apps.core import models
+from django.db import models
 
-from backend.apps.core.models.people import Teacher
-from backend.apps.core.models.rooms import Room
-from backend.apps.core.models.scheduling import TimeSlot
-from backend.apps.core.models.courses import Section
 
 class ManualOverride(models.Model):
-    section = models.ForeignKey(Section, on_delete=models.CASCADE)
+    section = models.ForeignKey("courses.Section", on_delete=models.CASCADE)
 
     action = models.CharField(max_length=50)
     # lock_teacher, lock_timeslot, move_section
@@ -18,29 +14,42 @@ class ManualOverride(models.Model):
 
     timestamp = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        ordering = ["-timestamp"]
+
+    def __str__(self):
+        return f"{self.action} for {self.section}"
+
+
 class SectionLock(models.Model):
     section = models.OneToOneField(
-        Section,
+        "courses.Section",
         on_delete=models.CASCADE
     )
 
     locked_teacher = models.ForeignKey(
-        Teacher,
+        "people.Teacher",
         null=True,
         blank=True,
         on_delete=models.SET_NULL
     )
 
     locked_timeslot = models.ForeignKey(
-        TimeSlot,
+        "scheduling.TimeSlot",
         null=True,
         blank=True,
         on_delete=models.SET_NULL
     )
 
     locked_room = models.ForeignKey(
-        Room,
+        "common.Room",
         null=True,
         blank=True,
         on_delete=models.SET_NULL
     )
+
+    class Meta:
+        ordering = ["section"]
+
+    def __str__(self):
+        return f"Locks for {self.section}"

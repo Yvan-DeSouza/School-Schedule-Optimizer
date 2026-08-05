@@ -1,17 +1,9 @@
-from backend.apps.core import models
-
-from backend.apps.core.models.people import Student, Teacher
-from backend.apps.core.models.time import AcademicYear
 from django.core.validators import MinValueValidator
+from django.db import models
 
-GRADE_LEVEL = [    
-    (7, "Grade 7"),
-    (8, "Grade 8"),
-    (9, "Grade 9"),
-    (10, "Grade 10"),
-    (11, "Grade 11"),
-    (12, "Grade 12"),
-]
+from backend.apps.common.constants import GRADE_LEVEL
+
+
 class Course(models.Model):
     name = models.CharField(max_length=200)
 
@@ -41,13 +33,20 @@ class Course(models.Model):
     )
     is_online = models.BooleanField(default=False)
 
+    class Meta:
+        ordering = ["course_code"]
+
+    def __str__(self):
+        return f"{self.course_code} - {self.name}"
+
+
 class Section(models.Model):
     course = models.ForeignKey(Course, on_delete=models.CASCADE)
     section_number = models.CharField(max_length=10)
-    academic_year = models.ForeignKey(AcademicYear, on_delete=models.CASCADE)
+    academic_year = models.ForeignKey("common.AcademicYear", on_delete=models.CASCADE)
     semester = models.IntegerField(choices=[(1, "Fall"), (2, "Winter")])
     teacher = models.ForeignKey(
-        Teacher,
+        "people.Teacher",
         on_delete=models.SET_NULL,
         null=True,
         blank=True
@@ -61,7 +60,9 @@ class Section(models.Model):
     )
 
     is_locked = models.BooleanField(default=False)
+
     class Meta:
+        ordering = ["academic_year", "course", "section_number"]
         constraints = [
             models.UniqueConstraint(
                 fields=[
@@ -73,10 +74,16 @@ class Section(models.Model):
             )
         ]
 
+    def __str__(self):
+        return f"{self.course.course_code}-{self.section_number} ({self.academic_year})"
+
+
 class Enrollment(models.Model):
-    student = models.ForeignKey(Student, on_delete=models.CASCADE)
+    student = models.ForeignKey("people.Student", on_delete=models.CASCADE)
     section = models.ForeignKey(Section, on_delete=models.CASCADE)
+
     class Meta:
+        ordering = ["student", "section"]
         constraints = [
             models.UniqueConstraint(
                 fields=["student", "section"],
@@ -84,9 +91,13 @@ class Enrollment(models.Model):
             )
         ]
 
+    def __str__(self):
+        return f"{self.student} -> {self.section}"
+
+
 class CourseRequest(models.Model):
-    student = models.ForeignKey(Student, on_delete=models.CASCADE)
-    academic_year = models.ForeignKey(AcademicYear, on_delete=models.CASCADE)
+    student = models.ForeignKey("people.Student", on_delete=models.CASCADE)
+    academic_year = models.ForeignKey("common.AcademicYear", on_delete=models.CASCADE)
 
     course = models.ForeignKey(Course, on_delete=models.CASCADE)
 
@@ -98,6 +109,7 @@ class CourseRequest(models.Model):
     ])
 
     class Meta:
+        ordering = ["academic_year", "student", "request_type", "course"]
         constraints = [
             models.UniqueConstraint(
                 fields=["student", "course", "academic_year"],
@@ -105,15 +117,23 @@ class CourseRequest(models.Model):
             )
         ]
 
+    def __str__(self):
+        return f"{self.student} requests {self.course} ({self.request_type})"
+
 
 class CoursePrerequisite(models.Model):
     course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name="prerequisites")
 
     prerequisite = models.ForeignKey(Course, on_delete=models.CASCADE, related_name="required_for")
+
     class Meta:
+        ordering = ["course", "prerequisite"]
         constraints = [
             models.UniqueConstraint(
                 fields=["course", "prerequisite"],
                 name="unique_course_prerequisite"
             )
         ]
+
+    def __str__(self):
+        return f"{self.course} requires {self.prerequisite}"

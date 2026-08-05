@@ -1,0 +1,61 @@
+from django.core.validators import MinValueValidator
+from django.db import models
+
+from backend.apps.common.constants import ROOM_TYPES
+
+
+class AcademicYear(models.Model):
+    name = models.CharField(
+        max_length=20,
+        unique=True
+    )
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+
+class Room(models.Model):
+    name = models.CharField(
+        max_length=50,
+        unique=True
+    )
+
+    room_type = models.CharField(
+        max_length=20,
+        choices=ROOM_TYPES
+    )
+
+    capacity = models.IntegerField(
+        validators=[MinValueValidator(1)]
+    )
+    is_specialized = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+
+class HistoricalCourseDemand(models.Model):
+    course = models.ForeignKey("courses.Course", on_delete=models.CASCADE)
+    academic_year = models.ForeignKey("common.AcademicYear", on_delete=models.CASCADE)
+
+    requests = models.IntegerField()
+
+    final_enrollment = models.IntegerField()
+
+    class Meta:
+        ordering = ["academic_year", "course"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["course", "academic_year"],
+                name="unique_historical_course_year"
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.course} demand for {self.academic_year}"

@@ -11,3 +11,5 @@ six==1.17.0
 sqlparse==0.5.5
 tzdata==2026.2
 python-dotenv==1.2.2
+pytest==9.0.2
+pytest-django==4.11.1
