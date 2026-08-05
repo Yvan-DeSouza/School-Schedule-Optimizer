@@ -3,7 +3,44 @@ from django.db import models
 from backend.apps.common.constants import GRADE_LEVEL
 
 
+class RoleChoices(models.TextChoices):
+    STUDENT = "student", "Student"
+    TEACHER = "teacher", "Teacher"
+    COUNSELOR = "counselor", "Counselor"
+    STAFF = "staff", "Staff"
+    DIRECTOR = "director", "Director"
+    UNKNOWN = "unknown", "Unknown"
+
+
+class UserRoleProfile(models.Model):
+    user = models.OneToOneField(
+        "auth.User",
+        on_delete=models.CASCADE,
+        related_name="role_profile",
+    )
+    role = models.CharField(
+        max_length=30,
+        choices=RoleChoices.choices,
+        default=RoleChoices.UNKNOWN,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["user__username"]
+
+    def __str__(self):
+        return f"{self.user.username} - {self.role}"
+
+
 class Student(models.Model):
+    user = models.OneToOneField(
+        "auth.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="student_profile",
+    )
+
     student_number = models.CharField(max_length=30, unique=True)
 
     email = models.EmailField(unique=True)
@@ -30,6 +67,14 @@ class Student(models.Model):
 
 
 class Teacher(models.Model):
+    user = models.OneToOneField(
+        "auth.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="teacher_profile",
+    )
+
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100)
 
@@ -53,6 +98,14 @@ class Teacher(models.Model):
 
 
 class Counselor(models.Model):
+    user = models.OneToOneField(
+        "auth.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="counselor_profile",
+    )
+
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100)
 

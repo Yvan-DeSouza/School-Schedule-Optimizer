@@ -44,3 +44,63 @@ Expected result:
 - Migrations apply cleanly for the domain apps.
 - The pytest suite passes, including model constraint, validator, cascade, and
   `SET_NULL` relationship tests.
+
+## Authentication And Local Roles
+
+The backend uses Django REST Framework with SimpleJWT. Domain users are linked
+to Django `User` accounts through the `Student`, `Teacher`, and `Counselor`
+models. School-level account roles such as `staff`, `director`, and `unknown`
+use `UserRoleProfile`.
+
+Supported role strings:
+
+- `student`
+- `teacher`
+- `counselor`
+- `staff`
+- `director`
+- `unknown`
+
+Create local development users with:
+
+```bash
+python backend/manage.py seed_dev_users
+```
+
+The command creates these local accounts, all with password `password123`:
+
+```text
+counselor / counselor@example.com
+teacher / teacher@example.com
+student / student@example.com
+staff / staff@example.com
+director / director@example.com
+unknown / unknown@example.com
+```
+
+Request a JWT access token:
+
+```bash
+curl -X POST http://localhost:8000/api/auth/login/ ^
+  -H "Content-Type: application/json" ^
+  -d "{\"username\":\"student\",\"password\":\"password123\"}"
+```
+
+Use the access token to inspect the current user:
+
+```bash
+curl http://localhost:8000/api/me/ ^
+  -H "Authorization: Bearer <access-token>"
+```
+
+Expected response shape:
+
+```json
+{
+  "id": 1,
+  "username": "student",
+  "email": "student@example.com",
+  "role": "student",
+  "profile_id": 1
+}
+```
