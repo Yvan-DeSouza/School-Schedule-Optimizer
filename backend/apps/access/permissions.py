@@ -10,7 +10,9 @@ class ResourcePolicyPermission(BasePermission):
         if request.method in SAFE_METHODS:
             return policy.rule_for(request.user).read != "none"
         if request.method == "POST":
-            return policy.can_create(request.user, getattr(request, "data", None))
+            context_getter = getattr(view, "get_policy_context", None)
+            context = context_getter() if context_getter else None
+            return policy.can_create(request.user, getattr(request, "data", None), context=context)
         return policy.rule_for(request.user).write != "none"
 
     def has_object_permission(self, request, view, obj):

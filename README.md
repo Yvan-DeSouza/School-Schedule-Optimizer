@@ -153,3 +153,21 @@ Demand summary response:
   }
 ]
 ```
+
+## Constraint and Lock API
+
+Counselors, staff, and directors manage shared scheduling constraints. Teachers
+may manage only their own qualifications, preferences, current courses, and
+availability through `/api/teachers/{id}/qualifications/`, `preferences/`,
+`current-courses/`, and `availability/`.
+
+Shared CRUD routes are `/api/qualifications/`, `/api/constraints/hard/`,
+`/api/constraints/soft/`, `/api/constraints/preferences/`,
+`/api/course-conflicts/`, `/api/course-room-requirements/`, and
+`/api/course-qualification-requirements/`. Query parameters narrow only the
+role-safe records returned by each list endpoint.
+
+Use `GET` or `PATCH /api/sections/{id}/lock/` to inspect or set a section's
+locked teacher, timeslot, and room. The first PATCH creates the lock. A locked
+teacher must hold every qualification required by that section's course; fields
+can be cleared individually with `null`.

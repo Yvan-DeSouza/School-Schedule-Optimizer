@@ -9,4 +9,5 @@ urlpatterns = [
     path("auth/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
     path("me/", MeView.as_view(), name="me"),
     path("", include("backend.apps.courses.urls")),
+    path("", include("backend.apps.constraints.urls")),
 ]

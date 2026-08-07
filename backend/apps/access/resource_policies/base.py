@@ -43,7 +43,7 @@ class BaseResourcePolicy:
         return False
 
     @classmethod
-    def can_create(cls, user, data=None):
+    def can_create(cls, user, data=None, context=None):
         return cls.rule_for(user).write != WriteScope.NONE
 
     @classmethod
