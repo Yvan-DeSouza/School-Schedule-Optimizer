@@ -9,9 +9,13 @@ from backend.apps.people.models import (
     Teacher,
     UserRoleProfile,
 )
+import os
+from dotenv import load_dotenv
 
+# Load environment variables from .env file
+load_dotenv()
 
-DEFAULT_PASSWORD = "password123"
+DEFAULT_PASSWORD = os.getenv("DB_PASSWORD", "password123")  # Default password for seeded users
 
 
 class Command(BaseCommand):

@@ -3,17 +3,34 @@ from types import SimpleNamespace
 import pytest
 from django.contrib.auth.models import AnonymousUser, User
 
-from backend.apps.access.base import BaseAccessPolicy
-from backend.apps.access.permissions import PolicyPermission
+from backend.apps.access.action_policies import (
+    DemandPlanningAction,
+    DemandPlanningActionPolicy,
+    OverrideAction,
+    OverrideActionPolicy,
+    SchedulingAction,
+    SchedulingActionPolicy,
+)
+from backend.apps.access.base import BaseAccessPolicy, BaseActionPolicy, BaseResourcePolicy
+from backend.apps.access.permissions import (
+    ActionPolicyPermission,
+    PolicyPermission,
+    ResourcePolicyPermission,
+)
 from backend.apps.access.policies import CoursePolicy, CourseRequestPolicy, SectionPolicy
-from backend.apps.access.rules import AccessRule
-from backend.apps.access.scopes import ReadScope, WriteScope
+from backend.apps.access.resource_policies import CoursePolicy as ResourceCoursePolicy
+from backend.apps.access.rules import AccessRule, ActionRule
+from backend.apps.access.scopes import ActionScope, ReadScope, WriteScope
 from backend.apps.common.models import AcademicYear
 from backend.apps.courses.models import Course, CourseRequest, Section
 from backend.apps.people.models import Counselor, RoleChoices, Student, Teacher, UserRoleProfile
+import os
+from dotenv import load_dotenv
 
+# Load environment variables from .env file
+load_dotenv()
 
-PASSWORD = "password123"
+PASSWORD = os.getenv("DB_PASSWORD")
 
 
 @pytest.fixture
@@ -231,6 +248,12 @@ def test_access_rule_defaults_to_no_access():
     assert rule.write == WriteScope.NONE
 
 
+def test_action_rule_defaults_to_denied():
+    rule = ActionRule()
+
+    assert rule.execute == ActionScope.DENIED
+
+
 def test_access_rule_keeps_read_and_write_scopes_separate():
     rule = AccessRule(read=ReadScope.ALL, write=WriteScope.OWN)
 
@@ -242,6 +265,16 @@ def test_access_rule_keeps_read_and_write_scopes_separate():
 def test_access_rule_rejects_invalid_multi_scope_values(kwargs):
     with pytest.raises(ValueError):
         AccessRule(**kwargs)
+
+
+def test_action_rule_rejects_invalid_execute_scope():
+    with pytest.raises(ValueError):
+        ActionRule(execute=["allowed", "denied"])
+
+
+def test_compatibility_imports_point_to_resource_policy_classes():
+    assert BaseAccessPolicy is BaseResourcePolicy
+    assert ResourceCoursePolicy is CoursePolicy
 
 
 @pytest.mark.django_db
@@ -264,6 +297,12 @@ def test_base_policy_fails_closed_for_own_and_assigned_scopes(student_user, cour
     assert ids(AssignedPolicy.filter_read_queryset(student_user, Course.objects.all())) == set()
     assert not AssignedPolicy.can_read_object(student_user, course)
     assert not AssignedPolicy.can_write_object(student_user, course)
+
+
+@pytest.mark.django_db
+def test_base_action_policy_fails_closed(student_user):
+    assert not BaseActionPolicy.can_execute(student_user, action="anything")
+    assert not BaseActionPolicy.can_execute(AnonymousUser(), action="anything")
 
 
 @pytest.mark.django_db
@@ -480,3 +519,151 @@ def test_policy_permission_denies_anonymous_user():
     view = SimpleNamespace(policy_class=CoursePolicy)
 
     assert not permission.has_permission(request("GET", AnonymousUser()), view)
+
+
+@pytest.mark.django_db
+def test_resource_policy_permission_prefers_resource_policy_class(student_user):
+    permission = ResourcePolicyPermission()
+    view = SimpleNamespace(resource_policy_class=CoursePolicy)
+
+    assert permission.has_permission(request("GET", student_user), view)
+
+
+@pytest.mark.django_db
+def test_resource_policy_permission_keeps_policy_class_fallback(student_user):
+    permission = ResourcePolicyPermission()
+    view = SimpleNamespace(policy_class=CoursePolicy)
+
+    assert permission.has_permission(request("GET", student_user), view)
+
+
+@pytest.mark.django_db
+def test_demand_action_policy_allows_planning_roles_only(
+    counselor_user,
+    staff_user,
+    director_user,
+    student_user,
+    teacher_user,
+    unknown_user,
+):
+    for action in [
+        DemandPlanningAction.VIEW_DEMAND_SUMMARY,
+        DemandPlanningAction.RECOMMEND_COURSE_CLOSURES,
+        DemandPlanningAction.RECOMMEND_SECTION_COUNTS,
+    ]:
+        for user in [counselor_user, staff_user, director_user]:
+            assert DemandPlanningActionPolicy.can_execute(user, action=action)
+        for user in [student_user, teacher_user, unknown_user]:
+            assert not DemandPlanningActionPolicy.can_execute(user, action=action)
+
+    assert not DemandPlanningActionPolicy.can_execute(counselor_user, action="not_real")
+    assert not DemandPlanningActionPolicy.can_execute(AnonymousUser(), action=DemandPlanningAction.VIEW_DEMAND_SUMMARY)
+
+
+@pytest.mark.django_db
+def test_scheduling_action_policy_splits_solver_runs_from_status(
+    counselor_user,
+    staff_user,
+    director_user,
+    student_user,
+    teacher_user,
+    unknown_user,
+):
+    solver_actions = [
+        SchedulingAction.RUN_SECTION_PLACEMENT,
+        SchedulingAction.RUN_TEACHER_ASSIGNMENT,
+        SchedulingAction.RUN_STUDENT_ASSIGNMENT,
+    ]
+
+    for action in solver_actions:
+        assert SchedulingActionPolicy.can_execute(counselor_user, action=action)
+        assert SchedulingActionPolicy.can_execute(director_user, action=action)
+        assert not SchedulingActionPolicy.can_execute(staff_user, action=action)
+        assert not SchedulingActionPolicy.can_execute(student_user, action=action)
+        assert not SchedulingActionPolicy.can_execute(teacher_user, action=action)
+        assert not SchedulingActionPolicy.can_execute(unknown_user, action=action)
+
+    for user in [counselor_user, staff_user, director_user]:
+        assert SchedulingActionPolicy.can_execute(
+            user,
+            action=SchedulingAction.VIEW_SCHEDULING_RUN_STATUS,
+        )
+
+    assert not SchedulingActionPolicy.can_execute(
+        teacher_user,
+        action=SchedulingAction.VIEW_SCHEDULING_RUN_STATUS,
+    )
+    assert not SchedulingActionPolicy.can_execute(counselor_user, action="not_real")
+
+
+@pytest.mark.django_db
+def test_override_action_policy_splits_write_actions_from_history(
+    counselor_user,
+    staff_user,
+    director_user,
+    student_user,
+    teacher_user,
+    unknown_user,
+):
+    write_actions = [
+        OverrideAction.CREATE_OVERRIDE,
+        OverrideAction.APPLY_OVERRIDE,
+    ]
+
+    for action in write_actions:
+        assert OverrideActionPolicy.can_execute(counselor_user, action=action)
+        assert OverrideActionPolicy.can_execute(director_user, action=action)
+        assert not OverrideActionPolicy.can_execute(staff_user, action=action)
+        assert not OverrideActionPolicy.can_execute(student_user, action=action)
+        assert not OverrideActionPolicy.can_execute(teacher_user, action=action)
+        assert not OverrideActionPolicy.can_execute(unknown_user, action=action)
+
+    for user in [counselor_user, staff_user, director_user]:
+        assert OverrideActionPolicy.can_execute(
+            user,
+            action=OverrideAction.VIEW_OVERRIDE_HISTORY,
+        )
+
+    assert not OverrideActionPolicy.can_execute(
+        teacher_user,
+        action=OverrideAction.VIEW_OVERRIDE_HISTORY,
+    )
+    assert not OverrideActionPolicy.can_execute(counselor_user, action="not_real")
+
+
+@pytest.mark.django_db
+def test_action_policy_permission_denies_missing_policy_or_action(counselor_user):
+    permission = ActionPolicyPermission()
+
+    assert not permission.has_permission(
+        request("POST", counselor_user),
+        SimpleNamespace(action_name=SchedulingAction.RUN_SECTION_PLACEMENT),
+    )
+    assert not permission.has_permission(
+        request("POST", counselor_user),
+        SimpleNamespace(action_policy_class=SchedulingActionPolicy),
+    )
+
+
+@pytest.mark.django_db
+def test_action_policy_permission_calls_action_policy(
+    counselor_user,
+    staff_user,
+    student_user,
+):
+    permission = ActionPolicyPermission()
+    run_view = SimpleNamespace(
+        action_policy_class=SchedulingActionPolicy,
+        action_name=SchedulingAction.RUN_SECTION_PLACEMENT,
+    )
+    status_view = SimpleNamespace(
+        action_policy_class=SchedulingActionPolicy,
+        action_name=SchedulingAction.VIEW_SCHEDULING_RUN_STATUS,
+    )
+
+    assert permission.has_permission(request("POST", counselor_user), run_view)
+    assert not permission.has_permission(request("POST", staff_user), run_view)
+    assert not permission.has_permission(request("POST", student_user), run_view)
+
+    assert permission.has_permission(request("GET", staff_user), status_view)
+    assert permission.has_object_permission(request("GET", staff_user), status_view, object())

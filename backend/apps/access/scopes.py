@@ -14,3 +14,10 @@ class WriteScope:
     ALL = "all"
 
     VALUES = {NONE, OWN, ASSIGNED, ALL}
+
+
+class ActionScope:
+    DENIED = "denied"
+    ALLOWED = "allowed"
+
+    VALUES = {DENIED, ALLOWED}

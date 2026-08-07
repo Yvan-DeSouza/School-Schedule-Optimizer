@@ -17,9 +17,12 @@ from backend.apps.people.permissions import (
     IsTeacher,
 )
 from backend.apps.people.roles import get_user_profile_id, get_user_role
+import os
+from dotenv import load_dotenv
+# Load environment variables from .env file
+load_dotenv()
 
-
-PASSWORD = "password123"
+PASSWORD = os.getenv("DB_PASSWORD", "password123")  # Use the password from .env or default to "password123"
 
 
 @pytest.fixture

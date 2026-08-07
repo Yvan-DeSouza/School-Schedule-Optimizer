@@ -1,4 +1,4 @@
-from backend.apps.access.policies.courses import (
+from backend.apps.access.resource_policies.courses import (
     CoursePolicy,
     CourseRequestPolicy,
     SectionPolicy,

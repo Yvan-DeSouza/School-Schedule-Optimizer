@@ -1,53 +1,7 @@
-from backend.apps.access.base import BaseAccessPolicy
-from backend.apps.access.rules import AccessRule
-from backend.apps.access.scopes import ReadScope, WriteScope
-from backend.apps.people.models import RoleChoices
+from backend.apps.access.resource_policies.courses import (
+    CoursePolicy,
+    CourseRequestPolicy,
+    SectionPolicy,
+)
 
-
-class CoursePolicy(BaseAccessPolicy):
-    rules = {
-        RoleChoices.STUDENT: AccessRule(read=ReadScope.ALL),
-        RoleChoices.TEACHER: AccessRule(read=ReadScope.ALL),
-        RoleChoices.COUNSELOR: AccessRule(read=ReadScope.ALL, write=WriteScope.ALL),
-        RoleChoices.STAFF: AccessRule(read=ReadScope.ALL, write=WriteScope.ALL),
-        RoleChoices.DIRECTOR: AccessRule(read=ReadScope.ALL, write=WriteScope.ALL),
-        RoleChoices.UNKNOWN: AccessRule(),
-    }
-
-
-class SectionPolicy(BaseAccessPolicy):
-    rules = {
-        RoleChoices.STUDENT: AccessRule(),
-        RoleChoices.TEACHER: AccessRule(read=ReadScope.ASSIGNED),
-        RoleChoices.COUNSELOR: AccessRule(read=ReadScope.ALL, write=WriteScope.ALL),
-        RoleChoices.STAFF: AccessRule(read=ReadScope.ALL, write=WriteScope.ALL),
-        RoleChoices.DIRECTOR: AccessRule(read=ReadScope.ALL, write=WriteScope.ALL),
-        RoleChoices.UNKNOWN: AccessRule(),
-    }
-
-    @classmethod
-    def filter_assigned_queryset(cls, user, queryset):
-        return queryset.filter(teacher__user=user)
-
-    @classmethod
-    def is_assigned_object(cls, user, obj):
-        return getattr(getattr(obj, "teacher", None), "user_id", None) == user.id
-
-
-class CourseRequestPolicy(BaseAccessPolicy):
-    rules = {
-        RoleChoices.STUDENT: AccessRule(read=ReadScope.OWN, write=WriteScope.OWN),
-        RoleChoices.TEACHER: AccessRule(),
-        RoleChoices.COUNSELOR: AccessRule(read=ReadScope.ALL, write=WriteScope.ALL),
-        RoleChoices.STAFF: AccessRule(read=ReadScope.ALL, write=WriteScope.ALL),
-        RoleChoices.DIRECTOR: AccessRule(read=ReadScope.ALL, write=WriteScope.ALL),
-        RoleChoices.UNKNOWN: AccessRule(),
-    }
-
-    @classmethod
-    def filter_own_queryset(cls, user, queryset):
-        return queryset.filter(student__user=user)
-
-    @classmethod
-    def is_own_object(cls, user, obj):
-        return getattr(getattr(obj, "student", None), "user_id", None) == user.id
+__all__ = ["CoursePolicy", "CourseRequestPolicy", "SectionPolicy"]

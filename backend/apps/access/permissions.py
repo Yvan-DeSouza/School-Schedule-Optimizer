@@ -1,7 +1,7 @@
 from rest_framework.permissions import SAFE_METHODS, BasePermission
 
 
-class PolicyPermission(BasePermission):
+class ResourcePolicyPermission(BasePermission):
     def has_permission(self, request, view):
         policy = self._get_policy(view)
         if policy is None:
@@ -25,4 +25,24 @@ class PolicyPermission(BasePermission):
         return policy.can_write_object(request.user, obj)
 
     def _get_policy(self, view):
-        return getattr(view, "policy_class", None)
+        return getattr(view, "resource_policy_class", None) or getattr(
+            view,
+            "policy_class",
+            None,
+        )
+
+
+class ActionPolicyPermission(BasePermission):
+    def has_permission(self, request, view):
+        policy = getattr(view, "action_policy_class", None)
+        action = getattr(view, "action_name", None)
+        if policy is None or action is None:
+            return False
+
+        return policy.can_execute(request.user, action=action, context=view)
+
+    def has_object_permission(self, request, view, obj):
+        return self.has_permission(request, view)
+
+
+PolicyPermission = ResourcePolicyPermission
