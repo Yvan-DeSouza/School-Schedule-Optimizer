@@ -144,3 +144,14 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+
+
+MIGRATION_MODULES = {
+    "common": None,
+    "constraints": None,
+    "control": None,
+    "courses": None,
+    "people": None,
+    "scheduling": None,
+    "translations": None,
+}

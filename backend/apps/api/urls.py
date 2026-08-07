@@ -10,4 +10,6 @@ urlpatterns = [
     path("me/", MeView.as_view(), name="me"),
     path("", include("backend.apps.courses.urls")),
     path("", include("backend.apps.constraints.urls")),
+    path("", include("backend.apps.common.urls")),
+    path("", include("backend.apps.scheduling.urls")),
 ]

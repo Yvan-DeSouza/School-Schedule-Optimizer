@@ -8,6 +8,7 @@ from backend.apps.access.resource_policies.constraints import (
     PlanningResourcePolicy,
     TeacherOwnedResourcePolicy,
 )
+from backend.apps.access.resource_policies.reference_data import ReferenceDataPolicy
 
 __all__ = [
     "BaseResourcePolicy",
@@ -16,4 +17,5 @@ __all__ = [
     "SectionPolicy",
     "PlanningResourcePolicy",
     "TeacherOwnedResourcePolicy",
+    "ReferenceDataPolicy",
 ]

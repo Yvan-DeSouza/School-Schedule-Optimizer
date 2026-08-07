@@ -133,6 +133,25 @@ All core endpoints require a JWT access token. List endpoints are paginated with
 | `/api/course-requests/` | Own requests only | No access | Read/write all |
 | `/api/demand/summary/?academic_year=<id>` | No access | No access | Read |
 
+## Supporting Reference Data API
+
+All recognized roles can read `/api/academic-years/`, `/api/rooms/`, and
+`/api/timeslots/`. Only staff and directors can change them. Deletion is blocked
+when a record is already referenced by school or scheduling data.
+
+Timeslots use the permanent A–D block system. For example, create Block A with:
+
+```json
+{
+  "academic_year": 1,
+  "semester": 1,
+  "block": "A",
+  "is_available": true
+}
+```
+
+The response includes its fixed four-day rotation as read-only `rotation` data.
+
 Create a course as a planning role:
 
 ```bash
