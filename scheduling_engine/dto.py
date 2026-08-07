@@ -31,6 +31,12 @@ class HistoricalDemandDTO:
 
 
 @dataclass(frozen=True)
+class AcademicYearDTO:
+    id: int
+    name: str
+
+
+@dataclass(frozen=True)
 class SectionDTO:
     id: int
     course_id: int
@@ -165,6 +171,7 @@ class CounselorConstraintPreferenceDTO:
 @dataclass(frozen=True)
 class SchedulingInputDTO:
     academic_year_id: int
+    academic_years: Tuple[AcademicYearDTO, ...] = ()
     courses: Tuple[CourseDTO, ...] = ()
     course_requests: Tuple[CourseRequestDTO, ...] = ()
     historical_demand: Tuple[HistoricalDemandDTO, ...] = ()

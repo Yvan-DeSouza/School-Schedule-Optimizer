@@ -36,3 +36,16 @@ class TimeSlotSerializer(serializers.ModelSerializer):
                     "A timeslot for this academic year, semester, and block already exists."
                 )
         return attrs
+
+
+class SectionCountRecommendationSerializer(serializers.Serializer):
+    course_id = serializers.IntegerField()
+    course_code = serializers.CharField()
+    current_requests = serializers.IntegerField()
+    conversion_ratio = serializers.FloatField()
+    predicted_enrollment = serializers.FloatField()
+    capacity_min = serializers.IntegerField()
+    capacity_max = serializers.IntegerField()
+    recommended_section_count = serializers.IntegerField()
+    used_fallback_ratio = serializers.BooleanField()
+    warnings = serializers.ListField(child=serializers.CharField())

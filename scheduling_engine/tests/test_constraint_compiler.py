@@ -2,7 +2,7 @@ import pytest
 
 from scheduling_engine.constraint_compiler import compile_constraints
 from scheduling_engine.dto import (
-    CourseDTO, CourseQualificationRequirementDTO, CourseRoomRequirementDTO,
+    AcademicYearDTO, CourseDTO, CourseQualificationRequirementDTO, CourseRoomRequirementDTO,
     QualificationDTO, RoomDTO, SchedulingInputDTO, SectionDTO, SectionLockDTO,
     TeacherAvailabilityDTO, TeacherDTO, TeacherQualificationDTO, TimeSlotDTO,
 )
@@ -11,6 +11,7 @@ from scheduling_engine.dto import (
 def complete_input(lock_teacher=True):
     return SchedulingInputDTO(
         academic_year_id=1,
+        academic_years=(AcademicYearDTO(1, "2026-2027"),),
         courses=(CourseDTO(1, "MCV4U", "Calculus", 10, 30),),
         sections=(SectionDTO(1, 1, 1, 1, 10, 30),),
         teachers=(TeacherDTO(1, 3, 6),),

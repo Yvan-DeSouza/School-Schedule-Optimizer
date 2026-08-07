@@ -152,6 +152,20 @@ Timeslots use the permanent A–D block system. For example, create Block A with
 
 The response includes its fixed four-day rotation as read-only `rotation` data.
 
+## Section Count Recommendations
+
+Counselors, staff, and directors can request a read-only planning recommendation:
+
+```text
+GET /api/planning/section-count-recommendations/?academic_year=<id>
+```
+
+The endpoint loads Django data into the standalone scheduling engine and returns
+recommended counts without creating sections. Historical demand uses all prior
+academic years with a three-year recency half-life: data from three years ago
+counts half as much as immediately prior-year data. Counselors review the result
+and create approved sections through `/api/sections/`.
+
 Create a course as a planning role:
 
 ```bash

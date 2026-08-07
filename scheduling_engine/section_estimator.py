@@ -13,7 +13,7 @@ def estimate_section_counts(data: SchedulingInputDTO) -> tuple[SectionCountRecom
         fallback = summary.historical_conversion_ratio is None
         ratio = 1.0 if fallback else summary.historical_conversion_ratio
         predicted = summary.total_requests * ratio
-        count = 0 if predicted == 0 else math.ceil(predicted / course.capacity_max)
+        count = 0 if predicted == 0 else math.ceil((predicted / course.capacity_max) - 1e-12)
         warnings = []
         if fallback:
             warnings.append("No usable historical demand; using current demand as the forecast.")
