@@ -171,3 +171,13 @@ Use `GET` or `PATCH /api/sections/{id}/lock/` to inspect or set a section's
 locked teacher, timeslot, and room. The first PATCH creates the lock. A locked
 teacher must hold every qualification required by that section's course; fields
 can be cleared individually with `null`.
+
+## Scheduling Engine Foundation
+
+`scheduling_engine/` is a Django-independent package for demand analysis,
+section-count recommendations, and solver-ready constraint compilation. It does
+not access the ORM or persist recommendations. Run its isolated tests with:
+
+```bash
+python -m pytest -c scheduling_engine/pytest.ini scheduling_engine/tests
+```
