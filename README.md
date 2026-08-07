@@ -104,3 +104,52 @@ Expected response shape:
   "profile_id": 1
 }
 ```
+
+## Core Domain API
+
+All core endpoints require a JWT access token. List endpoints are paginated with
+25 results per page and return DRF's standard `count`, `next`, `previous`, and
+`results` fields.
+
+| Route | Student | Teacher | Counselor / staff / director |
+| --- | --- | --- | --- |
+| `/api/courses/` | Read | Read | Read/write |
+| `/api/sections/` | No access | Assigned sections only | Read/write |
+| `/api/course-requests/` | Own requests only | No access | Read/write all |
+| `/api/demand/summary/?academic_year=<id>` | No access | No access | Read |
+
+Create a course as a planning role:
+
+```bash
+curl -X POST http://localhost:8000/api/courses/ ^
+  -H "Authorization: Bearer <access-token>" ^
+  -H "Content-Type: application/json" ^
+  -d "{\"name\":\"Calculus and Vectors\",\"grade_level\":12,\"course_code\":\"MCV4U\",\"category\":\"math\",\"capacity_min\":10,\"capacity_max\":30,\"is_online\":false}"
+```
+
+Students create their own course request; the server derives the student from
+the JWT and does not trust a submitted student ID:
+
+```json
+{
+  "academic_year": 1,
+  "course": 5,
+  "is_mandatory": false,
+  "request_type": "primary"
+}
+```
+
+Demand summary response:
+
+```json
+[
+  {
+    "course_id": 5,
+    "course_code": "MCV4U",
+    "course_name": "Calculus and Vectors",
+    "primary_requests": 70,
+    "alternate_requests": 12,
+    "total_requests": 82
+  }
+]
+```
