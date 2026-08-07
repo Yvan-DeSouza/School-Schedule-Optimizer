@@ -1,5 +1,13 @@
 from django.db import models
 
+from backend.apps.common.constants import (
+    QUALIFICATION_DIVISION_CHOICES,
+    QUALIFICATION_DIVISION_NONE,
+    QUALIFICATION_KIND_CHOICES,
+    QUALIFICATION_KIND_TEACHABLE,
+    QUALIFICATION_SUBJECT_CHOICES,
+    QUALIFICATION_SUBJECT_NONE,
+)
 
 class HardConstraint(models.Model):
     name = models.CharField(max_length=200)
@@ -46,13 +54,35 @@ class CounselorConstraintPreference(models.Model):
 
 
 class Qualification(models.Model):
+    """A normalized credential that can be matched to courses and teachers."""
+
+    code = models.CharField(max_length=100, unique=True)
+
     name = models.CharField(
         max_length=100,
         unique=True
     )
 
+    kind = models.CharField(
+        max_length=20,
+        choices=QUALIFICATION_KIND_CHOICES,
+        default=QUALIFICATION_KIND_TEACHABLE,
+    )
+
+    subject_code = models.CharField(
+        max_length=100,
+        choices=QUALIFICATION_SUBJECT_CHOICES,
+        blank=True,
+        default=QUALIFICATION_SUBJECT_NONE,
+    )
+    division = models.CharField(
+        max_length=20,
+        choices=QUALIFICATION_DIVISION_CHOICES,
+        default=QUALIFICATION_DIVISION_NONE,
+    )
+
     class Meta:
-        ordering = ["name"]
+        ordering = ["kind", "subject_code", "division", "name"]
 
     def __str__(self):
         return self.name

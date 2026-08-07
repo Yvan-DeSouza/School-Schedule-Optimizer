@@ -72,6 +72,67 @@ COURSE_REQUEST_TYPE_CHOICES = (
     (COURSE_REQUEST_TYPE_ALTERNATE, "Alternate"),
 )
 
+# Official teaching-qualification catalog values. A qualification record is a
+# normalized, reusable credential (for example, mathematics + senior), while a
+# TeacherQualification records that a particular teacher holds it.
+QUALIFICATION_KIND_TEACHABLE = "teachable"
+QUALIFICATION_KIND_ADDITIONAL = "additional"
+QUALIFICATION_KIND_CHOICES = (
+    (QUALIFICATION_KIND_TEACHABLE, "Teachable qualification"),
+    (QUALIFICATION_KIND_ADDITIONAL, "Additional qualification"),
+)
+
+# Canonical teachable subjects presently represented by the available school
+# records. Add a new subject here before importing a new official teachable;
+# callers must import these values rather than use their own strings.
+QUALIFICATION_SUBJECT_NONE = ""
+QUALIFICATION_SUBJECT_MATHEMATICS = "mathematics"
+QUALIFICATION_SUBJECT_CHEMISTRY = "chemistry"
+QUALIFICATION_SUBJECT_FRENCH = "french"
+QUALIFICATION_SUBJECT_COMPUTER_STUDIES = "computer_studies"
+QUALIFICATION_SUBJECT_BUSINESS_STUDIES_GENERAL = "business_studies_general"
+QUALIFICATION_SUBJECT_CHOICES = (
+    (QUALIFICATION_SUBJECT_NONE, "Not applicable"),
+    (QUALIFICATION_SUBJECT_MATHEMATICS, "Mathematics"),
+    (QUALIFICATION_SUBJECT_CHEMISTRY, "Chemistry"),
+    (QUALIFICATION_SUBJECT_FRENCH, "French"),
+    (QUALIFICATION_SUBJECT_COMPUTER_STUDIES, "Computer Studies"),
+    (QUALIFICATION_SUBJECT_BUSINESS_STUDIES_GENERAL, "Business Studies - General"),
+)
+
+QUALIFICATION_DIVISION_NONE = "none"
+QUALIFICATION_DIVISION_PRIMARY = "primary"
+QUALIFICATION_DIVISION_JUNIOR = "junior"
+QUALIFICATION_DIVISION_INTERMEDIATE = "intermediate"
+QUALIFICATION_DIVISION_SENIOR = "senior"
+QUALIFICATION_DIVISION_CHOICES = (
+    (QUALIFICATION_DIVISION_NONE, "Not applicable"),
+    (QUALIFICATION_DIVISION_PRIMARY, "Primary"),
+    (QUALIFICATION_DIVISION_JUNIOR, "Junior"),
+    (QUALIFICATION_DIVISION_INTERMEDIATE, "Intermediate"),
+    (QUALIFICATION_DIVISION_SENIOR, "Senior"),
+)
+
+# Course-to-qualification rules are either legal requirements or assignment
+# preferences. Grade 11 and 12 courses must use required senior teachables.
+QUALIFICATION_ENFORCEMENT_REQUIRED = "required"
+QUALIFICATION_ENFORCEMENT_PREFERRED = "preferred"
+QUALIFICATION_ENFORCEMENT_CHOICES = (
+    (QUALIFICATION_ENFORCEMENT_REQUIRED, "Required"),
+    (QUALIFICATION_ENFORCEMENT_PREFERRED, "Preferred"),
+)
+STATUTORY_TEACHABLE_MIN_GRADE = GRADE_LEVEL_11
+
+# Provenance values for a teacher's individual credential record.
+QUALIFICATION_SOURCE_ASPEN = "aspen"
+QUALIFICATION_SOURCE_MANUAL = "manual"
+QUALIFICATION_SOURCE_IMPORT = "import"
+QUALIFICATION_SOURCE_CHOICES = (
+    (QUALIFICATION_SOURCE_ASPEN, "Aspen"),
+    (QUALIFICATION_SOURCE_MANUAL, "Manual entry"),
+    (QUALIFICATION_SOURCE_IMPORT, "Approved import"),
+)
+
 # Fixed A-D timetable blocks and their permanent four-day rotation. Each pair
 # is (rotation_day, period).
 SCHEDULE_BLOCK_A = "A"

@@ -7,6 +7,8 @@ from backend.apps.common.constants import (
     COURSE_REQUEST_TYPE_ALTERNATE,
     COURSE_REQUEST_TYPE_PRIMARY,
     GRADE_LEVEL_12,
+    QUALIFICATION_DIVISION_SENIOR,
+    QUALIFICATION_SUBJECT_MATHEMATICS,
     ROOM_TYPE_CLASSROOM,
     ROOM_TYPE_SCIENCE_LAB,
     SCHEDULE_BLOCK_A,
@@ -170,7 +172,12 @@ def test_duplicate_section_per_course_year_is_rejected(course, academic_year):
 
 @pytest.mark.django_db
 def test_duplicate_teacher_qualification_is_rejected(teacher):
-    qualification = Qualification.objects.create(name="Mathematics")
+    qualification = Qualification.objects.create(
+        code="mathematics-senior",
+        name="Mathematics - Senior",
+        subject_code=QUALIFICATION_SUBJECT_MATHEMATICS,
+        division=QUALIFICATION_DIVISION_SENIOR,
+    )
     TeacherQualification.objects.create(teacher=teacher, qualification=qualification)
 
     with pytest.raises(IntegrityError), transaction.atomic():
@@ -245,7 +252,12 @@ def test_duplicate_course_room_requirement_is_rejected(course):
 
 @pytest.mark.django_db
 def test_duplicate_course_qualification_requirement_is_rejected(course):
-    qualification = Qualification.objects.create(name="Mathematics")
+    qualification = Qualification.objects.create(
+        code="mathematics-senior",
+        name="Mathematics - Senior",
+        subject_code=QUALIFICATION_SUBJECT_MATHEMATICS,
+        division=QUALIFICATION_DIVISION_SENIOR,
+    )
     CourseQualificationRequirement.objects.create(
         course=course,
         qualification=qualification,

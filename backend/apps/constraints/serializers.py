@@ -1,5 +1,12 @@
 from rest_framework import serializers
 
+from backend.apps.common.constants import (
+    QUALIFICATION_DIVISION_NONE,
+    QUALIFICATION_DIVISION_SENIOR,
+    QUALIFICATION_ENFORCEMENT_REQUIRED,
+    QUALIFICATION_KIND_TEACHABLE,
+    STATUTORY_TEACHABLE_MIN_GRADE,
+)
 from backend.apps.constraints.models import (
     CounselorConstraintPreference, CourseConflict, CourseQualificationRequirement,
     CourseRoomRequirement, HardConstraint, Qualification, SoftConstraint,
@@ -34,7 +41,10 @@ class TeacherQualificationSerializer(TeacherHiddenSerializer):
     unique_fields = ("qualification",)
     class Meta:
         model = TeacherQualification
-        fields = ("id", "teacher", "qualification")
+        fields = (
+            "id", "teacher", "qualification", "source_system", "source_record_id",
+            "source_text", "awarded_date_text",
+        )
         validators = []
 
 
@@ -65,7 +75,22 @@ class TeacherAvailabilitySerializer(TeacherHiddenSerializer):
 class QualificationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Qualification
-        fields = ("id", "name")
+        fields = ("id", "code", "name", "kind", "subject_code", "division")
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        kind = attrs.get("kind", getattr(self.instance, "kind", None))
+        subject_code = attrs.get("subject_code", getattr(self.instance, "subject_code", ""))
+        division = attrs.get("division", getattr(self.instance, "division", None))
+        if kind == QUALIFICATION_KIND_TEACHABLE:
+            errors = {}
+            if not subject_code:
+                errors["subject_code"] = "A teachable qualification needs a canonical subject code."
+            if division == QUALIFICATION_DIVISION_NONE:
+                errors["division"] = "A teachable qualification needs an official division."
+            if errors:
+                raise serializers.ValidationError(errors)
+        return attrs
 
 
 class HardConstraintSerializer(serializers.ModelSerializer):
@@ -115,7 +140,27 @@ class CourseRoomRequirementSerializer(serializers.ModelSerializer):
 class CourseQualificationRequirementSerializer(serializers.ModelSerializer):
     class Meta:
         model = CourseQualificationRequirement
-        fields = ("id", "course", "qualification")
+        fields = ("id", "course", "qualification", "enforcement")
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        course = attrs.get("course", getattr(self.instance, "course", None))
+        qualification = attrs.get("qualification", getattr(self.instance, "qualification", None))
+        enforcement = attrs.get("enforcement", getattr(self.instance, "enforcement", None))
+        if not course or not qualification:
+            return attrs
+
+        errors = {}
+        if qualification.kind != QUALIFICATION_KIND_TEACHABLE:
+            errors["qualification"] = "Only teachable qualifications can be mapped to a course."
+        if enforcement == QUALIFICATION_ENFORCEMENT_REQUIRED:
+            if course.grade_level < STATUTORY_TEACHABLE_MIN_GRADE:
+                errors["enforcement"] = "Required qualifications apply only to Grade 11 and Grade 12 courses."
+            if qualification.division != QUALIFICATION_DIVISION_SENIOR:
+                errors["qualification"] = "A Grade 11-12 required qualification must be a Senior teachable."
+        if errors:
+            raise serializers.ValidationError(errors)
+        return attrs
 
 
 class SectionLockSerializer(serializers.ModelSerializer):

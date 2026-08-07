@@ -13,8 +13,12 @@ from scheduling_engine.dto import (
 )
 from scheduling_engine.section_estimator import estimate_section_counts
 
+from backend.apps.common.constants import (
+    COURSE_REQUEST_TYPE_PRIMARY,
+    QUALIFICATION_ENFORCEMENT_REQUIRED,
+    STATUTORY_TEACHABLE_MIN_GRADE,
+)
 from backend.apps.common.models import AcademicYear, HistoricalCourseDemand, Room
-from backend.apps.common.constants import COURSE_REQUEST_TYPE_PRIMARY
 from backend.apps.constraints.models import (
     CounselorConstraintPreference, CourseConflict, CourseQualificationRequirement,
     CourseRoomRequirement, HardConstraint, Qualification, SoftConstraint,
@@ -45,7 +49,17 @@ def load_scheduling_input(academic_year_id):
         academic_year_id=academic_year_id,
         academic_years=academic_years,
         courses=tuple(
-            CourseDTO(course.id, course.course_code, course.name, course.capacity_min, course.capacity_max, course.grade_level, course.category, course.is_online)
+            CourseDTO(
+                course.id,
+                course.course_code,
+                course.name,
+                course.capacity_min,
+                course.capacity_max,
+                course.grade_level,
+                course.category,
+                course.is_online,
+                course.grade_level >= STATUTORY_TEACHABLE_MIN_GRADE,
+            )
             for course in Course.objects.all()
         ),
         course_requests=tuple(
@@ -78,7 +92,17 @@ def load_scheduling_input(academic_year_id):
             TimeSlotDTO(slot.id, slot.academic_year_id, slot.semester, slot.block, slot.is_available)
             for slot in TimeSlot.objects.filter(academic_year_id=academic_year_id)
         ),
-        qualifications=tuple(QualificationDTO(item.id, item.name) for item in Qualification.objects.all()),
+        qualifications=tuple(
+            QualificationDTO(
+                item.id,
+                item.name,
+                item.code,
+                item.kind,
+                item.subject_code,
+                item.division,
+            )
+            for item in Qualification.objects.all()
+        ),
         teacher_qualifications=tuple(TeacherQualificationDTO(item.teacher_id, item.qualification_id) for item in TeacherQualification.objects.all()),
         teacher_preferences=tuple(TeacherCoursePreferenceDTO(item.teacher_id, item.course_id) for item in TeacherCoursePreference.objects.all()),
         teacher_current_courses=tuple(
@@ -90,7 +114,14 @@ def load_scheduling_input(academic_year_id):
             for item in TeacherAvailability.objects.filter(timeslot__academic_year_id=academic_year_id)
         ),
         course_room_requirements=tuple(CourseRoomRequirementDTO(item.course_id, item.room_type) for item in CourseRoomRequirement.objects.all()),
-        course_qualification_requirements=tuple(CourseQualificationRequirementDTO(item.course_id, item.qualification_id) for item in CourseQualificationRequirement.objects.all()),
+        course_qualification_requirements=tuple(
+            CourseQualificationRequirementDTO(
+                item.course_id,
+                item.qualification_id,
+                item.enforcement == QUALIFICATION_ENFORCEMENT_REQUIRED,
+            )
+            for item in CourseQualificationRequirement.objects.all()
+        ),
         course_prerequisites=tuple(CoursePrerequisiteDTO(item.course_id, item.prerequisite_id) for item in CoursePrerequisite.objects.all()),
         course_conflicts=tuple(CourseConflictDTO(item.course_a_id, item.course_b_id, item.weight) for item in CourseConflict.objects.all()),
         section_locks=tuple(

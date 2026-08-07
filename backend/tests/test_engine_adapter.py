@@ -4,6 +4,8 @@ from backend.apps.common.constants import (
     COURSE_CATEGORY_SCIENCE,
     COURSE_REQUEST_TYPE_PRIMARY,
     GRADE_LEVEL_12,
+    QUALIFICATION_DIVISION_SENIOR,
+    QUALIFICATION_SUBJECT_MATHEMATICS,
     ROOM_TYPE_CLASSROOM,
     SCHEDULE_BLOCK_A,
     SEMESTER_FALL,
@@ -31,7 +33,12 @@ def test_engine_adapter_loads_target_year_data_and_constraints(
     section = Section.objects.create(course=course, section_number="01", academic_year=academic_year, semester=SEMESTER_FALL, capacity_min=10, capacity_max=30)
     room = Room.objects.create(name="101", room_type=ROOM_TYPE_CLASSROOM, capacity=30)
     timeslot = TimeSlot.objects.create(academic_year=academic_year, semester=SEMESTER_FALL, block=SCHEDULE_BLOCK_A)
-    qualification = Qualification.objects.create(name="Math")
+    qualification = Qualification.objects.create(
+        code="mathematics-senior",
+        name="Mathematics - Senior",
+        subject_code=QUALIFICATION_SUBJECT_MATHEMATICS,
+        division=QUALIFICATION_DIVISION_SENIOR,
+    )
     TeacherQualification.objects.create(teacher=teacher_user.teacher_profile, qualification=qualification)
     TeacherCoursePreference.objects.create(teacher=teacher_user.teacher_profile, course=course)
     TeacherCurrentCourse.objects.create(teacher=teacher_user.teacher_profile, course=course, academic_year=academic_year)
@@ -53,6 +60,10 @@ def test_engine_adapter_loads_target_year_data_and_constraints(
     assert data.historical_demand[0].academic_year_id == history_year.id
     assert data.sections[0].id == section.id and data.section_locks[0].locked_room_id == room.id
     assert data.timeslots[0].block == SCHEDULE_BLOCK_A and data.teacher_availability[0].timeslot_id == timeslot.id
+    assert data.courses[0].requires_statutory_qualification is True
+    assert data.qualifications[0].code == "mathematics-senior"
+    assert data.qualifications[0].division == QUALIFICATION_DIVISION_SENIOR
+    assert data.course_qualification_requirements[0].is_required is True
     assert data.teacher_qualifications and data.teacher_preferences and data.teacher_current_courses
     assert data.course_room_requirements and data.course_qualification_requirements and data.course_prerequisites
     assert data.course_conflicts and data.hard_constraints and data.soft_constraints and data.counselor_constraint_preferences

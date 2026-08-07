@@ -1,5 +1,6 @@
 from rest_framework import serializers
 
+from backend.apps.constraints.services import validate_teacher_course_assignment
 from backend.apps.courses.models import Course, CourseRequest, Section
 from backend.apps.people.models import RoleChoices
 from backend.apps.people.roles import get_user_role
@@ -25,6 +26,14 @@ class SectionSerializer(CapacityValidationMixin, serializers.ModelSerializer):
     class Meta:
         model = Section
         fields = ("id", "course", "section_number", "academic_year", "semester", "teacher", "capacity_min", "capacity_max", "is_locked")
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        course = attrs.get("course", getattr(self.instance, "course", None))
+        teacher = attrs.get("teacher", getattr(self.instance, "teacher", None))
+        if course and teacher:
+            validate_teacher_course_assignment(course, teacher)
+        return attrs
 
 
 class CourseRequestSerializer(serializers.ModelSerializer):

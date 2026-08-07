@@ -57,6 +57,7 @@ def compile_constraints(data: SchedulingInputDTO) -> CompiledConstraintSetDTO:
         teacher_qualifications[item.teacher_id].add(item.qualification_id)
 
     required_qualifications = {course_id: set() for course_id in courses}
+    preferred_qualifications = {course_id: set() for course_id in courses}
     seen_course_qualifications = set()
     for item in data.course_qualification_requirements:
         _require(item.course_id, courses, "course")
@@ -65,11 +66,23 @@ def compile_constraints(data: SchedulingInputDTO) -> CompiledConstraintSetDTO:
         if key in seen_course_qualifications:
             raise ValueError("Duplicate course qualification requirement.")
         seen_course_qualifications.add(key)
-        required_qualifications[item.course_id].add(item.qualification_id)
-    qualified_teachers = {
-        course_id: {teacher_id for teacher_id, held in teacher_qualifications.items() if required <= held}
-        for course_id, required in required_qualifications.items()
-    }
+        target = required_qualifications if item.is_required else preferred_qualifications
+        target[item.course_id].add(item.qualification_id)
+    qualified_teachers = {}
+    for course_id, course in courses.items():
+        required = required_qualifications[course_id]
+        if course.requires_statutory_qualification:
+            if not required:
+                raise ValueError(
+                    f"Course {course.course_code} requires a statutory qualification but has no required qualification rule."
+                )
+            qualified_teachers[course_id] = {
+                teacher_id
+                for teacher_id, held in teacher_qualifications.items()
+                if required <= held
+            }
+        else:
+            qualified_teachers[course_id] = set(teachers)
 
     required_room_types = {course_id: set() for course_id in courses}
     seen_room_requirements = set()
@@ -179,6 +192,7 @@ def compile_constraints(data: SchedulingInputDTO) -> CompiledConstraintSetDTO:
         current_course_ids_by_teacher=_freeze_sets(current_courses),
         required_room_types_by_course=_freeze_sets(required_room_types),
         required_qualification_ids_by_course=_freeze_sets(required_qualifications),
+        preferred_qualification_ids_by_course=_freeze_sets(preferred_qualifications),
         prerequisite_ids_by_course=_freeze_sets(prerequisites),
         conflict_weights_by_course_pair=MappingProxyType(conflict_weights),
         locked_sections_by_id=MappingProxyType(locks),

@@ -217,8 +217,35 @@ role-safe records returned by each list endpoint.
 
 Use `GET` or `PATCH /api/sections/{id}/lock/` to inspect or set a section's
 locked teacher, timeslot, and room. The first PATCH creates the lock. A locked
-teacher must hold every qualification required by that section's course; fields
-can be cleared individually with `null`.
+teacher for a Grade 11 or 12 course must hold every required Senior teachable
+qualification; fields can be cleared individually with `null`. Grade 7-10
+qualification mappings are preferences and never block an assignment or lock.
+
+### Teacher Qualification Data
+
+Qualifications are normalized catalog records, not copied academic-degree text.
+For example, use `mathematics-senior` / `Mathematics - Senior` for a senior
+mathematics teachable. A credential spanning Intermediate and Senior is stored
+as two teacher-qualification records, one for each normalized catalog record.
+The individual teacher record preserves its Aspen source text, source id, and
+award-date text for auditability.
+
+Create a Senior Mathematics qualification:
+
+```json
+{
+  "code": "mathematics-senior",
+  "name": "Mathematics - Senior",
+  "kind": "teachable",
+  "subject_code": "mathematics",
+  "division": "senior"
+}
+```
+
+Map it as legally required for a Grade 11 or 12 course with
+`POST /api/course-qualification-requirements/` and
+`{"course": 5, "qualification": 3, "enforcement": "required"}`. Grade
+7-10 mappings must instead use `"enforcement": "preferred"`.
 
 ## Scheduling Engine Foundation
 
@@ -248,6 +275,7 @@ fixed rotation is defined in `backend/apps/common/constants.py`:
 `backend/apps/common/constants.py` is the single source of truth for reusable
 selectable values: grade levels, room types, course categories, semesters,
 course-request types, A-D blocks and rotation positions, and application role
-values. Add or change a supported option there; Django models, services, API
-tests, and the adapter import the relevant named constant rather than defining
-their own copy.
+values. It also defines qualification kinds, canonical teachable subjects,
+divisions, enforcement levels, and source systems. Add or change a supported
+option there; Django models, services, API tests, and the adapter import the
+relevant named constant rather than defining their own copy.

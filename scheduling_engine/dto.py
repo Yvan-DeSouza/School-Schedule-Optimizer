@@ -12,6 +12,7 @@ class CourseDTO:
     grade_level: int = 0
     category: str = ""
     is_online: bool = False
+    requires_statutory_qualification: bool = False
 
 
 @dataclass(frozen=True)
@@ -86,6 +87,10 @@ class TimeSlotDTO:
 class QualificationDTO:
     id: int
     name: str
+    code: str = ""
+    kind: str = ""
+    subject_code: str = ""
+    division: str = ""
 
 
 @dataclass(frozen=True)
@@ -124,6 +129,7 @@ class CourseRoomRequirementDTO:
 class CourseQualificationRequirementDTO:
     course_id: int
     qualification_id: int
+    is_required: bool = True
 
 
 @dataclass(frozen=True)
@@ -247,6 +253,7 @@ class CompiledConstraintSetDTO:
     current_course_ids_by_teacher: Mapping[int, frozenset[int]]
     required_room_types_by_course: Mapping[int, frozenset[str]]
     required_qualification_ids_by_course: Mapping[int, frozenset[int]]
+    preferred_qualification_ids_by_course: Mapping[int, frozenset[int]]
     prerequisite_ids_by_course: Mapping[int, frozenset[int]]
     conflict_weights_by_course_pair: Mapping[tuple[int, int], float]
     locked_sections_by_id: Mapping[int, SectionLockDTO]

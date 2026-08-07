@@ -1,6 +1,10 @@
 from django.db import models
 
-from backend.apps.common.constants import ROOM_TYPE_CHOICES
+from backend.apps.common.constants import (
+    QUALIFICATION_ENFORCEMENT_CHOICES,
+    QUALIFICATION_ENFORCEMENT_REQUIRED,
+    ROOM_TYPE_CHOICES,
+)
 from backend.apps.constraints.models.base import Qualification
 
 
@@ -27,8 +31,14 @@ class CourseQualificationRequirement(models.Model):
 
     qualification = models.ForeignKey(Qualification, on_delete=models.CASCADE)
 
+    enforcement = models.CharField(
+        max_length=20,
+        choices=QUALIFICATION_ENFORCEMENT_CHOICES,
+        default=QUALIFICATION_ENFORCEMENT_REQUIRED,
+    )
+
     class Meta:
-        ordering = ["course", "qualification"]
+        ordering = ["course", "enforcement", "qualification"]
         constraints = [
             models.UniqueConstraint(
                 fields=["course", "qualification"],
@@ -37,7 +47,7 @@ class CourseQualificationRequirement(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.course} requires {self.qualification}"
+        return f"{self.course} {self.enforcement} {self.qualification}"
 
 
 class CourseConflict(models.Model):

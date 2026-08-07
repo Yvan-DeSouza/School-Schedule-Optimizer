@@ -67,7 +67,7 @@ class TeacherNestedViewSet(PolicyFilteredViewSet):
 class TeacherQualificationViewSet(TeacherNestedViewSet):
     queryset = TeacherQualification.objects.select_related("teacher__user", "qualification")
     serializer_class = TeacherQualificationSerializer
-    filter_fields = ("qualification",)
+    filter_fields = ("qualification", "source_system")
 
 
 class TeacherCoursePreferenceViewSet(TeacherNestedViewSet):
@@ -91,6 +91,7 @@ class TeacherAvailabilityViewSet(TeacherNestedViewSet):
 class QualificationViewSet(SharedConstraintViewSet):
     queryset = Qualification.objects.all()
     serializer_class = QualificationSerializer
+    filter_fields = ("kind", "subject_code", "division")
 
 
 class HardConstraintViewSet(SharedConstraintViewSet):
@@ -126,7 +127,7 @@ class CourseRoomRequirementViewSet(SharedConstraintViewSet):
 class CourseQualificationRequirementViewSet(SharedConstraintViewSet):
     queryset = CourseQualificationRequirement.objects.select_related("course", "qualification")
     serializer_class = CourseQualificationRequirementSerializer
-    filter_fields = ("course", "qualification")
+    filter_fields = ("course", "qualification", "enforcement")
 
 
 class SectionLockView(APIView):

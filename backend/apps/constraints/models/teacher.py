@@ -1,11 +1,24 @@
 from django.db import models
 
+from backend.apps.common.constants import (
+    QUALIFICATION_SOURCE_CHOICES,
+    QUALIFICATION_SOURCE_MANUAL,
+)
 from backend.apps.constraints.models.base import Qualification
 
 
 class TeacherQualification(models.Model):
     teacher = models.ForeignKey("people.Teacher", on_delete=models.CASCADE)
     qualification = models.ForeignKey(Qualification, on_delete=models.CASCADE)
+
+    source_system = models.CharField(
+        max_length=20,
+        choices=QUALIFICATION_SOURCE_CHOICES,
+        default=QUALIFICATION_SOURCE_MANUAL,
+    )
+    source_record_id = models.CharField(max_length=100, blank=True)
+    source_text = models.TextField(blank=True)
+    awarded_date_text = models.CharField(max_length=50, blank=True)
 
     class Meta:
         ordering = ["teacher", "qualification"]
