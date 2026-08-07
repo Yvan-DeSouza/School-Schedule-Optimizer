@@ -1,10 +1,10 @@
 from django.db import models
 
+from backend.apps.scheduling.constants import SCHEDULE_BLOCKS
+
 
 class TimeSlot(models.Model):
-    day = models.CharField(max_length=20)
-
-    period = models.IntegerField()
+    block = models.CharField(max_length=1, choices=SCHEDULE_BLOCKS)
     academic_year = models.ForeignKey("common.AcademicYear", on_delete=models.CASCADE)
 
     semester = models.IntegerField(choices=[(1, "Fall"), (2, "Winter")])
@@ -12,10 +12,16 @@ class TimeSlot(models.Model):
     is_available = models.BooleanField(default=True)
 
     class Meta:
-        ordering = ["academic_year", "semester", "day", "period"]
+        ordering = ["academic_year", "semester", "block"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["academic_year", "semester", "block"],
+                name="unique_academic_year_semester_block",
+            )
+        ]
 
     def __str__(self):
-        return f"{self.academic_year} S{self.semester} {self.day} P{self.period}"
+        return f"{self.academic_year} S{self.semester} Block {self.block}"
 
 
 class SectionSchedule(models.Model):

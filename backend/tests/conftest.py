@@ -1,10 +1,21 @@
 import pytest
+import os
+from dotenv import load_dotenv
 from django.contrib.auth.models import User
 from rest_framework.test import APIClient
 
 from backend.apps.common.models import AcademicYear
 from backend.apps.courses.models import Course
 from backend.apps.people.models import Counselor, RoleChoices, Student, Teacher, UserRoleProfile
+
+load_dotenv()
+
+
+def test_user_password():
+    password = os.getenv("TEST_USER_PASSWORD")
+    if not password:
+        raise RuntimeError("TEST_USER_PASSWORD must be set in .env before running Django tests.")
+    return password
 
 
 @pytest.fixture
@@ -18,7 +29,7 @@ def course():
 
 
 def make_user(username, role, academic_year=None):
-    user = User.objects.create_user(username=username, password="password123", is_staff=role in (RoleChoices.STAFF, RoleChoices.DIRECTOR))
+    user = User.objects.create_user(username=username, password=test_user_password(), is_staff=role in (RoleChoices.STAFF, RoleChoices.DIRECTOR))
     if role == RoleChoices.STUDENT:
         Student.objects.create(user=user, student_number=f"S-{username}", email=f"{username}@example.com", first_name=username, last_name="Student", date_of_birth="2009-01-01", grade_level=12, academic_year=academic_year)
     elif role == RoleChoices.TEACHER:

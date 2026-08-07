@@ -22,7 +22,9 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-PASSWORD = os.getenv("DB_PASSWORD", "password123")  # Use the password from .env or default to "password123"
+PASSWORD = os.getenv("TEST_USER_PASSWORD")
+if not PASSWORD:
+    raise RuntimeError("TEST_USER_PASSWORD must be set in .env before running Django tests.")
 
 
 @pytest.fixture
@@ -168,7 +170,7 @@ def test_login_succeeds_with_valid_credentials(student_user):
 def test_login_fails_with_invalid_credentials(student_user):
     response = APIClient().post(
         "/api/auth/login/",
-        {"username": "student", "password": "wrong-password"},
+        {"username": "student", "password": f"{PASSWORD}-invalid"},
         format="json",
     )
 

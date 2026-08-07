@@ -70,8 +70,7 @@ class TimeSlotDTO:
     id: int
     academic_year_id: int
     semester: int
-    day: str
-    period: int
+    block: str
     is_available: bool = True
 
 

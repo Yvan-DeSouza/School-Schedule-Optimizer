@@ -1,5 +1,5 @@
 from django.contrib.auth.models import User
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 
 from backend.apps.common.models import AcademicYear
 from backend.apps.people.models import (
@@ -10,18 +10,20 @@ from backend.apps.people.models import (
     UserRoleProfile,
 )
 import os
-from dotenv import load_dotenv
 
-# Load environment variables from .env file
-load_dotenv()
 
-DEFAULT_PASSWORD = os.getenv("DB_PASSWORD", "password123")  # Default password for seeded users
+def get_dev_user_password():
+    password = os.getenv("DEV_USER_PASSWORD")
+    if not password:
+        raise CommandError("DEV_USER_PASSWORD must be set in the environment or .env file.")
+    return password
 
 
 class Command(BaseCommand):
     help = "Create local development users for each supported role."
 
     def handle(self, *args, **options):
+        self.password = get_dev_user_password()
         academic_year, _ = AcademicYear.objects.get_or_create(name="2026-2027")
 
         counselor_user = self._create_user("counselor", "counselor@example.com")
@@ -68,8 +70,7 @@ class Command(BaseCommand):
         )
         self._create_role_user("unknown", "unknown@example.com", RoleChoices.UNKNOWN)
 
-        self.stdout.write(self.style.SUCCESS("Development users are ready."))
-        self.stdout.write(f"Default password for all seeded users: {DEFAULT_PASSWORD}")
+        self.stdout.write(self.style.SUCCESS("Development users are ready. Their password is the configured DEV_USER_PASSWORD value."))
 
     def _create_user(self, username, email, is_staff=False, is_superuser=False):
         user, created = User.objects.get_or_create(
@@ -83,7 +84,7 @@ class Command(BaseCommand):
         user.email = email
         user.is_staff = is_staff
         user.is_superuser = is_superuser
-        user.set_password(DEFAULT_PASSWORD)
+        user.set_password(self.password)
         user.save()
         return user
 

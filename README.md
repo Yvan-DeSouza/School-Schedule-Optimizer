@@ -28,20 +28,34 @@ The local Django settings expect a PostgreSQL database named `school_scheduler`
 available on `localhost:5432` with the credentials currently configured in
 `backend/config/settings.py`.
 
+### Local Schema Policy
+
+This pre-production project intentionally does not keep Django migration files.
+After recreating the local database, create built-in Django tables and all app
+tables directly from the current model definitions with:
+
+```bash
+python backend/manage.py migrate --run-syncdb
+```
+
+Do not run `makemigrations`; change the models first, then rebuild the local
+database when a schema reset is appropriate. Pytest is configured to create its
+test database directly from the models as well.
+
 ### Verify The Data Layer
 
 Run these commands from the repository root:
 
 ```bash
 python backend/manage.py check
-python backend/manage.py migrate
+python backend/manage.py migrate --run-syncdb
 pytest
 ```
 
 Expected result:
 
 - Django system checks report no issues.
-- Migrations apply cleanly for the domain apps.
+- Django synchronizes the domain tables directly from the current models.
 - The pytest suite passes, including model constraint, validator, cascade, and
   `SET_NULL` relationship tests.
 
@@ -67,7 +81,8 @@ Create local development users with:
 python backend/manage.py seed_dev_users
 ```
 
-The command creates these local accounts, all with password `password123`:
+Set `DEV_USER_PASSWORD` in `.env` before running the command. It creates these
+local accounts using that configured password:
 
 ```text
 counselor / counselor@example.com
@@ -83,7 +98,7 @@ Request a JWT access token:
 ```bash
 curl -X POST http://localhost:8000/api/auth/login/ ^
   -H "Content-Type: application/json" ^
-  -d "{\"username\":\"student\",\"password\":\"password123\"}"
+  -d "{\"username\":\"student\",\"password\":\"<DEV_USER_PASSWORD>\"}"
 ```
 
 Use the access token to inspect the current user:
@@ -181,3 +196,16 @@ not access the ORM or persist recommendations. Run its isolated tests with:
 ```bash
 python -m pytest -c scheduling_engine/pytest.ini scheduling_engine/tests
 ```
+
+## Four-Day Timetable Rotation
+
+Each semester uses four recurring timetable blocks: `A`, `B`, `C`, and `D`.
+A `TimeSlot` represents one block, not a single calendar-day occurrence. The
+fixed rotation is defined in `backend/apps/scheduling/constants.py`:
+
+| Block | Day 1 | Day 2 | Day 3 | Day 4 |
+| --- | --- | --- | --- | --- |
+| A | Period 1 | Period 3 | Period 2 | Period 4 |
+| B | Period 2 | Period 4 | Period 1 | Period 3 |
+| C | Period 3 | Period 1 | Period 4 | Period 2 |
+| D | Period 4 | Period 2 | Period 3 | Period 1 |

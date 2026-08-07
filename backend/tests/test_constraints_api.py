@@ -32,7 +32,7 @@ def test_section_lock_requires_qualified_teacher_and_can_be_cleared(authenticate
     qualification = Qualification.objects.create(name="Mathematics")
     CourseQualificationRequirement.objects.create(course=course, qualification=qualification)
     section = Section.objects.create(course=course, section_number="01", academic_year=academic_year, semester=1, capacity_min=10, capacity_max=30)
-    timeslot = TimeSlot.objects.create(day="Monday", period=1, academic_year=academic_year, semester=1)
+    timeslot = TimeSlot.objects.create(block="A", academic_year=academic_year, semester=1)
     url = f"/api/sections/{section.id}/lock/"
     client = authenticated_client(counselor_user)
     assert client.patch(url, {"locked_teacher": teacher_user.teacher_profile.id}, format="json").status_code == 400

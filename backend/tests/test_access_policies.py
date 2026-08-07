@@ -30,7 +30,9 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-PASSWORD = os.getenv("DB_PASSWORD")
+PASSWORD = os.getenv("TEST_USER_PASSWORD")
+if not PASSWORD:
+    raise RuntimeError("TEST_USER_PASSWORD must be set in .env before running Django tests.")
 
 
 @pytest.fixture

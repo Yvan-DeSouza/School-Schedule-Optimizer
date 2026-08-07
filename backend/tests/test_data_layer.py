@@ -94,8 +94,7 @@ def section(course, academic_year, teacher):
 @pytest.fixture
 def timeslot(academic_year):
     return TimeSlot.objects.create(
-        day="Monday",
-        period=1,
+        block="A",
         academic_year=academic_year,
         semester=1,
     )
