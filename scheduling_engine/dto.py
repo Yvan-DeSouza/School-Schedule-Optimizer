@@ -18,7 +18,9 @@ class CourseDTO:
 class CourseRequestDTO:
     student_id: int
     course_id: int
-    request_type: str
+    # The Django adapter translates the canonical request-type values into this
+    # engine-neutral flag. This keeps the engine independent of Django enums.
+    is_primary: bool
     is_mandatory: bool = False
 
 

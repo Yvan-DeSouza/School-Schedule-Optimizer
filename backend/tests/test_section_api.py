@@ -1,12 +1,13 @@
 import pytest
 
+from backend.apps.common.constants import SEMESTER_FALL, SEMESTER_WINTER
 from backend.apps.courses.models import Section
 
 
 @pytest.mark.django_db
 def test_section_visibility_writes_and_filters(authenticated_client, course, academic_year, teacher_user, second_teacher_user, counselor_user, student_user):
-    mine = Section.objects.create(course=course, section_number="01", academic_year=academic_year, semester=1, teacher=teacher_user.teacher_profile, capacity_min=10, capacity_max=30)
-    other = Section.objects.create(course=course, section_number="02", academic_year=academic_year, semester=2, teacher=second_teacher_user.teacher_profile, capacity_min=10, capacity_max=30)
+    mine = Section.objects.create(course=course, section_number="01", academic_year=academic_year, semester=SEMESTER_FALL, teacher=teacher_user.teacher_profile, capacity_min=10, capacity_max=30)
+    other = Section.objects.create(course=course, section_number="02", academic_year=academic_year, semester=SEMESTER_WINTER, teacher=second_teacher_user.teacher_profile, capacity_min=10, capacity_max=30)
     teacher_client = authenticated_client(teacher_user)
     assert teacher_client.get("/api/sections/").data["count"] == 1
     assert teacher_client.get(f"/api/sections/{other.id}/").status_code == 404

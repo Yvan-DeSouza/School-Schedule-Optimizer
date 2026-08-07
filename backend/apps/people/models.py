@@ -1,15 +1,30 @@
 from django.db import models
 
-from backend.apps.common.constants import GRADE_LEVEL
+from backend.apps.common.constants import (
+    GRADE_LEVEL_CHOICES,
+    USER_ROLE_CHOICES,
+    USER_ROLE_COUNSELOR,
+    USER_ROLE_COUNSELOR_LABEL,
+    USER_ROLE_DIRECTOR,
+    USER_ROLE_DIRECTOR_LABEL,
+    USER_ROLE_STAFF,
+    USER_ROLE_STAFF_LABEL,
+    USER_ROLE_STUDENT,
+    USER_ROLE_STUDENT_LABEL,
+    USER_ROLE_TEACHER,
+    USER_ROLE_TEACHER_LABEL,
+    USER_ROLE_UNKNOWN,
+    USER_ROLE_UNKNOWN_LABEL,
+)
 
 
 class RoleChoices(models.TextChoices):
-    STUDENT = "student", "Student"
-    TEACHER = "teacher", "Teacher"
-    COUNSELOR = "counselor", "Counselor"
-    STAFF = "staff", "Staff"
-    DIRECTOR = "director", "Director"
-    UNKNOWN = "unknown", "Unknown"
+    STUDENT = USER_ROLE_STUDENT, USER_ROLE_STUDENT_LABEL
+    TEACHER = USER_ROLE_TEACHER, USER_ROLE_TEACHER_LABEL
+    COUNSELOR = USER_ROLE_COUNSELOR, USER_ROLE_COUNSELOR_LABEL
+    STAFF = USER_ROLE_STAFF, USER_ROLE_STAFF_LABEL
+    DIRECTOR = USER_ROLE_DIRECTOR, USER_ROLE_DIRECTOR_LABEL
+    UNKNOWN = USER_ROLE_UNKNOWN, USER_ROLE_UNKNOWN_LABEL
 
 
 class UserRoleProfile(models.Model):
@@ -20,7 +35,7 @@ class UserRoleProfile(models.Model):
     )
     role = models.CharField(
         max_length=30,
-        choices=RoleChoices.choices,
+        choices=USER_ROLE_CHOICES,
         default=RoleChoices.UNKNOWN,
     )
     created_at = models.DateTimeField(auto_now_add=True)
@@ -49,7 +64,7 @@ class Student(models.Model):
     last_name = models.CharField(max_length=100)
 
     date_of_birth = models.DateField()
-    grade_level = models.IntegerField(choices=GRADE_LEVEL)
+    grade_level = models.IntegerField(choices=GRADE_LEVEL_CHOICES)
 
     phone = models.CharField(max_length=30, null=True, blank=True)
 

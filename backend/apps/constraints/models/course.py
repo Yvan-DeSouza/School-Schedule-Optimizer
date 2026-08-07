@@ -1,13 +1,13 @@
 from django.db import models
 
-from backend.apps.common.constants import ROOM_TYPES
+from backend.apps.common.constants import ROOM_TYPE_CHOICES
 from backend.apps.constraints.models.base import Qualification
 
 
 class CourseRoomRequirement(models.Model):
     course = models.ForeignKey("courses.Course", on_delete=models.CASCADE)
 
-    room_type = models.CharField(max_length=20, choices=ROOM_TYPES)
+    room_type = models.CharField(max_length=20, choices=ROOM_TYPE_CHOICES)
 
     class Meta:
         ordering = ["course", "room_type"]

@@ -3,6 +3,13 @@ from types import SimpleNamespace
 import pytest
 from django.contrib.auth.models import AnonymousUser, User
 
+from backend.apps.common.constants import (
+    COURSE_CATEGORY_MATH,
+    COURSE_CATEGORY_SCIENCE,
+    COURSE_REQUEST_TYPE_PRIMARY,
+    GRADE_LEVEL_12,
+    SEMESTER_FALL,
+)
 from backend.apps.access.action_policies import (
     DemandPlanningAction,
     DemandPlanningActionPolicy,
@@ -44,9 +51,9 @@ def academic_year():
 def course():
     return Course.objects.create(
         name="Calculus and Vectors",
-        grade_level=12,
+        grade_level=GRADE_LEVEL_12,
         course_code="MCV4U",
-        category="math",
+        category=COURSE_CATEGORY_MATH,
         capacity_min=10,
         capacity_max=30,
     )
@@ -56,9 +63,9 @@ def course():
 def second_course():
     return Course.objects.create(
         name="Physics",
-        grade_level=12,
+        grade_level=GRADE_LEVEL_12,
         course_code="SPH4U",
-        category="science",
+        category=COURSE_CATEGORY_SCIENCE,
         capacity_min=10,
         capacity_max=30,
     )
@@ -78,7 +85,7 @@ def student_user(academic_year):
         first_name="Sam",
         last_name="Student",
         date_of_birth="2009-01-01",
-        grade_level=12,
+        grade_level=GRADE_LEVEL_12,
         academic_year=academic_year,
     )
     return user
@@ -98,7 +105,7 @@ def second_student_user(academic_year):
         first_name="Sally",
         last_name="Student",
         date_of_birth="2009-02-01",
-        grade_level=12,
+        grade_level=GRADE_LEVEL_12,
         academic_year=academic_year,
     )
     return user
@@ -195,7 +202,7 @@ def section(course, academic_year, teacher_user):
         course=course,
         section_number="01",
         academic_year=academic_year,
-        semester=1,
+        semester=SEMESTER_FALL,
         teacher=teacher_user.teacher_profile,
         capacity_min=10,
         capacity_max=30,
@@ -208,7 +215,7 @@ def second_section(second_course, academic_year, second_teacher_user):
         course=second_course,
         section_number="01",
         academic_year=academic_year,
-        semester=1,
+        semester=SEMESTER_FALL,
         teacher=second_teacher_user.teacher_profile,
         capacity_min=10,
         capacity_max=30,
@@ -221,7 +228,7 @@ def course_request(student_user, course, academic_year):
         student=student_user.student_profile,
         course=course,
         academic_year=academic_year,
-        request_type="primary",
+        request_type=COURSE_REQUEST_TYPE_PRIMARY,
     )
 
 
@@ -231,7 +238,7 @@ def second_course_request(second_student_user, second_course, academic_year):
         student=second_student_user.student_profile,
         course=second_course,
         academic_year=academic_year,
-        request_type="primary",
+        request_type=COURSE_REQUEST_TYPE_PRIMARY,
     )
 
 

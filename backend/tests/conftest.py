@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from django.contrib.auth.models import User
 from rest_framework.test import APIClient
 
+from backend.apps.common.constants import COURSE_CATEGORY_MATH, GRADE_LEVEL_12
 from backend.apps.common.models import AcademicYear
 from backend.apps.courses.models import Course
 from backend.apps.people.models import Counselor, RoleChoices, Student, Teacher, UserRoleProfile
@@ -25,13 +26,13 @@ def academic_year():
 
 @pytest.fixture
 def course():
-    return Course.objects.create(name="Calculus", grade_level=12, course_code="MCV4U", category="math", capacity_min=10, capacity_max=30)
+    return Course.objects.create(name="Calculus", grade_level=GRADE_LEVEL_12, course_code="MCV4U", category=COURSE_CATEGORY_MATH, capacity_min=10, capacity_max=30)
 
 
 def make_user(username, role, academic_year=None):
     user = User.objects.create_user(username=username, password=test_user_password(), is_staff=role in (RoleChoices.STAFF, RoleChoices.DIRECTOR))
     if role == RoleChoices.STUDENT:
-        Student.objects.create(user=user, student_number=f"S-{username}", email=f"{username}@example.com", first_name=username, last_name="Student", date_of_birth="2009-01-01", grade_level=12, academic_year=academic_year)
+        Student.objects.create(user=user, student_number=f"S-{username}", email=f"{username}@example.com", first_name=username, last_name="Student", date_of_birth="2009-01-01", grade_level=GRADE_LEVEL_12, academic_year=academic_year)
     elif role == RoleChoices.TEACHER:
         Teacher.objects.create(user=user, first_name=username, last_name="Teacher", email=f"{username}@example.com", department="Math")
     elif role == RoleChoices.COUNSELOR:

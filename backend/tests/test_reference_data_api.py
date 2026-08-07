@@ -1,4 +1,11 @@
 import pytest
+
+from backend.apps.common.constants import (
+    ROOM_TYPE_CLASSROOM,
+    ROOM_TYPE_SCIENCE_LAB,
+    SCHEDULE_BLOCK_A,
+    SEMESTER_FALL,
+)
 from rest_framework.test import APIClient
 
 from backend.apps.common.models import AcademicYear, Room
@@ -12,16 +19,16 @@ def test_reference_data_access_matrix_and_room_filters(
     authenticated_client, student_user, teacher_user, counselor_user, staff_user,
     director_user, unknown_user,
 ):
-    Room.objects.create(name="101", room_type="classroom", capacity=30)
+    Room.objects.create(name="101", room_type=ROOM_TYPE_CLASSROOM, capacity=30)
     assert APIClient().get("/api/rooms/").status_code == 401
     assert authenticated_client(unknown_user).get("/api/rooms/").status_code == 403
     for user in (student_user, teacher_user, counselor_user, staff_user, director_user):
         assert authenticated_client(user).get("/api/rooms/").status_code == 200
 
-    payload = {"name": "Lab 1", "room_type": "science_lab", "capacity": 25, "is_specialized": True}
+    payload = {"name": "Lab 1", "room_type": ROOM_TYPE_SCIENCE_LAB, "capacity": 25, "is_specialized": True}
     assert authenticated_client(counselor_user).post("/api/rooms/", payload, format="json").status_code == 403
     assert authenticated_client(staff_user).post("/api/rooms/", payload, format="json").status_code == 201
-    assert authenticated_client(director_user).get("/api/rooms/?room_type=science_lab").data["count"] == 1
+    assert authenticated_client(director_user).get(f"/api/rooms/?room_type={ROOM_TYPE_SCIENCE_LAB}").data["count"] == 1
 
 
 @pytest.mark.django_db
@@ -35,7 +42,7 @@ def test_timeslot_validation_filters_and_fixed_rotation(authenticated_client, ac
         {"rotation_day": 3, "period": 2}, {"rotation_day": 4, "period": 4},
     ]
     assert client.post("/api/timeslots/", payload, format="json").status_code == 400
-    assert client.get(f"/api/timeslots/?academic_year={academic_year.id}&block=A").data["count"] == 1
+    assert client.get(f"/api/timeslots/?academic_year={academic_year.id}&block={SCHEDULE_BLOCK_A}").data["count"] == 1
 
 
 @pytest.mark.django_db
@@ -45,13 +52,13 @@ def test_reference_deletes_are_blocked_only_when_referenced(
     client = authenticated_client(staff_user)
     empty_year = AcademicYear.objects.create(name="2027-2028")
     assert client.delete(f"/api/academic-years/{empty_year.id}/").status_code == 204
-    section = Section.objects.create(course=course, section_number="01", academic_year=academic_year, semester=1, capacity_min=10, capacity_max=30)
+    section = Section.objects.create(course=course, section_number="01", academic_year=academic_year, semester=SEMESTER_FALL, capacity_min=10, capacity_max=30)
     assert client.delete(f"/api/academic-years/{academic_year.id}/").status_code == 400
 
-    room = Room.objects.create(name="101", room_type="classroom", capacity=30)
+    room = Room.objects.create(name="101", room_type=ROOM_TYPE_CLASSROOM, capacity=30)
     SectionSchedule.objects.create(section=section, room=room)
     assert client.delete(f"/api/rooms/{room.id}/").status_code == 400
 
-    timeslot = TimeSlot.objects.create(academic_year=academic_year, semester=1, block="A")
+    timeslot = TimeSlot.objects.create(academic_year=academic_year, semester=SEMESTER_FALL, block=SCHEDULE_BLOCK_A)
     TeacherAvailability.objects.create(teacher=teacher_user.teacher_profile, timeslot=timeslot)
     assert client.delete(f"/api/timeslots/{timeslot.id}/").status_code == 400

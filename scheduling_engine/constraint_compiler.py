@@ -33,8 +33,8 @@ def compile_constraints(data: SchedulingInputDTO) -> CompiledConstraintSetDTO:
     for request in data.course_requests:
         _require(request.student_id, students, "student")
         _require(request.course_id, courses, "course")
-        if request.request_type not in {"primary", "alternate"}:
-            raise ValueError(f"Unsupported request type: {request.request_type}.")
+        if not isinstance(request.is_primary, bool):
+            raise ValueError("Course request is_primary must be a boolean.")
     for record in data.historical_demand:
         _require(record.course_id, courses, "course")
     for section in sections.values():

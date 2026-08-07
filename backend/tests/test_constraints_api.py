@@ -1,5 +1,6 @@
 import pytest
 
+from backend.apps.common.constants import SCHEDULE_BLOCK_A, SEMESTER_FALL
 from backend.apps.constraints.models import CourseQualificationRequirement, Qualification, TeacherQualification
 from backend.apps.courses.models import Section
 from backend.apps.scheduling.models import TimeSlot
@@ -31,8 +32,8 @@ def test_shared_constraints_and_course_conflict_validation(authenticated_client,
 def test_section_lock_requires_qualified_teacher_and_can_be_cleared(authenticated_client, course, academic_year, teacher_user, counselor_user):
     qualification = Qualification.objects.create(name="Mathematics")
     CourseQualificationRequirement.objects.create(course=course, qualification=qualification)
-    section = Section.objects.create(course=course, section_number="01", academic_year=academic_year, semester=1, capacity_min=10, capacity_max=30)
-    timeslot = TimeSlot.objects.create(block="A", academic_year=academic_year, semester=1)
+    section = Section.objects.create(course=course, section_number="01", academic_year=academic_year, semester=SEMESTER_FALL, capacity_min=10, capacity_max=30)
+    timeslot = TimeSlot.objects.create(block=SCHEDULE_BLOCK_A, academic_year=academic_year, semester=SEMESTER_FALL)
     url = f"/api/sections/{section.id}/lock/"
     client = authenticated_client(counselor_user)
     assert client.patch(url, {"locked_teacher": teacher_user.teacher_profile.id}, format="json").status_code == 400

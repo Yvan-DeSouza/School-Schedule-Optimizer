@@ -14,6 +14,7 @@ from scheduling_engine.dto import (
 from scheduling_engine.section_estimator import estimate_section_counts
 
 from backend.apps.common.models import AcademicYear, HistoricalCourseDemand, Room
+from backend.apps.common.constants import COURSE_REQUEST_TYPE_PRIMARY
 from backend.apps.constraints.models import (
     CounselorConstraintPreference, CourseConflict, CourseQualificationRequirement,
     CourseRoomRequirement, HardConstraint, Qualification, SoftConstraint,
@@ -48,7 +49,12 @@ def load_scheduling_input(academic_year_id):
             for course in Course.objects.all()
         ),
         course_requests=tuple(
-            CourseRequestDTO(request.student_id, request.course_id, request.request_type, request.is_mandatory)
+            CourseRequestDTO(
+                request.student_id,
+                request.course_id,
+                request.request_type == COURSE_REQUEST_TYPE_PRIMARY,
+                request.is_mandatory,
+            )
             for request in CourseRequest.objects.filter(academic_year_id=academic_year_id)
         ),
         historical_demand=tuple(

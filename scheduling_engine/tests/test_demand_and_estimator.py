@@ -12,8 +12,8 @@ def test_demand_analysis_counts_requests_history_and_co_requests():
         academic_years=(AcademicYearDTO(8, "2024-2025"), AcademicYearDTO(9, "2025-2026"), AcademicYearDTO(10, "2026-2027")),
         courses=(calculus, physics),
         course_requests=(
-            CourseRequestDTO(1, 1, "primary"), CourseRequestDTO(1, 2, "alternate"),
-            CourseRequestDTO(2, 1, "primary"),
+            CourseRequestDTO(1, 1, True), CourseRequestDTO(1, 2, False),
+            CourseRequestDTO(2, 1, True),
         ),
         historical_demand=(HistoricalDemandDTO(1, 10, 8, 8), HistoricalDemandDTO(1, 20, 18, 9)),
     )
@@ -34,7 +34,7 @@ def test_section_estimator_uses_fallback_rounding_and_capacity_warning():
         academic_year_id=10,
         academic_years=(AcademicYearDTO(9, "2025-2026"), AcademicYearDTO(10, "2026-2027")),
         courses=(low_demand, established),
-        course_requests=tuple(CourseRequestDTO(student, 1, "primary") for student in range(1, 6)) + tuple(CourseRequestDTO(student, 2, "primary") for student in range(6, 36)),
+        course_requests=tuple(CourseRequestDTO(student, 1, True) for student in range(1, 6)) + tuple(CourseRequestDTO(student, 2, True) for student in range(6, 36)),
         historical_demand=(HistoricalDemandDTO(2, 100, 80, 9),),
     )
 

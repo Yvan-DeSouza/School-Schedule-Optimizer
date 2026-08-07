@@ -1,15 +1,21 @@
 import pytest
 
+from backend.apps.common.constants import (
+    COURSE_CATEGORY_SCIENCE,
+    COURSE_REQUEST_TYPE_ALTERNATE,
+    COURSE_REQUEST_TYPE_PRIMARY,
+    GRADE_LEVEL_12,
+)
 from backend.apps.courses.models import Course, CourseRequest
 from backend.apps.courses.services.demand import get_course_demand_summary
 
 
 @pytest.mark.django_db
 def test_demand_service_and_endpoint(authenticated_client, api_client, course, academic_year, student_user, second_student_user, counselor_user, teacher_user):
-    other = Course.objects.create(name="Physics", grade_level=12, course_code="SPH4U", category="science", capacity_min=10, capacity_max=30)
-    CourseRequest.objects.create(student=student_user.student_profile, academic_year=academic_year, course=course, request_type="primary")
-    CourseRequest.objects.create(student=second_student_user.student_profile, academic_year=academic_year, course=course, request_type="alternate")
-    CourseRequest.objects.create(student=second_student_user.student_profile, academic_year=academic_year, course=other, request_type="primary")
+    other = Course.objects.create(name="Physics", grade_level=GRADE_LEVEL_12, course_code="SPH4U", category=COURSE_CATEGORY_SCIENCE, capacity_min=10, capacity_max=30)
+    CourseRequest.objects.create(student=student_user.student_profile, academic_year=academic_year, course=course, request_type=COURSE_REQUEST_TYPE_PRIMARY)
+    CourseRequest.objects.create(student=second_student_user.student_profile, academic_year=academic_year, course=course, request_type=COURSE_REQUEST_TYPE_ALTERNATE)
+    CourseRequest.objects.create(student=second_student_user.student_profile, academic_year=academic_year, course=other, request_type=COURSE_REQUEST_TYPE_PRIMARY)
     summary = get_course_demand_summary(academic_year.id)
     assert summary[0]["total_requests"] == 2 and summary[0]["primary_requests"] == 1 and summary[0]["alternate_requests"] == 1
     assert api_client.get("/api/demand/summary/").status_code == 401

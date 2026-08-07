@@ -1,7 +1,7 @@
 from django.core.validators import MinValueValidator
 from django.db import models
 
-from backend.apps.common.constants import ROOM_TYPES
+from backend.apps.common.constants import ROOM_TYPE_CHOICES
 
 
 class AcademicYear(models.Model):
@@ -25,7 +25,7 @@ class Room(models.Model):
 
     room_type = models.CharField(
         max_length=20,
-        choices=ROOM_TYPES
+        choices=ROOM_TYPE_CHOICES
     )
 
     capacity = models.IntegerField(

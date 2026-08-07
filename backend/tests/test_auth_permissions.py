@@ -5,6 +5,11 @@ from django.contrib.auth.models import User
 from django.core.management import call_command
 from rest_framework.test import APIClient
 
+from backend.apps.common.constants import (
+    COURSE_CATEGORY_MATH,
+    COURSE_REQUEST_TYPE_PRIMARY,
+    GRADE_LEVEL_12,
+)
 from backend.apps.common.models import AcademicYear
 from backend.apps.courses.models import Course, CourseRequest
 from backend.apps.people.models import Counselor, RoleChoices, Student, Teacher, UserRoleProfile
@@ -46,7 +51,7 @@ def student_user(academic_year):
         first_name="Sam",
         last_name="Student",
         date_of_birth="2009-01-01",
-        grade_level=12,
+        grade_level=GRADE_LEVEL_12,
         academic_year=academic_year,
     )
     return user
@@ -66,7 +71,7 @@ def second_student_user(academic_year):
         first_name="Sally",
         last_name="Student",
         date_of_birth="2009-02-01",
-        grade_level=12,
+        grade_level=GRADE_LEVEL_12,
         academic_year=academic_year,
     )
     return user
@@ -273,9 +278,9 @@ def test_owner_or_counselor_blocks_student_from_another_students_object(
 ):
     course = Course.objects.create(
         name="Calculus and Vectors",
-        grade_level=12,
+        grade_level=GRADE_LEVEL_12,
         course_code="MCV4U",
-        category="math",
+        category=COURSE_CATEGORY_MATH,
         capacity_min=10,
         capacity_max=30,
     )
@@ -283,7 +288,7 @@ def test_owner_or_counselor_blocks_student_from_another_students_object(
         student=student_user.student_profile,
         course=course,
         academic_year=academic_year,
-        request_type="primary",
+        request_type=COURSE_REQUEST_TYPE_PRIMARY,
     )
     permission = IsOwnerOrCounselor()
 

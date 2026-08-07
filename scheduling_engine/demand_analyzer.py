@@ -30,9 +30,10 @@ def analyze_demand(data: SchedulingInputDTO) -> DemandAnalysisResultDTO:
     for request in data.course_requests:
         if request.course_id not in courses:
             raise ValueError(f"Course request references unknown course {request.course_id}.")
-        if request.request_type not in {"primary", "alternate"}:
-            raise ValueError(f"Unsupported request type: {request.request_type}.")
-        counts[request.course_id][request.request_type] += 1
+        if not isinstance(request.is_primary, bool):
+            raise ValueError("Course request is_primary must be a boolean.")
+        request_bucket = "primary" if request.is_primary else "alternate"
+        counts[request.course_id][request_bucket] += 1
         requested_by_student[request.student_id].add(request.course_id)
 
     historical = defaultdict(lambda: [0.0, 0.0])

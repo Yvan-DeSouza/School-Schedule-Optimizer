@@ -1,28 +1,25 @@
 from django.core.validators import MinValueValidator
 from django.db import models
 
-from backend.apps.common.constants import GRADE_LEVEL
+from backend.apps.common.constants import (
+    COURSE_CATEGORY_CHOICES,
+    COURSE_REQUEST_TYPE_CHOICES,
+    GRADE_LEVEL_CHOICES,
+    SEMESTER_CHOICES,
+)
 
 
 class Course(models.Model):
     name = models.CharField(max_length=200)
 
     grade_level = models.IntegerField(
-        choices=GRADE_LEVEL
+        choices=GRADE_LEVEL_CHOICES
     )
 
     course_code = models.CharField(max_length=20, unique=True)
     category = models.CharField(
         max_length=50,
-        choices=[
-            ("math", "Mathematics"),
-            ("science", "Science"),
-            ("language", "Language"),
-            ("technology", "Technology"),
-            ("arts", "Arts"),
-            ("business", "Business"),
-            ("humanities", "Humanities"),
-        ]
+        choices=COURSE_CATEGORY_CHOICES,
     )
 
     capacity_min = models.IntegerField(
@@ -44,7 +41,7 @@ class Section(models.Model):
     course = models.ForeignKey(Course, on_delete=models.CASCADE)
     section_number = models.CharField(max_length=10)
     academic_year = models.ForeignKey("common.AcademicYear", on_delete=models.CASCADE)
-    semester = models.IntegerField(choices=[(1, "Fall"), (2, "Winter")])
+    semester = models.IntegerField(choices=SEMESTER_CHOICES)
     teacher = models.ForeignKey(
         "people.Teacher",
         on_delete=models.SET_NULL,
@@ -103,10 +100,7 @@ class CourseRequest(models.Model):
 
     is_mandatory = models.BooleanField(default=False)
 
-    request_type = models.CharField(max_length=20, choices=[
-        ("primary", "Primary"),
-        ("alternate", "Alternate")
-    ])
+    request_type = models.CharField(max_length=20, choices=COURSE_REQUEST_TYPE_CHOICES)
 
     class Meta:
         ordering = ["academic_year", "student", "request_type", "course"]

@@ -2,6 +2,17 @@ import pytest
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 
+from backend.apps.common.constants import (
+    COURSE_CATEGORY_MATH,
+    COURSE_REQUEST_TYPE_ALTERNATE,
+    COURSE_REQUEST_TYPE_PRIMARY,
+    GRADE_LEVEL_12,
+    ROOM_TYPE_CLASSROOM,
+    ROOM_TYPE_SCIENCE_LAB,
+    SCHEDULE_BLOCK_A,
+    SEMESTER_FALL,
+    SEMESTER_WINTER,
+)
 from backend.apps.common.models import AcademicYear, HistoricalCourseDemand, Room
 from backend.apps.constraints.models.base import Qualification
 from backend.apps.constraints.models.course import (
@@ -35,9 +46,9 @@ def academic_year():
 def course():
     return Course.objects.create(
         name="Calculus and Vectors",
-        grade_level=12,
+        grade_level=GRADE_LEVEL_12,
         course_code="MCV4U",
-        category="math",
+        category=COURSE_CATEGORY_MATH,
         capacity_min=10,
         capacity_max=30,
     )
@@ -47,9 +58,9 @@ def course():
 def second_course():
     return Course.objects.create(
         name="Advanced Functions",
-        grade_level=12,
+        grade_level=GRADE_LEVEL_12,
         course_code="MHF4U",
-        category="math",
+        category=COURSE_CATEGORY_MATH,
         capacity_min=10,
         capacity_max=30,
     )
@@ -73,7 +84,7 @@ def student(academic_year):
         first_name="Grace",
         last_name="Hopper",
         date_of_birth="2009-01-01",
-        grade_level=12,
+        grade_level=GRADE_LEVEL_12,
         academic_year=academic_year,
     )
 
@@ -84,7 +95,7 @@ def section(course, academic_year, teacher):
         course=course,
         section_number="01",
         academic_year=academic_year,
-        semester=1,
+        semester=SEMESTER_FALL,
         teacher=teacher,
         capacity_min=10,
         capacity_max=30,
@@ -94,9 +105,9 @@ def section(course, academic_year, teacher):
 @pytest.fixture
 def timeslot(academic_year):
     return TimeSlot.objects.create(
-        block="A",
+        block=SCHEDULE_BLOCK_A,
         academic_year=academic_year,
-        semester=1,
+        semester=SEMESTER_FALL,
     )
 
 
@@ -104,7 +115,7 @@ def timeslot(academic_year):
 def room():
     return Room.objects.create(
         name="Room 201",
-        room_type="classroom",
+        room_type=ROOM_TYPE_CLASSROOM,
         capacity=30,
     )
 
@@ -115,7 +126,7 @@ def test_duplicate_course_request_is_rejected(student, course, academic_year):
         student=student,
         course=course,
         academic_year=academic_year,
-        request_type="primary",
+        request_type=COURSE_REQUEST_TYPE_PRIMARY,
     )
 
     with pytest.raises(IntegrityError), transaction.atomic():
@@ -123,7 +134,7 @@ def test_duplicate_course_request_is_rejected(student, course, academic_year):
             student=student,
             course=course,
             academic_year=academic_year,
-            request_type="alternate",
+            request_type=COURSE_REQUEST_TYPE_ALTERNATE,
         )
 
 
@@ -141,7 +152,7 @@ def test_duplicate_section_per_course_year_is_rejected(course, academic_year):
         course=course,
         section_number="01",
         academic_year=academic_year,
-        semester=1,
+        semester=SEMESTER_FALL,
         capacity_min=10,
         capacity_max=30,
     )
@@ -151,7 +162,7 @@ def test_duplicate_section_per_course_year_is_rejected(course, academic_year):
             course=course,
             section_number="01",
             academic_year=academic_year,
-            semester=2,
+            semester=SEMESTER_WINTER,
             capacity_min=10,
             capacity_max=30,
         )
@@ -226,10 +237,10 @@ def test_duplicate_historical_course_demand_is_rejected(course, academic_year):
 
 @pytest.mark.django_db
 def test_duplicate_course_room_requirement_is_rejected(course):
-    CourseRoomRequirement.objects.create(course=course, room_type="science_lab")
+    CourseRoomRequirement.objects.create(course=course, room_type=ROOM_TYPE_SCIENCE_LAB)
 
     with pytest.raises(IntegrityError), transaction.atomic():
-        CourseRoomRequirement.objects.create(course=course, room_type="science_lab")
+        CourseRoomRequirement.objects.create(course=course, room_type=ROOM_TYPE_SCIENCE_LAB)
 
 
 @pytest.mark.django_db
@@ -251,13 +262,13 @@ def test_duplicate_course_qualification_requirement_is_rejected(course):
 def test_minimum_capacity_validators_are_enforced():
     course = Course(
         name="Invalid Capacity Course",
-        grade_level=12,
+        grade_level=GRADE_LEVEL_12,
         course_code="BAD4U",
-        category="math",
+        category=COURSE_CATEGORY_MATH,
         capacity_min=0,
         capacity_max=30,
     )
-    room = Room(name="Invalid Room", room_type="classroom", capacity=0)
+    room = Room(name="Invalid Room", room_type=ROOM_TYPE_CLASSROOM, capacity=0)
 
     with pytest.raises(ValidationError):
         course.full_clean()
@@ -303,7 +314,7 @@ def test_cascade_relationships_remove_dependent_records(student, section, academ
         student=student,
         course=course,
         academic_year=academic_year,
-        request_type="primary",
+        request_type=COURSE_REQUEST_TYPE_PRIMARY,
     )
     SectionSchedule.objects.create(section=section)
     SectionLock.objects.create(section=section)

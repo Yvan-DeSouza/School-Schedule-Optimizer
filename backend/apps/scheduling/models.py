@@ -1,13 +1,13 @@
 from django.db import models
 
-from backend.apps.scheduling.constants import SCHEDULE_BLOCKS
+from backend.apps.common.constants import SCHEDULE_BLOCK_CHOICES, SEMESTER_CHOICES
 
 
 class TimeSlot(models.Model):
-    block = models.CharField(max_length=1, choices=SCHEDULE_BLOCKS)
+    block = models.CharField(max_length=1, choices=SCHEDULE_BLOCK_CHOICES)
     academic_year = models.ForeignKey("common.AcademicYear", on_delete=models.CASCADE)
 
-    semester = models.IntegerField(choices=[(1, "Fall"), (2, "Winter")])
+    semester = models.IntegerField(choices=SEMESTER_CHOICES)
 
     is_available = models.BooleanField(default=True)
 

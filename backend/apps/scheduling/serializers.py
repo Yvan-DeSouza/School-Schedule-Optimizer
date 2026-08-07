@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from backend.apps.scheduling.constants import BLOCK_ROTATION
+from backend.apps.common.constants import BLOCK_ROTATION
 from backend.apps.scheduling.models import TimeSlot
 
 

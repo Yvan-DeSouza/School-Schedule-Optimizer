@@ -1,6 +1,7 @@
 import pytest
 from rest_framework.test import APIClient
 
+from backend.apps.common.constants import COURSE_REQUEST_TYPE_PRIMARY
 from backend.apps.common.models import AcademicYear, HistoricalCourseDemand
 from backend.apps.constraints.models import CourseConflict
 from backend.apps.courses.models import CourseRequest, Section
@@ -13,7 +14,7 @@ def test_section_count_recommendations_permissions_and_read_only_behavior(
 ):
     prior_year = AcademicYear.objects.create(name="2025-2026")
     HistoricalCourseDemand.objects.create(course=course, academic_year=prior_year, requests=100, final_enrollment=90)
-    CourseRequest.objects.create(student=student_user.student_profile, academic_year=academic_year, course=course, request_type="primary")
+    CourseRequest.objects.create(student=student_user.student_profile, academic_year=academic_year, course=course, request_type=COURSE_REQUEST_TYPE_PRIMARY)
     url = f"/api/planning/section-count-recommendations/?academic_year={academic_year.id}"
 
     assert APIClient().get(url).status_code == 401
