@@ -41,7 +41,11 @@ def analyze_demand(data: SchedulingInputDTO) -> DemandAnalysisResultDTO:
             raise ValueError("Course request is_primary must be a boolean.")
         request_bucket = "primary" if request.is_primary else "alternate"
         counts[request.course_id][request_bucket] += 1
-        requested_by_student[request.student_id].add(request.course_id)
+        # Unused backups are not simultaneous demand and therefore must not
+        # manufacture placement-conflict weights. A promoted backup is copied
+        # into a run's effective input as a primary request before this analysis.
+        if request.is_primary:
+            requested_by_student[request.student_id].add(request.course_id)
 
     # Store recency-weighted request and enrollment numerators separately; their
     # ratio becomes the observed conversion from requests to final enrollment.

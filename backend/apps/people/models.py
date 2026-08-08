@@ -121,12 +121,42 @@ class Teacher(models.Model):
     # reduced_load is descriptive context; effective numeric limits still come
     # from the maximum fields/planning-capacity records.
     reduced_load = models.BooleanField(default=False)
+    # Referenced teachers are archived rather than deleted so old runs,
+    # assignments, and qualification evidence remain explainable.
+    is_archived = models.BooleanField(default=False)
 
     class Meta:
         ordering = ["last_name", "first_name"]
 
     def __str__(self):
         return f"{self.last_name}, {self.first_name}"
+
+
+class TeacherStatusDecision(models.Model):
+    """Append-only explanation for teacher archive/restore transitions."""
+
+    teacher = models.ForeignKey(
+        Teacher,
+        on_delete=models.PROTECT,
+        related_name="status_decisions",
+    )
+    action = models.CharField(
+        max_length=20,
+        choices=(("archived", "Archived"), ("restored", "Restored")),
+    )
+    reason = models.TextField()
+    decided_by = models.ForeignKey("auth.User", null=True, on_delete=models.SET_NULL)
+    decided_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["decided_at", "id"]
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            from django.core.exceptions import ValidationError
+
+            raise ValidationError("Teacher status decisions are immutable.")
+        return super().save(*args, **kwargs)
 
 
 class Counselor(models.Model):

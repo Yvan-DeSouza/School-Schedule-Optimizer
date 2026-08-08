@@ -18,7 +18,7 @@ prove that some allocation of the proposed section load exists; their values
 must never be interpreted as actual teacher assignments.
 """
 
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from math import ceil
 from typing import Iterable
 
@@ -174,7 +174,10 @@ def _course_demand(data: SchedulingInputDTO):
         summary = summaries[course.id]
         # New courses deliberately fall back to a neutral 1:1 conversion ratio.
         ratio = 1.0 if summary.historical_conversion_ratio is None else summary.historical_conversion_ratio
-        values[course.id] = (summary.total_requests * ratio, summary, ratio)
+        # The legacy staffing planner operates on primary demand. Backup choices
+        # are promoted by the explicit cancellation policy workflow, never
+        # counted speculatively in every run.
+        values[course.id] = (summary.primary_requests * ratio, summary, ratio)
     return values
 
 
@@ -610,7 +613,7 @@ def plan_section_counts(data: SchedulingInputDTO, *, course_constraints: Iterabl
         # an old recommendation was made.
         course_results.append({
             "course_id": course.id, "course_code": course.course_code, "predicted_enrollment": predicted,
-            "current_requests": summary.total_requests, "conversion_ratio": ratio,
+            "current_requests": summary.primary_requests, "conversion_ratio": ratio,
             "capacity_profile_id": course.capacity_profile_id, "priority_tier": course.priority_tier,
             "priority_profile_id": course.priority_profile_id,
             "allowed_semester": course.allowed_semester, "demand_baseline_annual_count": baseline[course.id],

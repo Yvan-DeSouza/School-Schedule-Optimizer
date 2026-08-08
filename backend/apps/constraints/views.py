@@ -2,7 +2,8 @@
 
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
-from rest_framework.exceptions import APIException
+from rest_framework.decorators import action
+from rest_framework.exceptions import APIException, PermissionDenied, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -18,12 +19,19 @@ from backend.apps.constraints.serializers import (
     CourseQualificationRequirementSerializer, CourseRoomRequirementSerializer,
     HardConstraintSerializer, QualificationSerializer, SectionLockSerializer,
     SoftConstraintSerializer, TeacherAvailabilitySerializer, TeacherCoursePreferenceSerializer,
-    TeacherCurrentCourseSerializer, TeacherQualificationSerializer,
+    TeacherCurrentCourseSerializer, TeacherQualificationReviewSerializer,
+    TeacherQualificationSerializer,
 )
 from backend.apps.control.models import SectionLock
-from backend.apps.common.constants import SECTION_LIFECYCLE_RETIRED
+from backend.apps.common.constants import (
+    QUALIFICATION_REVIEW_PENDING,
+    QUALIFICATION_REVIEW_REJECTED,
+    QUALIFICATION_REVIEW_VERIFIED,
+    SECTION_LIFECYCLE_RETIRED,
+)
 from backend.apps.courses.models import Section
-from backend.apps.people.models import Teacher
+from backend.apps.people.models import RoleChoices, Teacher
+from backend.apps.people.roles import get_user_role
 
 
 class RetiredSectionConflict(APIException):
@@ -94,6 +102,88 @@ class TeacherQualificationViewSet(TeacherNestedViewSet):
     queryset = TeacherQualification.objects.select_related("teacher__user", "qualification")
     serializer_class = TeacherQualificationSerializer
     filter_fields = ("qualification", "source_system")
+
+    def perform_create(self, serializer):
+        item = serializer.save(
+            teacher=self.get_teacher(),
+            submitted_by=self.request.user,
+            review_status=QUALIFICATION_REVIEW_PENDING,
+        )
+        from backend.apps.scheduling.services.staffing_configuration import (
+            invalidate_teacher_rosters,
+        )
+
+        invalidate_teacher_rosters(item.teacher_id)
+
+    def perform_update(self, serializer):
+        # Changing the evidence invalidates an earlier review. The planning role
+        # must verify the resulting record again before a solver can use it.
+        item = serializer.save(
+            review_status=QUALIFICATION_REVIEW_PENDING,
+            reviewed_by=None,
+            reviewed_at=None,
+            review_reason="",
+        )
+        from backend.apps.scheduling.services.staffing_configuration import (
+            invalidate_teacher_rosters,
+        )
+
+        invalidate_teacher_rosters(item.teacher_id)
+
+    def perform_destroy(self, instance):
+        if instance.review_status != QUALIFICATION_REVIEW_PENDING:
+            raise ValidationError({
+                "detail": (
+                    "Reviewed qualification evidence is retained for audit. "
+                    "Reject it or edit it back into pending review instead."
+                )
+            })
+        teacher_id = instance.teacher_id
+        instance.delete()
+        from backend.apps.scheduling.services.staffing_configuration import (
+            invalidate_teacher_rosters,
+        )
+
+        invalidate_teacher_rosters(teacher_id)
+
+    def _require_planning_role(self):
+        if get_user_role(self.request.user) not in {
+            RoleChoices.COUNSELOR,
+            RoleChoices.STAFF,
+            RoleChoices.DIRECTOR,
+        }:
+            raise PermissionDenied("Only a planning role may review qualifications.")
+
+    def _review(self, request, *, review_status):
+        from django.utils import timezone
+        from backend.apps.scheduling.services.staffing_configuration import (
+            invalidate_teacher_rosters,
+        )
+
+        self._require_planning_role()
+        serializer = TeacherQualificationReviewSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        reason = serializer.validated_data["reason"].strip()
+        if review_status == QUALIFICATION_REVIEW_REJECTED and not reason:
+            raise ValidationError({"reason": "A rejection reason is required."})
+        item = self.get_object()
+        item.review_status = review_status
+        item.reviewed_by = request.user
+        item.reviewed_at = timezone.now()
+        item.review_reason = reason
+        item.save(update_fields=[
+            "review_status", "reviewed_by", "reviewed_at", "review_reason",
+        ])
+        invalidate_teacher_rosters(item.teacher_id)
+        return Response(TeacherQualificationSerializer(item, context=self.get_serializer_context()).data)
+
+    @action(detail=True, methods=["post"])
+    def verify(self, request, **kwargs):
+        return self._review(request, review_status=QUALIFICATION_REVIEW_VERIFIED)
+
+    @action(detail=True, methods=["post"])
+    def reject(self, request, **kwargs):
+        return self._review(request, review_status=QUALIFICATION_REVIEW_REJECTED)
 
 
 class TeacherCoursePreferenceViewSet(TeacherNestedViewSet):
@@ -166,7 +256,9 @@ class SectionLockView(APIView):
         # Course is selected because qualification validation immediately needs
         # the section's course.
         return get_object_or_404(
-            Section.objects.select_related("course"),
+            Section.objects.select_related("course", "delivery_group").prefetch_related(
+                "delivery_group__offerings__course"
+            ),
             pk=self.kwargs["section_id"],
         )
 

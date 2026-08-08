@@ -22,7 +22,8 @@ from backend.apps.common.constants import (
     SEMESTER_WINTER,
 )
 from backend.apps.control.models import ManualOverride, SectionLock
-from backend.apps.courses.models import Course, Enrollment, Section
+from backend.apps.courses.models import Course, CourseOffering, Enrollment, Section
+from backend.apps.courses.services.offerings import ensure_academic_year_offerings
 from backend.apps.scheduling.models import (
     CapacityProfile,
     SectionPlanningApproval,
@@ -551,6 +552,7 @@ def reconcile_section_planning_run(
         })
     reason = reason.strip()
     run = SectionPlanningRun.objects.select_for_update().get(pk=run.pk)
+    ensure_academic_year_offerings(run.academic_year, actor=reconciled_by)
     _, _, normalized = _normalize_selections(run, selections)
     selected_course_ids = sorted({item["course_id"] for item in normalized})
     locked_courses = list(
@@ -594,6 +596,13 @@ def reconcile_section_planning_run(
     courses = {
         course.id: course
         for course in Course.objects.select_related("capacity_profile").filter(id__in=selected_course_ids)
+    }
+    offering_groups = {
+        offering.course_id: offering.delivery_group
+        for offering in CourseOffering.objects.select_related("delivery_group").filter(
+            academic_year_id=run.academic_year_id,
+            course_id__in=selected_course_ids,
+        )
     }
     sections = {section.id: section for section in locked_sections}
     approval = SectionPlanningApproval.objects.create(
@@ -655,6 +664,7 @@ def reconcile_section_planning_run(
         for action in item["actions"]["create"]:
             section = Section.objects.create(
                 course=course,
+                delivery_group=offering_groups[course.id],
                 section_number=action["new_section_number"],
                 academic_year_id=run.academic_year_id,
                 semester=action["new_semester"],

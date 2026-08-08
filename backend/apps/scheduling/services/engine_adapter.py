@@ -22,13 +22,17 @@ from scheduling_engine.dto import (
     RoomDTO, SchedulingInputDTO, SectionDTO, SectionLockDTO, SoftConstraintDTO,
     StudentDTO, TeacherAvailabilityDTO, TeacherCoursePreferenceDTO, TeacherCurrentCourseDTO,
     TeacherDTO, TeacherPlanningCapacityDTO, TeacherQualificationDTO, TimeSlotDTO,
+    PlanningOfferingDTO,
 )
 from scheduling_engine.section_estimator import estimate_section_counts
 from scheduling_engine.section_planner import plan_section_counts
 
 from backend.apps.common.constants import (
     COURSE_REQUEST_TYPE_PRIMARY,
+    DELIVERY_GROUP_STATUS_ACTIVE,
+    COURSE_OFFERING_STATUS_OFFERED,
     QUALIFICATION_ENFORCEMENT_REQUIRED,
+    QUALIFICATION_REVIEW_VERIFIED,
     SECTION_LIFECYCLE_ACTIVE,
     STATUTORY_TEACHABLE_MIN_GRADE,
 )
@@ -39,12 +43,40 @@ from backend.apps.constraints.models import (
     TeacherAvailability, TeacherCoursePreference, TeacherCurrentCourse, TeacherQualification,
 )
 from backend.apps.control.models import SectionLock
-from backend.apps.courses.models import Course, CoursePrerequisite, CourseRequest, Section
+from backend.apps.courses.models import (
+    Course,
+    CoursePrerequisite,
+    CourseRequest,
+    DeliveryGroup,
+    Section,
+)
 from backend.apps.people.models import Student, Teacher
-from backend.apps.scheduling.models import TeacherPlanningCapacity, TimeSlot
+from backend.apps.scheduling.models import (
+    TeacherPlanningCapacity,
+    TeacherPlanningRoster,
+    TimeSlot,
+)
 
 
-def load_scheduling_input(academic_year_id):
+def _delivery_group_allowed_semester(group):
+    """Collapse member restrictions to the legal shared-semester intersection."""
+
+    from backend.apps.courses.services.offerings import combined_allowed_semester
+
+    return combined_allowed_semester([
+        offering.course for offering in group.offerings.all()
+    ])
+
+
+def _first_member_course_id(section):
+    if not section.delivery_group_id:
+        return section.course_id
+    return section.delivery_group.offerings.order_by(
+        "course__course_code", "course_id"
+    ).values_list("course_id", flat=True).first()
+
+
+def load_scheduling_input(academic_year_id, *, require_ready_roster=False):
     """Load one planning year's ORM data into framework-independent DTOs.
 
     Querysets are deliberately evaluated into tuples before returning.  The
@@ -100,9 +132,51 @@ def load_scheduling_input(academic_year_id):
         (item.teacher_id, item.semester): item
         for item in TeacherPlanningCapacity.objects.filter(academic_year_id=academic_year_id)
     }
-    # All teachers remain in the DTO even when current capacity is zero so
-    # eligibility and what-if adjustments can report stable teacher IDs.
-    teachers = tuple(Teacher.objects.all())
+    if require_ready_roster:
+        try:
+            roster = TeacherPlanningRoster.objects.prefetch_related(
+                "members__teacher"
+            ).get(academic_year=target_year)
+        except TeacherPlanningRoster.DoesNotExist as error:
+            raise ValueError(
+                "Create and confirm a teacher planning roster before running staffing."
+            ) from error
+        if roster.status != "ready":
+            raise ValueError(
+                "The teacher planning roster is still draft. Confirm it before running staffing."
+            )
+        teachers = tuple(
+            member.teacher
+            for member in roster.members.select_related("teacher").order_by(
+                "teacher__last_name", "teacher__first_name", "teacher_id"
+            )
+            if not member.teacher.is_archived
+        )
+        missing_capacity = [
+            {"teacher_id": teacher.id, "semester": semester}
+            for teacher in teachers
+            for semester in (1, 2)
+            if (teacher.id, semester) not in configured_capacities
+        ]
+        if missing_capacity:
+            raise ValueError(
+                "Every ready-roster teacher needs explicit Semester 1 and Semester 2 capacity rows, including zero-capacity rows."
+            )
+    else:
+        # Legacy read/analysis callers may load the active teacher directory
+        # without a staffing-readiness checkpoint. New staffing runs always set
+        # require_ready_roster=True.
+        teachers = tuple(Teacher.objects.filter(is_archived=False))
+    teacher_ids = {teacher.id for teacher in teachers}
+    context_teacher_ids = {
+        teacher_id for teacher_id, _semester in committed_by_teacher_semester
+    }
+    unrostered_context = sorted(context_teacher_ids - teacher_ids)
+    if require_ready_roster and unrostered_context:
+        raise ValueError(
+            "Active assigned or teacher-locked sections reference teachers outside "
+            f"the ready roster: {unrostered_context}."
+        )
 
     return SchedulingInputDTO(
         academic_year_id=academic_year_id,
@@ -134,6 +208,32 @@ def load_scheduling_input(academic_year_id):
             )
             for course in Course.objects.select_related("capacity_profile", "priority_profile")
         ),
+        planning_offerings=tuple(
+            PlanningOfferingDTO(
+                group.id,
+                tuple(offering.course_id for offering in group.offerings.all()),
+                tuple(offering.course.course_code for offering in group.offerings.all()),
+                group.capacity_profile_id,
+                group.capacity_profile.hard_min,
+                group.capacity_profile.soft_min,
+                group.capacity_profile.target,
+                group.capacity_profile.soft_max,
+                group.capacity_profile.hard_max,
+                _delivery_group_allowed_semester(group),
+                min(
+                    offering.course.priority_profile.tier
+                    for offering in group.offerings.all()
+                ),
+                len(group.offerings.all()) > 1,
+            )
+            for group in DeliveryGroup.objects.filter(
+                academic_year_id=academic_year_id,
+                status=DELIVERY_GROUP_STATUS_ACTIVE,
+                offerings__status=COURSE_OFFERING_STATUS_OFFERED,
+            ).select_related("capacity_profile").prefetch_related(
+                "offerings__course__priority_profile"
+            ).distinct().order_by("name", "id")
+        ),
         # Translate canonical request-type strings into an engine-neutral bool;
         # mandatory remains provenance and never determines priority tiers.
         course_requests=tuple(
@@ -153,8 +253,23 @@ def load_scheduling_input(academic_year_id):
         # Existing sections are loaded for capacity/lock context.  Planning runs
         # never turn these ORM instances into decision variables directly.
         sections=tuple(
-            SectionDTO(section.id, section.course_id, section.academic_year_id, section.semester, section.capacity_min, section.capacity_max, section.teacher_id, section.is_locked)
-            for section in Section.objects.filter(
+            SectionDTO(
+                section.id,
+                section.course_id or _first_member_course_id(section),
+                section.academic_year_id,
+                section.semester,
+                section.capacity_min,
+                section.capacity_max,
+                section.teacher_id,
+                section.is_locked,
+                section.delivery_group_id or 0,
+                tuple(
+                    section.delivery_group.offerings.values_list("course_id", flat=True)
+                    if section.delivery_group_id
+                    else ([section.course_id] if section.course_id else [])
+                ),
+            )
+            for section in Section.objects.select_related("delivery_group").filter(
                 academic_year_id=academic_year_id,
                 lifecycle_status=SECTION_LIFECYCLE_ACTIVE,
             )
@@ -200,15 +315,30 @@ def load_scheduling_input(academic_year_id):
             )
             for item in Qualification.objects.all()
         ),
-        teacher_qualifications=tuple(TeacherQualificationDTO(item.teacher_id, item.qualification_id) for item in TeacherQualification.objects.all()),
-        teacher_preferences=tuple(TeacherCoursePreferenceDTO(item.teacher_id, item.course_id) for item in TeacherCoursePreference.objects.all()),
+        teacher_qualifications=tuple(
+            TeacherQualificationDTO(item.teacher_id, item.qualification_id)
+            for item in TeacherQualification.objects.filter(
+                teacher_id__in=teacher_ids,
+                review_status=QUALIFICATION_REVIEW_VERIFIED,
+            )
+        ),
+        teacher_preferences=tuple(
+            TeacherCoursePreferenceDTO(item.teacher_id, item.course_id)
+            for item in TeacherCoursePreference.objects.filter(teacher_id__in=teacher_ids)
+        ),
         teacher_current_courses=tuple(
             TeacherCurrentCourseDTO(item.teacher_id, item.course_id, item.academic_year_id)
-            for item in TeacherCurrentCourse.objects.filter(academic_year_id=academic_year_id)
+            for item in TeacherCurrentCourse.objects.filter(
+                academic_year_id=academic_year_id,
+                teacher_id__in=teacher_ids,
+            )
         ),
         teacher_availability=tuple(
             TeacherAvailabilityDTO(item.teacher_id, item.timeslot_id, item.is_available)
-            for item in TeacherAvailability.objects.filter(timeslot__academic_year_id=academic_year_id)
+            for item in TeacherAvailability.objects.filter(
+                timeslot__academic_year_id=academic_year_id,
+                teacher_id__in=teacher_ids,
+            )
         ),
         course_room_requirements=tuple(CourseRoomRequirementDTO(item.course_id, item.room_type) for item in CourseRoomRequirement.objects.all()),
         course_qualification_requirements=tuple(

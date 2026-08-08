@@ -26,8 +26,27 @@ def test_demand_analysis_counts_requests_history_and_co_requests():
     assert (calculus_summary.primary_requests, calculus_summary.alternate_requests, calculus_summary.total_requests) == (2, 0, 2)
     assert calculus_summary.historical_conversion_ratio > 26 / 30
     assert physics_summary.lacks_historical_data
-    assert result.conflict_recommendations[0].co_request_count == 1
-    assert result.conflict_recommendations[0].weight == 1.0
+    # The Physics request is only an unused alternate, so it cannot create a
+    # simultaneous placement conflict until a planning run promotes it.
+    assert result.conflict_recommendations == ()
+
+
+def test_unused_alternate_does_not_inflate_legacy_section_estimate():
+    course = CourseDTO(1, "ART4U", "Art", 10, 30)
+    data = SchedulingInputDTO(
+        academic_year_id=1,
+        academic_years=(AcademicYearDTO(1, "2026-2027"),),
+        courses=(course,),
+        course_requests=(
+            CourseRequestDTO(1, 1, True),
+            CourseRequestDTO(2, 1, False),
+        ),
+    )
+
+    recommendation = estimate_section_counts(data)[0]
+
+    assert recommendation.current_requests == 1
+    assert recommendation.predicted_enrollment == 1
 
 
 def test_section_estimator_uses_fallback_rounding_and_capacity_warning():

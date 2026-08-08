@@ -25,7 +25,9 @@ from backend.apps.common.constants import (
     SEMESTER_FALL,
     SEMESTER_WINTER,
 )
-from backend.apps.courses.models import Course, Section
+from backend.apps.common.constants import COURSE_OFFERING_STATUS_OFFERED
+from backend.apps.courses.models import Course, CourseOffering, Section
+from backend.apps.courses.services.offerings import ensure_academic_year_offerings
 from backend.apps.scheduling.models import (
     CapacityProfile,
     SectionPlanningApproval,
@@ -58,6 +60,12 @@ class PlanningApprovalConflictError(Exception):
 def create_section_planning_run(*, academic_year_id, created_by, course_constraints, teacher_capacity_adjustments):
     """Execute one immutable base/what-if run and persist its full provenance."""
 
+    from backend.apps.common.models import AcademicYear
+
+    ensure_academic_year_offerings(
+        AcademicYear.objects.get(pk=academic_year_id),
+        actor=created_by,
+    )
     # Store the user's scenario separately from the expanded DTO snapshot.  The
     # former is concise for review; the latter is sufficient for future audit.
     scenario = {
@@ -175,6 +183,15 @@ def preview_section_planning_approval(run, *, selections=None):
             id__in=selected_course_ids,
         )
     }
+    offerings = {
+        offering.course_id: offering
+        for offering in CourseOffering.objects.select_related("delivery_group").prefetch_related(
+            "delivery_group__offerings"
+        ).filter(
+            academic_year_id=run.academic_year_id,
+            course_id__in=selected_course_ids,
+        )
+    }
     existing_by_course = {}
     # Any existing section is a hard conflict.  The approval feature has no
     # implicit replace/delete semantics; reconciliation is a separate workflow.
@@ -236,6 +253,29 @@ def preview_section_planning_approval(run, *, selections=None):
                 "hard_max": course.capacity_profile.hard_max,
             }
             current_allowed_semester = course.allowed_semester
+            offering = offerings.get(course_id)
+            if offering and (
+                offering.status != COURSE_OFFERING_STATUS_OFFERED
+                or not offering.delivery_group_id
+            ):
+                error = {
+                    "code": "course_offering_not_active",
+                    "course_id": course_id,
+                    "message": f"{course.course_code} is not an active offering for this year.",
+                }
+                validation_errors.append(error)
+                item_validation_errors.append(error["code"])
+            elif offering.delivery_group.offerings.count() > 1:
+                error = {
+                    "code": "combined_offering_requires_physical_staffing_workflow",
+                    "course_id": course_id,
+                    "message": (
+                        f"{course.course_code} belongs to a combined physical class. "
+                        "Use the delivery-group staffing workflow."
+                    ),
+                }
+                validation_errors.append(error)
+                item_validation_errors.append(error["code"])
             if (
                 current_capacity_policy != result["capacity_policy"]
                 or current_allowed_semester != result["allowed_semester"]
@@ -349,6 +389,10 @@ def approve_section_planning_run(run, *, approved_by, selections=None, reason=""
     # Serialize approvals from the same run.  This makes the already-approved
     # check reliable even when two counselors submit concurrently.
     run = SectionPlanningRun.objects.select_for_update().get(pk=run.pk)
+    # Old imported/manual run records may predate year-specific offerings. New
+    # runs create them before solving, while this compatibility guard ensures a
+    # legacy standalone approval still receives a canonical delivery group.
+    ensure_academic_year_offerings(run.academic_year, actor=approved_by)
     _, _, normalized = _normalize_selections(run, selections)
     selected_course_ids = sorted({item["course_id"] for item in normalized})
     # Lock courses in deterministic ID order.  Besides preventing catalog edits,
@@ -389,6 +433,14 @@ def approve_section_planning_run(run, *, approved_by, selections=None, reason=""
             id__in=selected_course_ids,
         )
     }
+    offerings = {
+        offering.course_id: offering
+        for offering in CourseOffering.objects.select_related("delivery_group").filter(
+            academic_year_id=run.academic_year_id,
+            course_id__in=selected_course_ids,
+            status=COURSE_OFFERING_STATUS_OFFERED,
+        )
+    }
     # Create the audit header before its normalized per-course decisions.  The
     # surrounding transaction guarantees no orphaned audit row can survive.
     approval = SectionPlanningApproval.objects.create(
@@ -417,6 +469,7 @@ def approve_section_planning_run(run, *, approved_by, selections=None, reason=""
                 # both terms under the existing course/year uniqueness rule.
                 Section.objects.create(
                     course=course,
+                    delivery_group=offerings[course.id].delivery_group,
                     section_number=f"S{semester}-{sequence:02d}",
                     academic_year_id=run.academic_year_id,
                     semester=semester,

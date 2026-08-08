@@ -2,9 +2,24 @@
 
 from rest_framework import serializers
 
-from backend.apps.common.constants import SECTION_LIFECYCLE_RETIRED
-from backend.apps.constraints.services import validate_teacher_course_assignment
-from backend.apps.courses.models import Course, CourseRequest, Section
+from backend.apps.common.constants import (
+    COURSE_REQUEST_TYPE_ALTERNATE,
+    DELIVERY_GROUP_STATUS_ACTIVE,
+    SECTION_LIFECYCLE_RETIRED,
+)
+from backend.apps.constraints.services import (
+    validate_teacher_course_assignment,
+    validate_teacher_delivery_group_assignment,
+)
+from backend.apps.courses.models import (
+    Course,
+    CourseCombinationRule,
+    CourseCombinationRuleMember,
+    CourseOffering,
+    DeliveryGroup,
+    CourseRequest,
+    Section,
+)
 from backend.apps.people.models import RoleChoices
 from backend.apps.people.roles import get_user_role
 
@@ -48,12 +63,25 @@ class SectionSerializer(CapacityValidationMixin, serializers.ModelSerializer):
         source="planning_approval_course.approval.planning_run_id",
         read_only=True,
     )
+    staffing_approval = serializers.IntegerField(
+        source="staffing_approval_offering.approval_id",
+        read_only=True,
+    )
+    staffing_run = serializers.IntegerField(
+        source="staffing_approval_offering.approval.staffing_run_id",
+        read_only=True,
+    )
+    member_courses = serializers.SerializerMethodField(read_only=True)
+    is_combined = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Section
         fields = (
             "id",
             "course",
+            "delivery_group",
+            "member_courses",
+            "is_combined",
             "section_number",
             "academic_year",
             "semester",
@@ -64,6 +92,8 @@ class SectionSerializer(CapacityValidationMixin, serializers.ModelSerializer):
             "lifecycle_status",
             "planning_approval",
             "planning_run",
+            "staffing_approval",
+            "staffing_run",
         )
         extra_kwargs = {
             # Lifecycle transitions are reconciliation decisions, not ordinary
@@ -77,12 +107,16 @@ class SectionSerializer(CapacityValidationMixin, serializers.ModelSerializer):
             raise serializers.ValidationError({
                 "detail": "Retired sections are read-only. Reconcile a newer section plan to reactivate one."
             })
-        if self.instance and self.instance.planning_approval_course_id:
+        if self.instance and (
+            self.instance.planning_approval_course_id
+            or self.instance.staffing_approval_offering_id
+        ):
             # A generated section's identity is part of its planning audit.
             # Staffing/capacity/lock edits remain allowed, while moving or
             # relabeling it must pass through reconciliation.
             protected_fields = {
                 "course": "course_id",
+                "delivery_group": "delivery_group_id",
                 "section_number": "section_number",
                 "academic_year": "academic_year_id",
                 "semester": "semester",
@@ -101,12 +135,69 @@ class SectionSerializer(CapacityValidationMixin, serializers.ModelSerializer):
                     for field in changed
                 })
         course = attrs.get("course", getattr(self.instance, "course", None))
+        delivery_group = attrs.get(
+            "delivery_group",
+            getattr(self.instance, "delivery_group", None),
+        )
+        if course and delivery_group and not delivery_group.offerings.filter(course=course).exists():
+            raise serializers.ValidationError({
+                "course": "The compatibility course must belong to the selected delivery group."
+            })
+        if not course and not delivery_group:
+            raise serializers.ValidationError({
+                "delivery_group": "A section needs a physical delivery group or a legacy course."
+            })
+        if delivery_group:
+            member_count = delivery_group.offerings.count()
+            if delivery_group.status != DELIVERY_GROUP_STATUS_ACTIVE:
+                raise serializers.ValidationError({
+                    "delivery_group": "A new or active section cannot use a retired delivery group."
+                })
+            if member_count == 0:
+                raise serializers.ValidationError({
+                    "delivery_group": "The delivery group has no course offerings."
+                })
+            if member_count > 1 and course:
+                raise serializers.ValidationError({
+                    "course": "A combined physical section has no single canonical course; omit course."
+                })
+        academic_year = attrs.get(
+            "academic_year",
+            getattr(self.instance, "academic_year", None),
+        )
+        if delivery_group and academic_year and delivery_group.academic_year_id != academic_year.id:
+            raise serializers.ValidationError({
+                "delivery_group": "The delivery group belongs to a different academic year."
+            })
         teacher = attrs.get("teacher", getattr(self.instance, "teacher", None))
-        if course and teacher:
+        if delivery_group and teacher:
+            validate_teacher_delivery_group_assignment(delivery_group, teacher)
+        elif course and teacher:
             # Direct section assignment and lock assignment share the same
             # normalized senior-course qualification rules.
             validate_teacher_course_assignment(course, teacher)
         return attrs
+
+    def get_member_courses(self, instance):
+        if instance.delivery_group_id:
+            return [
+                {
+                    "offering_id": offering.id,
+                    "course_id": offering.course_id,
+                    "course_code": offering.course.course_code,
+                }
+                for offering in instance.delivery_group.offerings.select_related("course").all()
+            ]
+        if instance.course_id:
+            return [{
+                "offering_id": None,
+                "course_id": instance.course_id,
+                "course_code": instance.course.course_code,
+            }]
+        return []
+
+    def get_is_combined(self, instance):
+        return len(self.get_member_courses(instance)) > 1
 
 
 class CourseRequestSerializer(serializers.ModelSerializer):
@@ -150,4 +241,163 @@ class CourseRequestSerializer(serializers.ModelSerializer):
                 duplicate_requests = duplicate_requests.exclude(pk=self.instance.pk)
             if duplicate_requests.exists():
                 raise serializers.ValidationError("A request for this course already exists for this student and academic year.")
+            request_type = attrs.get(
+                "request_type",
+                getattr(self.instance, "request_type", None),
+            )
+            if request_type == COURSE_REQUEST_TYPE_ALTERNATE:
+                existing_backup = CourseRequest.objects.filter(
+                    student=student,
+                    academic_year=academic_year,
+                    request_type=COURSE_REQUEST_TYPE_ALTERNATE,
+                )
+                if self.instance:
+                    existing_backup = existing_backup.exclude(pk=self.instance.pk)
+                if existing_backup.exists():
+                    raise serializers.ValidationError({
+                        "request_type": "A student may have only one backup course per academic year."
+                    })
         return attrs
+
+
+class CourseOfferingSerializer(serializers.ModelSerializer):
+    """Current year-specific offering state and physical delivery membership."""
+
+    course_code = serializers.CharField(source="course.course_code", read_only=True)
+    delivery_group_name = serializers.CharField(
+        source="delivery_group.name",
+        read_only=True,
+    )
+    member_course_codes = serializers.SerializerMethodField(read_only=True)
+    is_combined = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = CourseOffering
+        fields = (
+            "id",
+            "course",
+            "course_code",
+            "academic_year",
+            "status",
+            "delivery_group",
+            "delivery_group_name",
+            "member_course_codes",
+            "is_combined",
+            "decision_reason",
+            "decided_by",
+            "decided_at",
+        )
+        read_only_fields = fields
+
+    def get_member_course_codes(self, instance):
+        if not instance.delivery_group_id:
+            return []
+        return [
+            offering.course.course_code
+            for offering in instance.delivery_group.offerings.select_related("course").all()
+        ]
+
+    def get_is_combined(self, instance):
+        return len(self.get_member_course_codes(instance)) > 1
+
+
+class DeliveryGroupSerializer(serializers.ModelSerializer):
+    """Physical delivery identity shown as one class even when cross-listed."""
+
+    offerings = CourseOfferingSerializer(many=True, read_only=True)
+    is_combined = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = DeliveryGroup
+        fields = (
+            "id",
+            "academic_year",
+            "name",
+            "capacity_profile",
+            "combination_rule",
+            "status",
+            "is_combined",
+            "reason",
+            "created_by",
+            "created_at",
+            "offerings",
+        )
+        read_only_fields = fields
+
+
+class CourseCombinationRuleSerializer(serializers.ModelSerializer):
+    """Manage the explicit compatibility groups eligible for suggestions."""
+
+    course_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        write_only=True,
+    )
+    courses = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = CourseCombinationRule
+        fields = (
+            "id",
+            "name",
+            "capacity_profile",
+            "is_active",
+            "course_ids",
+            "courses",
+        )
+
+    def validate_course_ids(self, values):
+        if len(set(values)) < 2:
+            raise serializers.ValidationError(
+                "A combination rule requires at least two distinct courses."
+            )
+        if len(values) != len(set(values)):
+            raise serializers.ValidationError("Each course may appear only once.")
+        found = set(Course.objects.filter(id__in=values).values_list("id", flat=True))
+        if found != set(values):
+            raise serializers.ValidationError("Every course must exist.")
+        return values
+
+    def create(self, validated_data):
+        course_ids = validated_data.pop("course_ids")
+        rule = CourseCombinationRule.objects.create(**validated_data)
+        CourseCombinationRuleMember.objects.bulk_create([
+            CourseCombinationRuleMember(rule=rule, course_id=course_id)
+            for course_id in course_ids
+        ])
+        return rule
+
+    def update(self, instance, validated_data):
+        course_ids = validated_data.pop("course_ids", None)
+        instance = super().update(instance, validated_data)
+        if course_ids is not None:
+            instance.members.all().delete()
+            CourseCombinationRuleMember.objects.bulk_create([
+                CourseCombinationRuleMember(rule=instance, course_id=course_id)
+                for course_id in course_ids
+            ])
+        return instance
+
+    def get_courses(self, instance):
+        return [
+            {
+                "id": member.course_id,
+                "course_code": member.course.course_code,
+                "name": member.course.name,
+            }
+            for member in instance.members.select_related("course").all()
+        ]
+
+
+class OfferingDecisionRequestSerializer(serializers.Serializer):
+    reason = serializers.CharField(allow_blank=False, max_length=2000)
+
+    def validate_reason(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("A decision reason is required.")
+        return value
+
+
+class CombineOfferingsRequestSerializer(OfferingDecisionRequestSerializer):
+    academic_year = serializers.IntegerField(min_value=1)
+    rule_id = serializers.IntegerField(min_value=1)

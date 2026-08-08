@@ -8,7 +8,7 @@ IDs are opaque identifiers supplied by the adapter.  The engine uses them for
 joins and returns them in results, but never assumes database behavior.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Mapping, Optional, Tuple
 
 
@@ -82,6 +82,26 @@ class SectionDTO:
     capacity_max: int
     teacher_id: Optional[int] = None
     is_locked: bool = False
+    delivery_group_id: int = 0
+    member_course_ids: Tuple[int, ...] = ()
+
+
+@dataclass(frozen=True)
+class PlanningOfferingDTO:
+    """One physical planning unit backed by one or more catalog courses."""
+
+    id: int
+    member_course_ids: Tuple[int, ...]
+    member_course_codes: Tuple[str, ...]
+    capacity_profile_id: int
+    hard_min: int
+    soft_min: int
+    target_capacity: int
+    soft_max: int
+    hard_max: int
+    allowed_semester: str = "either_semester"
+    priority_tier: int = 4
+    is_combined: bool = False
 
 
 @dataclass(frozen=True)
@@ -267,6 +287,7 @@ class SchedulingInputDTO:
     academic_year_id: int
     academic_years: Tuple[AcademicYearDTO, ...] = ()
     courses: Tuple[CourseDTO, ...] = ()
+    planning_offerings: Tuple[PlanningOfferingDTO, ...] = ()
     course_requests: Tuple[CourseRequestDTO, ...] = ()
     historical_demand: Tuple[HistoricalDemandDTO, ...] = ()
     sections: Tuple[SectionDTO, ...] = ()

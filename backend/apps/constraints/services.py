@@ -4,6 +4,7 @@ from rest_framework.exceptions import ValidationError
 
 from backend.apps.common.constants import (
     QUALIFICATION_ENFORCEMENT_REQUIRED,
+    QUALIFICATION_REVIEW_VERIFIED,
     STATUTORY_TEACHABLE_MIN_GRADE,
 )
 from backend.apps.constraints.models import CourseQualificationRequirement, TeacherQualification
@@ -46,13 +47,18 @@ def teacher_meets_course_qualification_requirements(teacher, course):
         return False, set()
     # Compare normalized IDs only; raw Aspen strings are provenance, not rules.
     held_ids = set(
-        TeacherQualification.objects.filter(teacher=teacher).values_list("qualification_id", flat=True)
+        TeacherQualification.objects.filter(
+            teacher=teacher,
+            review_status=QUALIFICATION_REVIEW_VERIFIED,
+        ).values_list("qualification_id", flat=True)
     )
     return required_ids <= held_ids, required_ids - held_ids
 
 
 def validate_teacher_course_assignment(course, teacher, field_name="teacher"):
     """Raise a field-specific API error when a teacher cannot teach a course."""
+    if teacher is not None and teacher.is_archived:
+        raise ValidationError({field_name: "An archived teacher cannot receive a new assignment."})
     if teacher is None or not course_requires_statutory_qualification(course):
         return
 
@@ -73,8 +79,38 @@ def validate_teacher_course_assignment(course, teacher, field_name="teacher"):
     })
 
 
+def validate_teacher_delivery_group_assignment(delivery_group, teacher, field_name="teacher"):
+    """Require one teacher to satisfy every course in a physical delivery."""
+
+    if teacher is None:
+        return
+    courses = [
+        offering.course
+        for offering in delivery_group.offerings.select_related("course").all()
+    ]
+    if not courses:
+        raise ValidationError({field_name: "The delivery group has no active course offering."})
+    for course in courses:
+        try:
+            validate_teacher_course_assignment(course, teacher, field_name=field_name)
+        except ValidationError as error:
+            raise ValidationError({
+                field_name: (
+                    f"This teacher cannot cover every member of the physical class; "
+                    f"{course.course_code} failed its qualification rule."
+                )
+            }) from error
+
+
 def validate_locked_teacher_qualifications(section, teacher):
     """Validate a section lock using the same rule as direct assignments."""
     # Central delegation prevents Section PATCH and SectionLock PATCH from
     # developing subtly different legal behavior.
-    validate_teacher_course_assignment(section.course, teacher, field_name="locked_teacher")
+    if section.delivery_group_id:
+        validate_teacher_delivery_group_assignment(
+            section.delivery_group,
+            teacher,
+            field_name="locked_teacher",
+        )
+    else:
+        validate_teacher_course_assignment(section.course, teacher, field_name="locked_teacher")

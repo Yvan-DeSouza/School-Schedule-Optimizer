@@ -4,6 +4,7 @@ import pytest
 
 from backend.apps.common.constants import (
     QUALIFICATION_DIVISION_SENIOR,
+    QUALIFICATION_REVIEW_VERIFIED,
     QUALIFICATION_SUBJECT_MATHEMATICS,
     SEMESTER_FALL,
     SEMESTER_WINTER,
@@ -31,7 +32,11 @@ def test_section_visibility_writes_and_filters(authenticated_client, course, aca
         division=QUALIFICATION_DIVISION_SENIOR,
     )
     CourseQualificationRequirement.objects.create(course=course, qualification=qualification)
-    TeacherQualification.objects.create(teacher=teacher_user.teacher_profile, qualification=qualification)
+    TeacherQualification.objects.create(
+        teacher=teacher_user.teacher_profile,
+        qualification=qualification,
+        review_status=QUALIFICATION_REVIEW_VERIFIED,
+    )
     assert admin.post("/api/sections/", payload, format="json").status_code == 201
     assert admin.post("/api/sections/", payload, format="json").status_code == 400
     assert admin.get(f"/api/sections/?teacher={teacher_user.teacher_profile.id}").data["count"] == 2

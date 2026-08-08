@@ -67,6 +67,8 @@ def compile_constraints(data: SchedulingInputDTO) -> CompiledConstraintSetDTO:
     # optional because newly approved drafts are intentionally unstaffed.
     for section in sections.values():
         _require(section.course_id, courses, "course")
+        for course_id in section.member_course_ids:
+            _require(course_id, courses, "section member course")
         if section.teacher_id is not None:
             _require(section.teacher_id, teachers, "teacher")
     for timeslot in timeslots.values():
@@ -103,15 +105,26 @@ def compile_constraints(data: SchedulingInputDTO) -> CompiledConstraintSetDTO:
         target = required_qualifications if item.is_required else preferred_qualifications
         target[item.course_id].add(item.qualification_id)
     qualified_teachers = {}
+    active_offering_course_ids = {
+        course_id
+        for offering in data.planning_offerings
+        for course_id in offering.member_course_ids
+    } or set(courses)
     for course_id, course in courses.items():
         required = required_qualifications[course_id]
         if course.requires_statutory_qualification:
             # Senior courses fail closed.  An absent rule is bad configuration,
             # not permission to treat the entire staff as qualified.
-            if not required:
+            if not required and course_id in active_offering_course_ids:
                 raise ValueError(
                     f"Course {course.course_code} requires a statutory qualification but has no required qualification rule."
                 )
+            if not required:
+                # Cancelled/unoffered senior catalog courses are kept in the DTO
+                # for audit and request resolution, but they do not need to be
+                # staffable in this run.
+                qualified_teachers[course_id] = set()
+                continue
             qualified_teachers[course_id] = {
                 teacher_id
                 for teacher_id, held in teacher_qualifications.items()
@@ -211,7 +224,12 @@ def compile_constraints(data: SchedulingInputDTO) -> CompiledConstraintSetDTO:
         if lock.locked_teacher_id is not None:
             _require(lock.locked_teacher_id, teachers, "teacher")
             section = sections[lock.section_id]
-            if not required_qualifications[section.course_id] <= teacher_qualifications[lock.locked_teacher_id]:
+            member_course_ids = section.member_course_ids or (section.course_id,)
+            combined_required = set().union(*(
+                required_qualifications[course_id]
+                for course_id in member_course_ids
+            ))
+            if not combined_required <= teacher_qualifications[lock.locked_teacher_id]:
                 raise ValueError("Locked teacher lacks a required course qualification.")
         if lock.locked_timeslot_id is not None:
             _require(lock.locked_timeslot_id, timeslots, "timeslot")

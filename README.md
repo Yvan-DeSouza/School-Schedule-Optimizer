@@ -226,6 +226,39 @@ have no access.
 | `POST /api/planning/section-count-runs/{id}/reconciliation-preview/` | Compare selected counts with existing active sections and return the exact proposed delta |
 | `POST /api/planning/section-count-runs/{id}/reconcile/` | Apply a previously previewed delta and record an immutable reconciliation audit |
 
+## Counselor Upstream Planning Workflow
+
+The recommended workflow separates the school's early section-budget decision
+from the later staffing check:
+
+1. Review year-specific course offerings, explicitly cancel low-demand courses,
+   and optionally combine courses through an approved compatibility rule.
+2. Run `/api/planning/section-budget-runs/` with an exact total or ceiling and a
+   backup policy. Approval records the working budget but creates no sections.
+3. Maintain `/api/teachers/`, review normalized teacher qualifications, record
+   both semester capacities, and confirm `/api/planning/teacher-rosters/`.
+4. Run `/api/planning/staffing-runs/` directly or link the budget approval. The
+   engine proves qualified capacity without assigning named teachers.
+5. Review and approve the staffing run. This final transaction creates
+   unstaffed, unlocked physical `Section` records.
+
+| Route | Purpose |
+| --- | --- |
+| `/api/planning/course-offerings/` | Review, cancel, or restore a course for one year |
+| `/api/planning/combination-rules/` | Manage approved course-combination rules |
+| `/api/planning/combination-suggestions/` | Review safe, non-writing merge suggestions |
+| `POST /api/planning/combine-offerings/` | Combine approved offerings into one physical delivery |
+| `/api/planning/section-budget-runs/` | Run and approve teacher-independent exact/ceiling budgets |
+| `/api/teachers/` | Manage and archive/restore teachers |
+| `/api/teachers/{id}/qualifications/` | Submit qualification evidence for review |
+| `/api/planning/teacher-rosters/` | Set year membership and confirm staffing readiness |
+| `/api/planning/staffing-runs/` | Prove qualified capacity and approve physical sections |
+
+Unused alternate requests are not counted as ordinary demand. A run can promote
+one only when a primary course was explicitly cancelled and the backup already
+has an independently available offering. Every affected student and unresolved
+gap remains visible in immutable run data.
+
 A capacity profile contains positive `hard_min`, `soft_min`, `target`,
 `soft_max`, and `hard_max` values, in that order. New courses receive the
 shared **Standard Default** profile. A course can run in `semester_1_only`,

@@ -56,9 +56,25 @@ class TeacherQualificationSerializer(TeacherHiddenSerializer):
         model = TeacherQualification
         fields = (
             "id", "teacher", "qualification", "source_system", "source_record_id",
-            "source_text", "awarded_date_text",
+            "source_text", "awarded_date_text", "review_status", "submitted_by",
+            "submitted_at", "reviewed_by", "reviewed_at", "review_reason",
+        )
+        read_only_fields = (
+            "review_status", "submitted_by", "submitted_at", "reviewed_by",
+            "reviewed_at", "review_reason",
         )
         validators = []
+
+
+class TeacherQualificationReviewSerializer(serializers.Serializer):
+    """Optional reviewer note used for verification and required for rejection."""
+
+    reason = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        default="",
+        max_length=2000,
+    )
 
 
 class TeacherCoursePreferenceSerializer(TeacherHiddenSerializer):

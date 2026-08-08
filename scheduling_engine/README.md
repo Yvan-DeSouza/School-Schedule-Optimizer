@@ -11,6 +11,13 @@ diagnostics for infeasible scenario constraints, qualification gaps, staffing
 capacity shortfalls, and feasible plans with unmet demand. It never creates
 database sections or named teacher assignments.
 
+`section_budget_planner.py` allocates an exact or ceiling school-wide physical
+section budget without teacher data and resolves explicit cancellation/backup
+policies without mutating source requests. `staffing_planner.py` then works on
+physical delivery groups, including combined courses, and proves that counts fit
+the confirmed qualified teacher-capacity pool. A linked staffing solve keeps the
+approved budget total while reporting any delivery-group reallocations.
+
 Run its isolated test suite from the repository root:
 
 ```bash

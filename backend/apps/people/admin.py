@@ -2,7 +2,13 @@
 
 from django.contrib import admin
 
-from backend.apps.people.models import Counselor, Student, Teacher, UserRoleProfile
+from backend.apps.people.models import (
+    Counselor,
+    Student,
+    Teacher,
+    TeacherStatusDecision,
+    UserRoleProfile,
+)
 
 
-admin.site.register([Student, Teacher, Counselor, UserRoleProfile])
+admin.site.register([Student, Teacher, TeacherStatusDecision, Counselor, UserRoleProfile])

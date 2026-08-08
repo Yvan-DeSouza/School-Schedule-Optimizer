@@ -3,7 +3,7 @@
 
 **Document type:** Master implementation roadmap
 
-**Re-baselined:** 2026-08-07
+**Re-baselined:** 2026-08-08
 
 **Primary evidence:** current repository code, tests, README, and Software Design Document (SDD)
 
@@ -37,7 +37,7 @@ Every future solver phase must preserve a review checkpoint. Solver output is a 
 
 The working system presently reaches this point:
 
-`Course requests → demand forecast → staffing-aware annual section counts → semester split → immutable planning run → counselor review/adjustment → approval → unstaffed, unlocked draft Section records`
+`Course requests → offering cancellation/combination → backup policy → teacher-independent section budget → confirmed teacher roster → staffing-aware physical counts → counselor approval → unstaffed, unlocked draft Section records`
 
 The system does **not** yet proceed from those draft sections to A–D block placement, room placement, named teacher assignment, student assignment, or a composed timetable.
 
@@ -119,16 +119,37 @@ The following capabilities are implemented in the repository and covered by auto
 - Existing sections or repeated approval return `409 Conflict`; the service never replaces existing work implicitly.
 - A simulated mid-write failure is tested to roll back sections and all approval audit rows.
 
+#### Course-offering, backup, and section-budget planning
+
+- Every catalog course can have an explicit year-specific `CourseOffering` state. A positive-demand course reaches zero sections only through a planning-role cancellation with a required reason; requests remain intact.
+- Approved `CourseCombinationRule` records allow compatible offerings to share one `DeliveryGroup`. Combining and separating are audited and blocked after active physical sections exist.
+- Combined offerings keep distinct course codes while consuming exactly one physical section. Their semester availability is the member intersection, capacity comes from the approved combination rule, qualification requirements are combined, and room requirements are unioned.
+- Safe combination suggestions are advisory and use forecast primary demand. They never merge courses automatically.
+- A student may have at most one alternate per academic year. Alternates are excluded from ordinary forecasts and conflict weights unless an explicit run policy promotes one after a cancellation.
+- Budget runs support an exact physical-section total or a ceiling without consulting teachers. Positive active demand cannot silently receive zero sections; combined positive demand receives exactly one.
+- Backup promotion uses a primary-only preliminary plan (or a linked approved budget), consumes one alternate at most once, records unresolved gaps, and never rewrites `CourseRequest` rows.
+- `SectionBudgetRun`, its approval, normalized per-offering decisions, and per-student request resolutions are immutable. Budget approval deliberately creates no operational sections.
+
+#### Teacher readiness and physical staffing handoff
+
+- Planning roles can manage the teacher directory. Teachers are archived/restored through audited status decisions rather than deleted.
+- A `TeacherPlanningRoster` explicitly identifies the teachers used for one academic year. Each included teacher requires both Semester 1 and Semester 2 capacity rows, including explicit zero-capacity rows, before the roster can be confirmed ready.
+- Capacity, membership, teacher, or qualification-evidence changes invalidate a ready roster and return it to draft.
+- Teacher qualification submissions begin pending. Planning roles verify or reject them, and only verified credentials enter assignment validation or solver eligibility.
+- Staffing runs may operate directly or refine a teacher-independent budget approval. A linked run preserves the approved physical total and explains any allocation differences by delivery group.
+- The physical staffing solver uses anonymous qualified load only: it proves that a plan can be staffed without making named teacher assignments.
+- `StaffingPlanRun` and normalized backup resolutions are immutable. Final approval revalidates counselor adjustments and atomically creates canonical delivery-group `Section` rows with audit provenance. Combined deliveries create one physical row with no misleading single-course identity.
+
 ### Partially Complete
 
 These areas contain useful foundations but are not complete Version 1 capabilities.
 
 | Area | What exists | What is still missing |
 |---|---|---|
-| Demand and offering review | Raw demand summary, historical forecasting, below-minimum warnings, and co-request recommendations in the pure engine | A dedicated counselor-facing offer/close decision view; an explicit merge/cross-list domain workflow; an API workflow for reviewing and accepting generated conflict weights |
-| Planning input management | Student/teacher/course models, historical-demand records, Django admin, and teacher-nested constraint APIs | Planning-role roster APIs, historical-demand management API, and a consolidated readiness check for missing planning inputs |
+| Demand and offering review | Raw demand, forecasting, explicit cancellation/restoration, audited combination/separation, compatibility rules, and advisory merge suggestions | A frontend review workspace and an API workflow for accepting generated conflict weights |
+| Planning input management | Student/teacher/course models, year-specific teacher rosters, readiness confirmation, two-semester capacity enforcement, and teacher/qualification management APIs | Historical-demand management API and one consolidated cross-stage readiness dashboard |
 | Staffing reporting | Per-run available/planned/unused capacity, course eligibility counts, and structured shortage diagnostics | The SDD's standalone staffing summary by subject/qualification pool and a stable API intended for cross-run operational reporting |
-| Section lifecycle | Draft sections, planning provenance, generic CRUD, and safe refusal to overwrite existing sections | Explicit reconciliation when a later approved plan changes counts or semesters; retirement/supersession semantics; protection of downstream work during reconciliation |
+| Section lifecycle | Draft sections, physical delivery identity, planning provenance, safe refusal to overwrite, and audited reconciliation with retirement/reactivation | A physical-delivery reconciliation path for changing an already-materialized combined group; late combination remains intentionally blocked |
 | Timetable data | `TimeSlot`, permanent A–D rotation, `Room`, `SectionSchedule`, room requirements, course conflicts, and section locks | No solver or review workflow assigns a block or room |
 | Teacher scheduling foundation | Normalized qualifications, compiled eligibility, availability, preferences, current-course history, workload fields, and planning capacity | No named-teacher assignment solver, recommendation run, approval, or assignment diagnostics |
 | Student scheduling foundation | Course requests, sections, enrollments, prerequisites, and student grade | No student assignment solver; no defined source of completed-course/transcript evidence for prerequisite evaluation |
@@ -141,7 +162,6 @@ These areas contain useful foundations but are not complete Version 1 capabiliti
 
 ### Not Yet Implemented
 
-- Reconciliation or replacement of previously approved draft section plans.
 - Automated section placement into A–D blocks.
 - Automated room assignment.
 - Named teacher-to-section assignment.
@@ -150,7 +170,7 @@ These areas contain useful foundations but are not complete Version 1 capabiliti
 - General manual override application and immutable history APIs.
 - Genuine scoped re-solving with out-of-scope entities held fixed.
 - Persistent status tracking for downstream scheduling runs.
-- Staff-facing student/teacher roster, historical-demand, and prerequisite-management API coverage required by the later workflows.
+- Staff-facing student roster, historical-demand, and prerequisite-management API coverage required by later workflows.
 - A counselor/administrator, teacher, or student frontend.
 - Final timetable and personal-schedule APIs.
 
@@ -158,12 +178,12 @@ Models, DTO fields, policy names, or SDD descriptions for these areas are founda
 
 ### Verification Baseline
 
-The current checkout was verified non-destructively during this re-baseline on 2026-08-07:
+The current checkout was verified non-destructively during this re-baseline on 2026-08-08:
 
 - `python backend/manage.py check` — no issues.
-- `python backend/manage.py makemigrations --check --dry-run` — no model changes detected and no migration files created.
-- Isolated `scheduling_engine` suite — 15 tests passed without Django.
-- Full repository suite — 83 tests passed.
+- Isolated `scheduling_engine` suite — 26 tests passed without Django.
+- Django backend suite — 100 tests passed.
+- Combined verified total — 126 tests passed.
 
 These numbers describe the current baseline, not a permanent completion target. Every future phase must add tests for its own contracts while keeping this existing suite green.
 
@@ -198,7 +218,7 @@ The SDD still describes the product philosophy and long-term pipeline well, but 
 | Roles | Administrator inferred mainly through Django staff/superuser flags | The repository has explicit staff/director role profiles plus domain profile precedence. Use the implemented role system. |
 | Computational execution | All solve stages are presented as asynchronous through a queue | Current section planning is synchronous and bounded enough for existing tests. Downstream stages need a measured orchestration decision; a queue is not yet implemented. |
 | Course conflicts | Demand analysis automatically upserts `CourseConflict` | The pure engine computes recommendations, but the current API does not persist them automatically. Preserve human review rather than silently claiming upsert behavior exists. |
-| Merge/cancel review | Explicit Stage 2 merge/cancel workflow | The planner exposes below-minimum warnings and allows a zero-section decision, but no dedicated merge/cross-list workflow exists. Cross-listing requires separate domain design. |
+| Merge/cancel review | Explicit Stage 2 merge/cancel workflow | Implemented as audited year-specific cancellations and approved course-combination rules over one physical `DeliveryGroup`. Late changes are blocked once active sections exist. |
 | Lock state | `Section.is_locked` is described as a synchronized fast flag for `SectionLock` state | The current lock API can create or clear a `SectionLock` without synchronizing `Section.is_locked`, and generic Section CRUD can change the flag independently. Establish one invariant before downstream placement. |
 | Manual overrides | Complete override service and scoped feedback loop | Only locks, a basic `ManualOverride` model, and policy scaffolding exist. The general workflow remains future work. |
 | Frontend and i18n | React application and translation-backed UI are part of Version 1 | Neither is implemented. They remain required for a complete user-facing Version 1, but should be built against stable stage APIs. |
@@ -228,7 +248,7 @@ The target is not a schedule that bypasses human judgment. It is a repeatable an
 
 ## Remaining Phase Order
 
-`Planning reconciliation → Section placement → Teacher assignment → Student assignment and conflict analysis → Manual overrides and scoped re-solve → Frontend → V1 hardening`
+`Section placement → Teacher assignment → Student assignment and conflict analysis → Manual overrides and scoped re-solve → Frontend → V1 hardening`
 
 This order follows data dependencies. Stable section identity comes before attaching schedules, teachers, and students. Placement comes before availability-aware teacher assignment and conflict-free student assignment. Scoped re-solving comes after there are real solver stages to scope.
 

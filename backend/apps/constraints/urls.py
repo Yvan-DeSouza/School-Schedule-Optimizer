@@ -40,4 +40,17 @@ for prefix, viewset, basename in teacher_resources:
         path(f"teachers/<int:teacher_id>/{prefix}/", viewset.as_view({"get": "list", "post": "create"}), name=f"{basename}-list"),
         path(f"teachers/<int:teacher_id>/{prefix}/<int:pk>/", viewset.as_view({"get": "retrieve", "patch": "partial_update", "put": "update", "delete": "destroy"}), name=f"{basename}-detail"),
     ]
+    if prefix == "qualifications":
+        urlpatterns += [
+            path(
+                "teachers/<int:teacher_id>/qualifications/<int:pk>/verify/",
+                viewset.as_view({"post": "verify"}),
+                name="teacher-qualification-verify",
+            ),
+            path(
+                "teachers/<int:teacher_id>/qualifications/<int:pk>/reject/",
+                viewset.as_view({"post": "reject"}),
+                name="teacher-qualification-reject",
+            ),
+        ]
 urlpatterns += router.urls

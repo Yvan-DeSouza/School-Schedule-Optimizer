@@ -17,7 +17,9 @@ def estimate_section_counts(data: SchedulingInputDTO) -> tuple[SectionCountRecom
         fallback = summary.historical_conversion_ratio is None
         # A neutral 1:1 ratio makes missing history explicit and predictable.
         ratio = 1.0 if fallback else summary.historical_conversion_ratio
-        predicted = summary.total_requests * ratio
+        # Alternates remain visible in demand summaries but do not consume a
+        # section unless a planning run explicitly promotes one.
+        predicted = summary.primary_requests * ratio
         # Legacy recommendation sizes only against capacity_max and does not
         # check teacher eligibility or semester load.
         count = 0 if predicted == 0 else math.ceil((predicted / course.capacity_max) - 1e-12)
@@ -29,7 +31,7 @@ def estimate_section_counts(data: SchedulingInputDTO) -> tuple[SectionCountRecom
         if 0 < predicted < course.capacity_min:
             warnings.append("Predicted enrollment is below the course minimum capacity.")
         recommendations.append(SectionCountRecommendationDTO(
-            course.id, course.course_code, summary.total_requests, ratio, predicted,
+            course.id, course.course_code, summary.primary_requests, ratio, predicted,
             course.capacity_min, course.capacity_max, count, fallback, tuple(warnings),
         ))
     return tuple(recommendations)

@@ -7,6 +7,7 @@ from backend.apps.common.constants import (
     COURSE_REQUEST_TYPE_PRIMARY,
     GRADE_LEVEL_12,
     QUALIFICATION_DIVISION_SENIOR,
+    QUALIFICATION_REVIEW_VERIFIED,
     QUALIFICATION_SUBJECT_MATHEMATICS,
     ROOM_TYPE_CLASSROOM,
     SCHEDULE_BLOCK_A,
@@ -43,7 +44,11 @@ def test_engine_adapter_loads_target_year_data_and_constraints(
         subject_code=QUALIFICATION_SUBJECT_MATHEMATICS,
         division=QUALIFICATION_DIVISION_SENIOR,
     )
-    TeacherQualification.objects.create(teacher=teacher_user.teacher_profile, qualification=qualification)
+    TeacherQualification.objects.create(
+        teacher=teacher_user.teacher_profile,
+        qualification=qualification,
+        review_status=QUALIFICATION_REVIEW_VERIFIED,
+    )
     TeacherCoursePreference.objects.create(teacher=teacher_user.teacher_profile, course=course)
     TeacherCurrentCourse.objects.create(teacher=teacher_user.teacher_profile, course=course, academic_year=academic_year)
     TeacherAvailability.objects.create(teacher=teacher_user.teacher_profile, timeslot=timeslot)

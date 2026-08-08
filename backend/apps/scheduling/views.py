@@ -22,7 +22,12 @@ from backend.apps.scheduling.models import (
     CoursePriorityProfile,
     SectionPlanningApproval,
     SectionPlanningRun,
+    SectionBudgetApproval,
+    SectionBudgetRun,
+    StaffingPlanApproval,
+    StaffingPlanRun,
     TeacherPlanningCapacity,
+    TeacherPlanningRoster,
     TimeSlot,
 )
 from backend.apps.scheduling.serializers import (
@@ -36,7 +41,18 @@ from backend.apps.scheduling.serializers import (
     SectionPlanningReconciliationSerializer,
     SectionPlanningRunCreateSerializer,
     SectionPlanningRunSerializer,
+    SectionBudgetApprovalRequestSerializer,
+    SectionBudgetApprovalSerializer,
+    SectionBudgetRunCreateSerializer,
+    SectionBudgetRunSerializer,
+    StaffingPlanApprovalSerializer,
+    StaffingPlanRunCreateSerializer,
+    StaffingPlanRunSerializer,
+    StaffingRequestResolutionSerializer,
+    PlanningRequestResolutionSerializer,
     TeacherPlanningCapacitySerializer,
+    TeacherPlanningRosterMembersSerializer,
+    TeacherPlanningRosterSerializer,
     TimeSlotSerializer,
 )
 from backend.apps.scheduling.services.engine_adapter import get_section_count_recommendations
@@ -126,6 +142,86 @@ class TeacherPlanningCapacityViewSet(PlanningConfigurationViewSet):
     queryset = TeacherPlanningCapacity.objects.select_related("teacher", "academic_year")
     serializer_class = TeacherPlanningCapacitySerializer
     filter_fields = ("teacher", "academic_year", "semester")
+
+    def perform_create(self, serializer):
+        item = serializer.save()
+        from backend.apps.scheduling.services.staffing_configuration import invalidate_roster
+
+        invalidate_roster(item.academic_year_id)
+
+    def perform_update(self, serializer):
+        previous_year_id = serializer.instance.academic_year_id
+        item = serializer.save()
+        from backend.apps.scheduling.services.staffing_configuration import invalidate_roster
+
+        invalidate_roster(previous_year_id)
+        invalidate_roster(item.academic_year_id)
+
+    def perform_destroy(self, instance):
+        academic_year_id = instance.academic_year_id
+        instance.delete()
+        from backend.apps.scheduling.services.staffing_configuration import invalidate_roster
+
+        invalidate_roster(academic_year_id)
+
+
+class TeacherPlanningRosterViewSet(PlanningConfigurationViewSet):
+    """Build a year roster and explicitly confirm complete capacity evidence."""
+
+    queryset = TeacherPlanningRoster.objects.select_related(
+        "academic_year", "confirmed_by"
+    ).prefetch_related("members")
+    serializer_class = TeacherPlanningRosterSerializer
+    filter_fields = ("academic_year", "status")
+
+    def perform_update(self, serializer):
+        from backend.apps.common.constants import TEACHER_ROSTER_STATUS_DRAFT
+
+        # Moving/configuring the roster is a new unconfirmed staffing input.
+        serializer.save(
+            status=TEACHER_ROSTER_STATUS_DRAFT,
+            confirmed_by=None,
+            confirmed_at=None,
+        )
+
+    def perform_destroy(self, instance):
+        if instance.staffing_runs.exists():
+            raise ValidationError({
+                "detail": "A roster used by an immutable staffing run cannot be deleted."
+            })
+        instance.delete()
+
+    @action(detail=True, methods=["post"], url_path="set-members")
+    def set_members(self, request, pk=None):
+        from backend.apps.scheduling.services.staffing_configuration import (
+            StaffingConfigurationError,
+            set_roster_members,
+        )
+
+        serializer = TeacherPlanningRosterMembersSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            roster = set_roster_members(
+                self.get_object(),
+                teacher_ids=serializer.validated_data["teacher_ids"],
+                actor=request.user,
+            )
+        except StaffingConfigurationError as error:
+            raise ValidationError(error.detail) from error
+        return Response(TeacherPlanningRosterSerializer(roster).data)
+
+    @action(detail=True, methods=["post"])
+    def confirm(self, request, pk=None):
+        from backend.apps.scheduling.services.staffing_configuration import (
+            StaffingConfigurationError,
+            confirm_roster_ready,
+        )
+
+        try:
+            roster = confirm_roster_ready(self.get_object(), actor=request.user)
+        except StaffingConfigurationError as error:
+            raise ValidationError(error.detail) from error
+        return Response(TeacherPlanningRosterSerializer(roster).data)
 
 
 class CourseCapacityPolicyView(APIView):
@@ -342,3 +438,247 @@ class SectionPlanningRunViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, 
             SectionPlanningReconciliationSerializer(reconciliation).data,
             status=status.HTTP_201_CREATED,
         )
+
+
+class SectionBudgetRunViewSet(
+    mixins.CreateModelMixin,
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    viewsets.GenericViewSet,
+):
+    """Teacher-independent physical-section budget runs and approvals."""
+
+    permission_classes = [ActionPolicyPermission]
+    action_policy_class = DemandPlanningActionPolicy
+    action_name = DemandPlanningAction.RUN_SECTION_PLANNING
+    queryset = SectionBudgetRun.objects.select_related(
+        "academic_year", "created_by", "approval__approved_by"
+    ).prefetch_related(
+        "approval__offering_approvals",
+        "approval__request_resolutions",
+    )
+
+    def get_permissions(self):
+        if self.action in {"approval_preview", "approve", "affected_students"}:
+            self.action_name = DemandPlanningAction.APPROVE_SECTION_PLAN
+        else:
+            self.action_name = DemandPlanningAction.RUN_SECTION_PLANNING
+        return super().get_permissions()
+
+    def get_serializer_class(self):
+        return (
+            SectionBudgetRunCreateSerializer
+            if self.action == "create"
+            else SectionBudgetRunSerializer
+        )
+
+    def create(self, request, *args, **kwargs):
+        from backend.apps.scheduling.services.section_budget_planning import (
+            create_section_budget_run,
+        )
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            academic_year = AcademicYear.objects.get(
+                pk=serializer.validated_data["academic_year"]
+            )
+        except AcademicYear.DoesNotExist as error:
+            raise NotFound("Academic year not found.") from error
+        try:
+            run = create_section_budget_run(
+                academic_year=academic_year,
+                created_by=request.user,
+                budget_type=serializer.validated_data["budget_type"],
+                section_budget=serializer.validated_data["section_budget"],
+                backup_policy=serializer.validated_data["backup_policy"],
+                backup_overrides=serializer.validated_data["backup_overrides"],
+                offering_constraints=serializer.validated_data["offering_constraints"],
+            )
+        except ValueError as error:
+            raise ValidationError({"detail": str(error)}) from error
+        return Response(SectionBudgetRunSerializer(run).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"], url_path="approval-preview")
+    def approval_preview(self, request, pk=None):
+        from backend.apps.scheduling.services.section_budget_planning import (
+            preview_section_budget_approval,
+        )
+        from backend.apps.scheduling.services.section_planning import (
+            PlanningApprovalValidationError,
+        )
+
+        serializer = SectionBudgetApprovalRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            preview = preview_section_budget_approval(
+                self.get_object(),
+                selections=serializer.validated_data.get("offerings"),
+            )
+        except PlanningApprovalValidationError as error:
+            raise ValidationError(error.detail) from error
+        return Response(preview)
+
+    @action(detail=True, methods=["post"])
+    def approve(self, request, pk=None):
+        from backend.apps.scheduling.services.section_budget_planning import (
+            approve_section_budget_run,
+        )
+        from backend.apps.scheduling.services.section_planning import (
+            PlanningApprovalConflictError,
+            PlanningApprovalValidationError,
+        )
+
+        serializer = SectionBudgetApprovalRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            approval = approve_section_budget_run(
+                self.get_object(),
+                approved_by=request.user,
+                reason=serializer.validated_data["reason"],
+                selections=serializer.validated_data.get("offerings"),
+            )
+        except PlanningApprovalValidationError as error:
+            raise ValidationError(error.detail) from error
+        except PlanningApprovalConflictError as error:
+            raise SectionPlanningApprovalConflict(error.detail) from error
+        approval = SectionBudgetApproval.objects.prefetch_related(
+            "offering_approvals", "request_resolutions"
+        ).get(pk=approval.pk)
+        return Response(
+            SectionBudgetApprovalSerializer(approval).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=True, methods=["get"], url_path="affected-students")
+    def affected_students(self, request, pk=None):
+        run = self.get_object()
+        if hasattr(run, "approval"):
+            return Response(
+                PlanningRequestResolutionSerializer(
+                    run.approval.request_resolutions.all(),
+                    many=True,
+                ).data
+            )
+        return Response(run.result.get("request_resolutions", []))
+
+
+class StaffingPlanRunViewSet(
+    mixins.CreateModelMixin,
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    viewsets.GenericViewSet,
+):
+    """Qualified-roster planning and final physical-section approval."""
+
+    permission_classes = [ActionPolicyPermission]
+    action_policy_class = DemandPlanningActionPolicy
+    action_name = DemandPlanningAction.RUN_SECTION_PLANNING
+    queryset = StaffingPlanRun.objects.select_related(
+        "academic_year", "budget_approval", "teacher_roster", "created_by",
+        "approval__approved_by"
+    ).prefetch_related(
+        "request_resolutions",
+        "approval__offering_approvals__generated_sections",
+    )
+
+    def get_permissions(self):
+        if self.action in {"approval_preview", "approve", "affected_students"}:
+            self.action_name = DemandPlanningAction.APPROVE_SECTION_PLAN
+        else:
+            self.action_name = DemandPlanningAction.RUN_SECTION_PLANNING
+        return super().get_permissions()
+
+    def get_serializer_class(self):
+        return (
+            StaffingPlanRunCreateSerializer
+            if self.action == "create"
+            else StaffingPlanRunSerializer
+        )
+
+    def create(self, request, *args, **kwargs):
+        from backend.apps.scheduling.services.staffing_planning import (
+            create_staffing_plan_run,
+        )
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            academic_year = AcademicYear.objects.get(
+                pk=serializer.validated_data["academic_year"]
+            )
+        except AcademicYear.DoesNotExist as error:
+            raise NotFound("Academic year not found.") from error
+        try:
+            run = create_staffing_plan_run(
+                academic_year=academic_year,
+                created_by=request.user,
+                budget_approval=serializer.validated_data.get("budget_approval"),
+                backup_policy=serializer.validated_data["backup_policy"],
+                backup_overrides=serializer.validated_data["backup_overrides"],
+                offering_constraints=serializer.validated_data["offering_constraints"],
+                teacher_capacity_adjustments=serializer.validated_data[
+                    "teacher_capacity_adjustments"
+                ],
+            )
+        except ValueError as error:
+            raise ValidationError({"detail": str(error)}) from error
+        return Response(StaffingPlanRunSerializer(run).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"], url_path="approval-preview")
+    def approval_preview(self, request, pk=None):
+        from backend.apps.scheduling.services.staffing_planning import (
+            preview_staffing_plan_approval,
+        )
+        from backend.apps.scheduling.services.section_planning import (
+            PlanningApprovalValidationError,
+        )
+
+        serializer = SectionBudgetApprovalRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            preview = preview_staffing_plan_approval(
+                self.get_object(),
+                selections=serializer.validated_data.get("offerings"),
+            )
+        except PlanningApprovalValidationError as error:
+            raise ValidationError(error.detail) from error
+        return Response(preview)
+
+    @action(detail=True, methods=["post"])
+    def approve(self, request, pk=None):
+        from backend.apps.scheduling.services.staffing_planning import (
+            approve_staffing_plan_run,
+        )
+        from backend.apps.scheduling.services.section_planning import (
+            PlanningApprovalConflictError,
+            PlanningApprovalValidationError,
+        )
+
+        serializer = SectionBudgetApprovalRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            approval = approve_staffing_plan_run(
+                self.get_object(),
+                approved_by=request.user,
+                reason=serializer.validated_data["reason"],
+                selections=serializer.validated_data.get("offerings"),
+            )
+        except PlanningApprovalValidationError as error:
+            raise ValidationError(error.detail) from error
+        except PlanningApprovalConflictError as error:
+            raise SectionPlanningApprovalConflict(error.detail) from error
+        approval = StaffingPlanApproval.objects.prefetch_related(
+            "offering_approvals__generated_sections"
+        ).get(pk=approval.pk)
+        return Response(
+            StaffingPlanApprovalSerializer(approval).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=True, methods=["get"], url_path="affected-students")
+    def affected_students(self, request, pk=None):
+        return Response(StaffingRequestResolutionSerializer(
+            self.get_object().request_resolutions.all(),
+            many=True,
+        ).data)

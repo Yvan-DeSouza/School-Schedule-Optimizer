@@ -7,7 +7,12 @@ modules so non-HTTP callers receive the same behavior.
 
 from rest_framework import serializers
 
-from backend.apps.common.constants import BLOCK_ROTATION, CAPACITY_PROFILE_SCOPE_SHARED
+from backend.apps.common.constants import (
+    BACKUP_POLICY_CHOICES,
+    BLOCK_ROTATION,
+    CAPACITY_PROFILE_SCOPE_SHARED,
+    SECTION_BUDGET_TYPE_CHOICES,
+)
 from backend.apps.scheduling.models import (
     CapacityProfile,
     CoursePriorityProfile,
@@ -17,7 +22,16 @@ from backend.apps.scheduling.models import (
     SectionPlanningReconciliationAction,
     SectionPlanningReconciliationCourse,
     SectionPlanningRun,
+    PlanningRequestResolution,
+    SectionBudgetApproval,
+    SectionBudgetApprovalOffering,
+    SectionBudgetRun,
+    StaffingPlanApproval,
+    StaffingPlanApprovalOffering,
+    StaffingPlanRun,
+    StaffingRequestResolution,
     TeacherPlanningCapacity,
+    TeacherPlanningRoster,
     TimeSlot,
 )
 
@@ -143,6 +157,50 @@ class TeacherPlanningCapacitySerializer(serializers.ModelSerializer):
             if duplicate.exists():
                 raise serializers.ValidationError("A planning capacity already exists for this teacher, year, and semester.")
         return attrs
+
+
+class TeacherPlanningRosterSerializer(serializers.ModelSerializer):
+    """Expose readiness and the exact teachers included in the year snapshot."""
+
+    teacher_ids = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = TeacherPlanningRoster
+        fields = (
+            "id",
+            "academic_year",
+            "status",
+            "teacher_ids",
+            "confirmed_by",
+            "confirmed_at",
+        )
+        read_only_fields = ("status", "confirmed_by", "confirmed_at")
+        validators = []
+
+    def validate_academic_year(self, value):
+        duplicate = TeacherPlanningRoster.objects.filter(academic_year=value)
+        if self.instance:
+            duplicate = duplicate.exclude(pk=self.instance.pk)
+        if duplicate.exists():
+            raise serializers.ValidationError("This year already has a teacher roster.")
+        return value
+
+    def get_teacher_ids(self, instance):
+        return list(instance.members.values_list("teacher_id", flat=True))
+
+
+class TeacherPlanningRosterMembersSerializer(serializers.Serializer):
+    """Replace the explicit membership of a draft/ready roster."""
+
+    teacher_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        allow_empty=True,
+    )
+
+    def validate_teacher_ids(self, values):
+        if len(values) != len(set(values)):
+            raise serializers.ValidationError("Each teacher may appear only once.")
+        return values
 
 
 class CourseCapacityPolicySerializer(serializers.Serializer):
@@ -410,4 +468,283 @@ class SectionPlanningRunSerializer(serializers.ModelSerializer):
     class Meta:
         model = SectionPlanningRun
         fields = ("id", "academic_year", "created_by", "created_at", "status", "scenario_constraints", "input_snapshot", "result", "solver_metadata", "approvals")
+        read_only_fields = fields
+
+
+class SectionBudgetOfferingConstraintSerializer(serializers.Serializer):
+    offering_id = serializers.IntegerField(min_value=1)
+    exact_sections = serializers.IntegerField(min_value=0, required=False)
+    min_sections = serializers.IntegerField(min_value=0, required=False)
+    max_sections = serializers.IntegerField(min_value=0, required=False)
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        count_fields = {
+            field for field in ("exact_sections", "min_sections", "max_sections")
+            if field in attrs
+        }
+        if not count_fields:
+            raise serializers.ValidationError("At least one section constraint is required.")
+        if "exact_sections" in attrs and len(count_fields) > 1:
+            raise serializers.ValidationError(
+                "exact_sections cannot be combined with minimum or maximum."
+            )
+        if attrs.get("min_sections", 0) > attrs.get("max_sections", float("inf")):
+            raise serializers.ValidationError("min_sections cannot exceed max_sections.")
+        return attrs
+
+
+class BackupPolicyOverrideSerializer(serializers.Serializer):
+    course_id = serializers.IntegerField(min_value=1)
+    policy = serializers.ChoiceField(choices=BACKUP_POLICY_CHOICES)
+
+
+class SectionBudgetRunCreateSerializer(serializers.Serializer):
+    academic_year = serializers.IntegerField(min_value=1)
+    budget_type = serializers.ChoiceField(choices=SECTION_BUDGET_TYPE_CHOICES)
+    section_budget = serializers.IntegerField(min_value=0)
+    backup_policy = serializers.ChoiceField(choices=BACKUP_POLICY_CHOICES)
+    backup_overrides = BackupPolicyOverrideSerializer(many=True, required=False, default=list)
+    offering_constraints = SectionBudgetOfferingConstraintSerializer(
+        many=True,
+        required=False,
+        default=list,
+    )
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        override_ids = [item["course_id"] for item in attrs["backup_overrides"]]
+        if len(override_ids) != len(set(override_ids)):
+            raise serializers.ValidationError({
+                "backup_overrides": "Each course may have only one backup-policy override."
+            })
+        offering_ids = [item["offering_id"] for item in attrs["offering_constraints"]]
+        if len(offering_ids) != len(set(offering_ids)):
+            raise serializers.ValidationError({
+                "offering_constraints": "Each offering may have only one constraint."
+            })
+        return attrs
+
+
+class SectionBudgetApprovalSelectionSerializer(serializers.Serializer):
+    offering_id = serializers.IntegerField(min_value=1)
+    semester_1_count = serializers.IntegerField(min_value=0)
+    semester_2_count = serializers.IntegerField(min_value=0)
+
+
+class SectionBudgetApprovalRequestSerializer(serializers.Serializer):
+    offerings = SectionBudgetApprovalSelectionSerializer(many=True, required=False)
+    reason = serializers.CharField(allow_blank=False, max_length=2000)
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        attrs["reason"] = attrs["reason"].strip()
+        if not attrs["reason"]:
+            raise serializers.ValidationError({"reason": "An approval reason is required."})
+        if "offerings" in attrs:
+            if not attrs["offerings"]:
+                raise serializers.ValidationError({
+                    "offerings": "Omit offerings to accept all recommendations."
+                })
+            ids = [item["offering_id"] for item in attrs["offerings"]]
+            if len(ids) != len(set(ids)):
+                raise serializers.ValidationError({
+                    "offerings": "Each offering may appear only once."
+                })
+        return attrs
+
+
+class PlanningRequestResolutionSerializer(serializers.ModelSerializer):
+    backup_course = serializers.IntegerField(
+        source="backup_request.course_id",
+        read_only=True,
+    )
+
+    class Meta:
+        model = PlanningRequestResolution
+        fields = (
+            "id",
+            "student",
+            "cancelled_course_ids",
+            "backup_request",
+            "backup_course",
+            "outcome",
+            "unresolved_course_count",
+        )
+        read_only_fields = fields
+
+
+class SectionBudgetApprovalOfferingSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SectionBudgetApprovalOffering
+        fields = (
+            "id",
+            "delivery_group",
+            "recommended_annual_count",
+            "recommended_semester_1_count",
+            "recommended_semester_2_count",
+            "approved_annual_count",
+            "approved_semester_1_count",
+            "approved_semester_2_count",
+        )
+        read_only_fields = fields
+
+
+class SectionBudgetApprovalSerializer(serializers.ModelSerializer):
+    offering_approvals = SectionBudgetApprovalOfferingSerializer(many=True, read_only=True)
+    request_resolutions = PlanningRequestResolutionSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = SectionBudgetApproval
+        fields = (
+            "id",
+            "budget_run",
+            "approved_by",
+            "approved_at",
+            "reason",
+            "offering_approvals",
+            "request_resolutions",
+        )
+        read_only_fields = fields
+
+
+class SectionBudgetRunSerializer(serializers.ModelSerializer):
+    approval = SectionBudgetApprovalSerializer(read_only=True)
+
+    class Meta:
+        model = SectionBudgetRun
+        fields = (
+            "id",
+            "academic_year",
+            "created_by",
+            "created_at",
+            "status",
+            "budget_type",
+            "section_budget",
+            "backup_policy",
+            "backup_overrides",
+            "scenario_constraints",
+            "input_snapshot",
+            "result",
+            "solver_metadata",
+            "approval",
+        )
+        read_only_fields = fields
+
+
+class TeacherCapacityAdjustmentSerializer(serializers.Serializer):
+    """Non-persistent reduction used to explore one staffing scenario."""
+
+    teacher_id = serializers.IntegerField(min_value=1)
+    semester = serializers.ChoiceField(choices=(1, 2))
+    excluded = serializers.BooleanField(required=False, default=False)
+    reduce_by = serializers.IntegerField(min_value=0, required=False, default=0)
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        if attrs["excluded"] and attrs["reduce_by"]:
+            raise serializers.ValidationError("excluded cannot be combined with reduce_by.")
+        return attrs
+
+
+class StaffingPlanRunCreateSerializer(serializers.Serializer):
+    """Create a direct staffing run or refine one approved section budget."""
+
+    academic_year = serializers.IntegerField(min_value=1)
+    budget_approval = serializers.PrimaryKeyRelatedField(
+        queryset=SectionBudgetApproval.objects.select_related("budget_run"),
+        required=False,
+        allow_null=True,
+    )
+    backup_policy = serializers.ChoiceField(
+        choices=BACKUP_POLICY_CHOICES,
+        required=False,
+        default="ignore",
+    )
+    backup_overrides = BackupPolicyOverrideSerializer(many=True, required=False, default=list)
+    offering_constraints = SectionBudgetOfferingConstraintSerializer(
+        many=True,
+        required=False,
+        default=list,
+    )
+    teacher_capacity_adjustments = TeacherCapacityAdjustmentSerializer(
+        many=True,
+        required=False,
+        default=list,
+    )
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        for field, key in (
+            ("backup_overrides", "course_id"),
+            ("offering_constraints", "offering_id"),
+        ):
+            values = [item[key] for item in attrs[field]]
+            if len(values) != len(set(values)):
+                raise serializers.ValidationError({field: f"Each {key} may appear only once."})
+        adjustment_keys = [
+            (item["teacher_id"], item["semester"])
+            for item in attrs["teacher_capacity_adjustments"]
+        ]
+        if len(adjustment_keys) != len(set(adjustment_keys)):
+            raise serializers.ValidationError({
+                "teacher_capacity_adjustments": "Each teacher/semester may appear only once."
+            })
+        return attrs
+
+
+class StaffingRequestResolutionSerializer(serializers.ModelSerializer):
+    backup_course = serializers.IntegerField(source="backup_request.course_id", read_only=True)
+
+    class Meta:
+        model = StaffingRequestResolution
+        fields = (
+            "id", "student", "cancelled_course_ids", "backup_request",
+            "backup_course", "outcome", "unresolved_course_count",
+        )
+        read_only_fields = fields
+
+
+class StaffingPlanApprovalOfferingSerializer(serializers.ModelSerializer):
+    generated_section_ids = serializers.PrimaryKeyRelatedField(
+        source="generated_sections",
+        many=True,
+        read_only=True,
+    )
+
+    class Meta:
+        model = StaffingPlanApprovalOffering
+        fields = (
+            "id", "delivery_group", "recommended_semester_1_count",
+            "recommended_semester_2_count", "approved_semester_1_count",
+            "approved_semester_2_count", "generated_section_ids",
+        )
+        read_only_fields = fields
+
+
+class StaffingPlanApprovalSerializer(serializers.ModelSerializer):
+    offering_approvals = StaffingPlanApprovalOfferingSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = StaffingPlanApproval
+        fields = (
+            "id", "staffing_run", "approved_by", "approved_at", "reason",
+            "offering_approvals",
+        )
+        read_only_fields = fields
+
+
+class StaffingPlanRunSerializer(serializers.ModelSerializer):
+    approval = StaffingPlanApprovalSerializer(read_only=True)
+    request_resolutions = StaffingRequestResolutionSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = StaffingPlanRun
+        fields = (
+            "id", "academic_year", "budget_approval", "teacher_roster",
+            "created_by", "created_at",
+            "status", "backup_policy", "backup_overrides", "scenario_constraints",
+            "input_snapshot", "result", "solver_metadata", "request_resolutions",
+            "approval",
+        )
         read_only_fields = fields

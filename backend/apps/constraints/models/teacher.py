@@ -3,6 +3,8 @@
 from django.db import models
 
 from backend.apps.common.constants import (
+    QUALIFICATION_REVIEW_CHOICES,
+    QUALIFICATION_REVIEW_PENDING,
     QUALIFICATION_SOURCE_CHOICES,
     QUALIFICATION_SOURCE_MANUAL,
 )
@@ -25,6 +27,28 @@ class TeacherQualification(models.Model):
     source_record_id = models.CharField(max_length=100, blank=True)
     source_text = models.TextField(blank=True)
     awarded_date_text = models.CharField(max_length=50, blank=True)
+    review_status = models.CharField(
+        max_length=20,
+        choices=QUALIFICATION_REVIEW_CHOICES,
+        default=QUALIFICATION_REVIEW_PENDING,
+    )
+    submitted_by = models.ForeignKey(
+        "auth.User",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="submitted_teacher_qualifications",
+    )
+    submitted_at = models.DateTimeField(auto_now_add=True)
+    reviewed_by = models.ForeignKey(
+        "auth.User",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="reviewed_teacher_qualifications",
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    review_reason = models.TextField(blank=True, default="")
 
     class Meta:
         ordering = ["teacher", "qualification"]

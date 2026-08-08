@@ -4,9 +4,14 @@ from django.contrib import admin
 
 from backend.apps.courses.models import (
     Course,
+    CourseCombinationRule,
+    CourseCombinationRuleMember,
+    CourseOffering,
+    CourseOfferingDecision,
     CoursePrerequisite,
     CourseRequest,
     Enrollment,
+    DeliveryGroup,
     Section,
 )
 
@@ -33,4 +38,9 @@ admin.site.register([
     Enrollment,
     CourseRequest,
     CoursePrerequisite,
+    CourseOffering,
+    CourseOfferingDecision,
+    DeliveryGroup,
+    CourseCombinationRule,
+    CourseCombinationRuleMember,
 ])

@@ -10,6 +10,8 @@ from django.core.validators import MinValueValidator
 from django.db import models
 
 from backend.apps.common.constants import (
+    BACKUP_POLICY_CHOICES,
+    BACKUP_POLICY_IGNORE,
     CAPACITY_PROFILE_SCOPE_CHOICES,
     CAPACITY_PROFILE_SCOPE_SHARED,
     COURSE_PRIORITY_TIER_CHOICES,
@@ -18,6 +20,9 @@ from backend.apps.common.constants import (
     SECTION_LIFECYCLE_CHOICES,
     SECTION_PLANNING_RUN_STATUS_CHOICES,
     SECTION_RECONCILIATION_ACTION_CHOICES,
+    SECTION_BUDGET_TYPE_CHOICES,
+    TEACHER_ROSTER_STATUS_CHOICES,
+    TEACHER_ROSTER_STATUS_DRAFT,
     SEMESTER_CHOICES,
 )
 
@@ -94,6 +99,283 @@ class TeacherPlanningCapacity(models.Model):
 
     def __str__(self):
         return f"{self.teacher} {self.academic_year} S{self.semester}"
+
+
+class TeacherPlanningRoster(models.Model):
+    """Explicit readiness checkpoint for one academic year's staffing records."""
+
+    academic_year = models.OneToOneField(
+        "common.AcademicYear",
+        on_delete=models.CASCADE,
+        related_name="teacher_planning_roster",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=TEACHER_ROSTER_STATUS_CHOICES,
+        default=TEACHER_ROSTER_STATUS_DRAFT,
+    )
+    confirmed_by = models.ForeignKey("auth.User", null=True, on_delete=models.SET_NULL)
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["academic_year"]
+
+    def __str__(self):
+        return f"{self.academic_year} staffing roster ({self.status})"
+
+
+class TeacherPlanningRosterMember(models.Model):
+    """One teacher intentionally included in a particular year's staff plan."""
+
+    roster = models.ForeignKey(
+        TeacherPlanningRoster,
+        on_delete=models.CASCADE,
+        related_name="members",
+    )
+    teacher = models.ForeignKey(
+        "people.Teacher",
+        on_delete=models.PROTECT,
+        related_name="planning_roster_memberships",
+    )
+    added_by = models.ForeignKey("auth.User", null=True, on_delete=models.SET_NULL)
+    added_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["teacher__last_name", "teacher__first_name", "teacher_id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["roster", "teacher"],
+                name="unique_teacher_per_planning_roster",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.teacher} on {self.roster}"
+
+
+class SectionBudgetRun(models.Model):
+    """Immutable teacher-independent allocation of a physical-section budget."""
+
+    academic_year = models.ForeignKey("common.AcademicYear", on_delete=models.PROTECT)
+    created_by = models.ForeignKey("auth.User", null=True, on_delete=models.SET_NULL)
+    created_at = models.DateTimeField(auto_now_add=True)
+    status = models.CharField(max_length=20, choices=SECTION_PLANNING_RUN_STATUS_CHOICES)
+    budget_type = models.CharField(max_length=20, choices=SECTION_BUDGET_TYPE_CHOICES)
+    section_budget = models.PositiveIntegerField()
+    backup_policy = models.CharField(
+        max_length=30,
+        choices=BACKUP_POLICY_CHOICES,
+        default=BACKUP_POLICY_IGNORE,
+    )
+    backup_overrides = models.JSONField(default=list, blank=True)
+    scenario_constraints = models.JSONField(default=dict, blank=True)
+    input_snapshot = models.JSONField(default=dict)
+    result = models.JSONField(default=dict)
+    solver_metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise ValidationError("Section budget runs are immutable.")
+        return super().save(*args, **kwargs)
+
+
+class SectionBudgetApproval(models.Model):
+    """Immutable counselor acceptance of a budget result; creates no sections."""
+
+    budget_run = models.OneToOneField(
+        SectionBudgetRun,
+        on_delete=models.PROTECT,
+        related_name="approval",
+    )
+    approved_by = models.ForeignKey("auth.User", null=True, on_delete=models.SET_NULL)
+    approved_at = models.DateTimeField(auto_now_add=True)
+    reason = models.TextField()
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise ValidationError("Section budget approvals are immutable.")
+        return super().save(*args, **kwargs)
+
+
+class SectionBudgetApprovalOffering(models.Model):
+    """Recommended and accepted physical counts for one delivery group."""
+
+    approval = models.ForeignKey(
+        SectionBudgetApproval,
+        on_delete=models.PROTECT,
+        related_name="offering_approvals",
+    )
+    delivery_group = models.ForeignKey("courses.DeliveryGroup", on_delete=models.PROTECT)
+    recommended_annual_count = models.PositiveIntegerField()
+    recommended_semester_1_count = models.PositiveIntegerField()
+    recommended_semester_2_count = models.PositiveIntegerField()
+    approved_annual_count = models.PositiveIntegerField()
+    approved_semester_1_count = models.PositiveIntegerField()
+    approved_semester_2_count = models.PositiveIntegerField()
+
+    class Meta:
+        ordering = ["delivery_group__name", "delivery_group_id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["approval", "delivery_group"],
+                name="unique_delivery_group_per_budget_approval",
+            )
+        ]
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise ValidationError("Budget offering approvals are immutable.")
+        return super().save(*args, **kwargs)
+
+
+class PlanningRequestResolution(models.Model):
+    """Immutable explanation of how cancellation affected one student's demand."""
+
+    approval = models.ForeignKey(
+        SectionBudgetApproval,
+        on_delete=models.PROTECT,
+        related_name="request_resolutions",
+    )
+    student = models.ForeignKey("people.Student", on_delete=models.PROTECT)
+    cancelled_course_ids = models.JSONField(default=list)
+    backup_request = models.ForeignKey(
+        "courses.CourseRequest",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+    )
+    outcome = models.CharField(max_length=40)
+    unresolved_course_count = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["student_id", "id"]
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise ValidationError("Planning request resolutions are immutable.")
+        return super().save(*args, **kwargs)
+
+
+class StaffingPlanRun(models.Model):
+    """Immutable staffing-aware plan over physical delivery groups.
+
+    A run may stand alone or refine an approved teacher-independent budget.
+    Linking the approval, rather than copying only its total, lets reviewers
+    explain every reallocation from the earlier planning decision.
+    """
+
+    academic_year = models.ForeignKey("common.AcademicYear", on_delete=models.PROTECT)
+    budget_approval = models.ForeignKey(
+        SectionBudgetApproval,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="staffing_runs",
+    )
+    teacher_roster = models.ForeignKey(
+        TeacherPlanningRoster,
+        on_delete=models.PROTECT,
+        related_name="staffing_runs",
+    )
+    created_by = models.ForeignKey("auth.User", null=True, on_delete=models.SET_NULL)
+    created_at = models.DateTimeField(auto_now_add=True)
+    status = models.CharField(max_length=20, choices=SECTION_PLANNING_RUN_STATUS_CHOICES)
+    backup_policy = models.CharField(
+        max_length=30,
+        choices=BACKUP_POLICY_CHOICES,
+        default=BACKUP_POLICY_IGNORE,
+    )
+    backup_overrides = models.JSONField(default=list, blank=True)
+    scenario_constraints = models.JSONField(default=dict, blank=True)
+    input_snapshot = models.JSONField(default=dict)
+    result = models.JSONField(default=dict)
+    solver_metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise ValidationError("Staffing plan runs are immutable.")
+        return super().save(*args, **kwargs)
+
+
+class StaffingPlanApproval(models.Model):
+    """One counselor-approved staffing plan that may create draft sections."""
+
+    staffing_run = models.OneToOneField(
+        StaffingPlanRun,
+        on_delete=models.PROTECT,
+        related_name="approval",
+    )
+    approved_by = models.ForeignKey("auth.User", null=True, on_delete=models.SET_NULL)
+    approved_at = models.DateTimeField(auto_now_add=True)
+    reason = models.TextField()
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise ValidationError("Staffing plan approvals are immutable.")
+        return super().save(*args, **kwargs)
+
+
+class StaffingPlanApprovalOffering(models.Model):
+    """Recommended and approved semester counts for one physical class group."""
+
+    approval = models.ForeignKey(
+        StaffingPlanApproval,
+        on_delete=models.PROTECT,
+        related_name="offering_approvals",
+    )
+    delivery_group = models.ForeignKey("courses.DeliveryGroup", on_delete=models.PROTECT)
+    recommended_semester_1_count = models.PositiveIntegerField()
+    recommended_semester_2_count = models.PositiveIntegerField()
+    approved_semester_1_count = models.PositiveIntegerField()
+    approved_semester_2_count = models.PositiveIntegerField()
+
+    class Meta:
+        ordering = ["delivery_group__name", "delivery_group_id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["approval", "delivery_group"],
+                name="unique_delivery_group_per_staffing_approval",
+            )
+        ]
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise ValidationError("Staffing offering approvals are immutable.")
+        return super().save(*args, **kwargs)
+
+
+class StaffingRequestResolution(models.Model):
+    """Frozen backup/cancellation outcome used by a staffing-aware plan."""
+
+    staffing_run = models.ForeignKey(
+        StaffingPlanRun,
+        on_delete=models.PROTECT,
+        related_name="request_resolutions",
+    )
+    student = models.ForeignKey("people.Student", on_delete=models.PROTECT)
+    cancelled_course_ids = models.JSONField(default=list)
+    backup_request = models.ForeignKey(
+        "courses.CourseRequest",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+    )
+    outcome = models.CharField(max_length=40)
+    unresolved_course_count = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["student_id", "id"]
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise ValidationError("Staffing request resolutions are immutable.")
+        return super().save(*args, **kwargs)
 
 
 class SectionPlanningRun(models.Model):

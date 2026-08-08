@@ -17,5 +17,6 @@ urlpatterns = [
     path("", include("backend.apps.courses.urls")),
     path("", include("backend.apps.constraints.urls")),
     path("", include("backend.apps.common.urls")),
+    path("", include("backend.apps.people.urls")),
     path("", include("backend.apps.scheduling.urls")),
 ]

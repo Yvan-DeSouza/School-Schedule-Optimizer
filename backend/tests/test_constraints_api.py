@@ -9,6 +9,7 @@ from backend.apps.common.constants import (
     QUALIFICATION_DIVISION_SENIOR,
     QUALIFICATION_ENFORCEMENT_PREFERRED,
     QUALIFICATION_ENFORCEMENT_REQUIRED,
+    QUALIFICATION_REVIEW_VERIFIED,
     QUALIFICATION_SOURCE_ASPEN,
     QUALIFICATION_SUBJECT_CHEMISTRY,
     QUALIFICATION_SUBJECT_MATHEMATICS,
@@ -81,7 +82,11 @@ def test_section_lock_requires_qualified_teacher_and_can_be_cleared(authenticate
     url = f"/api/sections/{section.id}/lock/"
     client = authenticated_client(counselor_user)
     assert client.patch(url, {"locked_teacher": teacher_user.teacher_profile.id}, format="json").status_code == 400
-    TeacherQualification.objects.create(teacher=teacher_user.teacher_profile, qualification=qualification)
+    TeacherQualification.objects.create(
+        teacher=teacher_user.teacher_profile,
+        qualification=qualification,
+        review_status=QUALIFICATION_REVIEW_VERIFIED,
+    )
     created = client.patch(url, {"locked_teacher": teacher_user.teacher_profile.id, "locked_timeslot": timeslot.id}, format="json")
     assert created.status_code == 201
     cleared = client.patch(url, {"locked_teacher": None}, format="json")

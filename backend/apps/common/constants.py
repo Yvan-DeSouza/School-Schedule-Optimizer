@@ -126,6 +126,67 @@ SECTION_RECONCILIATION_ACTION_CHOICES = (
     (SECTION_RECONCILIATION_ACTION_REACTIVATED, "Reactivated"),
 )
 
+# Course-offering decisions are year-specific. A catalog course continues to
+# exist when its offering is cancelled, so requests and historical evidence do
+# not disappear with the counselor's decision.
+COURSE_OFFERING_STATUS_OFFERED = "offered"
+COURSE_OFFERING_STATUS_CANCELLED = "cancelled"
+COURSE_OFFERING_STATUS_CHOICES = (
+    (COURSE_OFFERING_STATUS_OFFERED, "Offered"),
+    (COURSE_OFFERING_STATUS_CANCELLED, "Cancelled"),
+)
+DELIVERY_GROUP_STATUS_ACTIVE = "active"
+DELIVERY_GROUP_STATUS_RETIRED = "retired"
+DELIVERY_GROUP_STATUS_CHOICES = (
+    (DELIVERY_GROUP_STATUS_ACTIVE, "Active"),
+    (DELIVERY_GROUP_STATUS_RETIRED, "Retired"),
+)
+COURSE_OFFERING_ACTION_CANCELLED = "cancelled"
+COURSE_OFFERING_ACTION_RESTORED = "restored"
+COURSE_OFFERING_ACTION_COMBINED = "combined"
+COURSE_OFFERING_ACTION_SEPARATED = "separated"
+COURSE_OFFERING_ACTION_CHOICES = (
+    (COURSE_OFFERING_ACTION_CANCELLED, "Cancelled"),
+    (COURSE_OFFERING_ACTION_RESTORED, "Restored"),
+    (COURSE_OFFERING_ACTION_COMBINED, "Combined"),
+    (COURSE_OFFERING_ACTION_SEPARATED, "Separated"),
+)
+
+# A budget run can require every allocation to be used or treat the supplied
+# number as a ceiling. Backup policies change effective planning demand without
+# rewriting a student's original request records.
+SECTION_BUDGET_EXACT = "exact"
+SECTION_BUDGET_CEILING = "ceiling"
+SECTION_BUDGET_TYPE_CHOICES = (
+    (SECTION_BUDGET_EXACT, "Exact physical-section total"),
+    (SECTION_BUDGET_CEILING, "Maximum physical-section total"),
+)
+BACKUP_POLICY_PROMOTE_AVAILABLE = "promote_available"
+BACKUP_POLICY_IGNORE = "ignore"
+BACKUP_POLICY_CHOICES = (
+    (BACKUP_POLICY_PROMOTE_AVAILABLE, "Promote available backups"),
+    (BACKUP_POLICY_IGNORE, "Ignore backups"),
+)
+
+# A staffing roster must be consciously confirmed before it constrains a run.
+TEACHER_ROSTER_STATUS_DRAFT = "draft"
+TEACHER_ROSTER_STATUS_READY = "ready"
+TEACHER_ROSTER_STATUS_CHOICES = (
+    (TEACHER_ROSTER_STATUS_DRAFT, "Draft"),
+    (TEACHER_ROSTER_STATUS_READY, "Ready"),
+)
+
+# Teacher-submitted credentials are evidence, not eligibility, until a planning
+# role reviews them. Only verified records enter the constraint compiler.
+QUALIFICATION_REVIEW_PENDING = "pending"
+QUALIFICATION_REVIEW_VERIFIED = "verified"
+QUALIFICATION_REVIEW_REJECTED = "rejected"
+QUALIFICATION_REVIEW_CHOICES = (
+    (QUALIFICATION_REVIEW_PENDING, "Pending review"),
+    (QUALIFICATION_REVIEW_VERIFIED, "Verified"),
+    (QUALIFICATION_REVIEW_REJECTED, "Rejected"),
+)
+
 # A course request can be a student's main request or a backup choice.
 COURSE_REQUEST_TYPE_PRIMARY = "primary"
 COURSE_REQUEST_TYPE_ALTERNATE = "alternate"
