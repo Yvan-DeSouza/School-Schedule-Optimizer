@@ -2,6 +2,7 @@
 
 from rest_framework import serializers
 
+from backend.apps.common.exceptions import DomainValidationError
 from backend.apps.common.constants import (
     COURSE_REQUEST_TYPE_ALTERNATE,
     DELIVERY_GROUP_STATUS_ACTIVE,
@@ -170,12 +171,15 @@ class SectionSerializer(CapacityValidationMixin, serializers.ModelSerializer):
                 "delivery_group": "The delivery group belongs to a different academic year."
             })
         teacher = attrs.get("teacher", getattr(self.instance, "teacher", None))
-        if delivery_group and teacher:
-            validate_teacher_delivery_group_assignment(delivery_group, teacher)
-        elif course and teacher:
-            # Direct section assignment and lock assignment share the same
-            # normalized senior-course qualification rules.
-            validate_teacher_course_assignment(course, teacher)
+        try:
+            if delivery_group and teacher:
+                validate_teacher_delivery_group_assignment(delivery_group, teacher)
+            elif course and teacher:
+                # Direct section assignment and lock assignment share the same
+                # normalized senior-course qualification rules.
+                validate_teacher_course_assignment(course, teacher)
+        except DomainValidationError as error:
+            raise serializers.ValidationError(error.detail) from error
         return attrs
 
     def get_member_courses(self, instance):

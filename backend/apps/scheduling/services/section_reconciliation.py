@@ -21,9 +21,12 @@ from backend.apps.common.constants import (
     SEMESTER_FALL,
     SEMESTER_WINTER,
 )
-from backend.apps.control.models import ManualOverride, SectionLock
-from backend.apps.courses.models import Course, CourseOffering, Enrollment, Section
+from backend.apps.courses.models import Course, CourseOffering, Section
 from backend.apps.courses.services.offerings import ensure_academic_year_offerings
+from backend.apps.courses.services.section_state import (
+    fixed_context_reasons as _protection_reasons,
+    section_dependency_sets as _dependency_sets,
+)
 from backend.apps.scheduling.models import (
     CapacityProfile,
     SectionPlanningApproval,
@@ -32,13 +35,13 @@ from backend.apps.scheduling.models import (
     SectionPlanningReconciliationAction,
     SectionPlanningReconciliationCourse,
     SectionPlanningRun,
-    SectionSchedule,
 )
 from backend.apps.scheduling.services.section_planning import (
     PlanningApprovalConflictError,
     PlanningApprovalValidationError,
     _normalize_selections,
 )
+from backend.apps.scheduling.services.run_contracts import require_text_reason
 
 
 SECTION_NUMBER_PATTERN = re.compile(r"^S(?P<semester>[12])-(?P<sequence>\d+)$")
@@ -47,41 +50,6 @@ SECTION_NUMBER_PATTERN = re.compile(r"^S(?P<semester>[12])-(?P<sequence>\d+)$")
 def _append_once(values, value):
     if value not in values:
         values.append(value)
-
-
-def _dependency_sets(section_ids):
-    """Load section protection evidence in bounded queries."""
-
-    return {
-        "section_lock": set(
-            SectionLock.objects.filter(section_id__in=section_ids).values_list("section_id", flat=True)
-        ),
-        "section_schedule": set(
-            SectionSchedule.objects.filter(section_id__in=section_ids).values_list("section_id", flat=True)
-        ),
-        "enrollments": set(
-            Enrollment.objects.filter(section_id__in=section_ids).values_list("section_id", flat=True)
-        ),
-        "manual_overrides": set(
-            ManualOverride.objects.filter(section_id__in=section_ids).values_list("section_id", flat=True)
-        ),
-    }
-
-
-def _protection_reasons(section, dependencies):
-    """Return stable reasons that make an active section fixed context."""
-
-    reasons = []
-    if section.planning_approval_course_id is None:
-        reasons.append("manual_section")
-    if section.teacher_id is not None:
-        reasons.append("assigned_teacher")
-    if section.is_locked:
-        reasons.append("section_flag_locked")
-    for reason in ("section_lock", "section_schedule", "enrollments", "manual_overrides"):
-        if section.id in dependencies[reason]:
-            reasons.append(reason)
-    return reasons
 
 
 def _section_payload(section, *, protection_reasons=()):
@@ -545,12 +513,12 @@ def reconcile_section_planning_run(
 ):
     """Apply the exact reviewed delta and record one immutable audit graph."""
 
-    if not isinstance(reason, str) or not reason.strip():
-        # Enforce the audit contract for service callers as well as HTTP callers.
-        raise PlanningApprovalValidationError({
-            "reason": "A reconciliation reason is required."
-        })
-    reason = reason.strip()
+    # Enforce the audit contract for service callers as well as HTTP callers.
+    reason = require_text_reason(
+        reason,
+        message="A reconciliation reason is required.",
+        error_class=PlanningApprovalValidationError,
+    )
     run = SectionPlanningRun.objects.select_for_update().get(pk=run.pk)
     ensure_academic_year_offerings(run.academic_year, actor=reconciled_by)
     _, _, normalized = _normalize_selections(run, selections)

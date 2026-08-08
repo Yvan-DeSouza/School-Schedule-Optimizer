@@ -11,6 +11,11 @@ from backend.apps.common.constants import (
     CAPACITY_PROFILE_SCOPE_SHARED,
     COURSE_PRIORITY_TIER_STANDARD,
 )
+from backend.apps.scheduling.domain.capacity import (
+    CAPACITY_FIELDS,
+    capacity_values,
+    validate_capacity_order,
+)
 from backend.apps.scheduling.models import CapacityProfile, CoursePriorityProfile
 
 
@@ -56,11 +61,13 @@ def apply_course_capacity_policy(course, *, profile=None, values=None):
         return profile
 
     source = course.capacity_profile
+    merged_values = capacity_values(source, values)
+    validate_capacity_order(merged_values)
     if source.scope == CAPACITY_PROFILE_SCOPE_COURSE_SPECIFIC and source.courses.count() == 1:
         # A profile owned solely by this course can be edited in place without
         # affecting any other course.
-        for field in ("hard_min", "soft_min", "target", "soft_max", "hard_max"):
-            setattr(source, field, values.get(field, getattr(source, field)))
+        for field in CAPACITY_FIELDS:
+            setattr(source, field, merged_values[field])
         source.full_clean()
         source.save()
         return source
@@ -78,11 +85,7 @@ def apply_course_capacity_policy(course, *, profile=None, values=None):
     profile = CapacityProfile.objects.create(
         name=name,
         scope=CAPACITY_PROFILE_SCOPE_COURSE_SPECIFIC,
-        hard_min=values.get("hard_min", source.hard_min),
-        soft_min=values.get("soft_min", source.soft_min),
-        target=values.get("target", source.target),
-        soft_max=values.get("soft_max", source.soft_max),
-        hard_max=values.get("hard_max", source.hard_max),
+        **merged_values,
     )
     # Model.save() does not call full_clean automatically; enforce threshold
     # ordering before attaching the new profile.

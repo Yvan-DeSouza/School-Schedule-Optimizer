@@ -1,12 +1,11 @@
 """Reusable qualification rules shared by APIs and future scheduling work."""
 
-from rest_framework.exceptions import ValidationError
-
 from backend.apps.common.constants import (
     QUALIFICATION_ENFORCEMENT_REQUIRED,
     QUALIFICATION_REVIEW_VERIFIED,
     STATUTORY_TEACHABLE_MIN_GRADE,
 )
+from backend.apps.common.exceptions import DomainValidationError
 from backend.apps.constraints.models import CourseQualificationRequirement, TeacherQualification
 
 
@@ -58,7 +57,7 @@ def teacher_meets_course_qualification_requirements(teacher, course):
 def validate_teacher_course_assignment(course, teacher, field_name="teacher"):
     """Raise a field-specific API error when a teacher cannot teach a course."""
     if teacher is not None and teacher.is_archived:
-        raise ValidationError({field_name: "An archived teacher cannot receive a new assignment."})
+        raise DomainValidationError({field_name: "An archived teacher cannot receive a new assignment."})
     if teacher is None or not course_requires_statutory_qualification(course):
         return
 
@@ -68,13 +67,13 @@ def validate_teacher_course_assignment(course, teacher, field_name="teacher"):
     if not missing:
         # Empty missing set plus ineligible means configuration is absent, not
         # that the selected teacher lacks a particular known credential.
-        raise ValidationError({
+        raise DomainValidationError({
             field_name: (
                 "This Grade 11-12 course has no required senior teachable qualification "
                 "configured, so a teacher cannot be assigned yet."
             )
         })
-    raise ValidationError({
+    raise DomainValidationError({
         field_name: "This teacher lacks a required qualification for the Grade 11-12 course."
     })
 
@@ -89,12 +88,12 @@ def validate_teacher_delivery_group_assignment(delivery_group, teacher, field_na
         for offering in delivery_group.offerings.select_related("course").all()
     ]
     if not courses:
-        raise ValidationError({field_name: "The delivery group has no active course offering."})
+        raise DomainValidationError({field_name: "The delivery group has no active course offering."})
     for course in courses:
         try:
             validate_teacher_course_assignment(course, teacher, field_name=field_name)
-        except ValidationError as error:
-            raise ValidationError({
+        except DomainValidationError as error:
+            raise DomainValidationError({
                 field_name: (
                     f"This teacher cannot cover every member of the physical class; "
                     f"{course.course_code} failed its qualification rule."

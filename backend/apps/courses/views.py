@@ -1,7 +1,7 @@
 """Policy-filtered course, section, request, and demand-summary endpoints."""
 
 from django.shortcuts import get_object_or_404
-from rest_framework import status, viewsets
+from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import APIException
 from rest_framework.exceptions import NotFound, ValidationError
@@ -12,16 +12,15 @@ from backend.apps.access.action_policies.demand import DemandPlanningAction, Dem
 from backend.apps.access.permissions import ActionPolicyPermission, ResourcePolicyPermission
 from backend.apps.access.resource_policies.courses import CoursePolicy, CourseRequestPolicy, SectionPolicy
 from backend.apps.access.resource_policies.planning import PlanningConfigurationPolicy
+from backend.apps.access.viewsets import PolicyFilteredModelViewSet
 from backend.apps.common.models import AcademicYear
-from backend.apps.common.constants import SECTION_LIFECYCLE_ACTIVE, SECTION_LIFECYCLE_RETIRED
-from backend.apps.control.models import ManualOverride, SectionLock
+from backend.apps.common.constants import SECTION_LIFECYCLE_ACTIVE
 from backend.apps.courses.models import (
     Course,
     CourseCombinationRule,
     CourseOffering,
     CourseRequest,
     DeliveryGroup,
-    Enrollment,
     Section,
 )
 from backend.apps.courses.serializers import (
@@ -34,10 +33,10 @@ from backend.apps.courses.serializers import (
     OfferingDecisionRequestSerializer,
     SectionSerializer,
 )
+from backend.apps.courses.services.section_state import section_delete_conflicts
 from backend.apps.courses.services.demand import get_course_demand_summary
 from backend.apps.people.models import RoleChoices
 from backend.apps.people.roles import get_user_role
-from backend.apps.scheduling.models import SectionSchedule
 
 
 class SectionStateConflict(APIException):
@@ -47,20 +46,8 @@ class SectionStateConflict(APIException):
     default_code = "section_state_conflict"
 
 
-class PolicyFilteredViewSet(viewsets.ModelViewSet):
-    """Apply resource-policy scoping before optional field filters."""
-
-    permission_classes = [ResourcePolicyPermission]
-    filter_fields = ()
-
-    def get_queryset(self):
-        # Query parameters only narrow records already authorized by the policy.
-        queryset = self.resource_policy_class.filter_read_queryset(self.request.user, self.queryset.all())
-        for field in self.filter_fields:
-            value = self.request.query_params.get(field)
-            if value is not None:
-                queryset = queryset.filter(**{field: value})
-        return queryset
+class PolicyFilteredViewSet(PolicyFilteredModelViewSet):
+    """Local alias preserving course-view naming while sharing the contract."""
 
 
 class CourseViewSet(PolicyFilteredViewSet):
@@ -82,6 +69,11 @@ class SectionViewSet(PolicyFilteredViewSet):
         "planning_approval_course__approval",
         "staffing_approval_offering__approval",
         "delivery_group",
+    ).prefetch_related(
+        # SectionSerializer exposes member course codes for combined groups.
+        # Prefetching here keeps list endpoints from querying each delivery
+        # group and member course separately.
+        "delivery_group__offerings__course",
     )
     serializer_class = SectionSerializer
     resource_policy_class = SectionPolicy
@@ -107,26 +99,7 @@ class SectionViewSet(PolicyFilteredViewSet):
         # Manual, dependency-free sections may still be removed. Everything
         # created or touched by planning, or referenced by downstream work, is
         # retained so approvals and schedules never point to missing facts.
-        conflicts = []
-        if instance.lifecycle_status == SECTION_LIFECYCLE_RETIRED:
-            conflicts.append("retired_section")
-        if instance.planning_approval_course_id:
-            conflicts.append("planning_generated")
-        if instance.staffing_approval_offering_id:
-            conflicts.append("staffing_plan_generated")
-        if instance.planning_reconciliation_actions.exists():
-            conflicts.append("reconciliation_audit")
-        if instance.teacher_id:
-            conflicts.append("assigned_teacher")
-        if instance.is_locked:
-            conflicts.append("section_flag_locked")
-        dependency_queries = (
-            ("section_lock", SectionLock.objects.filter(section=instance)),
-            ("section_schedule", SectionSchedule.objects.filter(section=instance)),
-            ("enrollments", Enrollment.objects.filter(section=instance)),
-            ("manual_overrides", ManualOverride.objects.filter(section=instance)),
-        )
-        conflicts.extend(code for code, query in dependency_queries if query.exists())
+        conflicts = section_delete_conflicts(instance)
         if conflicts:
             raise SectionStateConflict({
                 "detail": "This section is audited or has dependent scheduling data and cannot be deleted.",
@@ -159,6 +132,9 @@ class CourseOfferingViewSet(PolicyFilteredViewSet):
         "academic_year",
         "delivery_group",
         "decided_by",
+    ).prefetch_related(
+        # Offering responses show the complete physical delivery membership.
+        "delivery_group__offerings__course",
     )
     serializer_class = CourseOfferingSerializer
     resource_policy_class = PlanningConfigurationPolicy

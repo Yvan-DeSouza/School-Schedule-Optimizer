@@ -1,7 +1,7 @@
 """Policy-filtered CRUD endpoints for scheduling constraints and locks."""
 
 from django.shortcuts import get_object_or_404
-from rest_framework import status, viewsets
+from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import APIException, PermissionDenied, ValidationError
 from rest_framework.response import Response
@@ -9,6 +9,8 @@ from rest_framework.views import APIView
 
 from backend.apps.access.permissions import ResourcePolicyPermission
 from backend.apps.access.resource_policies.constraints import PlanningResourcePolicy, TeacherOwnedResourcePolicy
+from backend.apps.access.viewsets import PolicyFilteredModelViewSet
+from backend.apps.common.exceptions import DomainConflictError, DomainValidationError
 from backend.apps.constraints.models import (
     CounselorConstraintPreference, CourseConflict, CourseQualificationRequirement,
     CourseRoomRequirement, HardConstraint, Qualification, SoftConstraint,
@@ -22,12 +24,13 @@ from backend.apps.constraints.serializers import (
     TeacherCurrentCourseSerializer, TeacherQualificationReviewSerializer,
     TeacherQualificationSerializer,
 )
+from backend.apps.constraints.qualification_review import review_teacher_qualification
 from backend.apps.control.models import SectionLock
+from backend.apps.control.services.locks import apply_section_lock
 from backend.apps.common.constants import (
     QUALIFICATION_REVIEW_PENDING,
     QUALIFICATION_REVIEW_REJECTED,
     QUALIFICATION_REVIEW_VERIFIED,
-    SECTION_LIFECYCLE_RETIRED,
 )
 from backend.apps.courses.models import Section
 from backend.apps.people.models import RoleChoices, Teacher
@@ -41,21 +44,8 @@ class RetiredSectionConflict(APIException):
     default_code = "retired_section_conflict"
 
 
-class PolicyFilteredViewSet(viewsets.ModelViewSet):
-    """Apply resource policy before optional query-parameter narrowing."""
-
-    permission_classes = [ResourcePolicyPermission]
-    filter_fields = ()
-
-    def get_queryset(self):
-        # Authorization always precedes client filtering; changing this order can
-        # leak records through apparently harmless query parameters.
-        queryset = self.resource_policy_class.filter_read_queryset(self.request.user, self.queryset.all())
-        for field in self.filter_fields:
-            value = self.request.query_params.get(field)
-            if value is not None:
-                queryset = queryset.filter(**{field: value})
-        return queryset
+class PolicyFilteredViewSet(PolicyFilteredModelViewSet):
+    """Local alias preserving constraint-view naming while sharing the contract."""
 
 
 class SharedConstraintViewSet(PolicyFilteredViewSet):
@@ -155,26 +145,18 @@ class TeacherQualificationViewSet(TeacherNestedViewSet):
             raise PermissionDenied("Only a planning role may review qualifications.")
 
     def _review(self, request, *, review_status):
-        from django.utils import timezone
-        from backend.apps.scheduling.services.staffing_configuration import (
-            invalidate_teacher_rosters,
-        )
-
         self._require_planning_role()
         serializer = TeacherQualificationReviewSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        reason = serializer.validated_data["reason"].strip()
-        if review_status == QUALIFICATION_REVIEW_REJECTED and not reason:
-            raise ValidationError({"reason": "A rejection reason is required."})
-        item = self.get_object()
-        item.review_status = review_status
-        item.reviewed_by = request.user
-        item.reviewed_at = timezone.now()
-        item.review_reason = reason
-        item.save(update_fields=[
-            "review_status", "reviewed_by", "reviewed_at", "review_reason",
-        ])
-        invalidate_teacher_rosters(item.teacher_id)
+        try:
+            item = review_teacher_qualification(
+                self.get_object(),
+                actor=request.user,
+                review_status=review_status,
+                reason=serializer.validated_data["reason"],
+            )
+        except DomainValidationError as error:
+            raise ValidationError(error.detail) from error
         return Response(TeacherQualificationSerializer(item, context=self.get_serializer_context()).data)
 
     @action(detail=True, methods=["post"])
@@ -268,10 +250,6 @@ class SectionLockView(APIView):
 
     def patch(self, request, section_id):
         section = self.get_section()
-        if section.lifecycle_status == SECTION_LIFECYCLE_RETIRED:
-            raise RetiredSectionConflict({
-                "detail": "Retired sections are read-only and cannot receive scheduling locks."
-            })
         lock = SectionLock.objects.filter(section=section).first()
         created = lock is None
         if lock is None:
@@ -280,6 +258,28 @@ class SectionLockView(APIView):
             lock = SectionLock(section=section)
         serializer = SectionLockSerializer(lock, data=request.data, partial=True, context={"section": section})
         serializer.is_valid(raise_exception=True)
-        serializer.save()
+        try:
+            lock, created = apply_section_lock(
+                section,
+                locked_teacher=serializer.validated_data.get(
+                    "locked_teacher",
+                    lock.locked_teacher,
+                ),
+                locked_timeslot=serializer.validated_data.get(
+                    "locked_timeslot",
+                    lock.locked_timeslot,
+                ),
+                locked_room=serializer.validated_data.get(
+                    "locked_room",
+                    lock.locked_room,
+                ),
+            )
+        except DomainValidationError as error:
+            raise ValidationError(error.detail) from error
+        except DomainConflictError as error:
+            raise RetiredSectionConflict(error.detail) from error
         # Communicate whether PATCH created the singleton or updated it.
-        return Response(serializer.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+        return Response(
+            SectionLockSerializer(lock, context={"section": section}).data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )

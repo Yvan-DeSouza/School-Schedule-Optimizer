@@ -34,6 +34,12 @@ from backend.apps.scheduling.models import (
     TeacherPlanningRoster,
     TimeSlot,
 )
+from backend.apps.scheduling.domain.capacity import (
+    CAPACITY_FIELDS,
+    CAPACITY_ORDER_MESSAGE,
+    capacity_values,
+    validate_capacity_order,
+)
 
 
 class TimeSlotSerializer(serializers.ModelSerializer):
@@ -105,18 +111,19 @@ class CapacityProfileSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         # Merge PATCH fields with the instance before checking cross-field order.
-        values = {
-            field: attrs.get(field, getattr(self.instance, field, None))
-            for field in ("hard_min", "soft_min", "target", "soft_max", "hard_max")
-        }
-        if not (values["hard_min"] <= values["soft_min"] <= values["target"] <= values["soft_max"] <= values["hard_max"]):
-            raise serializers.ValidationError("Capacity values must satisfy hard_min <= soft_min <= target <= soft_max <= hard_max.")
+        try:
+            validate_capacity_order(capacity_values(self.instance, attrs))
+        except ValueError as error:
+            raise serializers.ValidationError(CAPACITY_ORDER_MESSAGE) from error
         return attrs
 
     def to_representation(self, instance):
         # Compute at response time so the count reflects current attachments.
         result = super().to_representation(instance)
-        result["usage_count"] = instance.courses.count()
+        usage_count = getattr(instance, "course_usage_count", None)
+        result["usage_count"] = (
+            usage_count if usage_count is not None else instance.courses.count()
+        )
         return result
 
 
@@ -214,7 +221,7 @@ class CourseCapacityPolicySerializer(serializers.Serializer):
     hard_max = serializers.IntegerField(required=False, min_value=1)
 
     def validate(self, attrs):
-        values = {key: attrs[key] for key in ("hard_min", "soft_min", "target", "soft_max", "hard_max") if key in attrs}
+        values = {key: attrs[key] for key in CAPACITY_FIELDS if key in attrs}
         # Mixing a profile ID and values makes ownership/precedence ambiguous.
         if attrs.get("capacity_profile") and values:
             raise serializers.ValidationError("Provide either capacity_profile or custom capacity values, not both.")
@@ -229,9 +236,11 @@ class CourseCapacityPolicySerializer(serializers.Serializer):
             source = course.capacity_profile
             # Partial custom input inherits omitted thresholds from the current
             # profile before validating the five-value ordering.
-            merged = {field: values.get(field, getattr(source, field)) for field in ("hard_min", "soft_min", "target", "soft_max", "hard_max")}
-            if not (merged["hard_min"] <= merged["soft_min"] <= merged["target"] <= merged["soft_max"] <= merged["hard_max"]):
-                raise serializers.ValidationError("Capacity values must satisfy hard_min <= soft_min <= target <= soft_max <= hard_max.")
+            merged = capacity_values(source, values)
+            try:
+                validate_capacity_order(merged)
+            except ValueError as error:
+                raise serializers.ValidationError(CAPACITY_ORDER_MESSAGE) from error
         return attrs
 
 

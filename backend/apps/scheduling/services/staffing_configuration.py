@@ -3,6 +3,7 @@
 from django.db import transaction
 from django.utils import timezone
 
+from backend.apps.common.exceptions import DomainValidationError
 from backend.apps.common.constants import (
     TEACHER_ROSTER_STATUS_DRAFT,
     TEACHER_ROSTER_STATUS_READY,
@@ -15,12 +16,8 @@ from backend.apps.scheduling.models import (
 )
 
 
-class StaffingConfigurationError(Exception):
+class StaffingConfigurationError(DomainValidationError):
     """A roster cannot be changed or confirmed as requested."""
-
-    def __init__(self, detail):
-        self.detail = detail
-        super().__init__(str(detail))
 
 
 def invalidate_roster(academic_year_id):

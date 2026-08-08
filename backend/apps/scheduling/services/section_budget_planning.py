@@ -17,6 +17,7 @@ from backend.apps.common.constants import (
     SECTION_PLANNING_RUN_STATUS_INFEASIBLE,
 )
 from backend.apps.courses.models import CourseOffering, CourseRequest, DeliveryGroup
+from backend.apps.courses.selectors import active_delivery_groups_for_year
 from backend.apps.courses.services.offerings import (
     combined_allowed_semester,
     ensure_academic_year_offerings,
@@ -32,6 +33,10 @@ from backend.apps.scheduling.services.engine_adapter import load_scheduling_inpu
 from backend.apps.scheduling.services.section_planning import (
     PlanningApprovalConflictError,
     PlanningApprovalValidationError,
+)
+from backend.apps.scheduling.services.run_contracts import (
+    ensure_unique_selection,
+    require_text_reason,
 )
 from scheduling_engine.section_budget_planner import (
     plan_section_budget,
@@ -117,6 +122,13 @@ def _normalize_approval(run, selections):
         ]
     else:
         normalized = [dict(item) for item in selections]
+        ensure_unique_selection(
+            normalized,
+            "offering_id",
+            field="offerings",
+            message="Each delivery group may be selected only once.",
+            error_class=PlanningApprovalValidationError,
+        )
     unknown = sorted({
         item["offering_id"] for item in normalized
         if item["offering_id"] not in recommendations
@@ -152,11 +164,10 @@ def preview_section_budget_approval(run, *, selections=None):
     courses = []
     approved_total = 0
     current_active_group_ids = set(
-        DeliveryGroup.objects.filter(
-            academic_year=run.academic_year,
-            status=DELIVERY_GROUP_STATUS_ACTIVE,
-            offerings__status=COURSE_OFFERING_STATUS_OFFERED,
-        ).values_list("id", flat=True).distinct()
+        active_delivery_groups_for_year(run.academic_year_id).values_list(
+            "id",
+            flat=True,
+        )
     )
     if current_active_group_ids != set(recommendations):
         errors.append({
@@ -288,8 +299,11 @@ def preview_section_budget_approval(run, *, selections=None):
 def approve_section_budget_run(run, *, approved_by, reason, selections=None):
     """Store accepted budget counts/resolutions without creating Section rows."""
 
-    if not isinstance(reason, str) or not reason.strip():
-        raise PlanningApprovalValidationError({"reason": "An approval reason is required."})
+    reason = require_text_reason(
+        reason,
+        message="An approval reason is required.",
+        error_class=PlanningApprovalValidationError,
+    )
     run = SectionBudgetRun.objects.select_for_update().get(pk=run.pk)
     if SectionBudgetApproval.objects.filter(budget_run=run).exists():
         raise PlanningApprovalConflictError({
@@ -305,7 +319,7 @@ def approve_section_budget_run(run, *, approved_by, reason, selections=None):
     approval = SectionBudgetApproval.objects.create(
         budget_run=run,
         approved_by=approved_by,
-        reason=reason.strip(),
+        reason=reason,
     )
     for item in preview["offerings"]:
         SectionBudgetApprovalOffering.objects.create(

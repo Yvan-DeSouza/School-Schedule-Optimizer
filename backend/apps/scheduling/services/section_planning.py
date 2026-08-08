@@ -17,6 +17,7 @@ the same conflicts that the transactional endpoint will enforce.
 
 from django.db import transaction
 
+from backend.apps.common.exceptions import DomainConflictError, DomainValidationError
 from backend.apps.common.constants import (
     COURSE_ALLOWED_SEMESTER_1_ONLY,
     COURSE_ALLOWED_SEMESTER_2_ONLY,
@@ -37,24 +38,17 @@ from backend.apps.scheduling.models import (
 from backend.apps.scheduling.services.engine_adapter import (
     get_section_count_plan_with_snapshot,
 )
+from backend.apps.scheduling.services.run_contracts import (
+    ensure_unique_selection,
+)
 
 
-class PlanningApprovalValidationError(Exception):
+class PlanningApprovalValidationError(DomainValidationError):
     """A proposed approval is malformed or violates current catalog rules."""
 
-    def __init__(self, detail):
-        # Keep structured detail so the DRF view can preserve field/diagnostic
-        # information instead of flattening it into one string.
-        self.detail = detail
-        super().__init__(str(detail))
 
-
-class PlanningApprovalConflictError(Exception):
+class PlanningApprovalConflictError(DomainConflictError):
     """A valid proposal would overwrite an existing planning decision."""
-
-    def __init__(self, detail):
-        self.detail = detail
-        super().__init__(str(detail))
 
 
 def create_section_planning_run(*, academic_year_id, created_by, course_constraints, teacher_capacity_adjustments):
@@ -139,6 +133,13 @@ def _normalize_selections(run, selections):
         # Copy serializer mappings before enriching/iterating so callers do not
         # observe accidental mutation of their validated data.
         normalized = [dict(item) for item in selections]
+        ensure_unique_selection(
+            normalized,
+            "course_id",
+            field="courses",
+            message="Each course may be selected only once.",
+            error_class=PlanningApprovalValidationError,
+        )
 
     unknown_course_ids = sorted({
         item["course_id"]
@@ -386,6 +387,7 @@ def preview_section_planning_approval(run, *, selections=None):
 def approve_section_planning_run(run, *, approved_by, selections=None, reason=""):
     """Atomically materialize reviewed counts as auditable draft sections."""
 
+    reason = reason.strip() if isinstance(reason, str) else ""
     # Serialize approvals from the same run.  This makes the already-approved
     # check reliable even when two counselors submit concurrently.
     run = SectionPlanningRun.objects.select_for_update().get(pk=run.pk)

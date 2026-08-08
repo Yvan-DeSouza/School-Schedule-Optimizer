@@ -1,6 +1,6 @@
 """Deletion guards that protect shared reference data from destructive cascades."""
 
-from rest_framework.exceptions import ValidationError
+from backend.apps.common.exceptions import DomainValidationError
 
 from backend.apps.common.models import AcademicYear, Room
 from backend.apps.constraints.models import TeacherAvailability, TeacherCurrentCourse
@@ -13,7 +13,7 @@ def _in_use(message, is_referenced):
     """Raise a consistent API error when a precomputed reference check is true."""
 
     if is_referenced:
-        raise ValidationError({"detail": message})
+        raise DomainValidationError({"detail": message})
 
 
 def ensure_reference_data_can_be_deleted(instance):

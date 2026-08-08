@@ -1,9 +1,11 @@
 """The sole Django boundary for loading data into the pure scheduling engine.
 
 This module is allowed to know both ORM models and ``scheduling_engine`` DTOs.
-No other Django module should import the engine directly, and no engine module
-may import Django.  Centralizing translation here makes filtering, defaults,
-qualification enforcement, and snapshot semantics reviewable in one place.
+Other scheduling services may call pure engine entrypoints using DTO snapshots
+loaded here, but non-scheduling Django apps should not import the engine
+directly. No engine module may import Django. Centralizing translation here
+makes filtering, defaults, qualification enforcement, and snapshot semantics
+reviewable in one place.
 
 The adapter reads a coherent target-year view but does not persist solver
 results.  Planning-run persistence belongs to ``section_planning.py``; later
@@ -49,6 +51,10 @@ from backend.apps.courses.models import (
     CourseRequest,
     DeliveryGroup,
     Section,
+)
+from backend.apps.courses.selectors import (
+    active_delivery_groups_for_year,
+    active_sections_for_year,
 )
 from backend.apps.people.models import Student, Teacher
 from backend.apps.scheduling.models import (
@@ -116,10 +122,11 @@ def load_scheduling_input(academic_year_id, *, require_ready_roster=False):
         )
     }
     committed_by_teacher_semester = {}
-    for section in Section.objects.filter(
-        academic_year_id=academic_year_id,
-        lifecycle_status=SECTION_LIFECYCLE_ACTIVE,
-    ).only("id", "teacher_id", "semester"):
+    for section in active_sections_for_year(academic_year_id).only(
+        "id",
+        "teacher_id",
+        "semester",
+    ):
         teacher_id = locked_teacher_by_section.get(section.id, section.teacher_id)
         if teacher_id:
             # Existing assigned/locked sections consume one load slot.  They are
@@ -226,13 +233,12 @@ def load_scheduling_input(academic_year_id, *, require_ready_roster=False):
                 ),
                 len(group.offerings.all()) > 1,
             )
-            for group in DeliveryGroup.objects.filter(
-                academic_year_id=academic_year_id,
-                status=DELIVERY_GROUP_STATUS_ACTIVE,
-                offerings__status=COURSE_OFFERING_STATUS_OFFERED,
-            ).select_related("capacity_profile").prefetch_related(
+            for group in active_delivery_groups_for_year(academic_year_id)
+            .select_related("capacity_profile")
+            .prefetch_related(
                 "offerings__course__priority_profile"
-            ).distinct().order_by("name", "id")
+            )
+            .order_by("name", "id")
         ),
         # Translate canonical request-type strings into an engine-neutral bool;
         # mandatory remains provenance and never determines priority tiers.
@@ -269,9 +275,9 @@ def load_scheduling_input(academic_year_id, *, require_ready_roster=False):
                     else ([section.course_id] if section.course_id else [])
                 ),
             )
-            for section in Section.objects.select_related("delivery_group").filter(
-                academic_year_id=academic_year_id,
-                lifecycle_status=SECTION_LIFECYCLE_ACTIVE,
+            for section in active_sections_for_year(
+                academic_year_id,
+                Section.objects.select_related("delivery_group"),
             )
         ),
         students=tuple(

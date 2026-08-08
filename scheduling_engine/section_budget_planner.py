@@ -2,15 +2,25 @@
 
 from __future__ import annotations
 
-from collections import Counter, defaultdict
-from dataclasses import dataclass
-from math import ceil
+from collections import defaultdict
 from typing import Iterable
 
 from ortools.sat.python import cp_model
 
-from .demand_analyzer import analyze_demand
-from .dto import CourseRequestDTO, PlanningOfferingDTO, SchedulingInputDTO
+from .dto import CourseRequestDTO, SchedulingInputDTO
+from .diagnostics import (
+    BUDGET_SEMESTER_SPLIT_INFEASIBLE,
+    COMBINED_OFFERING_OVER_CAPACITY,
+    OFFERING_CONSTRAINT_NO_CANDIDATE,
+    SECTION_BUDGET_INFEASIBLE,
+)
+from .planning_core import (
+    apply_count_constraints,
+    generate_budget_candidates,
+    planning_offerings,
+    predicted_enrollment_by_course,
+    solve_model_lexicographically,
+)
 
 
 BUDGET_EXACT = "exact"
@@ -19,122 +29,6 @@ BACKUP_PROMOTE = "promote_available"
 BACKUP_IGNORE = "ignore"
 SEMESTER_1_ONLY = "semester_1_only"
 SEMESTER_2_ONLY = "semester_2_only"
-
-
-@dataclass(frozen=True)
-class BudgetCandidate:
-    """One meaningful physical-section count for an offering."""
-
-    count: int
-    served_students: int
-    unmet_students: int
-    soft_violation: int
-    target_distance: int
-    below_hard_min_review_required: bool = False
-
-
-def _synthetic_offerings(data):
-    """Keep the engine usable for existing standalone fixtures and callers."""
-
-    return tuple(
-        PlanningOfferingDTO(
-            id=course.id,
-            member_course_ids=(course.id,),
-            member_course_codes=(course.course_code,),
-            capacity_profile_id=course.capacity_profile_id,
-            hard_min=course.hard_min,
-            soft_min=course.soft_min,
-            target_capacity=course.target_capacity,
-            soft_max=course.soft_max,
-            hard_max=course.hard_max,
-            allowed_semester=course.allowed_semester,
-            priority_tier=course.priority_tier,
-        )
-        for course in data.courses
-    )
-
-
-def _offerings(data):
-    return data.planning_offerings or _synthetic_offerings(data)
-
-
-def _course_ratios(data):
-    return {
-        summary.course_id: (
-            1.0
-            if summary.historical_conversion_ratio is None
-            else summary.historical_conversion_ratio
-        )
-        for summary in analyze_demand(data).summaries
-    }
-
-
-def _predicted_by_course(data, effective_requests):
-    counts = Counter(request.course_id for request in effective_requests)
-    ratios = _course_ratios(data)
-    return {
-        course.id: counts[course.id] * ratios.get(course.id, 1.0)
-        for course in data.courses
-    }
-
-
-def _generate_candidates(demand, offering):
-    rounded_demand = max(0, ceil(demand - 1e-12))
-    if rounded_demand == 0:
-        return (BudgetCandidate(0, 0, 0, 0, 0),)
-    if offering.is_combined:
-        if rounded_demand > offering.hard_max:
-            return ()
-        counts = (1,)
-    else:
-        # A positive active offering is never silently cancelled. Candidate
-        # counts below full-demand capacity expose honest unmet demand when the
-        # school-wide budget is tight.
-        maximum_meaningful = max(1, rounded_demand // offering.hard_min)
-        counts = range(1, maximum_meaningful + 1)
-    candidates = []
-    for count in counts:
-        served = min(rounded_demand, count * offering.hard_max)
-        unmet = rounded_demand - served
-        soft_violation = (
-            max(0, count * offering.soft_min - rounded_demand)
-            + max(0, rounded_demand - count * offering.soft_max)
-        )
-        candidates.append(BudgetCandidate(
-            count=count,
-            served_students=served,
-            unmet_students=unmet,
-            soft_violation=soft_violation,
-            target_distance=abs(rounded_demand - count * offering.target_capacity),
-            below_hard_min_review_required=rounded_demand < offering.hard_min,
-        ))
-    return tuple(candidates)
-
-
-def _apply_constraints(candidates, constraint):
-    values = []
-    for candidate in candidates:
-        if "exact_sections" in constraint and candidate.count != constraint["exact_sections"]:
-            continue
-        if candidate.count < constraint.get("min_sections", 0):
-            continue
-        if candidate.count > constraint.get("max_sections", float("inf")):
-            continue
-        values.append(candidate)
-    return tuple(values)
-
-
-def _solve_model(model, objectives):
-    solver = cp_model.CpSolver()
-    solver.parameters.num_search_workers = 1
-    solver.parameters.random_seed = 0
-    for objective in objectives:
-        model.Minimize(objective)
-        status = solver.Solve(model)
-        if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-            return None
-        model.Add(objective == solver.Value(objective))
-    return solver if solver.Solve(model) in (cp_model.OPTIMAL, cp_model.FEASIBLE) else None
 
 
 def _semester_split(offerings, counts, constraints=None):
@@ -183,7 +77,7 @@ def _semester_split(offerings, counts, constraints=None):
         for offering in offerings
         for variable, (one, two) in zip(choices[offering.id], options[offering.id])
     )
-    solver = _solve_model(model, (total_imbalance, offering_spread))
+    solver = solve_model_lexicographically(model, (total_imbalance, offering_spread))
     if solver is None:
         return None
     return {
@@ -210,7 +104,7 @@ def plan_section_budget(
         raise ValueError("budget_type must be exact or ceiling.")
     if section_budget < 0:
         raise ValueError("section_budget must be non-negative.")
-    offerings = _offerings(data)
+    offerings = planning_offerings(data)
     offering_ids = {offering.id for offering in offerings}
     constraints = {item["offering_id"]: dict(item) for item in offering_constraints}
     if not set(constraints) <= offering_ids:
@@ -220,7 +114,7 @@ def plan_section_budget(
         if effective_requests is not None
         else (request for request in data.course_requests if request.is_primary)
     )
-    predicted_by_course = _predicted_by_course(data, requests)
+    predicted_by_course = predicted_enrollment_by_course(data, requests)
     predicted_by_offering = {
         offering.id: sum(
             predicted_by_course.get(course_id, 0)
@@ -230,26 +124,26 @@ def plan_section_budget(
     }
     candidates = {}
     for offering in offerings:
-        generated = _generate_candidates(predicted_by_offering[offering.id], offering)
+        generated = generate_budget_candidates(predicted_by_offering[offering.id], offering)
         if not generated:
             return {
                 "status": "infeasible",
                 "detail": "A combined offering does not fit its one shared section.",
                 "diagnostics": [{
-                    "code": "combined_offering_over_capacity",
+                    "code": COMBINED_OFFERING_OVER_CAPACITY,
                     "offering_id": offering.id,
                     "member_course_codes": list(offering.member_course_codes),
                     "predicted_enrollment": predicted_by_offering[offering.id],
                     "hard_max": offering.hard_max,
                 }],
             }
-        filtered = _apply_constraints(generated, constraints.get(offering.id, {}))
+        filtered = apply_count_constraints(generated, constraints.get(offering.id, {}))
         if not filtered:
             return {
                 "status": "infeasible",
                 "detail": "A counselor constraint has no legal budget candidate.",
                 "diagnostics": [{
-                    "code": "offering_constraint_no_candidate",
+                    "code": OFFERING_CONSTRAINT_NO_CANDIDATE,
                     "offering_id": offering.id,
                     "available_counts": [item.count for item in generated],
                 }],
@@ -295,7 +189,7 @@ def plan_section_budget(
         ),
         total,
     ])
-    solver = _solve_model(model, objectives)
+    solver = solve_model_lexicographically(model, objectives)
     if solver is None:
         minimum = sum(min(item.count for item in values) for values in candidates.values())
         maximum = sum(max(item.count for item in values) for values in candidates.values())
@@ -303,7 +197,7 @@ def plan_section_budget(
             "status": "infeasible",
             "detail": "The physical-section budget cannot satisfy the active offerings.",
             "diagnostics": [{
-                "code": "section_budget_infeasible",
+                "code": SECTION_BUDGET_INFEASIBLE,
                 "budget_type": budget_type,
                 "section_budget": section_budget,
                 "minimum_meaningful_sections": minimum,
@@ -327,7 +221,7 @@ def plan_section_budget(
         return {
             "status": "infeasible",
             "detail": "The budget counts have no legal suggested semester split.",
-            "diagnostics": [{"code": "budget_semester_split_infeasible"}],
+            "diagnostics": [{"code": BUDGET_SEMESTER_SPLIT_INFEASIBLE}],
         }
     results = []
     for offering in sorted(offerings, key=lambda item: (item.member_course_codes, item.id)):

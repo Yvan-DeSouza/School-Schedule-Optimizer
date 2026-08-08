@@ -1,8 +1,8 @@
 """HTTP endpoints for timeslots, planning configuration, runs, and approvals.
 
 Views remain thin: policies authorize actions, serializers validate transport
-data, and services own business rules/transactions. Imports of the pure engine
-are restricted to ``engine_adapter`` by project convention.
+data, and services own business rules/transactions. ORM-to-engine translation
+is restricted to the scheduling adapter/snapshot boundary by project convention.
 """
 
 from rest_framework import mixins, status, viewsets
@@ -10,11 +10,12 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import APIException, NotFound, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from django.db.models import Count
 
 from backend.apps.access.action_policies.demand import DemandPlanningAction, DemandPlanningActionPolicy
 from backend.apps.access.permissions import ActionPolicyPermission
-from backend.apps.access.permissions import ResourcePolicyPermission
 from backend.apps.access.resource_policies.planning import PlanningConfigurationPolicy
+from backend.apps.access.viewsets import PolicyFilteredModelViewSet
 from backend.apps.common.models import AcademicYear
 from backend.apps.common.views import ReferenceDataViewSet
 from backend.apps.scheduling.models import (
@@ -96,21 +97,10 @@ class SectionCountRecommendationView(APIView):
         return Response(SectionCountRecommendationSerializer(recommendations, many=True).data)
 
 
-class PlanningConfigurationViewSet(viewsets.ModelViewSet):
+class PlanningConfigurationViewSet(PolicyFilteredModelViewSet):
     """Shared base applying role-safe policy filtering before query filters."""
 
-    permission_classes = [ResourcePolicyPermission]
     resource_policy_class = PlanningConfigurationPolicy
-    filter_fields = ()
-
-    def get_queryset(self):
-        # Policy filtering must happen first. Query parameters may narrow an
-        # authorized set but must never broaden it.
-        queryset = self.resource_policy_class.filter_read_queryset(self.request.user, self.queryset.all())
-        for field in self.filter_fields:
-            if (value := self.request.query_params.get(field)) is not None:
-                queryset = queryset.filter(**{field: value})
-        return queryset
 
 
 class CapacityProfileViewSet(PlanningConfigurationViewSet):
@@ -119,6 +109,11 @@ class CapacityProfileViewSet(PlanningConfigurationViewSet):
     queryset = CapacityProfile.objects.all()
     serializer_class = CapacityProfileSerializer
     filter_fields = ("scope",)
+
+    def get_policy_queryset(self):
+        # CapacityProfileSerializer exposes usage_count, so annotate once for
+        # list/detail instead of counting attached courses per serialized row.
+        return CapacityProfile.objects.annotate(course_usage_count=Count("courses"))
 
     def perform_destroy(self, instance):
         # Course FKs are PROTECTed as a database backstop; this precheck returns a

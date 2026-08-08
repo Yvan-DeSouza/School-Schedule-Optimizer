@@ -7,6 +7,7 @@ from math import ceil
 from django.db import transaction
 from django.db.models import Q
 
+from backend.apps.common.exceptions import DomainConflictError, DomainValidationError
 from backend.apps.common.constants import (
     COURSE_ALLOWED_SEMESTER_1_ONLY,
     COURSE_ALLOWED_SEMESTER_2_ONLY,
@@ -19,7 +20,6 @@ from backend.apps.common.constants import (
     COURSE_OFFERING_STATUS_OFFERED,
     DELIVERY_GROUP_STATUS_ACTIVE,
     DELIVERY_GROUP_STATUS_RETIRED,
-    SECTION_LIFECYCLE_ACTIVE,
 )
 from backend.apps.courses.models import (
     Course,
@@ -29,22 +29,15 @@ from backend.apps.courses.models import (
     DeliveryGroup,
     Section,
 )
+from backend.apps.courses.selectors import active_sections_queryset
 
 
-class OfferingValidationError(Exception):
+class OfferingValidationError(DomainValidationError):
     """The requested offering decision is malformed or pedagogically illegal."""
 
-    def __init__(self, detail):
-        self.detail = detail
-        super().__init__(str(detail))
 
-
-class OfferingConflictError(Exception):
+class OfferingConflictError(DomainConflictError):
     """The decision would overwrite an active operational section state."""
-
-    def __init__(self, detail):
-        self.detail = detail
-        super().__init__(str(detail))
 
 
 def _clean_reason(reason):
@@ -94,12 +87,13 @@ def _active_section_conflict(groups):
         delivery_group__in=groups
     ).values_list("course_id", flat=True)
     sections = list(
-        Section.objects.filter(
-            Q(delivery_group__in=groups) | Q(
-                delivery_group__isnull=True,
-                course_id__in=member_course_ids,
-            ),
-            lifecycle_status=SECTION_LIFECYCLE_ACTIVE,
+        active_sections_queryset(
+            Section.objects.filter(
+                Q(delivery_group__in=groups) | Q(
+                    delivery_group__isnull=True,
+                    course_id__in=member_course_ids,
+                )
+            )
         ).values("id", "section_number", "delivery_group_id")
     )
     if sections:
@@ -131,19 +125,14 @@ def combined_allowed_semester(courses):
 def _predicted_primary_demand(academic_year):
     """Use the same historical conversion forecast as section planning."""
 
-    # Local imports avoid an application-initialization cycle: the adapter calls
-    # combined_allowed_semester while assembling delivery-group DTOs.
-    from backend.apps.scheduling.services.engine_adapter import load_scheduling_input
-    from scheduling_engine.demand_analyzer import analyze_demand
+    # Keep engine-specific forecasting behind the scheduling application layer.
+    # This courses service owns offering decisions, but it should not learn the
+    # shape of pure-engine DTOs or demand-analysis result objects.
+    from backend.apps.scheduling.services.demand_forecasting import (
+        predicted_primary_demand_by_course,
+    )
 
-    summaries = analyze_demand(load_scheduling_input(academic_year.id)).summaries
-    return {
-        item.course_id: item.primary_requests * (
-            1.0 if item.historical_conversion_ratio is None
-            else item.historical_conversion_ratio
-        )
-        for item in summaries
-    }
+    return predicted_primary_demand_by_course(academic_year)
 
 
 @transaction.atomic
@@ -384,9 +373,10 @@ def get_combination_suggestions(academic_year):
             continue
         if any(item.delivery_group.offerings.count() != 1 for item in offerings):
             continue
-        if Section.objects.filter(
-            delivery_group__in=[item.delivery_group for item in offerings],
-            lifecycle_status=SECTION_LIFECYCLE_ACTIVE,
+        if active_sections_queryset(
+            Section.objects.filter(
+                delivery_group__in=[item.delivery_group for item in offerings],
+            )
         ).exists():
             continue
         pooled = sum(primary_counts.get(course.id, 0) for course in courses)

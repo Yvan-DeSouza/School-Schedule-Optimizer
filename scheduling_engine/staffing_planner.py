@@ -13,15 +13,23 @@ from typing import Iterable
 from ortools.sat.python import cp_model
 
 from .constraint_compiler import compile_constraints
-from .dto import SchedulingInputDTO
-from .section_budget_planner import (
-    _apply_constraints,
-    _generate_candidates,
-    _offerings,
-    _predicted_by_course,
-    _solve_model,
+from .diagnostics import (
+    COMBINED_OFFERING_OVER_CAPACITY,
+    NO_ELIGIBLE_TEACHER_FOR_DELIVERY_GROUP,
+    OFFERING_CONSTRAINT_NO_CANDIDATE,
+    OFFERING_SEMESTER_CONSTRAINT_NO_CANDIDATE,
+    SHARED_QUALIFIED_STAFFING_POOL_INFEASIBLE,
+    TOTAL_STAFFING_CAPACITY_SHORTFALL,
 )
-from .section_planner import _remaining_capacities
+from .dto import SchedulingInputDTO
+from .planning_core import (
+    apply_count_constraints,
+    generate_budget_candidates,
+    planning_offerings,
+    predicted_enrollment_by_course,
+    remaining_teacher_capacities,
+    solve_model_lexicographically,
+)
 
 
 SEMESTER_1_ONLY = "semester_1_only"
@@ -59,7 +67,7 @@ def _infeasible_diagnostics(offerings, options, eligible, capacities, total_requ
     available = sum(capacities.values())
     if total_required is not None and total_required > available:
         diagnostics.append({
-            "code": "total_staffing_capacity_shortfall",
+            "code": TOTAL_STAFFING_CAPACITY_SHORTFALL,
             "required_sections": total_required,
             "available_sections": available,
             "shortfall_sections": total_required - available,
@@ -74,7 +82,7 @@ def _infeasible_diagnostics(offerings, options, eligible, capacities, total_requ
         ) > 0
         if positive_required and not eligible[offering.id]:
             diagnostics.append({
-                "code": "no_eligible_teacher_for_delivery_group",
+                "code": NO_ELIGIBLE_TEACHER_FOR_DELIVERY_GROUP,
                 "offering_id": offering.id,
                 "member_course_codes": list(offering.member_course_codes),
                 "message": (
@@ -84,7 +92,7 @@ def _infeasible_diagnostics(offerings, options, eligible, capacities, total_requ
             })
     if not diagnostics:
         diagnostics.append({
-            "code": "shared_qualified_staffing_pool_infeasible",
+            "code": SHARED_QUALIFIED_STAFFING_POOL_INFEASIBLE,
             "message": (
                 "The delivery groups individually have eligible teachers, but they "
                 "compete for the same limited semester capacity."
@@ -108,7 +116,7 @@ def plan_staffing_counts(
     explicitly; the budget approval itself remains unchanged.
     """
 
-    offerings = _offerings(data)
+    offerings = planning_offerings(data)
     offering_ids = {offering.id for offering in offerings}
     constraints = {item["offering_id"]: dict(item) for item in offering_constraints}
     if not set(constraints) <= offering_ids:
@@ -121,7 +129,7 @@ def plan_staffing_counts(
         if effective_requests is not None
         else (request for request in data.course_requests if request.is_primary)
     )
-    predicted_by_course = _predicted_by_course(data, requests)
+    predicted_by_course = predicted_enrollment_by_course(data, requests)
     predicted = {
         offering.id: sum(predicted_by_course.get(course_id, 0) for course_id in offering.member_course_ids)
         for offering in offerings
@@ -132,25 +140,25 @@ def plan_staffing_counts(
         offering.id: _eligible_teachers(offering, compiled, teacher_ids)
         for offering in offerings
     }
-    capacities = _remaining_capacities(data, teacher_capacity_adjustments)
+    capacities = remaining_teacher_capacities(data, teacher_capacity_adjustments)
 
     candidates = {}
     options = {}
     for offering in offerings:
-        generated = _generate_candidates(predicted[offering.id], offering)
+        generated = generate_budget_candidates(predicted[offering.id], offering)
         if not generated:
             return {
                 "status": "infeasible",
                 "detail": "A combined offering exceeds its one shared section.",
                 "diagnostics": [{
-                    "code": "combined_offering_over_capacity",
+                    "code": COMBINED_OFFERING_OVER_CAPACITY,
                     "offering_id": offering.id,
                     "member_course_codes": list(offering.member_course_codes),
                     "predicted_enrollment": predicted[offering.id],
                     "hard_max": offering.hard_max,
                 }],
             }
-        candidates[offering.id] = _apply_constraints(
+        candidates[offering.id] = apply_count_constraints(
             generated,
             constraints.get(offering.id, {}),
         )
@@ -159,7 +167,7 @@ def plan_staffing_counts(
                 "status": "infeasible",
                 "detail": "A counselor constraint has no legal staffing candidate.",
                 "diagnostics": [{
-                    "code": "offering_constraint_no_candidate",
+                    "code": OFFERING_CONSTRAINT_NO_CANDIDATE,
                     "offering_id": offering.id,
                     "available_counts": [candidate.count for candidate in generated],
                 }],
@@ -181,7 +189,7 @@ def plan_staffing_counts(
                 "status": "infeasible",
                 "detail": "A counselor semester split has no legal staffing candidate.",
                 "diagnostics": [{
-                    "code": "offering_semester_constraint_no_candidate",
+                    "code": OFFERING_SEMESTER_CONSTRAINT_NO_CANDIDATE,
                     "offering_id": offering.id,
                 }],
             }
@@ -263,7 +271,7 @@ def plan_staffing_counts(
         # roster capacity merely because it exists.
         objectives.append(total)
 
-    solver = _solve_model(model, objectives)
+    solver = solve_model_lexicographically(model, objectives)
     if solver is None:
         minimum_required = linked_total if linked_total is not None else sum(
             min(candidate.count for candidate in candidates[offering.id])

@@ -17,6 +17,7 @@ from backend.apps.common.constants import (
     SEMESTER_WINTER,
 )
 from backend.apps.courses.models import CourseOffering, CourseRequest, DeliveryGroup, Section
+from backend.apps.courses.selectors import active_delivery_groups_for_year
 from backend.apps.courses.services.offerings import (
     combined_allowed_semester,
     ensure_academic_year_offerings,
@@ -32,6 +33,10 @@ from backend.apps.scheduling.services.engine_adapter import load_scheduling_inpu
 from backend.apps.scheduling.services.section_planning import (
     PlanningApprovalConflictError,
     PlanningApprovalValidationError,
+)
+from backend.apps.scheduling.services.run_contracts import (
+    ensure_unique_selection,
+    require_text_reason,
 )
 from scheduling_engine.section_budget_planner import (
     plan_section_budget,
@@ -208,11 +213,14 @@ def _normalize_selections(run, selections):
         } for offering_id, item in recommendations.items()]
     else:
         values = [dict(item) for item in selections]
+    ensure_unique_selection(
+        values,
+        "offering_id",
+        field="offerings",
+        message="Each delivery group may be selected only once.",
+        error_class=PlanningApprovalValidationError,
+    )
     selected_ids = [item["offering_id"] for item in values]
-    if len(selected_ids) != len(set(selected_ids)):
-        raise PlanningApprovalValidationError({
-            "offerings": "Each delivery group may be selected only once."
-        })
     if set(selected_ids) != set(recommendations):
         raise PlanningApprovalValidationError({
             "offerings": "A staffing approval must review every physical delivery group in the run."
@@ -234,11 +242,10 @@ def preview_staffing_plan_approval(run, *, selections=None):
     conflicts = []
     reviews = []
     current_active_group_ids = set(
-        DeliveryGroup.objects.filter(
-            academic_year_id=run.academic_year_id,
-            status=DELIVERY_GROUP_STATUS_ACTIVE,
-            offerings__status=COURSE_OFFERING_STATUS_OFFERED,
-        ).values_list("id", flat=True).distinct()
+        active_delivery_groups_for_year(run.academic_year_id).values_list(
+            "id",
+            flat=True,
+        )
     )
     if current_active_group_ids != set(recommendations):
         validation_errors.append({
@@ -370,8 +377,11 @@ def preview_staffing_plan_approval(run, *, selections=None):
 def approve_staffing_plan_run(run, *, approved_by, reason, selections=None):
     """Create auditable, unstaffed physical Section rows in one transaction."""
 
-    if not isinstance(reason, str) or not reason.strip():
-        raise PlanningApprovalValidationError({"reason": "An approval reason is required."})
+    reason = require_text_reason(
+        reason,
+        message="An approval reason is required.",
+        error_class=PlanningApprovalValidationError,
+    )
     run = StaffingPlanRun.objects.select_for_update().get(pk=run.pk)
     group_ids = [item["offering_id"] for item in run.result.get("offerings", [])]
     list(DeliveryGroup.objects.select_for_update().filter(id__in=group_ids).order_by("id"))
@@ -395,7 +405,7 @@ def approve_staffing_plan_run(run, *, approved_by, reason, selections=None):
     approval = StaffingPlanApproval.objects.create(
         staffing_run=run,
         approved_by=approved_by,
-        reason=reason.strip(),
+        reason=reason,
     )
     for item in preview["offerings"]:
         group = groups[item["offering_id"]]

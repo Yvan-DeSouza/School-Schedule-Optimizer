@@ -2,6 +2,7 @@
 
 from rest_framework import serializers
 
+from backend.apps.common.exceptions import DomainValidationError
 from backend.apps.common.constants import (
     QUALIFICATION_DIVISION_NONE,
     QUALIFICATION_DIVISION_SENIOR,
@@ -237,5 +238,8 @@ class SectionLockSerializer(serializers.ModelSerializer):
         teacher = attrs.get("locked_teacher", getattr(self.instance, "locked_teacher", None))
         # Reuse the same qualification service used for direct Section teacher
         # assignment so lock and assignment rules cannot drift.
-        validate_locked_teacher_qualifications(section, teacher)
+        try:
+            validate_locked_teacher_qualifications(section, teacher)
+        except DomainValidationError as error:
+            raise serializers.ValidationError(error.detail) from error
         return attrs

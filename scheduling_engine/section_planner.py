@@ -26,7 +26,23 @@ from ortools.sat.python import cp_model
 
 from .constraint_compiler import compile_constraints
 from .demand_analyzer import analyze_demand
+from .diagnostics import (
+    BELOW_HARD_MIN_REVIEW_REQUIRED,
+    COMBINED_STAFFING_CONSTRAINTS_INFEASIBLE,
+    COURSE_CONSTRAINT_NO_CANDIDATE,
+    COURSE_STAFFING_CAPACITY_SHORTFALL,
+    NO_ELIGIBLE_TEACHERS,
+    SEMESTER_CAPACITY_CHANGED_ANNUAL_PLAN,
+    SEMESTER_STAFFING_CAPACITY_SHORTFALL,
+    STAFFING_CHANGED_DEMAND_PLAN,
+    TOTAL_STAFFING_CAPACITY_SHORTFALL,
+    UNMET_DEMAND_AFTER_STAFFING,
+)
 from .dto import SchedulingInputDTO
+from .planning_core import (
+    remaining_teacher_capacities,
+    solve_with_status_lexicographically,
+)
 
 
 SEMESTER_1_ONLY = "semester_1_only"
@@ -95,30 +111,6 @@ def generate_section_count_candidates(predicted_enrollment: float, course) -> tu
     return tuple(candidates)
 
 
-def _solve_lexicographically(model, objectives):
-    """Optimize objectives in strict priority order without giant weights."""
-
-    solver = cp_model.CpSolver()
-    # A single worker plus a fixed seed keeps tests and equal-quality choices
-    # reproducible.  Production tuning can change this only with determinism
-    # implications understood.
-    solver.parameters.num_search_workers = 1
-    solver.parameters.random_seed = 0
-    for objective in objectives:
-        # Solve one priority, freeze its best value, then move to the next.  This
-        # guarantees (for example) that elective class-size quality can never
-        # trade away even one student of Tier 1 demand.
-        model.Minimize(objective)
-        status = solver.Solve(model)
-        if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-            return None, status
-        model.Add(objective == solver.Value(objective))
-    # Re-solve after freezing the final objective so the returned assignment
-    # satisfies every equality added during the objective passes.
-    status = solver.Solve(model)
-    return solver if status in (cp_model.OPTIMAL, cp_model.FEASIBLE) else None, status
-
-
 def _apply_course_constraints(candidates, constraints):
     """Filter generated choices using counselor-supplied hard scenario bounds."""
 
@@ -135,34 +127,6 @@ def _apply_course_constraints(candidates, constraints):
             continue
         constrained.append(candidate)
     return tuple(constrained)
-
-
-def _remaining_capacities(data: SchedulingInputDTO, adjustments):
-    """Build effective teacher/semester load limits for this scenario."""
-
-    teachers = {teacher.id: teacher for teacher in data.teachers}
-    # An explicit planning record overrides the teacher profile's general
-    # maximum.  Reserved load already includes committed/locked sections loaded
-    # by the Django adapter.
-    explicit = {(item.teacher_id, item.semester): item for item in data.teacher_planning_capacities}
-    values = {}
-    for teacher in teachers.values():
-        for semester in (1, 2):
-            item = explicit.get((teacher.id, semester))
-            maximum = item.maximum_sections if item else teacher.max_courses_per_semester
-            reserved = item.reserved_sections if item else 0
-            values[teacher.id, semester] = max(0, maximum - reserved)
-    # What-if adjustments are reductions only.  They never mutate qualifications
-    # and never change the persisted planning-capacity record.
-    for adjustment in adjustments:
-        key = (adjustment["teacher_id"], adjustment["semester"])
-        if key not in values:
-            raise ValueError("Teacher capacity adjustment references an unknown teacher or semester.")
-        if adjustment.get("excluded"):
-            values[key] = 0
-        else:
-            values[key] = max(0, values[key] - int(adjustment.get("reduce_by", 0)))
-    return values
 
 
 def _course_demand(data: SchedulingInputDTO):
@@ -225,7 +189,7 @@ def _solver_infeasibility_diagnostics(
         # This quick aggregate proof is independent of qualifications: there are
         # simply fewer total load slots than forced sections.
         diagnostics.append({
-            "code": "total_staffing_capacity_shortfall",
+            "code": TOTAL_STAFFING_CAPACITY_SHORTFALL,
             "severity": "error",
             "phase": phase,
             "required_sections": total_required,
@@ -247,7 +211,7 @@ def _solver_infeasibility_diagnostics(
             # normalized qualification requirements fail closed.
             diagnostics.append(_course_diagnostic(
                 course,
-                "no_eligible_teachers",
+                NO_ELIGIBLE_TEACHERS,
                 f"{course.course_code} has no legally eligible teacher in the planning pool.",
                 phase=phase,
                 required_sections=required,
@@ -264,7 +228,7 @@ def _solver_infeasibility_diagnostics(
             # course, not across the entire staff.
             diagnostics.append(_course_diagnostic(
                 course,
-                "course_staffing_capacity_shortfall",
+                COURSE_STAFFING_CAPACITY_SHORTFALL,
                 (
                     f"{course.course_code} requires at least {required} sections but its "
                     f"eligible teachers have capacity for {eligible_annual_capacity}."
@@ -291,7 +255,7 @@ def _solver_infeasibility_diagnostics(
             if required > eligible_semester_capacity:
                 diagnostics.append(_course_diagnostic(
                     course,
-                    "semester_staffing_capacity_shortfall",
+                    SEMESTER_STAFFING_CAPACITY_SHORTFALL,
                     (
                         f"{course.course_code} requires at least {required} Semester "
                         f"{restricted_semester} sections but eligible teachers have capacity "
@@ -309,7 +273,7 @@ def _solver_infeasibility_diagnostics(
         # qualified pool.  Avoid claiming one course is the cause when only the
         # combination is provably impossible.
         diagnostics.append({
-            "code": "combined_staffing_constraints_infeasible",
+            "code": COMBINED_STAFFING_CONSTRAINTS_INFEASIBLE,
             "severity": "error",
             "phase": phase,
             "message": (
@@ -459,7 +423,7 @@ def plan_section_counts(data: SchedulingInputDTO, *, course_constraints: Iterabl
     course_ids = {course.id for course in data.courses}
     if not set(constraints_by_course) <= course_ids:
         raise ValueError("A course constraint references an unknown course.")
-    capacities = _remaining_capacities(data, teacher_capacity_adjustments)
+    capacities = remaining_teacher_capacities(data, teacher_capacity_adjustments)
     demand = _course_demand(data)
     # Compile once up front so candidate-level failures can still report teacher
     # eligibility even though no CP-SAT model will be built.
@@ -476,7 +440,7 @@ def plan_section_counts(data: SchedulingInputDTO, *, course_constraints: Iterabl
             constraint = constraints_by_course[course.id]
             diagnostic = _course_diagnostic(
                 course,
-                "course_constraint_no_candidate",
+                COURSE_CONSTRAINT_NO_CANDIDATE,
                 f"No section-count candidate satisfies the scenario for {course.course_code}.",
                 phase="candidate_generation",
                 requested_constraint=constraint,
@@ -499,7 +463,7 @@ def plan_section_counts(data: SchedulingInputDTO, *, course_constraints: Iterabl
 
     # Stage 1: prove that the annual counts fit the total eligible teacher pool.
     model, choices, loads, objectives, compiled = _build_annual_model(data, candidates_by_course, capacities)
-    solver, status = _solve_lexicographically(model, objectives)
+    solver, status = solve_with_status_lexicographically(model, objectives)
     if solver is None:
         return {
             "status": "infeasible",
@@ -518,7 +482,7 @@ def plan_section_counts(data: SchedulingInputDTO, *, course_constraints: Iterabl
 
     # Stage 2: respect distinct Semester 1/2 capacities and catalog restrictions.
     model, choices, options, loads, objectives, compiled = _build_semester_model(data, candidates_by_course, capacities, annual)
-    solver, status = _solve_lexicographically(model, objectives)
+    solver, status = solve_with_status_lexicographically(model, objectives)
     if solver is None:
         return {
             "status": "infeasible",
@@ -543,11 +507,11 @@ def plan_section_counts(data: SchedulingInputDTO, *, course_constraints: Iterabl
         warnings = []
         reasons = []
         if candidate.below_hard_min_review_required:
-            warnings.append("below_hard_min_review_required")
+            warnings.append(BELOW_HARD_MIN_REVIEW_REQUIRED)
             reasons.append("Predicted demand is below the minimum viable class size; counselor review is required.")
             diagnostics.append(_course_diagnostic(
                 course,
-                "below_hard_min_review_required",
+                BELOW_HARD_MIN_REVIEW_REQUIRED,
                 f"{course.course_code} is below its hard minimum class size and requires counselor review.",
                 severity="warning",
                 phase="demand",
@@ -560,10 +524,10 @@ def plan_section_counts(data: SchedulingInputDTO, *, course_constraints: Iterabl
             reasons.append("No legally staffable section capacity remained for this course.")
             eligible_teacher_count = len(compiled.qualified_teacher_ids_by_course[course.id])
             if eligible_teacher_count == 0:
-                diagnostic_code = "no_eligible_teachers"
+                diagnostic_code = NO_ELIGIBLE_TEACHERS
                 diagnostic_message = f"{course.course_code} has demand but no legally eligible teacher."
             else:
-                diagnostic_code = "unmet_demand_after_staffing"
+                diagnostic_code = UNMET_DEMAND_AFTER_STAFFING
                 diagnostic_message = (
                     f"{course.course_code} has {candidate.unmet_students} students of unmet demand "
                     "after applying staffing capacity and course priorities."
@@ -582,7 +546,7 @@ def plan_section_counts(data: SchedulingInputDTO, *, course_constraints: Iterabl
             # number as if demand alone selected it.
             diagnostics.append(_course_diagnostic(
                 course,
-                "staffing_changed_demand_plan",
+                STAFFING_CHANGED_DEMAND_PLAN,
                 (
                     f"Staffing feasibility changed {course.course_code} from "
                     f"{baseline[course.id]} to {annual[course.id]} annual sections."
@@ -596,7 +560,7 @@ def plan_section_counts(data: SchedulingInputDTO, *, course_constraints: Iterabl
             reasons.append("Semester staffing feasibility changed the annual staffing plan.")
             diagnostics.append(_course_diagnostic(
                 course,
-                "semester_capacity_changed_annual_plan",
+                SEMESTER_CAPACITY_CHANGED_ANNUAL_PLAN,
                 (
                     f"Semester staffing capacity changed {course.course_code} from "
                     f"{annual[course.id]} to {candidate.count} annual sections."

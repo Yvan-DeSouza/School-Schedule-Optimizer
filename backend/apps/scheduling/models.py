@@ -25,6 +25,11 @@ from backend.apps.common.constants import (
     TEACHER_ROSTER_STATUS_DRAFT,
     SEMESTER_CHOICES,
 )
+from backend.apps.scheduling.domain.capacity import (
+    CAPACITY_ORDER_MESSAGE,
+    capacity_values,
+    validate_capacity_order,
+)
 
 
 class CapacityProfile(models.Model):
@@ -48,8 +53,10 @@ class CapacityProfile(models.Model):
     def clean(self):
         # Positivity alone is insufficient; the complete five-point policy must
         # be monotonically ordered.
-        if not (self.hard_min <= self.soft_min <= self.target <= self.soft_max <= self.hard_max):
-            raise ValidationError("Capacity values must satisfy hard_min <= soft_min <= target <= soft_max <= hard_max.")
+        try:
+            validate_capacity_order(capacity_values(self))
+        except ValueError as error:
+            raise ValidationError(CAPACITY_ORDER_MESSAGE) from error
 
     def __str__(self):
         return self.name
