@@ -19,7 +19,11 @@ class CapacityValidationMixin:
 class CourseSerializer(CapacityValidationMixin, serializers.ModelSerializer):
     class Meta:
         model = Course
-        fields = ("id", "name", "grade_level", "course_code", "category", "capacity_min", "capacity_max", "is_online")
+        fields = ("id", "name", "grade_level", "course_code", "category", "capacity_min", "capacity_max", "capacity_profile", "priority_profile", "allowed_semester", "is_online")
+        extra_kwargs = {
+            "capacity_profile": {"required": False, "read_only": True},
+            "priority_profile": {"required": False},
+        }
 
 
 class SectionSerializer(CapacityValidationMixin, serializers.ModelSerializer):

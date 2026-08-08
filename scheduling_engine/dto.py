@@ -13,6 +13,15 @@ class CourseDTO:
     category: str = ""
     is_online: bool = False
     requires_statutory_qualification: bool = False
+    capacity_profile_id: int = 0
+    hard_min: int = 1
+    soft_min: int = 1
+    target_capacity: int = 1
+    soft_max: int = 1
+    hard_max: int = 1
+    allowed_semester: str = "either_semester"
+    priority_tier: int = 4
+    priority_profile_id: int = 0
 
 
 @dataclass(frozen=True)
@@ -64,6 +73,14 @@ class TeacherDTO:
     max_courses_total: int
     seniority: int = 0
     reduced_load: bool = False
+
+
+@dataclass(frozen=True)
+class TeacherPlanningCapacityDTO:
+    teacher_id: int
+    semester: int
+    maximum_sections: int
+    reserved_sections: int = 0
 
 
 @dataclass(frozen=True)
@@ -186,6 +203,7 @@ class SchedulingInputDTO:
     sections: Tuple[SectionDTO, ...] = ()
     students: Tuple[StudentDTO, ...] = ()
     teachers: Tuple[TeacherDTO, ...] = ()
+    teacher_planning_capacities: Tuple[TeacherPlanningCapacityDTO, ...] = ()
     rooms: Tuple[RoomDTO, ...] = ()
     timeslots: Tuple[TimeSlotDTO, ...] = ()
     qualifications: Tuple[QualificationDTO, ...] = ()

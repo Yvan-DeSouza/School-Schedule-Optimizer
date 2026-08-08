@@ -202,6 +202,60 @@ Demand summary response:
 ]
 ```
 
+## Staffing-Aware Section Planning
+
+The CP-SAT planning layer creates an immutable, read-only annual and
+semester-level recommendation. It never creates `Section` records or assigns
+named teachers, students, rooms, or timetable blocks. Counselors, staff, and
+directors can manage its configuration and create runs; other roles have no
+access.
+
+| Route | Purpose |
+| --- | --- |
+| `/api/planning/capacity-profiles/` | CRUD shared and course-specific class-size policies |
+| `/api/planning/course-priority-profiles/` | CRUD named four-tier demand priorities |
+| `/api/planning/teacher-capacities/` | CRUD teacher/year/semester section capacity |
+| `POST /api/courses/{id}/capacity-policy/` | Attach a shared policy or copy-on-write a custom policy |
+| `POST /api/planning/section-count-runs/` | Create a frozen base plan or what-if scenario |
+| `GET /api/planning/section-count-runs/` | List frozen planning runs |
+| `GET /api/planning/section-count-runs/{id}/` | Retrieve one complete recommendation and explanation |
+
+A capacity profile contains positive `hard_min`, `soft_min`, `target`,
+`soft_max`, and `hard_max` values, in that order. New courses receive the
+shared **Standard Default** profile. A course can run in `semester_1_only`,
+`semester_2_only`, or `either_semester`; the last is the default.
+
+Create a planning run:
+
+```json
+{
+  "academic_year": 1,
+  "course_constraints": [
+    {"course_id": 5, "exact_sections": 3}
+  ],
+  "teacher_capacity_adjustments": [
+    {"teacher_id": 12, "semester": 1, "reduce_by": 1}
+  ]
+}
+```
+
+The optimizer first establishes a demand baseline, then a staffing-feasible
+annual plan, then a Semester 1/2 split. It uses the existing normalized
+qualification compiler only; Grade 11–12 eligibility is hard, while Grade 9–10
+uses the established flexible rules. Priorities are explicit administrator
+profiles: core graduation, pathway-critical, counselor-designated, and standard
+elective. Objectives are optimized lexicographically, so higher-priority unmet
+demand always beats class-size preferences.
+
+Positive demand below `hard_min` receives one review-required provisional
+section when it is legally staffable. The system does not merge or cancel that
+course automatically. If no staffable section is possible, it reports unmet
+demand rather than claiming a feasible plan. Unused teacher capacity is reported
+as slack; the planner never invents sections merely to fill a workload maximum.
+
+Runs snapshot all effective profiles, demand, qualification eligibility, and
+capacity inputs. Later configuration changes affect only new runs.
+
 ## Constraint and Lock API
 
 Counselors, staff, and directors manage shared scheduling constraints. Teachers
@@ -279,3 +333,13 @@ values. It also defines qualification kinds, canonical teachable subjects,
 divisions, enforcement levels, and source systems. Add or change a supported
 option there; Django models, services, API tests, and the adapter import the
 relevant named constant rather than defining their own copy.
+
+## Local Schema Rebuild
+
+Project apps intentionally do not use migration files. After pulling model
+changes, recreate the local development database through pgAdmin or PostgreSQL,
+then synchronize the schema:
+
+```powershell
+.\.venv\Scripts\python.exe backend\manage.py migrate --run-syncdb
+```

@@ -1,5 +1,7 @@
 """The sole Django boundary for loading data into the pure scheduling engine."""
 
+from dataclasses import asdict
+
 from django.db.models import Q
 
 from scheduling_engine.demand_analyzer import parse_academic_year_start
@@ -9,9 +11,10 @@ from scheduling_engine.dto import (
     CourseRoomRequirementDTO, HardConstraintDTO, HistoricalDemandDTO, QualificationDTO,
     RoomDTO, SchedulingInputDTO, SectionDTO, SectionLockDTO, SoftConstraintDTO,
     StudentDTO, TeacherAvailabilityDTO, TeacherCoursePreferenceDTO, TeacherCurrentCourseDTO,
-    TeacherDTO, TeacherQualificationDTO, TimeSlotDTO,
+    TeacherDTO, TeacherPlanningCapacityDTO, TeacherQualificationDTO, TimeSlotDTO,
 )
 from scheduling_engine.section_estimator import estimate_section_counts
+from scheduling_engine.section_planner import plan_section_counts
 
 from backend.apps.common.constants import (
     COURSE_REQUEST_TYPE_PRIMARY,
@@ -27,11 +30,12 @@ from backend.apps.constraints.models import (
 from backend.apps.control.models import SectionLock
 from backend.apps.courses.models import Course, CoursePrerequisite, CourseRequest, Section
 from backend.apps.people.models import Student, Teacher
-from backend.apps.scheduling.models import TimeSlot
+from backend.apps.scheduling.models import TeacherPlanningCapacity, TimeSlot
 
 
 def load_scheduling_input(academic_year_id):
     """Load one planning year's ORM data into framework-independent DTOs."""
+    academic_year_id = int(academic_year_id)
     target_year = AcademicYear.objects.get(pk=academic_year_id)
     target_start_year = parse_academic_year_start(target_year.name)
     academic_years = tuple(
@@ -44,6 +48,22 @@ def load_scheduling_input(academic_year_id):
         if parse_academic_year_start(year.name) < target_start_year
     ]
     request_student_ids = CourseRequest.objects.filter(academic_year_id=academic_year_id).values_list("student_id", flat=True)
+
+    locked_teacher_by_section = {
+        item.section_id: item.locked_teacher_id
+        for item in SectionLock.objects.filter(section__academic_year_id=academic_year_id, locked_teacher__isnull=False)
+    }
+    committed_by_teacher_semester = {}
+    for section in Section.objects.filter(academic_year_id=academic_year_id).only("id", "teacher_id", "semester"):
+        teacher_id = locked_teacher_by_section.get(section.id, section.teacher_id)
+        if teacher_id:
+            key = (teacher_id, section.semester)
+            committed_by_teacher_semester[key] = committed_by_teacher_semester.get(key, 0) + 1
+    configured_capacities = {
+        (item.teacher_id, item.semester): item
+        for item in TeacherPlanningCapacity.objects.filter(academic_year_id=academic_year_id)
+    }
+    teachers = tuple(Teacher.objects.all())
 
     return SchedulingInputDTO(
         academic_year_id=academic_year_id,
@@ -59,8 +79,17 @@ def load_scheduling_input(academic_year_id):
                 course.category,
                 course.is_online,
                 course.grade_level >= STATUTORY_TEACHABLE_MIN_GRADE,
+                course.capacity_profile_id,
+                course.capacity_profile.hard_min,
+                course.capacity_profile.soft_min,
+                course.capacity_profile.target,
+                course.capacity_profile.soft_max,
+                course.capacity_profile.hard_max,
+                course.allowed_semester,
+                course.priority_profile.tier,
+                course.priority_profile_id,
             )
-            for course in Course.objects.all()
+            for course in Course.objects.select_related("capacity_profile", "priority_profile")
         ),
         course_requests=tuple(
             CourseRequestDTO(
@@ -85,7 +114,17 @@ def load_scheduling_input(academic_year_id):
         ),
         teachers=tuple(
             TeacherDTO(teacher.id, teacher.max_courses_per_semester, teacher.max_courses_total, teacher.seniority, teacher.reduced_load)
-            for teacher in Teacher.objects.all()
+            for teacher in teachers
+        ),
+        teacher_planning_capacities=tuple(
+            TeacherPlanningCapacityDTO(
+                teacher.id,
+                semester,
+                configured_capacities.get((teacher.id, semester)).maximum_sections if (teacher.id, semester) in configured_capacities else teacher.max_courses_per_semester,
+                (configured_capacities.get((teacher.id, semester)).reserved_sections if (teacher.id, semester) in configured_capacities else 0)
+                + committed_by_teacher_semester.get((teacher.id, semester), 0),
+            )
+            for teacher in teachers for semester in (1, 2)
         ),
         rooms=tuple(RoomDTO(room.id, room.room_type, room.capacity, room.is_specialized) for room in Room.objects.all()),
         timeslots=tuple(
@@ -139,3 +178,28 @@ def load_scheduling_input(academic_year_id):
 
 def get_section_count_recommendations(academic_year_id):
     return estimate_section_counts(load_scheduling_input(academic_year_id))
+
+
+def get_section_count_plan(academic_year_id, *, course_constraints=(), teacher_capacity_adjustments=()):
+    """Load ORM data then invoke the pure CP-SAT planner."""
+    result, _ = get_section_count_plan_with_snapshot(
+        academic_year_id,
+        course_constraints=course_constraints,
+        teacher_capacity_adjustments=teacher_capacity_adjustments,
+    )
+    return result
+
+
+def get_section_count_plan_with_snapshot(academic_year_id, *, course_constraints=(), teacher_capacity_adjustments=()):
+    """Run the engine and snapshot precisely the same immutable input."""
+    data = load_scheduling_input(academic_year_id)
+    return plan_section_counts(
+        data,
+        course_constraints=course_constraints,
+        teacher_capacity_adjustments=teacher_capacity_adjustments,
+    ), asdict(data)
+
+
+def get_section_planning_snapshot(academic_year_id):
+    """Return a JSON-ready immutable engine input snapshot for an audit run."""
+    return asdict(load_scheduling_input(academic_year_id))

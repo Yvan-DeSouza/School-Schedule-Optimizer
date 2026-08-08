@@ -64,6 +64,44 @@ SEMESTER_CHOICES = (
     (SEMESTER_WINTER, "Winter"),
 )
 
+# A catalogue course may be offered in either term or restricted to one term.
+# These are deliberately separate from the numeric semester values above: a
+# course can be available in both terms without being two different courses.
+COURSE_ALLOWED_SEMESTER_1_ONLY = "semester_1_only"
+COURSE_ALLOWED_SEMESTER_2_ONLY = "semester_2_only"
+COURSE_ALLOWED_SEMESTER_EITHER = "either_semester"
+COURSE_ALLOWED_SEMESTER_CHOICES = (
+    (COURSE_ALLOWED_SEMESTER_1_ONLY, "Semester 1 only"),
+    (COURSE_ALLOWED_SEMESTER_2_ONLY, "Semester 2 only"),
+    (COURSE_ALLOWED_SEMESTER_EITHER, "Either semester"),
+)
+
+# Section-planning capacity profiles and course-demand priorities.
+CAPACITY_PROFILE_SCOPE_SHARED = "shared"
+CAPACITY_PROFILE_SCOPE_COURSE_SPECIFIC = "course_specific"
+CAPACITY_PROFILE_SCOPE_CHOICES = (
+    (CAPACITY_PROFILE_SCOPE_SHARED, "Shared"),
+    (CAPACITY_PROFILE_SCOPE_COURSE_SPECIFIC, "Course specific"),
+)
+COURSE_PRIORITY_TIER_CORE = 1
+COURSE_PRIORITY_TIER_PATHWAY = 2
+COURSE_PRIORITY_TIER_COUNSELOR = 3
+COURSE_PRIORITY_TIER_STANDARD = 4
+COURSE_PRIORITY_TIER_CHOICES = (
+    (COURSE_PRIORITY_TIER_CORE, "Core graduation requirement"),
+    (COURSE_PRIORITY_TIER_PATHWAY, "Pathway-critical"),
+    (COURSE_PRIORITY_TIER_COUNSELOR, "Counselor-designated priority"),
+    (COURSE_PRIORITY_TIER_STANDARD, "Standard elective"),
+)
+SECTION_PLANNING_RUN_STATUS_COMPLETE = "complete"
+SECTION_PLANNING_RUN_STATUS_INFEASIBLE = "infeasible"
+SECTION_PLANNING_RUN_STATUS_FAILED = "failed"
+SECTION_PLANNING_RUN_STATUS_CHOICES = (
+    (SECTION_PLANNING_RUN_STATUS_COMPLETE, "Complete"),
+    (SECTION_PLANNING_RUN_STATUS_INFEASIBLE, "Infeasible"),
+    (SECTION_PLANNING_RUN_STATUS_FAILED, "Failed"),
+)
+
 # A course request can be a student's main request or a backup choice.
 COURSE_REQUEST_TYPE_PRIMARY = "primary"
 COURSE_REQUEST_TYPE_ALTERNATE = "alternate"

@@ -2,6 +2,8 @@ from django.core.validators import MinValueValidator
 from django.db import models
 
 from backend.apps.common.constants import (
+    COURSE_ALLOWED_SEMESTER_CHOICES,
+    COURSE_ALLOWED_SEMESTER_EITHER,
     COURSE_CATEGORY_CHOICES,
     COURSE_REQUEST_TYPE_CHOICES,
     GRADE_LEVEL_CHOICES,
@@ -22,11 +24,22 @@ class Course(models.Model):
         choices=COURSE_CATEGORY_CHOICES,
     )
 
+    # Deprecated compatibility fields remain for existing section CRUD and
+    # imports. The planning engine exclusively uses capacity_profile.
     capacity_min = models.IntegerField(
-        validators=[MinValueValidator(1)]
+        validators=[MinValueValidator(1)],
+        default=10,
     )
     capacity_max = models.IntegerField(
-        validators=[MinValueValidator(1)]
+        validators=[MinValueValidator(1)],
+        default=35,
+    )
+    capacity_profile = models.ForeignKey("scheduling.CapacityProfile", on_delete=models.PROTECT, related_name="courses")
+    priority_profile = models.ForeignKey("scheduling.CoursePriorityProfile", on_delete=models.PROTECT, related_name="courses")
+    allowed_semester = models.CharField(
+        max_length=20,
+        choices=COURSE_ALLOWED_SEMESTER_CHOICES,
+        default=COURSE_ALLOWED_SEMESTER_EITHER,
     )
     is_online = models.BooleanField(default=False)
 
@@ -35,6 +48,19 @@ class Course(models.Model):
 
     def __str__(self):
         return f"{self.course_code} - {self.name}"
+
+    def save(self, *args, **kwargs):
+        # Direct ORM creation is common in imports and tests, so guarantees
+        # profiles even when callers did not pass the new foreign keys.
+        if not self.capacity_profile_id or not self.priority_profile_id:
+            from backend.apps.scheduling.services.planning_configuration import ensure_default_planning_profiles
+
+            capacity_profile, priority_profile = ensure_default_planning_profiles()
+            if not self.capacity_profile_id:
+                self.capacity_profile = capacity_profile
+            if not self.priority_profile_id:
+                self.priority_profile = priority_profile
+        return super().save(*args, **kwargs)
 
 
 class Section(models.Model):
