@@ -13,6 +13,9 @@ from backend.apps.scheduling.models import (
     CoursePriorityProfile,
     SectionPlanningApproval,
     SectionPlanningApprovalCourse,
+    SectionPlanningReconciliation,
+    SectionPlanningReconciliationAction,
+    SectionPlanningReconciliationCourse,
     SectionPlanningRun,
     TeacherPlanningCapacity,
     TimeSlot,
@@ -256,6 +259,21 @@ class SectionPlanningApprovalRequestSerializer(serializers.Serializer):
         return attrs
 
 
+class SectionPlanningReconciliationApplySerializer(SectionPlanningApprovalRequestSerializer):
+    """Require proof of a reviewed preview before changing section rows."""
+
+    preview_token = serializers.CharField(min_length=64, max_length=64)
+    reason = serializers.CharField(required=True, allow_blank=False, max_length=2000)
+
+    def validate_reason(self, value):
+        # Whitespace is not a useful audit reason even though it is technically
+        # non-empty input. Store the normalized text presented to reviewers.
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("A reconciliation reason is required.")
+        return value
+
+
 class SectionPlanningApprovalCourseSerializer(serializers.ModelSerializer):
     """Read-only audit line and the draft sections it generated."""
 
@@ -279,10 +297,96 @@ class SectionPlanningApprovalCourseSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class SectionPlanningReconciliationActionSerializer(serializers.ModelSerializer):
+    """Expose one immutable section-level before/after audit event."""
+
+    class Meta:
+        model = SectionPlanningReconciliationAction
+        fields = (
+            "id",
+            "section",
+            "action",
+            "previous_lifecycle_status",
+            "new_lifecycle_status",
+            "previous_semester",
+            "new_semester",
+            "previous_section_number",
+            "new_section_number",
+            "previous_capacity_min",
+            "previous_capacity_max",
+            "new_capacity_min",
+            "new_capacity_max",
+            "protection_reasons",
+        )
+        read_only_fields = fields
+
+
+class SectionPlanningReconciliationCourseSerializer(serializers.ModelSerializer):
+    """Expose a reconciled course decision and its concrete section actions."""
+
+    course = serializers.IntegerField(source="approval_course.course_id", read_only=True)
+    approval_course = serializers.IntegerField(source="approval_course_id", read_only=True)
+    actions = SectionPlanningReconciliationActionSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = SectionPlanningReconciliationCourse
+        fields = (
+            "id",
+            "approval_course",
+            "course",
+            "previous_semester_1_count",
+            "previous_semester_2_count",
+            "final_semester_1_count",
+            "final_semester_2_count",
+            "actions",
+        )
+        read_only_fields = fields
+
+
+class SectionPlanningReconciliationSerializer(serializers.ModelSerializer):
+    """Read-only reconciliation header nested beneath its approval."""
+
+    approval = serializers.IntegerField(source="approval_id", read_only=True)
+    planning_run = serializers.IntegerField(
+        source="approval.planning_run_id",
+        read_only=True,
+    )
+    reconciled_by = serializers.IntegerField(
+        source="approval.approved_by_id",
+        read_only=True,
+    )
+    reconciled_at = serializers.DateTimeField(
+        source="approval.approved_at",
+        read_only=True,
+    )
+    reason = serializers.CharField(source="approval.reason", read_only=True)
+    course_reconciliations = SectionPlanningReconciliationCourseSerializer(
+        many=True,
+        read_only=True,
+    )
+
+    class Meta:
+        model = SectionPlanningReconciliation
+        fields = (
+            "id",
+            "approval",
+            "planning_run",
+            "reconciled_by",
+            "reconciled_at",
+            "reason",
+            "preview_token",
+            "previous_active_section_count",
+            "final_active_section_count",
+            "course_reconciliations",
+        )
+        read_only_fields = fields
+
+
 class SectionPlanningApprovalSerializer(serializers.ModelSerializer):
     """Read-only approval header with normalized per-course decisions."""
 
     course_approvals = SectionPlanningApprovalCourseSerializer(many=True, read_only=True)
+    reconciliation = SectionPlanningReconciliationSerializer(read_only=True)
 
     class Meta:
         model = SectionPlanningApproval
@@ -293,6 +397,7 @@ class SectionPlanningApprovalSerializer(serializers.ModelSerializer):
             "approved_at",
             "reason",
             "course_approvals",
+            "reconciliation",
         )
         read_only_fields = fields
 

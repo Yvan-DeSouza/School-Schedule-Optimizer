@@ -186,6 +186,7 @@ def preview_section_planning_approval(run, *, selections=None):
             "section_id": section.id,
             "section_number": section.section_number,
             "semester": section.semester,
+            "lifecycle_status": section.lifecycle_status,
         })
 
     conflicts = []

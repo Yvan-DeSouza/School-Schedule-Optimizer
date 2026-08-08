@@ -2,6 +2,7 @@
 
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
+from rest_framework.exceptions import APIException
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -20,8 +21,16 @@ from backend.apps.constraints.serializers import (
     TeacherCurrentCourseSerializer, TeacherQualificationSerializer,
 )
 from backend.apps.control.models import SectionLock
+from backend.apps.common.constants import SECTION_LIFECYCLE_RETIRED
 from backend.apps.courses.models import Section
 from backend.apps.people.models import Teacher
+
+
+class RetiredSectionConflict(APIException):
+    """Prevent new hard-lock state from being attached to retired history."""
+
+    status_code = status.HTTP_409_CONFLICT
+    default_code = "retired_section_conflict"
 
 
 class PolicyFilteredViewSet(viewsets.ModelViewSet):
@@ -156,7 +165,10 @@ class SectionLockView(APIView):
     def get_section(self):
         # Course is selected because qualification validation immediately needs
         # the section's course.
-        return get_object_or_404(Section.objects.select_related("course"), pk=self.kwargs["section_id"])
+        return get_object_or_404(
+            Section.objects.select_related("course"),
+            pk=self.kwargs["section_id"],
+        )
 
     def get(self, request, section_id):
         lock = get_object_or_404(SectionLock, section=self.get_section())
@@ -164,6 +176,10 @@ class SectionLockView(APIView):
 
     def patch(self, request, section_id):
         section = self.get_section()
+        if section.lifecycle_status == SECTION_LIFECYCLE_RETIRED:
+            raise RetiredSectionConflict({
+                "detail": "Retired sections are read-only and cannot receive scheduling locks."
+            })
         lock = SectionLock.objects.filter(section=section).first()
         created = lock is None
         if lock is None:

@@ -236,7 +236,7 @@ This order follows data dependencies. Stable section identity comes before attac
 
 ## Phase 1 — Section Planning Lifecycle Completion and Reconciliation
 
-**Current Status:** **Not implemented; recommended immediate next phase.** The approval service intentionally returns `409 Conflict` whenever a selected course already has sections in the academic year.
+**Current Status:** **Core reconciliation complete.** Planning roles can preview and atomically apply a newer immutable run to existing sections. Active/retired lifecycle state, stable identity, protected downstream state, stale-preview detection, and immutable per-section audit actions are implemented. Historical-demand/readiness APIs, broader lock cleanup, and the planning-status view remain deferred by scope.
 
 **Goal:** Allow a planning-role user to apply a later approved section plan safely and explicitly, while preserving immutable approvals, stable section identity, downstream work, and a complete audit trail.
 
@@ -251,11 +251,11 @@ This order follows data dependencies. Stable section identity comes before attac
 - An explicit reconciliation apply action requiring an authorized user and reason.
 - A deterministic delta containing unchanged, created, semester-moved, and retired/blocked sections.
 - Immutable reconciliation audit records linking the prior state, new planning run/approval, actor, reason, and resulting section IDs.
-- Course-level decision rationale for adjusted or zero-section decisions where the existing approval-level reason is insufficient.
+- Approval-level rationale plus course-level recommended/approved counts and per-section consequences. A separate per-course free-text rationale remains deferred.
 - An explicit counselor outcome for offering, offering below minimum, or accepting zero sections; this is a human decision and does not automatically merge courses.
-- Planning-role historical-demand management and a read-only input-readiness report for missing senior qualification rules, usable teacher capacity, and historical coverage.
-- One enforced invariant for `Section.is_locked` and `SectionLock` so later solvers receive unambiguous fixed context.
-- A planning-status/staffing view that exposes the accepted section plan, remaining qualification bottlenecks, and outstanding review items without pretending to be a timetable.
+- Planning-role historical-demand management and a read-only input-readiness report remain a later, separate API increment.
+- Reconciliation conservatively treats either `Section.is_locked` or a `SectionLock` row as fixed; consolidating those two representations remains later cleanup.
+- A consolidated planning-status/staffing view remains deferred; reconciliation preview currently exposes active counts and the concrete delta.
 - Transactional and concurrency-safe reconciliation with structured `400` validation and `409` state conflicts.
 - API/service/model tests for increases, decreases, semester moves, unchanged plans, retries, rollback, and protected downstream state.
 
@@ -269,8 +269,8 @@ This order follows data dependencies. Stable section identity comes before attac
 6. Apply accepted deltas in one transaction with row locks and deterministic ordering.
 7. Keep planning runs and prior approvals immutable; reconciliation adds history rather than rewriting it.
 8. Add review/apply actions and return enough state for a future counselor UI to explain every consequence.
-9. Add the missing historical-demand/readiness API boundary needed to explain forecast quality and incomplete planning configuration.
-10. Define and enforce whether the structured `SectionLock` row or `Section.is_locked` is authoritative; prevent the two representations from drifting.
+9. Later increment: add the historical-demand/readiness API boundary needed to explain forecast quality and incomplete planning configuration.
+10. Later cleanup: define whether the structured `SectionLock` row or `Section.is_locked` is authoritative; reconciliation currently protects either representation.
 11. Add tests proving a failed reconciliation leaves sections and audit records unchanged.
 12. Treat cross-listing as a separate domain decision. Do not use it as an automatic answer to low-demand courses in this phase.
 
@@ -315,7 +315,7 @@ If lifecycle state belongs on `Section`, add it deliberately to `backend/apps/co
 - New sections are traceable to the new decision; superseded sections remain historically explainable.
 - Sections with downstream dependencies are never silently deleted or moved.
 - Duplicate or stale requests return a structured conflict and do not partially write.
-- Lock state has one tested source-of-truth invariant, and the planning readiness response exposes missing input categories without changing them.
+- Both existing lock representations are safely treated as fixed context; consolidation and planning-readiness reporting are explicitly deferred.
 - Transaction rollback and concurrency behavior are covered by automated tests.
 - No placement, teacher, or student solver is introduced in this phase.
 
@@ -810,24 +810,24 @@ These are not excuses to leave Version 1 gaps unresolved. They are boundaries pr
 
 ## Recommended Immediate Next Phase
 
-Begin **Phase 1 — Section Planning Lifecycle Completion and Reconciliation**.
+Begin **Phase 2 — Counselor-Reviewed A–D Block and Room Placement** after final integration review of the completed core reconciliation workflow.
 
-The current system already makes high-quality, staffing-aware section recommendations, supports counselor what-if constraints, records immutable runs, and creates traceable draft sections after explicit approval. Its most important immediate limitation is that the workflow cannot safely accept a revised plan once any sections already exist for that course/year. The current `409 Conflict` is the correct safety behavior, but it is not yet a complete iterative planning workflow.
+The system now makes staffing-aware section recommendations, records immutable runs, creates traceable drafts after approval, and safely reconciles later plans without deleting operational history. Counselors can see the exact keep/move/create/retire/reactivate consequences before applying them, while protected sections remain fixed.
 
-This phase builds directly on the strongest completed functionality and closes the gap between “first approved plan” and “real scheduling season.” It defines which section records remain stable, which new sections may be created, how surplus sections are retired, when downstream dependencies block a change, and how every revision remains auditable.
+The next product step can therefore use the stable active section set to decide when and where each section runs. That work should retain the same immutable run, preview, approval, and conflict-protection pattern established here.
 
-Completing reconciliation unlocks the next scheduling stage cleanly: the placement solver can operate on a well-defined set of active sections and can attach `SectionSchedule`, locks, teacher assignments, and enrollments without relying on ambiguous replacement semantics.
+Reconciliation has unlocked the next scheduling stage cleanly: the placement solver can operate on a well-defined set of active sections and attach `SectionSchedule` and room/block decisions without relying on ambiguous replacement semantics.
 
 Other plausible phases should wait:
 
-- **A–D block/room placement** should wait until section identity and retirement rules are stable; otherwise placement results may be attached to sections that a later replan deletes or recreates.
+- **A–D block/room placement** is now the recommended next implementation phase because section identity and retirement rules are stable.
 - **Named teacher assignment** depends on placed blocks for availability and overlap checks.
 - **Student assignment** depends on placed sections and a prerequisite-evidence decision.
 - **General scoped re-solving** needs real downstream solver stages and accepted outputs to scope.
 - **Frontend work** will have much less API churn after reconciliation and downstream review contracts are defined.
 - **Cross-listing** is not a safe automatic escape hatch for low demand and requires a separate domain design.
 
-The immediate implementation boundary is therefore precise: make revised approved section plans safe, explicit, non-destructive, transactional, and auditable—then begin counselor-reviewed A–D block and room placement.
+The immediate implementation boundary is now counselor-reviewed A–D block and room placement. Historical-demand readiness, lock-model consolidation, and cross-listing remain separate deliberate increments.
 
 ---
 

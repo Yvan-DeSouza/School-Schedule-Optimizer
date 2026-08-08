@@ -2,6 +2,7 @@
 
 from rest_framework import serializers
 
+from backend.apps.common.constants import SECTION_LIFECYCLE_RETIRED
 from backend.apps.constraints.services import validate_teacher_course_assignment
 from backend.apps.courses.models import Course, CourseRequest, Section
 from backend.apps.people.models import RoleChoices
@@ -50,10 +51,55 @@ class SectionSerializer(CapacityValidationMixin, serializers.ModelSerializer):
 
     class Meta:
         model = Section
-        fields = ("id", "course", "section_number", "academic_year", "semester", "teacher", "capacity_min", "capacity_max", "is_locked", "planning_approval", "planning_run")
+        fields = (
+            "id",
+            "course",
+            "section_number",
+            "academic_year",
+            "semester",
+            "teacher",
+            "capacity_min",
+            "capacity_max",
+            "is_locked",
+            "lifecycle_status",
+            "planning_approval",
+            "planning_run",
+        )
+        extra_kwargs = {
+            # Lifecycle transitions are reconciliation decisions, not ordinary
+            # CRUD fields that API callers may toggle without an audit record.
+            "lifecycle_status": {"read_only": True},
+        }
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
+        if self.instance and self.instance.lifecycle_status == SECTION_LIFECYCLE_RETIRED:
+            raise serializers.ValidationError({
+                "detail": "Retired sections are read-only. Reconcile a newer section plan to reactivate one."
+            })
+        if self.instance and self.instance.planning_approval_course_id:
+            # A generated section's identity is part of its planning audit.
+            # Staffing/capacity/lock edits remain allowed, while moving or
+            # relabeling it must pass through reconciliation.
+            protected_fields = {
+                "course": "course_id",
+                "section_number": "section_number",
+                "academic_year": "academic_year_id",
+                "semester": "semester",
+            }
+            changed = []
+            for input_name, instance_name in protected_fields.items():
+                if input_name not in attrs:
+                    continue
+                submitted = attrs[input_name]
+                submitted_value = getattr(submitted, "pk", submitted)
+                if submitted_value != getattr(self.instance, instance_name):
+                    changed.append(input_name)
+            if changed:
+                raise serializers.ValidationError({
+                    field: "Generated section identity can only be changed by section-plan reconciliation."
+                    for field in changed
+                })
         course = attrs.get("course", getattr(self.instance, "course", None))
         teacher = attrs.get("teacher", getattr(self.instance, "teacher", None))
         if course and teacher:

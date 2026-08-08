@@ -9,6 +9,8 @@ from backend.apps.common.constants import (
     COURSE_CATEGORY_CHOICES,
     COURSE_REQUEST_TYPE_CHOICES,
     GRADE_LEVEL_CHOICES,
+    SECTION_LIFECYCLE_ACTIVE,
+    SECTION_LIFECYCLE_CHOICES,
     SEMESTER_CHOICES,
 )
 
@@ -98,6 +100,13 @@ class Section(models.Model):
     # Locked sections are accepted decisions that downstream automation must not
     # silently move or reassign.
     is_locked = models.BooleanField(default=False)
+    # Reconciliation retires obsolete drafts without deleting their identity,
+    # provenance, or audit trail. Only active sections enter later solver stages.
+    lifecycle_status = models.CharField(
+        max_length=20,
+        choices=SECTION_LIFECYCLE_CHOICES,
+        default=SECTION_LIFECYCLE_ACTIVE,
+    )
     # Manual/legacy sections legitimately have no approval source. Generated
     # drafts link to the exact per-course decision, then to approval/run/user.
     planning_approval_course = models.ForeignKey(

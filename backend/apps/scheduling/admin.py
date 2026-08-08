@@ -5,6 +5,9 @@ from django.contrib import admin
 from backend.apps.scheduling.models import (
     SectionPlanningApproval,
     SectionPlanningApprovalCourse,
+    SectionPlanningReconciliation,
+    SectionPlanningReconciliationAction,
+    SectionPlanningReconciliationCourse,
     SectionPlanningRun,
     SectionSchedule,
     TimeSlot,
@@ -19,4 +22,7 @@ admin.site.register([
     SectionPlanningRun,
     SectionPlanningApproval,
     SectionPlanningApprovalCourse,
+    SectionPlanningReconciliation,
+    SectionPlanningReconciliationCourse,
+    SectionPlanningReconciliationAction,
 ])

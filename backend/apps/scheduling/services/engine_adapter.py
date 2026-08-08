@@ -29,6 +29,7 @@ from scheduling_engine.section_planner import plan_section_counts
 from backend.apps.common.constants import (
     COURSE_REQUEST_TYPE_PRIMARY,
     QUALIFICATION_ENFORCEMENT_REQUIRED,
+    SECTION_LIFECYCLE_ACTIVE,
     STATUTORY_TEACHABLE_MIN_GRADE,
 )
 from backend.apps.common.models import AcademicYear, HistoricalCourseDemand, Room
@@ -76,10 +77,17 @@ def load_scheduling_input(academic_year_id):
     # already-committed capacity, matching the manual-override contract.
     locked_teacher_by_section = {
         item.section_id: item.locked_teacher_id
-        for item in SectionLock.objects.filter(section__academic_year_id=academic_year_id, locked_teacher__isnull=False)
+        for item in SectionLock.objects.filter(
+            section__academic_year_id=academic_year_id,
+            section__lifecycle_status=SECTION_LIFECYCLE_ACTIVE,
+            locked_teacher__isnull=False,
+        )
     }
     committed_by_teacher_semester = {}
-    for section in Section.objects.filter(academic_year_id=academic_year_id).only("id", "teacher_id", "semester"):
+    for section in Section.objects.filter(
+        academic_year_id=academic_year_id,
+        lifecycle_status=SECTION_LIFECYCLE_ACTIVE,
+    ).only("id", "teacher_id", "semester"):
         teacher_id = locked_teacher_by_section.get(section.id, section.teacher_id)
         if teacher_id:
             # Existing assigned/locked sections consume one load slot.  They are
@@ -146,7 +154,10 @@ def load_scheduling_input(academic_year_id):
         # never turn these ORM instances into decision variables directly.
         sections=tuple(
             SectionDTO(section.id, section.course_id, section.academic_year_id, section.semester, section.capacity_min, section.capacity_max, section.teacher_id, section.is_locked)
-            for section in Section.objects.filter(academic_year_id=academic_year_id)
+            for section in Section.objects.filter(
+                academic_year_id=academic_year_id,
+                lifecycle_status=SECTION_LIFECYCLE_ACTIVE,
+            )
         ),
         students=tuple(
             StudentDTO(student.id, student.grade_level)
@@ -216,7 +227,10 @@ def load_scheduling_input(academic_year_id):
         # never constrain the current solve.
         section_locks=tuple(
             SectionLockDTO(item.section_id, item.locked_teacher_id, item.locked_timeslot_id, item.locked_room_id)
-            for item in SectionLock.objects.filter(section__academic_year_id=academic_year_id)
+            for item in SectionLock.objects.filter(
+                section__academic_year_id=academic_year_id,
+                section__lifecycle_status=SECTION_LIFECYCLE_ACTIVE,
+            )
         ),
         hard_constraints=tuple(HardConstraintDTO(item.id, item.name, item.type, item.priority) for item in HardConstraint.objects.all()),
         soft_constraints=tuple(SoftConstraintDTO(item.id, item.name, item.category, item.default_weight) for item in SoftConstraint.objects.all()),

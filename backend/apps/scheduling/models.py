@@ -15,7 +15,9 @@ from backend.apps.common.constants import (
     COURSE_PRIORITY_TIER_CHOICES,
     COURSE_PRIORITY_TIER_STANDARD,
     SCHEDULE_BLOCK_CHOICES,
+    SECTION_LIFECYCLE_CHOICES,
     SECTION_PLANNING_RUN_STATUS_CHOICES,
+    SECTION_RECONCILIATION_ACTION_CHOICES,
     SEMESTER_CHOICES,
 )
 
@@ -176,6 +178,108 @@ class SectionPlanningApprovalCourse(models.Model):
         # Generated sections refer back to this normalized immutable audit line.
         if self.pk:
             raise ValidationError("Approved course counts are immutable.")
+        return super().save(*args, **kwargs)
+
+
+class SectionPlanningReconciliation(models.Model):
+    """Immutable header for applying a newer approval to existing sections."""
+
+    # The approval remains the source of actor, reason, timestamp, run, and
+    # accepted course counts. Reconciliation adds the concrete section delta.
+    approval = models.OneToOneField(
+        SectionPlanningApproval,
+        on_delete=models.PROTECT,
+        related_name="reconciliation",
+    )
+    preview_token = models.CharField(max_length=64)
+    previous_active_section_count = models.PositiveIntegerField()
+    final_active_section_count = models.PositiveIntegerField()
+
+    class Meta:
+        ordering = ["-approval__approved_at", "-id"]
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise ValidationError("Section planning reconciliations are immutable.")
+        return super().save(*args, **kwargs)
+
+
+class SectionPlanningReconciliationCourse(models.Model):
+    """Before/after semester totals for one reconciled approval course."""
+
+    reconciliation = models.ForeignKey(
+        SectionPlanningReconciliation,
+        on_delete=models.PROTECT,
+        related_name="course_reconciliations",
+    )
+    approval_course = models.OneToOneField(
+        SectionPlanningApprovalCourse,
+        on_delete=models.PROTECT,
+        related_name="reconciliation_course",
+    )
+    previous_semester_1_count = models.PositiveIntegerField()
+    previous_semester_2_count = models.PositiveIntegerField()
+    final_semester_1_count = models.PositiveIntegerField()
+    final_semester_2_count = models.PositiveIntegerField()
+
+    class Meta:
+        ordering = ["approval_course__course__course_code", "approval_course__course_id"]
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise ValidationError("Section planning course reconciliations are immutable.")
+        return super().save(*args, **kwargs)
+
+
+class SectionPlanningReconciliationAction(models.Model):
+    """Immutable before/after record for one section in a reconciliation."""
+
+    course_reconciliation = models.ForeignKey(
+        SectionPlanningReconciliationCourse,
+        on_delete=models.PROTECT,
+        related_name="actions",
+    )
+    # PROTECT ensures an audited section cannot later disappear from history.
+    section = models.ForeignKey(
+        "courses.Section",
+        on_delete=models.PROTECT,
+        related_name="planning_reconciliation_actions",
+    )
+    action = models.CharField(max_length=20, choices=SECTION_RECONCILIATION_ACTION_CHOICES)
+    previous_lifecycle_status = models.CharField(
+        max_length=20,
+        choices=SECTION_LIFECYCLE_CHOICES,
+        blank=True,
+        default="",
+    )
+    new_lifecycle_status = models.CharField(
+        max_length=20,
+        choices=SECTION_LIFECYCLE_CHOICES,
+        blank=True,
+        default="",
+    )
+    previous_semester = models.IntegerField(choices=SEMESTER_CHOICES, null=True, blank=True)
+    new_semester = models.IntegerField(choices=SEMESTER_CHOICES, null=True, blank=True)
+    previous_section_number = models.CharField(max_length=10, blank=True, default="")
+    new_section_number = models.CharField(max_length=10, blank=True, default="")
+    previous_capacity_min = models.PositiveIntegerField(null=True, blank=True)
+    previous_capacity_max = models.PositiveIntegerField(null=True, blank=True)
+    new_capacity_min = models.PositiveIntegerField(null=True, blank=True)
+    new_capacity_max = models.PositiveIntegerField(null=True, blank=True)
+    protection_reasons = models.JSONField(default=list, blank=True)
+
+    class Meta:
+        ordering = ["course_reconciliation", "section_id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["course_reconciliation", "section"],
+                name="unique_section_per_planning_reconciliation_course",
+            )
+        ]
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise ValidationError("Section planning reconciliation actions are immutable.")
         return super().save(*args, **kwargs)
 
 

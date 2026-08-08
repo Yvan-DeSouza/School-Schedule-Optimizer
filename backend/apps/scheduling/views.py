@@ -32,6 +32,8 @@ from backend.apps.scheduling.serializers import (
     SectionCountRecommendationSerializer,
     SectionPlanningApprovalRequestSerializer,
     SectionPlanningApprovalSerializer,
+    SectionPlanningReconciliationApplySerializer,
+    SectionPlanningReconciliationSerializer,
     SectionPlanningRunCreateSerializer,
     SectionPlanningRunSerializer,
     TeacherPlanningCapacitySerializer,
@@ -166,12 +168,14 @@ class SectionPlanningRunViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, 
         # Run responses nest approval lines and generated section IDs. Prefetching
         # prevents one query per approval/course on list and detail responses.
         "approvals__course_approvals__generated_sections",
+        "approvals__reconciliation__course_reconciliations__approval_course",
+        "approvals__reconciliation__course_reconciliations__actions",
     )
 
     def get_permissions(self):
         # Approval is a distinct action even though current planning roles may do
         # both. Keeping policy names separate supports future role refinement.
-        if self.action == "approve":
+        if self.action in {"approve", "reconciliation_preview", "reconcile"}:
             self.action_name = DemandPlanningAction.APPROVE_SECTION_PLAN
         else:
             self.action_name = DemandPlanningAction.RUN_SECTION_PLANNING
@@ -274,5 +278,67 @@ class SectionPlanningRunViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, 
         ).get(pk=approval.pk)
         return Response(
             SectionPlanningApprovalSerializer(approval).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=True, methods=["post"], url_path="reconciliation-preview")
+    def reconciliation_preview(self, request, pk=None):
+        """Describe how revised approved counts would affect existing sections."""
+
+        from backend.apps.scheduling.services.section_reconciliation import (
+            preview_section_plan_reconciliation,
+        )
+        from backend.apps.scheduling.services.section_planning import (
+            PlanningApprovalValidationError,
+        )
+
+        serializer = SectionPlanningApprovalRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            preview = preview_section_plan_reconciliation(
+                self.get_object(),
+                selections=serializer.validated_data.get("courses"),
+            )
+        except PlanningApprovalValidationError as error:
+            raise ValidationError(error.detail) from error
+        return Response(preview)
+
+    @action(detail=True, methods=["post"], url_path="reconcile")
+    def reconcile(self, request, pk=None):
+        """Apply a reviewed reconciliation atomically and return its audit graph."""
+
+        from backend.apps.scheduling.services.section_reconciliation import (
+            reconcile_section_planning_run,
+        )
+        from backend.apps.scheduling.services.section_planning import (
+            PlanningApprovalConflictError,
+            PlanningApprovalValidationError,
+        )
+
+        serializer = SectionPlanningReconciliationApplySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            reconciliation = reconcile_section_planning_run(
+                self.get_object(),
+                reconciled_by=request.user,
+                preview_token=serializer.validated_data["preview_token"],
+                selections=serializer.validated_data.get("courses"),
+                reason=serializer.validated_data["reason"],
+            )
+        except PlanningApprovalValidationError as error:
+            raise ValidationError(error.detail) from error
+        except PlanningApprovalConflictError as error:
+            raise SectionPlanningApprovalConflict(error.detail) from error
+        reconciliation = (
+            type(reconciliation).objects
+            .select_related("approval")
+            .prefetch_related(
+                "course_reconciliations__approval_course",
+                "course_reconciliations__actions__section",
+            )
+            .get(pk=reconciliation.pk)
+        )
+        return Response(
+            SectionPlanningReconciliationSerializer(reconciliation).data,
             status=status.HTTP_201_CREATED,
         )

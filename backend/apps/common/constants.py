@@ -102,6 +102,30 @@ SECTION_PLANNING_RUN_STATUS_CHOICES = (
     (SECTION_PLANNING_RUN_STATUS_FAILED, "Failed"),
 )
 
+# Operational section lifecycle. Retired sections remain stored for audit but
+# are excluded from active planning, placement, staffing, and enrollment work.
+SECTION_LIFECYCLE_ACTIVE = "active"
+SECTION_LIFECYCLE_RETIRED = "retired"
+SECTION_LIFECYCLE_CHOICES = (
+    (SECTION_LIFECYCLE_ACTIVE, "Active"),
+    (SECTION_LIFECYCLE_RETIRED, "Retired"),
+)
+
+# Immutable actions recorded when a newer approved plan is reconciled with
+# existing sections. These values describe history; they are not workflow state.
+SECTION_RECONCILIATION_ACTION_KEPT = "kept"
+SECTION_RECONCILIATION_ACTION_CREATED = "created"
+SECTION_RECONCILIATION_ACTION_MOVED = "moved"
+SECTION_RECONCILIATION_ACTION_RETIRED = "retired"
+SECTION_RECONCILIATION_ACTION_REACTIVATED = "reactivated"
+SECTION_RECONCILIATION_ACTION_CHOICES = (
+    (SECTION_RECONCILIATION_ACTION_KEPT, "Kept"),
+    (SECTION_RECONCILIATION_ACTION_CREATED, "Created"),
+    (SECTION_RECONCILIATION_ACTION_MOVED, "Moved"),
+    (SECTION_RECONCILIATION_ACTION_RETIRED, "Retired"),
+    (SECTION_RECONCILIATION_ACTION_REACTIVATED, "Reactivated"),
+)
+
 # A course request can be a student's main request or a backup choice.
 COURSE_REQUEST_TYPE_PRIMARY = "primary"
 COURSE_REQUEST_TYPE_ALTERNATE = "alternate"

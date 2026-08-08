@@ -11,9 +11,25 @@ from backend.apps.courses.models import (
 )
 
 
+@admin.register(Section)
+class SectionAdmin(admin.ModelAdmin):
+    """Make active/retired status and planning provenance visible to operators."""
+
+    list_display = (
+        "course",
+        "section_number",
+        "academic_year",
+        "semester",
+        "lifecycle_status",
+        "teacher",
+        "is_locked",
+    )
+    list_filter = ("academic_year", "semester", "lifecycle_status", "is_locked")
+    search_fields = ("course__course_code", "section_number")
+
+
 admin.site.register([
     Course,
-    Section,
     Enrollment,
     CourseRequest,
     CoursePrerequisite,

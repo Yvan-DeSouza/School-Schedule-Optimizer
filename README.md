@@ -223,6 +223,8 @@ have no access.
 | `GET /api/planning/section-count-runs/{id}/review/` | Review all remaining recommended course counts and blocking conflicts |
 | `POST /api/planning/section-count-runs/{id}/approval-preview/` | Validate selected or adjusted counts without writing sections |
 | `POST /api/planning/section-count-runs/{id}/approve/` | Approve selected counts and atomically create draft sections |
+| `POST /api/planning/section-count-runs/{id}/reconciliation-preview/` | Compare selected counts with existing active sections and return the exact proposed delta |
+| `POST /api/planning/section-count-runs/{id}/reconcile/` | Apply a previously previewed delta and record an immutable reconciliation audit |
 
 A capacity profile contains positive `hard_min`, `soft_min`, `target`,
 `soft_max`, and `hard_max` values, in that order. New courses receive the
@@ -285,6 +287,45 @@ sections expose their source approval and planning-run ids. Approval is
 transactional: either every selected draft section is created or none are.
 Existing sections and previously approved courses produce `409 Conflict`; the
 endpoint never replaces them implicitly.
+
+### Revising an Existing Section Plan
+
+Scheduling season is iterative. When a later immutable planning run recommends
+different counts, use reconciliation instead of the original approval endpoint.
+First post the selected Semester 1/2 counts to `reconciliation-preview`. The
+response identifies every section that would be kept, moved, retired,
+reactivated, or created and returns a `preview_token`. Preview does not write.
+
+Apply exactly that reviewed state with:
+
+```json
+{
+  "courses": [
+    {"course_id": 5, "semester_1_count": 1, "semester_2_count": 2}
+  ],
+  "preview_token": "<64-character token returned by preview>",
+  "reason": "Moved one section after the updated enrollment review"
+}
+```
+
+Apply requires a nonblank reason. It returns `409 Conflict` if the token is
+stale or if the requested count would displace a fixed section. A section is
+fixed when it is manual or has a teacher, lock, placement, enrollment, or manual
+override. Fixed sections count toward the target and are never silently moved
+or retired.
+
+Surplus dependency-free generated drafts are soft-retired, not deleted. The
+normal `/api/sections/` list includes only active sections; authorized users can
+inspect history with `?lifecycle_status=retired`. Retired sections are read-only
+and excluded from scheduling-engine input. If demand returns, reconciliation
+reactivates an eligible retired generated section before creating a new row.
+Unchanged, moved, and reactivated rows keep their database identity. Historical
+section numbers are never reused.
+
+Every reconciliation creates a new immutable approval linked to the newer run,
+plus immutable before/after actions for each affected section. Newly created
+sections point to that new approval. Reused sections retain their original
+creation provenance and gain reconciliation-action history.
 
 ## Constraint and Lock API
 
