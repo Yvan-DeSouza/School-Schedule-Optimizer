@@ -559,6 +559,9 @@ def test_demand_action_policy_allows_planning_roles_only(
         DemandPlanningAction.VIEW_DEMAND_SUMMARY,
         DemandPlanningAction.RECOMMEND_COURSE_CLOSURES,
         DemandPlanningAction.RECOMMEND_SECTION_COUNTS,
+        DemandPlanningAction.RUN_SECTION_PLANNING,
+        DemandPlanningAction.APPROVE_SECTION_PLAN,
+        DemandPlanningAction.MANAGE_PLANNING_CONFIGURATION,
     ]:
         for user in [counselor_user, staff_user, director_user]:
             assert DemandPlanningActionPolicy.can_execute(user, action=action)

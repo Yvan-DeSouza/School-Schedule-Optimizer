@@ -27,9 +27,18 @@ class CourseSerializer(CapacityValidationMixin, serializers.ModelSerializer):
 
 
 class SectionSerializer(CapacityValidationMixin, serializers.ModelSerializer):
+    planning_approval = serializers.IntegerField(
+        source="planning_approval_course.approval_id",
+        read_only=True,
+    )
+    planning_run = serializers.IntegerField(
+        source="planning_approval_course.approval.planning_run_id",
+        read_only=True,
+    )
+
     class Meta:
         model = Section
-        fields = ("id", "course", "section_number", "academic_year", "semester", "teacher", "capacity_min", "capacity_max", "is_locked")
+        fields = ("id", "course", "section_number", "academic_year", "semester", "teacher", "capacity_min", "capacity_max", "is_locked", "planning_approval", "planning_run")
 
     def validate(self, attrs):
         attrs = super().validate(attrs)

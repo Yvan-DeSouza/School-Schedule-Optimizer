@@ -88,3 +88,53 @@ def test_grade_twelve_requires_existing_compiled_qualification_eligibility():
     result = plan_section_counts(unqualified)
     assert result["courses"][0]["staffing_feasible_annual_count"] == 0
     assert result["courses"][0]["unmet_demand"] == 5
+    assert result["diagnostics"][0]["code"] == "no_eligible_teachers"
+    assert result["diagnostics"][0]["eligible_teacher_count"] == 0
+
+
+def test_infeasible_course_override_reports_available_candidates():
+    data = input_for((course(),), {1: 5})
+
+    result = plan_section_counts(
+        data,
+        course_constraints=({"course_id": 1, "exact_sections": 3},),
+    )
+
+    assert result["status"] == "infeasible"
+    assert result["diagnostics"] == [{
+        "code": "course_constraint_no_candidate",
+        "severity": "error",
+        "course_id": 1,
+        "course_code": "C1",
+        "priority_tier": 4,
+        "message": "No section-count candidate satisfies the scenario for C1.",
+        "phase": "candidate_generation",
+        "requested_constraint": {"course_id": 1, "exact_sections": 3},
+        "available_candidate_counts": [0, 1],
+        "eligible_teacher_count": 1,
+    }]
+
+
+def test_infeasible_staffing_scenario_reports_capacity_shortfall():
+    data = input_for(
+        (course(course_id=1), course(course_id=2)),
+        {1: 60, 2: 60},
+        capacities=(1, 1),
+    )
+
+    result = plan_section_counts(
+        data,
+        course_constraints=(
+            {"course_id": 1, "exact_sections": 2},
+            {"course_id": 2, "exact_sections": 2},
+        ),
+    )
+
+    assert result["status"] == "infeasible"
+    total_shortfall = next(
+        item for item in result["diagnostics"]
+        if item["code"] == "total_staffing_capacity_shortfall"
+    )
+    assert total_shortfall["required_sections"] == 4
+    assert total_shortfall["available_sections"] == 2
+    assert total_shortfall["shortfall_sections"] == 2

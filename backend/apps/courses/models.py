@@ -83,6 +83,13 @@ class Section(models.Model):
     )
 
     is_locked = models.BooleanField(default=False)
+    planning_approval_course = models.ForeignKey(
+        "scheduling.SectionPlanningApprovalCourse",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="generated_sections",
+    )
 
     class Meta:
         ordering = ["academic_year", "course", "section_number"]

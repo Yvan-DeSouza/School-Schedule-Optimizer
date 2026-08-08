@@ -94,6 +94,56 @@ class SectionPlanningRun(models.Model):
         return super().save(*args, **kwargs)
 
 
+class SectionPlanningApproval(models.Model):
+    """One immutable planning-role decision approving all or part of a run."""
+
+    planning_run = models.ForeignKey(
+        SectionPlanningRun,
+        on_delete=models.PROTECT,
+        related_name="approvals",
+    )
+    approved_by = models.ForeignKey("auth.User", null=True, on_delete=models.SET_NULL)
+    approved_at = models.DateTimeField(auto_now_add=True)
+    reason = models.TextField(blank=True, default="")
+
+    class Meta:
+        ordering = ["approved_at", "id"]
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise ValidationError("Section planning approvals are immutable.")
+        return super().save(*args, **kwargs)
+
+
+class SectionPlanningApprovalCourse(models.Model):
+    """The exact semester counts approved for one course in an approval."""
+
+    approval = models.ForeignKey(
+        SectionPlanningApproval,
+        on_delete=models.PROTECT,
+        related_name="course_approvals",
+    )
+    course = models.ForeignKey("courses.Course", on_delete=models.PROTECT)
+    recommended_semester_1_count = models.PositiveIntegerField()
+    recommended_semester_2_count = models.PositiveIntegerField()
+    approved_semester_1_count = models.PositiveIntegerField()
+    approved_semester_2_count = models.PositiveIntegerField()
+
+    class Meta:
+        ordering = ["course__course_code", "course_id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["approval", "course"],
+                name="unique_course_per_section_planning_approval",
+            )
+        ]
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise ValidationError("Approved course counts are immutable.")
+        return super().save(*args, **kwargs)
+
+
 class TimeSlot(models.Model):
     block = models.CharField(max_length=1, choices=SCHEDULE_BLOCK_CHOICES)
     academic_year = models.ForeignKey("common.AcademicYear", on_delete=models.CASCADE)

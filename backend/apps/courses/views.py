@@ -35,7 +35,12 @@ class CourseViewSet(PolicyFilteredViewSet):
 
 
 class SectionViewSet(PolicyFilteredViewSet):
-    queryset = Section.objects.select_related("course", "academic_year", "teacher__user")
+    queryset = Section.objects.select_related(
+        "course",
+        "academic_year",
+        "teacher__user",
+        "planning_approval_course__approval",
+    )
     serializer_class = SectionSerializer
     resource_policy_class = SectionPolicy
     filter_fields = ("academic_year", "course", "semester", "teacher")

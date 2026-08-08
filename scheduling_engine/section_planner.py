@@ -116,6 +116,121 @@ def _course_demand(data: SchedulingInputDTO):
     return values
 
 
+def _course_diagnostic(course, code, message, **details):
+    return {
+        "code": code,
+        "severity": details.pop("severity", "error"),
+        "course_id": course.id,
+        "course_code": course.course_code,
+        "priority_tier": course.priority_tier,
+        "message": message,
+        **details,
+    }
+
+
+def _solver_infeasibility_diagnostics(
+    data,
+    candidates_by_course,
+    capacities,
+    compiled,
+    *,
+    phase,
+):
+    diagnostics = []
+    minimum_required_by_course = {
+        course.id: min(candidate.count for candidate in candidates_by_course[course.id])
+        for course in data.courses
+    }
+    total_required = sum(minimum_required_by_course.values())
+    total_available = sum(capacities.values())
+    if total_required > total_available:
+        diagnostics.append({
+            "code": "total_staffing_capacity_shortfall",
+            "severity": "error",
+            "phase": phase,
+            "required_sections": total_required,
+            "available_sections": total_available,
+            "shortfall_sections": total_required - total_available,
+            "message": (
+                f"The scenario requires at least {total_required} sections but only "
+                f"{total_available} teacher section-load slots are available."
+            ),
+        })
+
+    for course in data.courses:
+        required = minimum_required_by_course[course.id]
+        if required == 0:
+            continue
+        eligible = compiled.qualified_teacher_ids_by_course[course.id]
+        if not eligible:
+            diagnostics.append(_course_diagnostic(
+                course,
+                "no_eligible_teachers",
+                f"{course.course_code} has no legally eligible teacher in the planning pool.",
+                phase=phase,
+                required_sections=required,
+                eligible_teacher_count=0,
+            ))
+            continue
+        eligible_annual_capacity = sum(
+            capacities[teacher_id, semester]
+            for teacher_id in eligible
+            for semester in (1, 2)
+        )
+        if required > eligible_annual_capacity:
+            diagnostics.append(_course_diagnostic(
+                course,
+                "course_staffing_capacity_shortfall",
+                (
+                    f"{course.course_code} requires at least {required} sections but its "
+                    f"eligible teachers have capacity for {eligible_annual_capacity}."
+                ),
+                phase=phase,
+                required_sections=required,
+                eligible_capacity_sections=eligible_annual_capacity,
+                shortfall_sections=required - eligible_annual_capacity,
+                eligible_teacher_count=len(eligible),
+            ))
+
+        restricted_semester = None
+        if course.allowed_semester == SEMESTER_1_ONLY:
+            restricted_semester = 1
+        elif course.allowed_semester == SEMESTER_2_ONLY:
+            restricted_semester = 2
+        if phase == "semester" and restricted_semester is not None:
+            eligible_semester_capacity = sum(
+                capacities[teacher_id, restricted_semester]
+                for teacher_id in eligible
+            )
+            if required > eligible_semester_capacity:
+                diagnostics.append(_course_diagnostic(
+                    course,
+                    "semester_staffing_capacity_shortfall",
+                    (
+                        f"{course.course_code} requires at least {required} Semester "
+                        f"{restricted_semester} sections but eligible teachers have capacity "
+                        f"for {eligible_semester_capacity}."
+                    ),
+                    phase=phase,
+                    semester=restricted_semester,
+                    required_sections=required,
+                    eligible_capacity_sections=eligible_semester_capacity,
+                    shortfall_sections=required - eligible_semester_capacity,
+                    eligible_teacher_count=len(eligible),
+                ))
+    if not diagnostics:
+        diagnostics.append({
+            "code": "combined_staffing_constraints_infeasible",
+            "severity": "error",
+            "phase": phase,
+            "message": (
+                "The selected courses compete for the same eligible teacher capacity, "
+                "so their required section counts cannot be staffed together."
+            ),
+        })
+    return diagnostics
+
+
 def _build_annual_model(data, candidates_by_course, capacities):
     compiled = compile_constraints(data)
     model = cp_model.CpModel()
@@ -222,12 +337,27 @@ def plan_section_counts(data: SchedulingInputDTO, *, course_constraints: Iterabl
         raise ValueError("A course constraint references an unknown course.")
     capacities = _remaining_capacities(data, teacher_capacity_adjustments)
     demand = _course_demand(data)
+    compiled_for_diagnostics = compile_constraints(data)
     candidates_by_course = {}
     for course in data.courses:
-        candidates = generate_section_count_candidates(demand[course.id][0], course)
-        candidates = _apply_course_constraints(candidates, constraints_by_course.get(course.id, {}))
+        generated_candidates = generate_section_count_candidates(demand[course.id][0], course)
+        candidates = _apply_course_constraints(generated_candidates, constraints_by_course.get(course.id, {}))
         if not candidates:
-            return {"status": "infeasible", "detail": f"No section-count candidate satisfies the scenario for {course.course_code}."}
+            constraint = constraints_by_course[course.id]
+            diagnostic = _course_diagnostic(
+                course,
+                "course_constraint_no_candidate",
+                f"No section-count candidate satisfies the scenario for {course.course_code}.",
+                phase="candidate_generation",
+                requested_constraint=constraint,
+                available_candidate_counts=[candidate.count for candidate in generated_candidates],
+                eligible_teacher_count=len(compiled_for_diagnostics.qualified_teacher_ids_by_course[course.id]),
+            )
+            return {
+                "status": "infeasible",
+                "detail": diagnostic["message"],
+                "diagnostics": [diagnostic],
+            }
         candidates_by_course[course.id] = candidates
 
     # Demand baseline contains no staffing constraints and is deterministic.
@@ -239,15 +369,36 @@ def plan_section_counts(data: SchedulingInputDTO, *, course_constraints: Iterabl
     model, choices, loads, objectives, compiled = _build_annual_model(data, candidates_by_course, capacities)
     solver, status = _solve_lexicographically(model, objectives)
     if solver is None:
-        return {"status": "infeasible", "detail": "No annual staffing-feasible plan exists for the supplied scenario."}
+        return {
+            "status": "infeasible",
+            "detail": "No annual staffing-feasible plan exists for the supplied scenario.",
+            "diagnostics": _solver_infeasibility_diagnostics(
+                data,
+                candidates_by_course,
+                capacities,
+                compiled,
+                phase="annual",
+            ),
+        }
     annual = {course.id: sum(candidate.count for variable, candidate in zip(choices[course.id], candidates_by_course[course.id]) if solver.Value(variable)) for course in data.courses}
 
     model, choices, options, loads, objectives, compiled = _build_semester_model(data, candidates_by_course, capacities, annual)
     solver, status = _solve_lexicographically(model, objectives)
     if solver is None:
-        return {"status": "infeasible", "detail": "The annual plan cannot be split into staffing-feasible semesters."}
+        return {
+            "status": "infeasible",
+            "detail": "The annual plan cannot be split into staffing-feasible semesters.",
+            "diagnostics": _solver_infeasibility_diagnostics(
+                data,
+                candidates_by_course,
+                capacities,
+                compiled,
+                phase="semester",
+            ),
+        }
 
     course_results = []
+    diagnostics = []
     for course in sorted(data.courses, key=lambda item: (item.course_code, item.id)):
         selected = next(option for variable, option in zip(choices[course.id], options[course.id]) if solver.Value(variable))
         candidate, semester_one, semester_two = selected
@@ -257,10 +408,63 @@ def plan_section_counts(data: SchedulingInputDTO, *, course_constraints: Iterabl
         if candidate.below_hard_min_review_required:
             warnings.append("below_hard_min_review_required")
             reasons.append("Predicted demand is below the minimum viable class size; counselor review is required.")
+            diagnostics.append(_course_diagnostic(
+                course,
+                "below_hard_min_review_required",
+                f"{course.course_code} is below its hard minimum class size and requires counselor review.",
+                severity="warning",
+                phase="demand",
+                predicted_enrollment=predicted,
+                hard_min=course.hard_min,
+            ))
         if candidate.unmet_students:
             reasons.append("No legally staffable section capacity remained for this course.")
+            eligible_teacher_count = len(compiled.qualified_teacher_ids_by_course[course.id])
+            if eligible_teacher_count == 0:
+                diagnostic_code = "no_eligible_teachers"
+                diagnostic_message = f"{course.course_code} has demand but no legally eligible teacher."
+            else:
+                diagnostic_code = "unmet_demand_after_staffing"
+                diagnostic_message = (
+                    f"{course.course_code} has {candidate.unmet_students} students of unmet demand "
+                    "after applying staffing capacity and course priorities."
+                )
+            diagnostics.append(_course_diagnostic(
+                course,
+                diagnostic_code,
+                diagnostic_message,
+                severity="warning",
+                phase="staffing",
+                unmet_demand=candidate.unmet_students,
+                eligible_teacher_count=eligible_teacher_count,
+            ))
+        if baseline[course.id] != annual[course.id]:
+            diagnostics.append(_course_diagnostic(
+                course,
+                "staffing_changed_demand_plan",
+                (
+                    f"Staffing feasibility changed {course.course_code} from "
+                    f"{baseline[course.id]} to {annual[course.id]} annual sections."
+                ),
+                severity="warning",
+                phase="annual",
+                demand_baseline_annual_count=baseline[course.id],
+                staffing_feasible_annual_count=annual[course.id],
+            ))
         if annual[course.id] != candidate.count:
             reasons.append("Semester staffing feasibility changed the annual staffing plan.")
+            diagnostics.append(_course_diagnostic(
+                course,
+                "semester_capacity_changed_annual_plan",
+                (
+                    f"Semester staffing capacity changed {course.course_code} from "
+                    f"{annual[course.id]} to {candidate.count} annual sections."
+                ),
+                severity="warning",
+                phase="semester",
+                annual_count_before_semester_split=annual[course.id],
+                final_annual_count=candidate.count,
+            ))
         if course.id in constraints_by_course:
             reasons.append("A counselor scenario constraint was applied.")
         course_results.append({
@@ -281,7 +485,7 @@ def plan_section_counts(data: SchedulingInputDTO, *, course_constraints: Iterabl
         })
     used_by_teacher_semester = {(teacher_id, semester): sum(solver.Value(load) for (tid, _, sem), load in loads.items() if tid == teacher_id and sem == semester) for teacher_id, semester in capacities}
     return {
-        "status": "complete", "courses": course_results,
+        "status": "complete", "courses": course_results, "diagnostics": diagnostics,
         "capacity_summary": {
             "available_sections": sum(capacities.values()),
             "planned_sections": sum(item["semester_1_count"] + item["semester_2_count"] for item in course_results),

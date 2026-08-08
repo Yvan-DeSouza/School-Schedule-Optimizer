@@ -9,6 +9,7 @@ class DemandPlanningAction:
     RECOMMEND_COURSE_CLOSURES = "recommend_course_closures"
     RECOMMEND_SECTION_COUNTS = "recommend_section_counts"
     RUN_SECTION_PLANNING = "run_section_planning"
+    APPROVE_SECTION_PLAN = "approve_section_plan"
     MANAGE_PLANNING_CONFIGURATION = "manage_planning_configuration"
 
 
@@ -18,6 +19,7 @@ class DemandPlanningActionPolicy(BaseActionPolicy):
         DemandPlanningAction.RECOMMEND_COURSE_CLOSURES,
         DemandPlanningAction.RECOMMEND_SECTION_COUNTS,
         DemandPlanningAction.RUN_SECTION_PLANNING,
+        DemandPlanningAction.APPROVE_SECTION_PLAN,
         DemandPlanningAction.MANAGE_PLANNING_CONFIGURATION,
     }
     rules = {

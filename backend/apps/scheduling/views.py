@@ -1,5 +1,6 @@
-from rest_framework import mixins, viewsets
-from rest_framework.exceptions import NotFound, ValidationError
+from rest_framework import mixins, status, viewsets
+from rest_framework.decorators import action
+from rest_framework.exceptions import APIException, NotFound, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -9,13 +10,21 @@ from backend.apps.access.permissions import ResourcePolicyPermission
 from backend.apps.access.resource_policies.planning import PlanningConfigurationPolicy
 from backend.apps.common.models import AcademicYear
 from backend.apps.common.views import ReferenceDataViewSet
-from backend.apps.scheduling.models import TimeSlot
-from backend.apps.scheduling.models import CapacityProfile, CoursePriorityProfile, SectionPlanningRun, TeacherPlanningCapacity
+from backend.apps.scheduling.models import (
+    CapacityProfile,
+    CoursePriorityProfile,
+    SectionPlanningApproval,
+    SectionPlanningRun,
+    TeacherPlanningCapacity,
+    TimeSlot,
+)
 from backend.apps.scheduling.serializers import (
     CapacityProfileSerializer,
     CourseCapacityPolicySerializer,
     CoursePriorityProfileSerializer,
     SectionCountRecommendationSerializer,
+    SectionPlanningApprovalRequestSerializer,
+    SectionPlanningApprovalSerializer,
     SectionPlanningRunCreateSerializer,
     SectionPlanningRunSerializer,
     TeacherPlanningCapacitySerializer,
@@ -23,6 +32,11 @@ from backend.apps.scheduling.serializers import (
 )
 from backend.apps.scheduling.services.engine_adapter import get_section_count_recommendations
 from backend.apps.scheduling.services.planning_configuration import apply_course_capacity_policy
+
+
+class SectionPlanningApprovalConflict(APIException):
+    status_code = status.HTTP_409_CONFLICT
+    default_code = "section_planning_approval_conflict"
 
 
 class TimeSlotViewSet(ReferenceDataViewSet):
@@ -111,7 +125,19 @@ class SectionPlanningRunViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, 
     permission_classes = [ActionPolicyPermission]
     action_policy_class = DemandPlanningActionPolicy
     action_name = DemandPlanningAction.RUN_SECTION_PLANNING
-    queryset = SectionPlanningRun.objects.select_related("academic_year", "created_by")
+    queryset = SectionPlanningRun.objects.select_related(
+        "academic_year",
+        "created_by",
+    ).prefetch_related(
+        "approvals__course_approvals__generated_sections",
+    )
+
+    def get_permissions(self):
+        if self.action == "approve":
+            self.action_name = DemandPlanningAction.APPROVE_SECTION_PLAN
+        else:
+            self.action_name = DemandPlanningAction.RUN_SECTION_PLANNING
+        return super().get_permissions()
 
     def get_serializer_class(self):
         return SectionPlanningRunCreateSerializer if self.action == "create" else SectionPlanningRunSerializer
@@ -134,3 +160,66 @@ class SectionPlanningRunViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, 
         except ValueError as error:
             raise ValidationError({"detail": str(error)}) from error
         return Response(SectionPlanningRunSerializer(run).data, status=201)
+
+    @action(detail=True, methods=["get"], url_path="review")
+    def review(self, request, pk=None):
+        from backend.apps.scheduling.services.section_planning import (
+            PlanningApprovalValidationError,
+            preview_section_planning_approval,
+        )
+
+        run = self.get_object()
+        try:
+            preview = preview_section_planning_approval(run)
+        except PlanningApprovalValidationError as error:
+            raise ValidationError(error.detail) from error
+        return Response(preview)
+
+    @action(detail=True, methods=["post"], url_path="approval-preview")
+    def approval_preview(self, request, pk=None):
+        from backend.apps.scheduling.services.section_planning import (
+            PlanningApprovalValidationError,
+            preview_section_planning_approval,
+        )
+
+        serializer = SectionPlanningApprovalRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        run = self.get_object()
+        try:
+            preview = preview_section_planning_approval(
+                run,
+                selections=serializer.validated_data.get("courses"),
+            )
+        except PlanningApprovalValidationError as error:
+            raise ValidationError(error.detail) from error
+        return Response(preview)
+
+    @action(detail=True, methods=["post"], url_path="approve")
+    def approve(self, request, pk=None):
+        from backend.apps.scheduling.services.section_planning import (
+            PlanningApprovalConflictError,
+            PlanningApprovalValidationError,
+            approve_section_planning_run,
+        )
+
+        serializer = SectionPlanningApprovalRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        run = self.get_object()
+        try:
+            approval = approve_section_planning_run(
+                run,
+                approved_by=request.user,
+                selections=serializer.validated_data.get("courses"),
+                reason=serializer.validated_data["reason"],
+            )
+        except PlanningApprovalValidationError as error:
+            raise ValidationError(error.detail) from error
+        except PlanningApprovalConflictError as error:
+            raise SectionPlanningApprovalConflict(error.detail) from error
+        approval = SectionPlanningApproval.objects.prefetch_related(
+            "course_approvals__generated_sections",
+        ).get(pk=approval.pk)
+        return Response(
+            SectionPlanningApprovalSerializer(approval).data,
+            status=status.HTTP_201_CREATED,
+        )

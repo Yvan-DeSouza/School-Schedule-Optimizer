@@ -204,11 +204,12 @@ Demand summary response:
 
 ## Staffing-Aware Section Planning
 
-The CP-SAT planning layer creates an immutable, read-only annual and
-semester-level recommendation. It never creates `Section` records or assigns
-named teachers, students, rooms, or timetable blocks. Counselors, staff, and
-directors can manage its configuration and create runs; other roles have no
-access.
+The CP-SAT planning layer creates an immutable annual and semester-level
+recommendation. A run itself is read-only and creates nothing. After review, a
+counselor, staff member, or director can explicitly approve all or part of a
+completed run to create unstaffed, unlocked draft `Section` records. Planning
+never assigns named teachers, students, rooms, or timetable blocks. Other roles
+have no access.
 
 | Route | Purpose |
 | --- | --- |
@@ -219,6 +220,9 @@ access.
 | `POST /api/planning/section-count-runs/` | Create a frozen base plan or what-if scenario |
 | `GET /api/planning/section-count-runs/` | List frozen planning runs |
 | `GET /api/planning/section-count-runs/{id}/` | Retrieve one complete recommendation and explanation |
+| `GET /api/planning/section-count-runs/{id}/review/` | Review all remaining recommended course counts and blocking conflicts |
+| `POST /api/planning/section-count-runs/{id}/approval-preview/` | Validate selected or adjusted counts without writing sections |
+| `POST /api/planning/section-count-runs/{id}/approve/` | Approve selected counts and atomically create draft sections |
 
 A capacity profile contains positive `hard_min`, `soft_min`, `target`,
 `soft_max`, and `hard_max` values, in that order. New courses receive the
@@ -254,7 +258,33 @@ demand rather than claiming a feasible plan. Unused teacher capacity is reported
 as slack; the planner never invents sections merely to fill a workload maximum.
 
 Runs snapshot all effective profiles, demand, qualification eligibility, and
-capacity inputs. Later configuration changes affect only new runs.
+capacity inputs. Structured diagnostics identify course-constraint failures,
+qualification gaps, and staffing or semester-capacity shortfalls. Later
+configuration changes affect only new runs.
+
+Preview or approve selected course counts with:
+
+```json
+{
+  "courses": [
+    {"course_id": 5, "semester_1_count": 2, "semester_2_count": 1}
+  ],
+  "reason": "Approved after department review"
+}
+```
+
+Omit `courses` to approve every recommendation from that run that has not
+already been approved. Approval uses the course's current planning capacity
+policy for the draft section's compatibility capacity fields. If that policy or
+the course's semester restriction changed after the run, the preview reports
+the change and current semester restrictions remain enforceable.
+
+Every approval stores the approving user, timestamp, reason, recommended
+counts, approved Semester 1/2 counts, and generated section ids. Generated
+sections expose their source approval and planning-run ids. Approval is
+transactional: either every selected draft section is created or none are.
+Existing sections and previously approved courses produce `409 Conflict`; the
+endpoint never replaces them implicitly.
 
 ## Constraint and Lock API
 

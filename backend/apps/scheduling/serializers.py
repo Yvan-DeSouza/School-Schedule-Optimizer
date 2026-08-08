@@ -4,6 +4,8 @@ from backend.apps.common.constants import BLOCK_ROTATION, CAPACITY_PROFILE_SCOPE
 from backend.apps.scheduling.models import (
     CapacityProfile,
     CoursePriorityProfile,
+    SectionPlanningApproval,
+    SectionPlanningApprovalCourse,
     SectionPlanningRun,
     TeacherPlanningCapacity,
     TimeSlot,
@@ -175,8 +177,72 @@ class SectionPlanningRunCreateSerializer(serializers.Serializer):
         return attrs
 
 
+class SectionPlanningCourseSelectionSerializer(serializers.Serializer):
+    course_id = serializers.IntegerField(min_value=1)
+    semester_1_count = serializers.IntegerField(min_value=0)
+    semester_2_count = serializers.IntegerField(min_value=0)
+
+
+class SectionPlanningApprovalRequestSerializer(serializers.Serializer):
+    courses = SectionPlanningCourseSelectionSerializer(many=True, required=False)
+    reason = serializers.CharField(required=False, allow_blank=True, default="", max_length=2000)
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        if "courses" in attrs:
+            if not attrs["courses"]:
+                raise serializers.ValidationError({
+                    "courses": "Omit courses to approve all remaining recommendations, or provide at least one course."
+                })
+            course_ids = [item["course_id"] for item in attrs["courses"]]
+            if len(course_ids) != len(set(course_ids)):
+                raise serializers.ValidationError({
+                    "courses": "Each course may appear only once in an approval."
+                })
+        return attrs
+
+
+class SectionPlanningApprovalCourseSerializer(serializers.ModelSerializer):
+    generated_section_ids = serializers.PrimaryKeyRelatedField(
+        source="generated_sections",
+        many=True,
+        read_only=True,
+    )
+
+    class Meta:
+        model = SectionPlanningApprovalCourse
+        fields = (
+            "id",
+            "course",
+            "recommended_semester_1_count",
+            "recommended_semester_2_count",
+            "approved_semester_1_count",
+            "approved_semester_2_count",
+            "generated_section_ids",
+        )
+        read_only_fields = fields
+
+
+class SectionPlanningApprovalSerializer(serializers.ModelSerializer):
+    course_approvals = SectionPlanningApprovalCourseSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = SectionPlanningApproval
+        fields = (
+            "id",
+            "planning_run",
+            "approved_by",
+            "approved_at",
+            "reason",
+            "course_approvals",
+        )
+        read_only_fields = fields
+
+
 class SectionPlanningRunSerializer(serializers.ModelSerializer):
+    approvals = SectionPlanningApprovalSerializer(many=True, read_only=True)
+
     class Meta:
         model = SectionPlanningRun
-        fields = ("id", "academic_year", "created_by", "created_at", "status", "scenario_constraints", "input_snapshot", "result", "solver_metadata")
+        fields = ("id", "academic_year", "created_by", "created_at", "status", "scenario_constraints", "input_snapshot", "result", "solver_metadata", "approvals")
         read_only_fields = fields
