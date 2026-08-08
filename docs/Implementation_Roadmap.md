@@ -1,513 +1,833 @@
 # Implementation Roadmap
-## Intelligent School Timetabling System — Version 1
+## Intelligent School Timetabling System — Version 1 Re-baseline
 
-**Document Type:** Implementation Roadmap (companion to the Software Design Document)
-**Author Role:** Lead Software Architect
-**Scope:** 10 major phases, current state (finalized architecture + schema) → working Version 1 system
-**Context:** Solo developer, long-duration portfolio project
+**Document type:** Master implementation roadmap
 
----
+**Re-baselined:** 2026-08-07
 
-## How to Use This Document
+**Primary evidence:** current repository code, tests, README, and Software Design Document (SDD)
 
-Each phase below is a complete unit of engineering work — not a sprint, not a day, but a coherent chunk that should be finished (per its Definition of Done) before the next phase begins in earnest. Phases are ordered by priority, and priority here means **"what does everything after this depend on,"** not "what's most exciting to build." This is deliberate: for a solo, long-running project, the biggest risk isn't lack of skill, it's silent architectural drift and rework caused by skipping foundations — so foundational phases are front-loaded even though they are the least visually impressive.
-
-Every phase assumes the Software Design Document (SDD) is final and unmodified. No phase below revisits the architecture; each one *implements* a specific section of it.
+**Project context:** solo-developer, long-duration portfolio project
 
 ---
 
-## Phase 1 — Project Foundation & Developer Environment
+## How to Use This Roadmap
 
-**Goal:** Establish a reproducible, tested, continuously-integrated development environment before any domain code is written.
+This document starts from the software that exists today. It does not treat the project as a greenfield implementation and does not preserve obsolete phases simply because they appeared in an earlier roadmap.
 
-**Why this phase comes next:** Every other phase assumes a working local environment, a real Postgres/Redis instance, a test runner, and a CI pipeline that catches regressions. Skipping this in favor of "just start coding" is the single most common way solo long-duration projects rot — inconsistent formatting, undetected regressions, and "works on my machine" bugs accumulate silently until they become expensive to fix. This phase is cheap now and increasingly expensive to retrofit later.
+Status labels have precise meanings:
 
-**Dependencies:** None — only the finalized SDD.
+- **Completed** means the capability exists in executable code and has relevant automated coverage.
+- **Partially complete** means useful models, services, policies, or engine inputs exist, but the user-facing capability is not complete.
+- **Not implemented** means the repository contains no working end-to-end version of the capability. A model or permission placeholder alone does not count as implementation.
+
+The SDD remains the architectural reference for Version 1 intent. The repository is the source of truth for implementation status. Where the two differ, this roadmap names the difference rather than pretending they already match.
+
+The intended product remains a counselor-controlled decision-support system:
+
+`Demand → Section Planning → Counselor Review → Approval → Draft Sections → Further Scheduling → Analysis → Human Adjustment → Replanning`
+
+Every future solver phase must preserve a review checkpoint. Solver output is a recommendation until an authorized person explicitly accepts it.
+
+---
+
+## Current Project Status
+
+### Current Product Boundary
+
+The working system presently reaches this point:
+
+`Course requests → demand forecast → staffing-aware annual section counts → semester split → immutable planning run → counselor review/adjustment → approval → unstaffed, unlocked draft Section records`
+
+The system does **not** yet proceed from those draft sections to A–D block placement, room placement, named teacher assignment, student assignment, or a composed timetable.
+
+### Completed
+
+The following capabilities are implemented in the repository and covered by automated tests.
+
+#### Backend and domain foundation
+
+- Django, Django REST Framework, PostgreSQL configuration, SimpleJWT authentication, pagination, and app-level separation are in place.
+- Core models exist for academic years, rooms, courses, sections, students, teachers, counselors, course requests, enrollments, prerequisites, historical demand, constraints, locks, schedules, and translations.
+- Shared selectable domain values live in `backend/apps/common/constants.py`, including the permanent four-day A–D rotation.
+- Project application migrations are intentionally disabled. Tests and local development synchronize tables directly from current models.
+- Django admin registration exists for the principal domain models.
+
+#### Authentication, roles, and access policy
+
+- Student, teacher, counselor, staff, director, and unknown roles are resolved centrally.
+- Domain-profile roles take precedence over general role profiles.
+- Resource and named-action policies fail closed and separate read scope from write scope.
+- Students can manage only their own course requests; teachers can manage only their own nested qualification/preference/availability records; planning roles receive the broader planning access defined by policy.
+- Anonymous requests return `401`; authenticated but unauthorized or unknown roles return `403` at tested endpoints.
+- Policy filtering is applied before client query filtering.
+
+#### Domain and constraint APIs
+
+- Course, section, and course-request CRUD APIs exist with role-safe filtering and validation.
+- Academic-year, room, and A–D timeslot APIs exist with guarded deletion of referenced data.
+- Raw course-demand aggregation exists for an academic year.
+- Shared hard/soft constraints, counselor weights, course conflicts, room requirements, qualifications, course qualification requirements, and section locks are manageable through APIs.
+- Teacher qualifications, preferences, current courses, and availability use teacher-owned nested APIs.
+- Direct teacher assignment and teacher locks share the same qualification validation service.
+
+#### Normalized qualification architecture
+
+- The implemented source of truth is `Teacher → TeacherQualification → Qualification` and `Course → CourseQualificationRequirement → Qualification`.
+- Qualification kind, canonical subject, division, enforcement, and provenance are represented explicitly.
+- Grade 11–12 courses fail closed unless a required normalized Senior teachable is configured and held by the teacher.
+- Grade 7–10 mappings are preferences and do not create a hard eligibility barrier.
+- Aspen source text and provenance remain outside engine matching.
+- The constraint compiler is the pure-engine authority for eligibility; future solvers must consume its compiled sets rather than duplicate matching logic.
+
+#### Pure scheduling-engine boundary
+
+- `scheduling_engine` is independent of Django and accepts immutable DTOs.
+- An AST-based test rejects Django or backend imports in production engine modules.
+- `backend/apps/scheduling/services/engine_adapter.py` is the Django-to-engine translation boundary.
+- The adapter loads a detached academic-year snapshot, normalized qualifications, constraints, existing sections and locks, rooms, timeslots, requests, historical demand, and teacher capacity.
+- The engine includes demand analysis, recency-weighted historical conversion, co-request conflict recommendations, the legacy section estimator, and compiled solver indexes.
+
+#### Staffing-aware section planning
+
+- `CapacityProfile` provides ordered hard minimum, soft minimum, target, soft maximum, and hard maximum values.
+- Shared capacity profiles and copy-on-write course-specific profiles are supported.
+- `CoursePriorityProfile` provides an explicit four-tier priority; priority is not inferred from request flags, course code, grade, or category.
+- Courses can be restricted to Semester 1, Semester 2, or either semester.
+- `TeacherPlanningCapacity` represents a teacher/year/semester maximum and reserved load.
+- Existing assigned or locked sections consume remaining planning capacity.
+- What-if teacher adjustments reduce or exclude capacity without changing credentials.
+- The OR-Tools CP-SAT section planner produces:
+  1. a demand-only annual baseline;
+  2. an annual staffing-feasible plan; and
+  3. a Semester 1/Semester 2 split.
+- The objective is solved lexicographically, protecting higher course-priority tiers before class-size preferences.
+- Positive demand below the hard minimum can produce one review-required provisional section.
+- Unstaffable demand remains visible as unmet demand; the planner does not invent sections to fill staff capacity.
+- Counselor scenarios support exact annual counts, annual minimums, annual maximums, and teacher-capacity reductions/exclusions.
+- Structured diagnostics cover invalid course scenarios, missing eligible teachers, aggregate staffing shortages, course-specific shortages, semester shortages, and shared-pool infeasibility.
+
+#### Immutable planning and approval workflow
+
+- `SectionPlanningRun` stores the scenario, exact engine input snapshot, result, creator, status, timestamp, and solver metadata as an immutable audit record.
+- Planning roles can list and retrieve runs, review remaining recommendations, preview an adjusted approval, and approve all or selected courses.
+- Approval may change the recommended Semester 1/Semester 2 counts and records both recommended and accepted values.
+- `SectionPlanningApproval` and `SectionPlanningApprovalCourse` are immutable.
+- Approval creates deterministic, unstaffed, unlocked draft `Section` rows in one transaction.
+- Every generated section traces to its per-course approval, approval user, and original planning run.
+- Current semester restrictions are revalidated at approval time, and configuration drift is shown to the reviewer.
+- Existing sections or repeated approval return `409 Conflict`; the service never replaces existing work implicitly.
+- A simulated mid-write failure is tested to roll back sections and all approval audit rows.
+
+### Partially Complete
+
+These areas contain useful foundations but are not complete Version 1 capabilities.
+
+| Area | What exists | What is still missing |
+|---|---|---|
+| Demand and offering review | Raw demand summary, historical forecasting, below-minimum warnings, and co-request recommendations in the pure engine | A dedicated counselor-facing offer/close decision view; an explicit merge/cross-list domain workflow; an API workflow for reviewing and accepting generated conflict weights |
+| Planning input management | Student/teacher/course models, historical-demand records, Django admin, and teacher-nested constraint APIs | Planning-role roster APIs, historical-demand management API, and a consolidated readiness check for missing planning inputs |
+| Staffing reporting | Per-run available/planned/unused capacity, course eligibility counts, and structured shortage diagnostics | The SDD's standalone staffing summary by subject/qualification pool and a stable API intended for cross-run operational reporting |
+| Section lifecycle | Draft sections, planning provenance, generic CRUD, and safe refusal to overwrite existing sections | Explicit reconciliation when a later approved plan changes counts or semesters; retirement/supersession semantics; protection of downstream work during reconciliation |
+| Timetable data | `TimeSlot`, permanent A–D rotation, `Room`, `SectionSchedule`, room requirements, course conflicts, and section locks | No solver or review workflow assigns a block or room |
+| Teacher scheduling foundation | Normalized qualifications, compiled eligibility, availability, preferences, current-course history, workload fields, and planning capacity | No named-teacher assignment solver, recommendation run, approval, or assignment diagnostics |
+| Student scheduling foundation | Course requests, sections, enrollments, prerequisites, and student grade | No student assignment solver; no defined source of completed-course/transcript evidence for prerequisite evaluation |
+| Manual controls | `SectionLock`, `Section.is_locked`, `ManualOverride` model, admin registration, and future action-policy names | No enforced synchronization invariant between lock row/flag; no override application service/API, typed action workflow, optimistic concurrency, override history endpoint, or scoped re-solve |
+| Timetable visibility | Teachers can read sections already assigned to them | No composed timetable endpoint and no student/teacher personal schedule endpoint |
+| Internationalization | `Translation` model and admin registration | No translation API and no user interface consuming translations |
+| Scheduling orchestration | Section planning runs synchronously and persist immutable results | No run orchestration/status model for placement/assignment stages and no measured decision yet on background workers |
+| Frontend | None | The React role-based application described by the SDD has not been started |
+| Delivery hardening | Pytest configuration, extensive tests, README setup, environment-based secrets | No visible CI workflow, production settings split, generated API contract, structured operational logging, or target-scale benchmark suite |
+
+### Not Yet Implemented
+
+- Reconciliation or replacement of previously approved draft section plans.
+- Automated section placement into A–D blocks.
+- Automated room assignment.
+- Named teacher-to-section assignment.
+- Student-to-section assignment.
+- Post-solve conflict and issue analysis across the completed timetable.
+- General manual override application and immutable history APIs.
+- Genuine scoped re-solving with out-of-scope entities held fixed.
+- Persistent status tracking for downstream scheduling runs.
+- Staff-facing student/teacher roster, historical-demand, and prerequisite-management API coverage required by the later workflows.
+- A counselor/administrator, teacher, or student frontend.
+- Final timetable and personal-schedule APIs.
+
+Models, DTO fields, policy names, or SDD descriptions for these areas are foundations only; they are not evidence that the capability is complete.
+
+### Verification Baseline
+
+The current checkout was verified non-destructively during this re-baseline on 2026-08-07:
+
+- `python backend/manage.py check` — no issues.
+- `python backend/manage.py makemigrations --check --dry-run` — no model changes detected and no migration files created.
+- Isolated `scheduling_engine` suite — 15 tests passed without Django.
+- Full repository suite — 83 tests passed.
+
+These numbers describe the current baseline, not a permanent completion target. Every future phase must add tests for its own contracts while keeping this existing suite green.
+
+---
+
+## Architecture to Preserve
+
+All remaining phases must preserve these established boundaries and conventions:
+
+1. **Django owns identity, authorization, validation, orchestration, and persistence.** DRF views remain thin and delegate multi-model work to services.
+2. **The scheduling engine remains pure Python.** No engine module imports Django, performs ORM queries, or writes database state.
+3. **The adapter is the translation boundary.** ORM records become immutable DTOs before solving; result persistence occurs in an explicit Django transaction.
+4. **Optimization remains staged.** Section counts, placement, teacher assignment, and student assignment are independently reviewable stages, not one monolithic solver.
+5. **Human decisions are explicit and auditable.** A recommendation never becomes operational state through an implicit overwrite.
+6. **Qualification rules are already designed.** Future work reuses normalized qualifications and compiled eligibility. Qualifications are not consumed and capacity scenarios never modify credentials.
+7. **The timetable uses recurring A–D blocks.** A `TimeSlot` is one recurring block in one semester, not an individual calendar-day period.
+8. **Authorization fails closed.** Planning roles are counselor, staff, and director where current policy allows; future stage-specific policy may intentionally distinguish who can run a solver from who can monitor it.
+9. **Schema development is migrationless for this pre-production repository.** Do not create project migration files unless explicitly requested. An authorized local schema rebuild uses `migrate --run-syncdb`; never reset a database as an incidental roadmap task.
+10. **Infrastructure follows measured need.** Do not add Docker, Celery, Redis, or another broker solely because the old roadmap named them. Preserve an orchestration seam and choose deployment infrastructure only after representative solve-time and reliability requirements justify it.
+
+---
+
+## Meaningful SDD Divergences
+
+The SDD still describes the product philosophy and long-term pipeline well, but several concrete implementation assumptions are stale.
+
+| Topic | SDD description | Actual implementation and roadmap treatment |
+|---|---|---|
+| Section-count planning | Primarily a heuristic using legacy min/max values | Evolved intentionally into a staffing-aware, semester-aware CP-SAT stage using five-point capacity profiles, explicit priorities, and teacher capacity. Treat the implemented planner as current architecture. |
+| Counselor confirmation | Counselor manually creates sections through ordinary Section CRUD | Replaced by a stronger review/preview/approval transaction with immutable audit provenance. This is completed work. |
+| Database schema | Described as fixed and largely unmodified | The implementation added planning configuration/run/approval models and explicit role profiles while preserving the SDD's intent. Future schema changes should be additive and justified, not prohibited by an outdated statement. |
+| Roles | Administrator inferred mainly through Django staff/superuser flags | The repository has explicit staff/director role profiles plus domain profile precedence. Use the implemented role system. |
+| Computational execution | All solve stages are presented as asynchronous through a queue | Current section planning is synchronous and bounded enough for existing tests. Downstream stages need a measured orchestration decision; a queue is not yet implemented. |
+| Course conflicts | Demand analysis automatically upserts `CourseConflict` | The pure engine computes recommendations, but the current API does not persist them automatically. Preserve human review rather than silently claiming upsert behavior exists. |
+| Merge/cancel review | Explicit Stage 2 merge/cancel workflow | The planner exposes below-minimum warnings and allows a zero-section decision, but no dedicated merge/cross-list workflow exists. Cross-listing requires separate domain design. |
+| Lock state | `Section.is_locked` is described as a synchronized fast flag for `SectionLock` state | The current lock API can create or clear a `SectionLock` without synchronizing `Section.is_locked`, and generic Section CRUD can change the flag independently. Establish one invariant before downstream placement. |
+| Manual overrides | Complete override service and scoped feedback loop | Only locks, a basic `ManualOverride` model, and policy scaffolding exist. The general workflow remains future work. |
+| Frontend and i18n | React application and translation-backed UI are part of Version 1 | Neither is implemented. They remain required for a complete user-facing Version 1, but should be built against stable stage APIs. |
+| Migrations | Conventional Django migrations assumed | Project apps intentionally disable migrations during pre-production development. Roadmap work must follow the documented `run-syncdb` convention. |
+
+Updating the SDD to reflect these implementation evolutions is a documentation task in the final hardening phase. The code should not be redesigned merely to reproduce stale SDD assumptions.
+
+---
+
+## Version 1 Completion Target
+
+Version 1 is coherent when a counselor can:
+
+1. collect and review demand;
+2. run, adjust, approve, and later reconcile a section-count plan;
+3. review and approve A–D block and room placement;
+4. review and approve named teacher assignments;
+5. review and approve student assignments;
+6. inspect unresolved conflicts and capacity issues;
+7. make an audited manual change and re-solve only the affected scope;
+8. complete the workflow through a role-appropriate user interface; and
+9. understand which run, assumptions, human decision, and override produced every current scheduling result.
+
+The target is not a schedule that bypasses human judgment. It is a repeatable and auditable workflow that produces a strong draft, explains problems, and preserves accepted work during iteration.
+
+---
+
+## Remaining Phase Order
+
+`Planning reconciliation → Section placement → Teacher assignment → Student assignment and conflict analysis → Manual overrides and scoped re-solve → Frontend → V1 hardening`
+
+This order follows data dependencies. Stable section identity comes before attaching schedules, teachers, and students. Placement comes before availability-aware teacher assignment and conflict-free student assignment. Scoped re-solving comes after there are real solver stages to scope.
+
+---
+
+## Phase 1 — Section Planning Lifecycle Completion and Reconciliation
+
+**Current Status:** **Not implemented; recommended immediate next phase.** The approval service intentionally returns `409 Conflict` whenever a selected course already has sections in the academic year.
+
+**Goal:** Allow a planning-role user to apply a later approved section plan safely and explicitly, while preserving immutable approvals, stable section identity, downstream work, and a complete audit trail.
+
+**Why It Comes Next:** The current planner and approval workflow are usable for the first plan only. Real scheduling is iterative, so changed demand, staffing, or counselor decisions must eventually alter approved counts. If block, room, teacher, or student assignments are built first, the undefined meaning of “replace these sections” becomes more dangerous and expensive. Establishing lifecycle and reconciliation semantics now gives every downstream stage a stable set of active sections.
+
+**Dependencies:** Existing `SectionPlanningRun`, approval models, generated-section provenance, `Section`, locks, schedules, teacher assignments, and enrollments.
 
 **Deliverables:**
-- Git repository with a documented branching strategy (e.g., trunk-based with short-lived feature branches).
-- Docker Compose configuration running PostgreSQL and Redis locally.
-- Django project skeleton with split settings (`base.py`, `dev.py`, `prod.py`).
-- Dependency management via Poetry (or pip-tools) with a locked dependency file.
-- `pytest` + `pytest-django` configured and running (even against a trivial placeholder test).
-- Pre-commit hooks: `black`, `isort`, `ruff` (or `flake8`), optionally `mypy`.
-- GitHub Actions (or equivalent) CI pipeline: lint → test on every push/PR.
-- A README with exact setup instructions a future-you (returning after a gap) can follow cold.
+
+- A documented lifecycle for planned sections, including active draft and retired/superseded states or an equivalent non-destructive representation.
+- A read-only reconciliation preview that compares a completed planning run or approval with the current active sections for each course/year.
+- An explicit reconciliation apply action requiring an authorized user and reason.
+- A deterministic delta containing unchanged, created, semester-moved, and retired/blocked sections.
+- Immutable reconciliation audit records linking the prior state, new planning run/approval, actor, reason, and resulting section IDs.
+- Course-level decision rationale for adjusted or zero-section decisions where the existing approval-level reason is insufficient.
+- An explicit counselor outcome for offering, offering below minimum, or accepting zero sections; this is a human decision and does not automatically merge courses.
+- Planning-role historical-demand management and a read-only input-readiness report for missing senior qualification rules, usable teacher capacity, and historical coverage.
+- One enforced invariant for `Section.is_locked` and `SectionLock` so later solvers receive unambiguous fixed context.
+- A planning-status/staffing view that exposes the accepted section plan, remaining qualification bottlenecks, and outstanding review items without pretending to be a timetable.
+- Transactional and concurrency-safe reconciliation with structured `400` validation and `409` state conflicts.
+- API/service/model tests for increases, decreases, semester moves, unchanged plans, retries, rollback, and protected downstream state.
 
 **Major Tasks:**
-1. Initialize the repository and choose the dependency manager.
-2. Write `docker-compose.yml` for Postgres + Redis.
-3. Scaffold the Django project with split settings and environment-variable-driven configuration (12-factor style).
-4. Configure `pytest`/`pytest-django`, confirm a trivial test passes.
-5. Install and configure pre-commit hooks; run once against the empty project.
-6. Write the CI workflow file; confirm it runs green on a throwaway commit.
-7. Write the README (setup, common commands, project layout pointer to the SDD).
+
+1. Write a short architecture decision record defining section identity and legal lifecycle transitions.
+2. Define how manually created sections differ from approval-generated sections during reconciliation.
+3. Implement a pure comparison service that produces the proposed delta before any write.
+4. Preserve existing section rows when they remain valid; create only the additional rows required by an increase.
+5. Never cascade-delete accepted work. A section with a lock, placement, teacher, enrollment, or manual override must be reported as blocked or handled through a separately confirmed transition.
+6. Apply accepted deltas in one transaction with row locks and deterministic ordering.
+7. Keep planning runs and prior approvals immutable; reconciliation adds history rather than rewriting it.
+8. Add review/apply actions and return enough state for a future counselor UI to explain every consequence.
+9. Add the missing historical-demand/readiness API boundary needed to explain forecast quality and incomplete planning configuration.
+10. Define and enforce whether the structured `SectionLock` row or `Section.is_locked` is authoritative; prevent the two representations from drifting.
+11. Add tests proving a failed reconciliation leaves sections and audit records unchanged.
+12. Treat cross-listing as a separate domain decision. Do not use it as an automatic answer to low-demand courses in this phase.
 
 **Suggested Folder/Module Structure:**
-```
-repo-root/
-  backend/
-    config/            # Django project package (settings/, urls.py, wsgi.py, asgi.py)
-    apps/               # (empty for now — populated in Phase 2)
-    manage.py
-  docker/
-    docker-compose.yml
-  .github/workflows/ci.yml
-  docs/
-    SDD.md
-    ROADMAP.md
-  pyproject.toml
-  README.md
-```
 
-**Estimated Difficulty:** 3/10
-
-**Common Mistakes to Avoid:**
-- Deferring CI "until there's real code to test" — the value of CI is catching regressions from day one, not validating a finished product.
-- Not containerizing Postgres/Redis early, leading to environment drift between machines or after long breaks from the project.
-- Over-engineering settings/config for scenarios (multi-region, multi-tenant) that aren't in V1 scope per the SDD.
-
-**Definition of Done:**
-- `docker-compose up` brings up Postgres and Redis with no manual steps.
-- `pytest` runs successfully both locally and in CI on every push.
-- Pre-commit hooks block a badly-formatted commit locally.
-- A fresh `git clone` followed by the README's instructions results in a running dev server within a few minutes.
-
----
-
-## Phase 2 — Data Layer Implementation (Version 1 Schema as Django Models)
-
-**Goal:** Faithfully translate the finalized Version 1 schema (SDD Section 16) into Django models, organized into apps per SDD Section 19.2, with migrations and baseline tests.
-
-**Why this phase comes next:** Every API, service, and solver in every later phase reads or writes this schema. It must exist, migrated, and verified against its own constraints (uniqueness, cascade behavior) before anything is built on top of it.
-
-**Dependencies:** Phase 1 (Django project, Postgres container, pytest).
-
-**Deliverables:**
-- Django apps: `people`, `courses`, `scheduling_control`, `constraints`, `i18n` (per SDD 19.2).
-- All models from the SDD schema, ported without redesign.
-- Initial migrations, applied cleanly from an empty database.
-- Django admin registration for every model (a fast internal CRUD tool useful throughout development).
-- `factory_boy` factories for every model, for use in all future tests.
-- Unit tests verifying every unique constraint, nullable/blank rule, and cascade behavior defined in the schema.
-
-**Major Tasks:**
-1. Create the five Django apps per the SDD's suggested mapping.
-2. Port every model file verbatim, adding only non-breaking conveniences (`__str__`, `Meta.ordering`) — no field changes, no new constraints beyond what's specified.
-3. Generate and apply migrations against a clean database.
-4. Register all models in `admin.py` for each app.
-5. Write `factory_boy` factories for every model.
-6. Write tests that deliberately violate each unique constraint and assert the expected `IntegrityError`/validation behavior.
-
-**Suggested Folder/Module Structure:**
-```
-backend/apps/
-  people/{models.py, admin.py, migrations/, factories.py, tests/}
-  courses/{models.py, admin.py, migrations/, factories.py, tests/}
-  scheduling_control/{models.py, admin.py, migrations/, factories.py, tests/}
-  constraints/{models.py, admin.py, migrations/, factories.py, tests/}
-  i18n/{models.py, admin.py, migrations/, tests/}
-```
-
-**Estimated Difficulty:** 4/10
-
-**Common Mistakes to Avoid:**
-- Quietly "improving" the schema while porting it — the SDD explicitly treats the schema as finalized; any perceived improvement should be raised as a proposal, not silently implemented.
-- Skipping the composite indexes called out in SDD Section 25 (`(section, timeslot)`, `(student, section)`) — retrofitting indexes later is far more disruptive than adding them at initial migration time.
-- Under-testing constraints, only to discover a violated assumption later while debugging a solver in Phase 7 or 8, far from the actual cause.
-
-**Definition of Done:**
-- `python manage.py migrate` runs cleanly against an empty database with zero errors or warnings.
-- Every model is visible and editable through Django admin.
-- The test suite includes at least one test per unique/foreign-key constraint in the schema, and all pass in CI.
-
----
-
-## Phase 3 — Authentication, RBAC & Auth-Profile Linkage
-
-**Goal:** Implement the auth linkage assumption from SDD Section 11 (a `User` linked optionally to `Student`/`Teacher`/`Counselor`) and reusable role-based permission classes.
-
-**Why this phase comes next:** Nearly every endpoint built from Phase 4 onward needs real authorization. Building CRUD endpoints first and "adding security later" is a well-known anti-pattern — it means every endpoint gets revisited a second time, and it's easy to miss one.
-
-**Dependencies:** Phase 2 (`Student`, `Teacher`, `Counselor` models must exist to link to).
-
-**Deliverables:**
-- Auth linkage between Django's `User` and the domain profile models.
-- JWT authentication (`djangorestframework-simplejwt` or equivalent) with login/refresh endpoints.
-- Reusable DRF permission classes: `IsCounselor`, `IsTeacher`, `IsStudent`, `IsOwnerOrCounselor`.
-- A `seed_dev_users` management command creating one of each role for local development.
-- Tests proving each permission class correctly allows/denies access, including the critical case of one student attempting to read another student's data.
-
-**Major Tasks:**
-1. Add the profile-linkage relationship (additive migration, per SDD Section 11's assumption).
-2. Install and configure JWT auth; build login/refresh views.
-3. Write the four permission classes as standalone, reusable, independently tested units.
-4. Write the `seed_dev_users` command.
-5. Write permission tests across a representative endpoint for every role combination, including negative cases.
-
-**Suggested Folder/Module Structure:**
-```
-backend/apps/people/
-  auth.py            # profile-linkage model/logic
-  permissions.py     # IsCounselor, IsTeacher, IsStudent, IsOwnerOrCounselor
-  management/commands/seed_dev_users.py
-backend/apps/api/
-  auth_views.py       # login/refresh
-  urls.py
-```
-
-**Estimated Difficulty:** 5/10
-
-**Common Mistakes to Avoid:**
-- Conflating Django's `is_staff`/`is_superuser` with the domain's Counselor/Administrator distinction instead of treating them as a layered privilege (per SDD Section 11) — this leads to confusing, hard-to-audit permission checks later.
-- Hardcoding `if request.user.role == "teacher"` checks inline in views instead of reusable permission classes — duplicated logic is where security bugs hide.
-- Testing only the "happy path" (a counselor can access everything) and skipping the negative path (a student cannot access another student's data) — the negative path is the one that actually matters for security.
-
-**Definition of Done:**
-- Login returns a valid JWT; protected endpoints correctly return 401 (unauthenticated) or 403 (unauthorized) as appropriate.
-- Every permission class has a passing test for both an allowed and a denied case.
-- A test explicitly proves Student A cannot read Student B's `Enrollment`/`CourseRequest` data even while authenticated.
-
----
-
-## Phase 4 — Core Domain CRUD API (Courses, Sections, Requests)
-
-**Goal:** Implement the Core Domain API surface from SDD Sections 17.1–17.2: course catalog management and course-request intake (Stages 1–2 of the pipeline).
-
-**Why this phase comes next:** This is the first end-to-end vertical slice of real product value — the first place a counselor or student can actually *do something* useful — and it's the first place the data layer (Phase 2) and auth layer (Phase 3) get exercised together under realistic conditions.
-
-**Dependencies:** Phases 2 and 3.
-
-**Deliverables:**
-- `/api/courses/`, `/api/course-requests/`, `/api/demand/summary/` endpoints (SDD 17.1–17.2).
-- Serializers with explicit validation surfacing constraint violations as friendly 400s, not raw `IntegrityError` 500s.
-- Demand-summary aggregation implemented as a testable service function, not inline view logic.
-- Auto-generated API documentation (`drf-spectacular` or equivalent).
-- Integration tests covering permissions, validation, and aggregation correctness.
-
-**Major Tasks:**
-1. Build serializers and viewsets for `Course` and `CourseRequest`, wired to the Phase 3 permission classes.
-2. Implement the demand-summary aggregation as a standalone service function callable independently of the view (this same logic groundwork feeds the `CourseConflict` population strategy in Phase 6).
-3. Add pagination/filtering to list endpoints.
-4. Configure and verify OpenAPI schema generation.
-5. Write integration tests: happy path, validation failures, and permission boundaries.
-
-**Suggested Folder/Module Structure:**
-```
-backend/apps/courses/
-  serializers.py
-  views.py
-  urls.py
+```text
+backend/apps/scheduling/
+  models.py                         # additive reconciliation/lifecycle audit models
+  serializers.py                   # preview/apply request and audit representations
+  views.py                         # thin run reconciliation actions
   services/
-    demand.py         # demand-summary aggregation logic
-  tests/
-backend/apps/api/
-  urls.py              # root router aggregating all app urls
+    section_reconciliation.py      # compare, validate, and transactionally apply deltas
+    planning_readiness.py           # read-only configuration/input diagnostics
+backend/apps/common/
+  serializers.py                   # historical-demand representation
+  views.py                         # planning-role historical-demand CRUD
+  urls.py
+backend/tests/
+  test_section_reconciliation_api.py
+  test_planning_readiness_api.py
+docs/decisions/
+  section-lifecycle.md
 ```
 
-**Estimated Difficulty:** 5/10
-
-**Common Mistakes to Avoid:**
-- Writing the demand-aggregation logic directly inside the DRF view — this violates the thin-view/service-layer separation the SDD specifies (Section 19.3) and makes the logic hard to reuse or unit-test later.
-- Letting a duplicate `CourseRequest` submission surface as an unhandled 500 instead of a clear validation error referencing the existing `unique_student_course_request` constraint.
-
-**Definition of Done:**
-- A counselor can create a `Course` and its `CoursePrerequisite`s via the API.
-- A student can submit primary and alternate `CourseRequest`s, with duplicates correctly rejected with a clear error.
-- The demand-summary endpoint returns correct aggregates against a seeded dataset, verified by test.
-- OpenAPI docs render and accurately describe every endpoint in this phase.
-
----
-
-## Phase 5 — Constraint & Lock Management API
-
-**Goal:** Implement full CRUD for the entire Constraints group (SDD Sections 17.4–17.5): qualifications, teacher preferences/availability, hard/soft constraints, section locks, and course conflicts.
-
-**Why this phase comes next:** The scheduling engine (Phases 6–8) is meaningless without real constraint data to operate on. This phase also completes *all* of the "data collection mode" functionality described in SDD Section 6 before a single line of solver code is written — meaning the entire non-optimization half of the application can be validated end-to-end on its own first.
-
-**Dependencies:** Phase 4 (`Section` records must exist to be locked/constrained against).
-
-**Deliverables:**
-- Full CRUD endpoints for every model in the Constraints group.
-- A real, importable **Constraint & Lock Service** module (SDD Section 19.1) — not just thin viewsets — since this exact logic will be reused by the Engine Adapter in Phase 7.
-- Server-side business-rule validation (e.g., rejecting a `SectionLock` to a teacher who lacks the required `CourseQualificationRequirement`), per SDD Section 22.
-- Tests covering every endpoint plus the qualification-lock business rule specifically.
-
-**Major Tasks:**
-1. Build serializers/viewsets for `TeacherQualification`, `TeacherCoursePreference`, `TeacherAvailability`, `TeacherCurrentCourse`, `HardConstraint`, `SoftConstraint`, `CounselorConstraintPreference`, `SectionLock`, `CourseConflict`, `CourseRoomRequirement`, `CourseQualificationRequirement`.
-2. Implement the Constraint & Lock Service as a standalone module containing the actual validation and business logic, called by (but not embedded in) the viewsets.
-3. Write the qualification-lock validation rule and its test.
-4. Write a full suite of endpoint tests.
-
-**Suggested Folder/Module Structure:**
-```
-backend/apps/constraints/
-  serializers.py
-  views.py
-  services.py          # Constraint & Lock Service — reused in Phase 7
-  tests/
-```
-
-**Estimated Difficulty:** 6/10
-
-**Common Mistakes to Avoid:**
-- Implementing business-rule validation only in the frontend (a future phase) and skipping server-side enforcement — a data-integrity and security risk regardless of frontend correctness.
-- Writing validation logic directly inside viewsets now, then being forced to extract it into a reusable service later when the Engine Adapter needs the same logic in Phase 7 — build the service module now, even though only the API uses it today.
-
-**Definition of Done:**
-- Every constraint table is fully manageable via API with correct validation.
-- The "lock without required qualification" rule is enforced and covered by a passing test.
-- A complete manual-locks dataset can be constructed via API alone for a seeded fixture school, ready to feed the scheduling engine in the next phases.
-
----
-
-## Phase 6 — Scheduling Engine Package: Demand Estimator + Constraint Compiler
-
-**Goal:** Build the standalone `scheduling_engine` package (SDD Section 14) as a Django-independent library, implementing its non-solver modules first: the Demand Analyzer, Section Count Estimator, and Constraint Compiler.
-
-**Why this phase comes next:** This package is the architectural core of the entire project and the SDD's most important design constraint — zero Django dependency. Building it in true isolation *before* any CP-SAT solver exists forces the DTO boundary between Django and the engine to be real and enforced from day one, rather than becoming an aspiration that erodes once solver deadlines create pressure to take shortcuts.
-
-**Dependencies:** Phase 5 (constraint data model must be finalized so DTOs can accurately mirror it), though the package itself can and should be developed and tested against hand-built fixtures with no database involved.
-
-**Deliverables:**
-- An installable internal package (or clearly separated top-level directory) containing dataclass-based DTOs, the Demand Analyzer, the Section Count Estimator, and the Constraint Compiler.
-- A test suite that runs with **no database and no Django settings module loaded at all** — pure Python, pure fixtures.
-- A package-level README documenting and asserting the independence guarantee (e.g., a CI check that fails if `django` ever appears in this package's imports).
-
-**Major Tasks:**
-1. Define DTOs (`CourseDTO`, `SectionDTO`, `ConstraintSetDTO`, etc.) shaped around what the solvers actually need, not around ORM field names.
-2. Implement the Demand Analyzer (Pandas-based aggregation of course-request volume vs. historical trends).
-3. Implement the Section Count Estimator heuristic (SDD Section 20.1).
-4. Implement the Constraint Compiler, merging every constraint DTO type into one in-memory structure consumed by every downstream solver.
-5. Write a comprehensive fixture-based test suite covering every constraint type in the schema.
-6. Add a CI check (a simple import-lint rule) that fails the build if `django` is ever imported inside this package.
-
-**Suggested Folder/Module Structure:**
-```
-scheduling_engine/
-  dto.py
-  demand_analyzer.py
-  section_estimator.py
-  constraint_compiler.py
-  tests/
-    fixtures.py
-    test_demand_analyzer.py
-    test_section_estimator.py
-    test_constraint_compiler.py
-  README.md            # documents the independence guarantee
-```
+If lifecycle state belongs on `Section`, add it deliberately to `backend/apps/courses/models.py`. Follow the project's migrationless schema convention; do not create migration files automatically.
 
 **Estimated Difficulty:** 7/10
 
 **Common Mistakes to Avoid:**
-- Importing a Django model "just this once, for convenience" — this is the single most damaging shortcut available in this phase, because it silently breaks the SDD's core architectural guarantee and is easy to miss in review.
-- Under-testing the Constraint Compiler specifically — every solver phase that follows depends on it, so a subtle bug here propagates invisibly into every later phase's results.
-- Shaping DTOs to mirror ORM fields one-to-one instead of what the solver logic actually needs, creating unnecessary coupling to the schema's exact representation.
+
+- Deleting sections and relying on cascades, which can erase schedules, enrollments, locks, overrides, and provenance.
+- Recreating every section and changing stable IDs when only one count changed.
+- Editing an old planning run or approval instead of recording a new reconciliation fact.
+- Treating all existing sections as if they were generated by the same approval.
+- Moving an already placed or staffed section between semesters silently.
+- Automatically cross-listing or merging low-demand courses without an explicit domain design and counselor decision.
 
 **Definition of Done:**
-- The `scheduling_engine` package contains zero references to `django` anywhere in its source, enforced by an automated check.
-- Its test suite runs and passes without a database connection or Django settings loaded.
-- The Constraint Compiler correctly merges a hand-built fixture set exercising every constraint type defined in the SDD schema.
+
+- Starting from an approved plan, a counselor can create a later run, preview the exact section delta, and explicitly apply it.
+- Unchanged sections retain their IDs and provenance.
+- New sections are traceable to the new decision; superseded sections remain historically explainable.
+- Sections with downstream dependencies are never silently deleted or moved.
+- Duplicate or stale requests return a structured conflict and do not partially write.
+- Lock state has one tested source-of-truth invariant, and the planning readiness response exposes missing input categories without changing them.
+- Transaction rollback and concurrency behavior are covered by automated tests.
+- No placement, teacher, or student solver is introduced in this phase.
 
 ---
 
-## Phase 7 — Section Placement Solver + Engine Adapter + Async Job Infrastructure
+## Phase 2 — Counselor-Reviewed A–D Block and Room Placement
 
-**Goal:** Implement the first CP-SAT solver (SDD Section 20.2), the Engine Adapter that bridges Django and the engine package (SDD Section 19.4), and the Celery/Redis async job infrastructure described in SDD Section 7.
+**Current Status:** **Partially complete foundation.** Section, room, timeslot, room-requirement, conflict, lock, DTO, compiler, and `SectionSchedule` structures exist. No placement solver or placement-run API exists.
 
-**Why this phase comes next:** This is the first true end-to-end automation slice, and it proves out the riskiest piece of new infrastructure — the async job queue, the adapter's load/solve/write-back cycle, and a real CP-SAT model — all at once, but scoped to exactly one solver. Proving this pattern once, carefully, before building two more solvers on top of it is far cheaper than discovering an infrastructure flaw after all three solvers exist.
+**Goal:** Produce an inspectable candidate assignment of every active draft section to one semester-consistent A–D block and compatible room, then let a counselor approve that candidate into `SectionSchedule` records.
 
-**Dependencies:** Phase 6 (Constraint Compiler and DTOs), Phase 1 (Redis container already running).
+**Why It Comes Next:** Once the active section set has explicit lifecycle rules, block and room placement is the next dependency for both teacher availability checks and student conflict checks. It advances the product from “how many sections?” to “when and where can they run?” without yet conflating teacher or student assignment.
+
+**Dependencies:** Phase 1; current A–D constants and `TimeSlot`; rooms and room requirements; active sections; section locks; co-request conflict evidence; pure constraint compiler.
 
 **Deliverables:**
-- The Section Placement Solver, implemented in OR-Tools CP-SAT per SDD Section 20.2.
-- The Engine Adapter: load (ORM → DTOs), invoke solver, write back inside a single atomic transaction.
-- A configured Celery application with a `run_scheduling_stage` task.
-- `POST /api/scheduling/runs/` and `GET /api/scheduling/runs/{job_id}/` endpoints (SDD Section 17.6).
-- An end-to-end integration test: seed a small fixture school, trigger a run, poll to completion, assert a valid, conflict-reduced `SectionSchedule`.
+
+- A pure `section_placement` CP-SAT module with input/result DTOs and no Django imports.
+- Immutable placement-run input snapshots, candidate results, solver status, objective data, and counselor-readable diagnostics.
+- Hard enforcement of academic year, semester, available A–D blocks, room compatibility, room/slot exclusivity, and locked timeslot/room context.
+- Soft optimization using counselor-reviewed course-conflict weights and distribution of multiple sections of a course across blocks.
+- A review/preview/approval workflow that writes `SectionSchedule` atomically and never overwrites accepted placements implicitly.
+- An explicit API workflow to review generated co-request conflict recommendations before they update `CourseConflict`; no silent automatic upsert.
+- Bounded solver execution and representative benchmark results.
+- A documented decision on synchronous versus background execution based on measured runtime and deployment reliability, not the old roadmap's assumptions.
+- Pure-engine tests plus adapter, API, transaction, lock, and authorization tests.
 
 **Major Tasks:**
-1. Implement the CP-SAT model for section placement, including all hard constraints and the conflict-minimization objective from SDD Section 20.2.
-2. Build the Engine Adapter's load and save functions, with the save step wrapped in a single transaction (SDD Section 22).
-3. Configure Celery with Redis as the broker; define the `run_scheduling_stage` task.
-4. Build the two job-related API endpoints and their serializers.
-5. Enforce a bounded solver time limit (SDD Section 25) and write a test confirming it is respected.
-6. Write a full end-to-end integration test covering the seed → trigger → poll → assert cycle.
+
+1. Define placement DTOs and a stable result/diagnostic contract before writing CP-SAT variables.
+2. Load only active sections as decision candidates while loading locked or out-of-scope placements as fixed context.
+3. Model the four recurring blocks correctly; do not expand A–D into unrelated daily timeslots.
+4. Generate feasible room/block candidates from semester, availability, room requirements, and the adopted room-capacity rule.
+5. Enforce room/block uniqueness and all locked values as hard constraints.
+6. Minimize weighted co-request collisions and avoid concentrating every section of the same course in one block.
+7. Return actionable diagnostics for sections with no compatible room, unavailable semester blocks, contradictory locks, and aggregate room shortages.
+8. Persist an immutable recommendation first; require explicit approval before changing `SectionSchedule`.
+9. Add a time limit and report optimal, feasible/suboptimal, infeasible, and failed outcomes distinctly.
+10. Benchmark a realistic fixture. Introduce a worker/broker only if the measured API execution contract requires one, behind the scheduling service boundary.
 
 **Suggested Folder/Module Structure:**
-```
-scheduling_engine/solvers/
-  section_placement.py
-backend/apps/scheduling_jobs/
-  adapter.py            # the ONLY module allowed to import both Django and scheduling_engine
-  tasks.py
-  views.py
+
+```text
+scheduling_engine/
+  solvers/
+    section_placement.py
+  dto.py
+backend/apps/scheduling/
+  models.py                         # placement run/approval audit records
   serializers.py
-  tests/
+  views.py
+  services/
+    placement_planning.py           # orchestration and transactional approval
+    engine_adapter.py               # ORM ↔ placement DTO mapping
+scheduling_engine/tests/
+  test_section_placement.py
+backend/tests/
+  test_section_placement_api.py
 ```
 
-**Estimated Difficulty:** 8/10
+Prefer a stage-specific run model unless concrete duplication justifies a carefully designed generic scheduling-run abstraction.
+
+**Estimated Difficulty:** 9/10
 
 **Common Mistakes to Avoid:**
-- Letting the CP-SAT model "peek" at a Django object for convenience — this breaks the boundary Phase 6 worked to establish; all engine code must operate strictly on DTOs.
-- Leaving the solver's time limit unbounded during local development and forgetting to re-bound it before considering the phase complete — an unbounded solve on a larger fixture can silently hang for a very long time.
-- Writing `SectionSchedule` results outside a single atomic transaction, risking a partially-applied schedule if the worker crashes mid-write (SDD Section 22).
+
+- Assigning named teachers or students in the placement model.
+- Querying Django models from the engine.
+- Treating anonymous staffing witnesses from section planning as teacher assignments.
+- Ignoring existing locks or loading locked sections as ordinary decision variables.
+- Interpreting A–D blocks as one-off calendar periods.
+- Writing placements directly from the solve without a review checkpoint.
+- Adding Celery/Redis before solving time and reliability have been measured.
 
 **Definition of Done:**
-- Triggering a run against a realistic seeded dataset (30–50 sections) produces a valid `SectionSchedule` with no double-booked room/timeslot pairs and full respect for all seeded `SectionLock`s.
-- The job status endpoint correctly reports queued/running/completed/failed states.
-- A test confirms the solver's time limit is enforced and that a timed-out run is marked `completed_suboptimal` rather than left in an ambiguous state.
+
+- A counselor can run, inspect, and approve a placement candidate for active draft sections.
+- Approved sections have at most one current `SectionSchedule` and no room/block collision.
+- Semester restrictions, room rules, available blocks, and locks are respected.
+- Infeasible inputs produce structured, course/section-level diagnostics.
+- A failed approval writes no partial placements.
+- The pure solver passes without Django, and a representative benchmark records runtime and solve quality.
 
 ---
 
-## Phase 8 — Teacher & Student Assignment Solvers + Conflict Analyzer
+## Phase 3 — Counselor-Reviewed Named Teacher Assignment
 
-**Goal:** Implement the remaining two CP-SAT solvers (SDD Sections 20.3, 20.4) and the Conflict Analyzer (SDD Section 20.5), completing the fully automated portion of the scheduling pipeline.
+**Current Status:** **Not implemented; data and policy foundations exist.** Qualifications, eligibility, availability, preferences, workload fields, planning capacities, and `Section`/`SectionSchedule`/lock model structures are available.
 
-**Why this phase comes next:** With the adapter pattern and job infrastructure proven in Phase 7, these two solvers carry lower *infrastructural* risk but higher *domain-logic* volume — this is the natural next step once the riskiest plumbing is de-risked. Completing this phase finishes Stages 7–10 of the pipeline described in SDD Section 13.
+**Goal:** Recommend a named teacher for each eligible placed section while respecting legal qualifications, availability, timetable conflicts, workload limits, accepted locks, and explicit soft preferences.
 
-**Dependencies:** Phase 7 (adapter and job infrastructure, reused as-is).
+**Why It Comes Next:** Teacher availability is meaningful only after sections have blocks. This stage converts the section planner's anonymous proof of staffing capacity into actual assignments without confusing the two concepts.
+
+**Dependencies:** Phase 2 placement; normalized qualification compiler; teacher availability; teacher capacity/workload policy; preferences/current-course history; locked teachers.
 
 **Deliverables:**
-- The Teacher Assignment Solver (SDD Section 20.3).
-- The Student Assignment Solver (SDD Section 20.4).
-- The Conflict Analyzer read-only report (SDD Section 20.5).
-- `GET /api/conflicts/report/` and `GET /api/timetable/` endpoints (SDD Section 17.6–17.7).
-- A full-pipeline integration test: run all three solver stages in sequence against a seeded fixture school and assert a coherent, fully-scheduled result.
+
+- A pure teacher-assignment CP-SAT solver consuming compiled eligibility.
+- A documented operational source of truth for semester and annual workload limits, including how planning capacity, existing assignments, and locks interact.
+- Immutable teacher-assignment runs with frozen inputs, recommendations, diagnostics, review, and explicit approval.
+- Hard constraints for Grade 11–12 eligibility, availability at the placed block, no teacher overlap, semester/annual load, and locks.
+- Explicitly weighted soft objectives for teacher preferences, current-course continuity, workload balance, and any approved seniority rule.
+- Transactional writes to `Section.teacher` with overwrite/conflict protection.
+- Qualification-gap, availability, overload, and shared-qualified-pool diagnostics.
+- A planning-role teacher roster/workload API suitable for selecting, reviewing, and explaining assignment inputs without exposing unrelated sensitive data.
+- Pure-engine, adapter, API, policy, audit, and rollback tests.
 
 **Major Tasks:**
-1. Implement the Teacher Assignment CP-SAT model, including qualification, availability, workload, and preference constraints.
-2. Implement the Student Assignment CP-SAT model, including prerequisites, capacity, and per-student conflict constraints, correctly **not** depending on teacher assignment having occurred (per SDD Section 20.4's explicit note).
-3. Implement the Conflict Analyzer's aggregation logic.
-4. Wire both new solvers into the existing task/adapter pattern from Phase 7.
-5. Build the composed timetable endpoint and the conflict-report endpoint.
-6. Write a full Stage 7→8→9 sequential integration test, not just isolated per-stage tests.
+
+1. Reuse `qualified_teacher_ids_by_course`; do not create another qualification matcher.
+2. Decide and document which existing workload fields are authoritative for assignment after planning.
+3. Expose the teacher roster and workload inputs required by the counselor review surface.
+4. Load accepted placements and locks as fixed context.
+5. Create teacher/section assignment variables only for legally eligible and available pairs.
+6. Enforce no overlapping section assignments and all workload ceilings.
+7. Make every soft objective and its weight visible in the run result.
+8. Separate solver recommendation from counselor approval and support partial review only if its consistency rules are explicit.
+9. Revalidate current qualification, availability, and placement state inside the approval transaction.
+10. Return structured explanations when a course has no eligible teacher or when qualified teachers collide in the same blocks.
+11. Benchmark against a realistic teacher/section fixture.
 
 **Suggested Folder/Module Structure:**
-```
+
+```text
 scheduling_engine/solvers/
   teacher_assignment.py
+backend/apps/scheduling/services/
+  teacher_assignment.py
+  engine_adapter.py
+backend/apps/people/
+  serializers.py
+  views.py                          # planning-role teacher roster/workload API
+  urls.py
+scheduling_engine/tests/
+  test_teacher_assignment.py
+backend/tests/
+  test_teacher_assignment_api.py
+```
+
+**Estimated Difficulty:** 9/10
+
+**Common Mistakes to Avoid:**
+
+- Parsing Aspen strings or redefining teachable subjects in the solver.
+- Treating a qualification as consumed after one assignment.
+- Treating Grade 9–10 preferences as Grade 11–12 legal requirements.
+- Applying what-if capacity reductions by modifying qualifications.
+- Persisting the anonymous section-planning load witness as a named assignment.
+- Making preferences hard constraints or hiding their weights from counselors.
+- Silently replacing a manually assigned or locked teacher.
+
+**Definition of Done:**
+
+- Every approved named assignment is legally eligible, available, non-overlapping, within workload policy, and consistent with locks.
+- Counselor review clearly distinguishes hard feasibility from soft preference quality.
+- Unassigned sections and the exact cause remain visible when no complete assignment exists.
+- Approval is atomic and traceable to a run and user.
+- Existing qualification and access-policy tests remain green with no duplicated matching logic.
+
+---
+
+## Phase 4 — Student Assignment and Conflict Analysis
+
+**Current Status:** **Not implemented; basic request, prerequisite, enrollment, section, and student models exist.** The repository does not yet define reliable completed-course evidence for prerequisite evaluation.
+
+**Goal:** Recommend student-to-section enrollments that maximize required and primary request fulfillment while respecting placed blocks, section capacity, prerequisites, and per-student conflicts, then report unresolved issues across the schedule.
+
+**Why It Comes Next:** Student assignment depends on stable sections and timeslots. Completing it after teacher assignment gives counselors a coherent placed and staffed schedule to review before allocating students, while retaining the SDD's staged architecture.
+
+**Dependencies:** Phase 2 placement; preferably accepted Phase 3 teacher assignments; course requests; section capacities; prerequisites; a deliberate source of prerequisite-completion evidence.
+
+**Deliverables:**
+
+- An architecture decision defining how Version 1 proves prerequisite completion. If an additive student-course-history model is required, document and test it before solving.
+- Planning-role student roster/course-history APIs and course-prerequisite management needed to supply and review real assignment inputs.
+- A pure student-assignment CP-SAT solver and immutable recommendation run.
+- Lexicographic or otherwise explicit objectives protecting mandatory/primary requests before alternates and balancing section utilization only afterward.
+- Hard constraints for one section per requested course, no overlapping blocks, capacity, and the approved prerequisite rule.
+- Counselor review and transactional approval that creates `Enrollment` rows without implicit replacement.
+- A read-only conflict analyzer covering unmet requests, incomplete schedules, under/over-capacity sections, unstaffed sections, teacher overload, and unresolved locks/configuration.
+- Composed timetable and role-safe personal-schedule APIs.
+- Tests for primary versus alternate choices, mandatory demand, prerequisites, capacity, collisions, partial feasibility, permissions, approval, and rollback.
+
+**Major Tasks:**
+
+1. Resolve the missing prerequisite-evidence contract before modeling prerequisite constraints.
+2. Expose the student roster, course-history evidence, and prerequisite relationships through role-safe APIs.
+3. Define assignment DTOs and explainable result categories, including why each unmet request failed.
+4. Load out-of-scope or already accepted enrollments as fixed capacity and conflict context.
+5. Model section choice per student/course request and block conflicts per student.
+6. Protect mandatory and primary fulfillment before secondary balancing objectives.
+7. Persist recommendations as immutable run data and require counselor approval before enrollment writes.
+8. Build the conflict analyzer as a read-only service over accepted schedule state and run diagnostics.
+9. Expose counselor timetable, teacher-own schedule, and student-own schedule through policy-filtered APIs.
+10. Benchmark at the SDD target scale, where student assignment is likely the largest model.
+
+**Suggested Folder/Module Structure:**
+
+```text
+scheduling_engine/solvers/
   student_assignment.py
 scheduling_engine/
   conflict_analyzer.py
-backend/apps/scheduling_jobs/
-  # extend existing views.py / tasks.py from Phase 7
+backend/apps/scheduling/services/
+  student_assignment.py
+  conflict_reporting.py
+backend/apps/scheduling/
+  views.py
+  serializers.py
+backend/apps/people/
+  serializers.py
+  views.py                          # planning-role student roster/history API
+  urls.py
+backend/apps/courses/
+  serializers.py                   # prerequisite management
+  views.py
+  urls.py
+scheduling_engine/tests/
+  test_student_assignment.py
+  test_conflict_analyzer.py
+backend/tests/
+  test_student_assignment_api.py
+  test_timetable_api.py
+```
+
+**Estimated Difficulty:** 10/10
+
+**Common Mistakes to Avoid:**
+
+- Claiming prerequisites are enforced when the database has no evidence that a student completed them.
+- Assigning students before section timeslots exist.
+- Counting a request as fulfilled more than once.
+- Allowing alternates or fill balancing to displace mandatory/primary demand silently.
+- Deleting and rebuilding all enrollments without a reviewed replacement decision.
+- Exposing another student's timetable through a broad queryset.
+- Making conflict analysis mutate the schedule.
+
+**Definition of Done:**
+
+- Approved enrollments contain no student block conflict and do not exceed accepted capacity rules.
+- Mandatory and primary fulfillment has explicit priority over alternates.
+- Every unmet request has a stable reason code.
+- Prerequisite behavior is backed by real data and tests, not inferred from grade alone.
+- The conflict report agrees with intentionally seeded problem scenarios.
+- Students and teachers can retrieve only their own accepted schedules; planning roles can inspect the full timetable.
+
+---
+
+## Phase 5 — Audited Manual Overrides and Genuine Scoped Re-solving
+
+**Current Status:** **Partially complete foundation.** `SectionLock`, a basic `ManualOverride` model, and action policies exist. No general override service or solver scope implementation exists.
+
+**Goal:** Let counselors make explicit manual changes to placements, teachers, and student assignments, preserve those decisions as hard context, and re-run only the affected portion without changing accepted out-of-scope work.
+
+**Why It Comes Next:** Scope is meaningful only after the placement, teacher, and student stages exist. Implementing it afterward allows one consistent cross-stage contract instead of speculative scope code with nothing real to constrain.
+
+**Dependencies:** Phases 2–4; accepted stage outputs; locks; immutable run histories; conflict analyzer.
+
+**Deliverables:**
+
+- A typed override action contract with validated targets and before/after values.
+- An append-only override history API containing actor, reason, timestamp, previous value, new value, and affected scope.
+- Atomic pairing of a human change with the current lock/fixed-context representation where appropriate.
+- Optimistic concurrency or equivalent stale-write detection returning `409 Conflict`.
+- A shared scope DTO/contract for sections, courses, teachers, and students.
+- Placement, teacher, and student solvers that limit decision variables to scope while loading all other accepted state as fixed context.
+- A dependency service that computes the smallest safe affected scope and previews it to the counselor.
+- Automated proof that scoped runs do not change locked or out-of-scope records.
+
+**Major Tasks:**
+
+1. Audit whether the current section-only `ManualOverride` foreign key can represent teacher and enrollment changes honestly; make any additive audit-model change explicit.
+2. Define canonical override actions rather than accepting arbitrary action strings.
+3. Implement preview and apply services with validation, concurrency checks, and one transaction.
+4. Pair persistent current-state locks with append-only history without making the audit row editable.
+5. Add scope to each pure solver's input and distinguish decision variables from fixed context.
+6. Compute downstream impact: a moved section may affect its teacher and enrolled students; a student move should not automatically reopen unrelated placement.
+7. Compare complete before/after snapshots in tests to prove out-of-scope stability.
+8. Integrate conflict analysis so counselors see the consequence before choosing another re-solve.
+
+**Suggested Folder/Module Structure:**
+
+```text
+backend/apps/control/
+  models.py
+  serializers.py
+  views.py
+  services/
+    overrides.py
+    scope.py
+backend/apps/scheduling/services/
+  orchestration.py
+scheduling_engine/
+  scope.py
+backend/tests/
+  test_override_api.py
+  test_scoped_resolve.py
+```
+
+**Estimated Difficulty:** 9/10
+
+**Common Mistakes to Avoid:**
+
+- Implementing scope as a filter after a full solve.
+- Omitting out-of-scope state from capacity/conflict context.
+- Mutating or deleting audit history.
+- Treating every manual change as a full-year re-solve.
+- Applying a change before showing its downstream scope.
+- Storing ambiguous, unvalidated free-text values as the only machine-readable record.
+
+**Definition of Done:**
+
+- A counselor can preview and apply a manual change with a required reason.
+- The corresponding fixed constraint is available to every later solve.
+- The system can re-solve an affected subset while all locked and out-of-scope records remain unchanged.
+- Stale concurrent edits produce a mergeable `409` response rather than last-write-wins data loss.
+- Override history is append-only, queryable, and complete.
+
+---
+
+## Phase 6 — Role-Based Counselor, Teacher, and Student Frontend
+
+**Current Status:** **Not implemented.** There is no frontend directory or client application in the repository.
+
+**Goal:** Provide a role-safe web application for the complete human-reviewed scheduling workflow, beginning with the counselor planning experience and ending with read-only teacher/student schedules.
+
+**Why It Comes Next:** The backend stage contracts and override semantics should be stable before a solo developer invests heavily in UI. At this point the frontend can expose real workflows instead of relying on mocks that repeatedly drift from the API.
+
+**Dependencies:** Stable APIs from Phases 1–5; JWT authentication; a documented API schema; translation endpoint.
+
+**Deliverables:**
+
+- A React client consistent with the SDD unless a separate architecture decision justifies another stack.
+- A typed API layer and centralized role/route configuration.
+- Counselor pages for demand, section-plan scenarios, run comparison, review/approval, reconciliation, placement, teacher assignment, student assignment, conflicts, overrides, and run status.
+- Teacher pages for preferences, availability, qualifications, and accepted personal schedule.
+- Student pages for course requests and accepted personal schedule.
+- A timetable grid representing semesters and recurring A–D blocks correctly.
+- Translation API and English/French text resolution.
+- Accessible loading, infeasible, warning, stale-state, and conflict experiences.
+- Frontend unit/component tests and end-to-end tests for the critical counselor flow.
+
+**Major Tasks:**
+
+1. Publish a stable machine-readable API contract before generating or writing the client layer.
+2. Implement authentication/token refresh and central role-gated routing.
+3. Build the counselor planning/reconciliation screens first because they exercise the current product's strongest workflow.
+4. Add each later solver review surface in pipeline order.
+5. Visualize recommended versus approved values and never hide diagnostics behind a generic failure message.
+6. Add override preview and affected-scope confirmation before apply.
+7. Build teacher/student read-only schedule views using server-enforced ownership.
+8. Add translation lookup and fallback behavior without moving scheduling logic into the browser.
+
+**Suggested Folder/Module Structure:**
+
+```text
+frontend/
+  src/
+    api/
+    components/
+      common/
+      planning/
+      timetable/
+      diagnostics/
+    features/
+      demand/
+      section-planning/
+      placement/
+      teacher-assignment/
+      student-assignment/
+      overrides/
+    pages/
+    routes/
+    i18n/
+    tests/
 ```
 
 **Estimated Difficulty:** 8/10
 
 **Common Mistakes to Avoid:**
-- Accidentally introducing a hard dependency on teacher assignment inside the Student Assignment Solver's capacity logic — the SDD explicitly notes this dependency should not exist; a subtle bug here would silently produce an over-constrained or under-constrained model.
-- Testing each solver only in isolation and skipping the full-sequence integration test — the most likely real-world bug is a mismatch between one stage's output shape and the next stage's expected input, which isolated tests cannot catch.
+
+- Reimplementing permissions, demand calculations, or scheduling logic client-side.
+- Assuming hidden navigation is authorization; the API remains authoritative.
+- Flattening warnings, diagnostics, and conflicts into one error banner.
+- Building only a polished timetable grid while omitting the review and approval workflow.
+- Using mocked response shapes after real APIs are available.
+- Treating A–D blocks as Monday–Thursday periods.
 
 **Definition of Done:**
-- Running all three stages sequentially against a ~250-section fixture produces a complete timetable satisfying every hard constraint defined in the SDD.
-- The conflict report correctly flags intentionally-seeded "bad" scenarios (an over-enrolled section, an unqualified-teacher assignment attempt) in a dedicated test.
+
+- A counselor can complete the Version 1 workflow without direct API tooling.
+- Every solver stage visibly separates recommendation, warning, adjustment, approval, and accepted state.
+- Teacher and student routes show only their own server-authorized data.
+- English/French text resolves through the supported translation contract.
+- Critical workflows have automated browser-level coverage and accessible keyboard/error behavior.
 
 ---
 
-## Phase 9 — Manual Override Workflow + Scoped Re-Solve
+## Phase 7 — Version 1 Hardening, Scale Validation, and Documentation Alignment
 
-**Goal:** Implement the Manual Override Workflow (SDD Section 21) and the scope parameter (SDD Section 20.6) across all three solvers, closing the Stage 11 feedback loop from SDD Section 13.
+**Current Status:** **Partially complete.** The project has a meaningful automated test suite and documented local setup, but it is not yet production- or portfolio-release hardened.
 
-**Why this phase comes next:** Without this phase, the system can only produce a one-shot "first draft" schedule — it cannot support the iterative, months-long review-and-adjustment process that is the documented reality of school timetabling (SDD Section 6). This is the entire reason the project exists as a *decision-support* tool rather than a one-shot generator, which makes this phase non-optional despite arriving relatively late.
+**Goal:** Validate the completed system at realistic scale, close security/operational gaps, automate regression checks, and synchronize documentation with the implemented architecture.
 
-**Dependencies:** Phase 8 (all three solvers must exist to be scoped and re-run).
+**Why It Comes Next:** Hardening must happen throughout development, but final performance, reliability, security, and documentation decisions depend on the actual placement/assignment workloads and stable API/UI contracts.
+
+**Dependencies:** Phases 1–6.
 
 **Deliverables:**
-- `POST /api/overrides/` and `POST /api/overrides/{id}/apply/` endpoints (SDD Section 17.7).
-- A `scope` parameter accepted and genuinely honored by all three solver tasks — meaning only in-scope entities become decision variables, while everything else is loaded as fixed context.
-- The backing endpoint for the Override History page.
-- Tests proving a scoped re-run never alters a locked or out-of-scope entity, verified by direct comparison, not inference.
+
+- A deterministic realistic fixture or approved anonymized dataset representing roughly 1,400 students, 80 teachers, and 250–350 sections.
+- Performance profiles and bounded solve-time targets for every CP-SAT stage.
+- A final execution decision for long-running solvers. If background processing is justified, a minimal reliable worker/status implementation with idempotency and persistent run state.
+- Continuous integration for checks, pure-engine tests, Django tests, and frontend tests.
+- Production-safe settings, CORS/host configuration, secret handling, secure transport assumptions, and dependency review.
+- Structured request, audit, run-lifecycle, and solver diagnostic logging without secrets or student-sensitive payload leakage.
+- Stable API documentation and examples.
+- Updated README and SDD that match the actual run, approval, reconciliation, qualification, role, and migrationless-development architecture.
+- A complete Version 1 acceptance checklist and portfolio demonstration dataset/script.
 
 **Major Tasks:**
-1. Build the Override Service (SDD Section 19.1), pairing every `ManualOverride` write with the corresponding `SectionLock` upsert.
-2. Extend all three solver invocations to accept a `scope` argument and reduce their decision-variable sets accordingly, while still loading out-of-scope entities as fixed context for conflict/capacity checks.
-3. Implement the "regenerate only affected portions" logic in the Scheduling Orchestration Service.
-4. Write a test that locks most of a fixture's schedule, applies one override, triggers a scoped re-solve, and asserts every out-of-scope row is byte-for-byte unchanged.
+
+1. Build realistic fixtures and benchmark each solver independently and in sequence.
+2. Confirm time limits return a usable feasible/suboptimal result or actionable infeasibility state.
+3. Decide whether synchronous execution meets the deployment contract. If not, introduce only the smallest justified queue/worker architecture behind existing services.
+4. Add persistent run status, idempotent retry behavior, and failure recovery where required.
+5. Add CI without requiring local infrastructure that the project does not otherwise use.
+6. Split development and production settings and run a security review of authorization, PII exposure, and secrets.
+7. Add structured logging and audit correlation IDs.
+8. Reconcile the SDD with implemented section planning and approval evolution.
+9. Verify setup from a fresh clone using the documented migrationless schema procedure.
+10. Run the full acceptance flow and archive the expected results for regression testing.
 
 **Suggested Folder/Module Structure:**
-```
-backend/apps/scheduling_control/
-  services.py           # Override Service
-  views.py
-scheduling_engine/solvers/
-  # extend section_placement.py, teacher_assignment.py, student_assignment.py
-  # to uniformly accept a `scope` argument
+
+```text
+.github/workflows/
+  test.yml
+backend/config/
+  settings/
+    base.py
+    development.py
+    production.py
+backend/tests/fixtures/
+  realistic_school.py
+docs/
+  Software_Design_Document.md
+  operations.md
+  acceptance-test.md
 ```
 
-**Estimated Difficulty:** 7/10
+Exact deployment files should follow the chosen hosting environment; do not add Docker or a particular broker without a concrete deployment need.
+
+**Estimated Difficulty:** 8/10
 
 **Common Mistakes to Avoid:**
-- Implementing "scope" as a post-hoc filter applied after a full solve, rather than as a genuine reduction of the decision-variable set — this does not guarantee untouched entities actually stay untouched, defeating the entire purpose of scoped re-solving.
-- Forgetting that out-of-scope/locked entities still need to be loaded as *context* (for conflict and capacity checks against in-scope entities) even though they are not themselves decision variables.
+
+- Treating a small synthetic solver test as proof of target-scale performance.
+- Adding operational components without ownership, retry, and failure semantics.
+- Logging secrets, raw tokens, qualification source text, or student PII.
+- Creating Django migration files contrary to the current project convention.
+- Running destructive database resets as an automated verification step.
+- Updating the README while leaving the SDD's major implementation divergences unaddressed.
 
 **Definition of Done:**
-- A scoped re-run against a fixture with 300 sections, where only 5 are in scope, provably leaves the other 295 `SectionSchedule`/`Section.teacher`/`Enrollment` records byte-for-byte unchanged, verified by an automated test comparison — not manual inspection.
-- The Override History endpoint correctly and completely reflects every override action taken.
+
+- CI reproduces all backend, pure-engine, and frontend checks from a clean environment.
+- Each solver has a measured target-scale runtime, configured time bound, and documented degraded/suboptimal behavior.
+- Production settings pass Django deployment checks with environment-provided secrets.
+- Run failures and retries cannot partially apply or duplicate schedule state.
+- Documentation consistently describes the actual architecture and schema workflow.
+- The complete Version 1 counselor flow passes an automated or repeatable acceptance test.
 
 ---
 
-## Phase 10 — Frontend Application (React, All Role-Based Pages)
+## Explicitly Deferred Beyond Version 1
 
-**Goal:** Build the complete React frontend (SDD Section 18) against the now fully-functional API, including the Timetable Grid, Scheduling Control Center, and role-based navigation for Counselors, Teachers, and Students.
+The following should not interrupt the dependency path above unless stakeholder evidence changes Version 1 scope:
 
-**Why this phase comes next (and not earlier):** The frontend is the most visible part of the project but carries the least architectural risk once the API is stable — building it earlier would mean repeatedly reshaping UI around a backend that was still changing shape through Phases 4–9, which is one of the most common sources of wasted effort in solo full-stack projects. Building it last, against a finished and tested API, means the frontend work is almost entirely UI/UX craftsmanship rather than architecture-under-uncertainty.
+- Automatic cross-listing or course merging. The domain needs explicit rules for shared enrollment, teacher load, section identity, credits, rooms, and counselor approval before this can be modeled safely.
+- Automatic HR/SIS qualification import. Normalized qualifications and provenance already provide the correct integration boundary.
+- NLP parsing of teacher preferences.
+- Machine-learning demand forecasting.
+- A monolithic joint placement/teacher/student solver.
+- Multi-school tenancy and board-wide analytics.
+- Real-time collaborative editing.
+- AI-generated scheduling decisions that bypass counselor review.
 
-**Dependencies:** Phases 3 through 9 — a functionally complete, tested API is this phase's only real dependency.
-
-**Deliverables:**
-- The full React application, structured exactly per SDD Section 18.4.
-- React Query integration for all server state, per SDD Section 18.3's explicit recommendation.
-- Role-gated routing per SDD Section 18.2.
-- The Timetable Grid, Scheduling Control Center (with job-status polling), Conflict & Issue Report, and Override History pages.
-- Bilingual (EN/FR) text resolution against `/api/translations/`.
-
-**Major Tasks:**
-1. Scaffold the app (Vite + React) and set up the typed API client layer covering every endpoint from SDD Section 17.
-2. Implement React Query hooks per feature area (courses, constraints, scheduling runs, overrides).
-3. Build the central route/permission configuration described in SDD Section 18.2 and every page listed in SDD Section 18.1.
-4. Implement the Timetable Grid visualization and the Scheduling Control Center's job-polling UI.
-5. Implement i18n resolution against the translation endpoint.
-6. Conduct a full manual walkthrough of an entire scheduling cycle through the UI alone.
-
-**Suggested Folder/Module Structure:** (exactly per SDD Section 18.4)
-```
-src/
-  api/
-  components/{common, timetable, constraints, scheduling}
-  pages/
-  hooks/
-  state/
-  i18n/
-  routes/
-```
-
-**Estimated Difficulty:** 6/10
-
-**Common Mistakes to Avoid:**
-- Building against hand-mocked data before the real API is stable and never fully reconciling the two — this produces a frontend that looks finished in isolation but doesn't actually work against the real backend.
-- Re-implementing manual caching/loading-state logic instead of using React Query as specified in SDD Section 18.3, recreating exactly the maintenance burden that section was written to avoid.
-
-**Definition of Done:**
-- A counselor can complete an entire scheduling cycle through the UI alone — enter data, trigger all three solver stages, review the conflict report, apply an override, and see the timetable update — without needing any API tooling.
-- Teacher and Student read-only views correctly show only their own data, matching the permission tests written in Phase 3.
+These are not excuses to leave Version 1 gaps unresolved. They are boundaries protecting the current staged, auditable plan from scope expansion.
 
 ---
 
-## Which Phase to Start Immediately
+## Recommended Immediate Next Phase
 
-**Start with Phase 1 — Project Foundation & Developer Environment.**
+Begin **Phase 1 — Section Planning Lifecycle Completion and Reconciliation**.
 
-This isn't a default answer — it's the highest-leverage phase in the entire roadmap for three specific reasons tied to this project's constraints:
+The current system already makes high-quality, staffing-aware section recommendations, supports counselor what-if constraints, records immutable runs, and creates traceable draft sections after explicit approval. Its most important immediate limitation is that the workflow cannot safely accept a revised plan once any sections already exist for that course/year. The current `409 Conflict` is the correct safety behavior, but it is not yet a complete iterative planning workflow.
 
-1. **Every later phase's Definition of Done depends on it existing first.** Nearly every DoD in this document ends in some version of "and all tests pass in CI." That criterion is meaningless until Phase 1's test runner and CI pipeline exist. Skipping or shortcutting Phase 1 doesn't remove this work — it just defers it, disguised, into every subsequent phase, where it's more expensive to retrofit.
+This phase builds directly on the strongest completed functionality and closes the gap between “first approved plan” and “real scheduling season.” It defines which section records remain stable, which new sections may be created, how surplus sections are retired, when downstream dependencies block a change, and how every revision remains auditable.
 
-2. **This is a long-duration, solo project — continuity is the actual constraint, not raw coding speed.** The biggest risk to a project like this isn't any single hard algorithm (the CP-SAT modeling in Phases 7–8, while difficult, is well-bounded and well-documented territory). The biggest risk is *returning to the project after a multi-week gap* and losing time to environment drift, forgotten setup steps, or silently-broken tests. A solid README, working Docker Compose, and a green CI pipeline are what make Phase 6's return-after-a-break trivial instead of a half-day of environment archaeology.
+Completing reconciliation unlocks the next scheduling stage cleanly: the placement solver can operate on a well-defined set of active sections and can attach `SectionSchedule`, locks, teacher assignments, and enrollments without relying on ambiguous replacement semantics.
 
-3. **It is the cheapest phase, by a wide margin, and the cost of skipping it compounds.** At 3/10 difficulty, Phase 1 is the easiest phase on this list — and the cost of *not* doing it properly grows with every phase that follows, since more code means more surface area for the exact problems (inconsistent formatting, undetected regressions, irreproducible environments) it exists to prevent.
+Other plausible phases should wait:
 
-In short: Phase 1 has the highest ratio of "how much future pain this prevents" to "how much effort this takes," which is the definition of leverage in a project of this shape and duration.
+- **A–D block/room placement** should wait until section identity and retirement rules are stable; otherwise placement results may be attached to sections that a later replan deletes or recreates.
+- **Named teacher assignment** depends on placed blocks for availability and overlap checks.
+- **Student assignment** depends on placed sections and a prerequisite-evidence decision.
+- **General scoped re-solving** needs real downstream solver stages and accepted outputs to scope.
+- **Frontend work** will have much less API churn after reconciliation and downstream review contracts are defined.
+- **Cross-listing** is not a safe automatic escape hatch for low demand and requires a separate domain design.
+
+The immediate implementation boundary is therefore precise: make revised approved section plans safe, explicit, non-destructive, transactional, and auditable—then begin counselor-reviewed A–D block and room placement.
 
 ---
 
