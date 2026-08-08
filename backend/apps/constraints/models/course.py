@@ -1,3 +1,5 @@
+"""Course-level room, qualification, and co-request conflict constraints."""
+
 from django.db import models
 
 from backend.apps.common.constants import (
@@ -9,6 +11,8 @@ from backend.apps.constraints.models.base import Qualification
 
 
 class CourseRoomRequirement(models.Model):
+    """Canonical room capability required by a course."""
+
     course = models.ForeignKey("courses.Course", on_delete=models.CASCADE)
 
     room_type = models.CharField(max_length=20, choices=ROOM_TYPE_CHOICES)
@@ -27,10 +31,14 @@ class CourseRoomRequirement(models.Model):
 
 
 class CourseQualificationRequirement(models.Model):
+    """Required or preferred normalized teachable for a course."""
+
     course = models.ForeignKey("courses.Course", on_delete=models.CASCADE)
 
     qualification = models.ForeignKey(Qualification, on_delete=models.CASCADE)
 
+    # Required rules constrain senior-course eligibility; preferred rules remain
+    # available for softer assignment objectives.
     enforcement = models.CharField(
         max_length=20,
         choices=QUALIFICATION_ENFORCEMENT_CHOICES,
@@ -51,8 +59,12 @@ class CourseQualificationRequirement(models.Model):
 
 
 class CourseConflict(models.Model):
+    """Weighted evidence that two courses should avoid the same timeslot."""
+
     course_a = models.ForeignKey("courses.Course", on_delete=models.CASCADE, related_name="conflicts_as_a")
     course_b = models.ForeignKey("courses.Course", on_delete=models.CASCADE, related_name="conflicts_as_b")
+    # Weight normally derives from student co-request overlap and is consumed by
+    # future section-placement objectives.
     weight = models.FloatField()
 
     class Meta:
@@ -63,6 +75,8 @@ class CourseConflict(models.Model):
                 name="unique_course_conflict"
             ),
             models.CheckConstraint(
+                # A self-edge provides no scheduling information and would
+                # distort placement objectives.
                 condition=~models.Q(course_a=models.F("course_b")),
                 name="course_cannot_conflict_with_itself",
             )

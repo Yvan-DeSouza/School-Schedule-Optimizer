@@ -1,3 +1,5 @@
+"""Django application configuration for courses and student demand."""
+
 from django.apps import AppConfig
 
 

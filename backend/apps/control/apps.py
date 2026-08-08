@@ -1,3 +1,5 @@
+"""Django application configuration for manual scheduling control."""
+
 from django.apps import AppConfig
 
 

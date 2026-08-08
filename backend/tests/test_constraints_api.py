@@ -1,3 +1,5 @@
+"""API contracts for teacher-owned constraints, shared rules, and section locks."""
+
 import pytest
 
 from backend.apps.common.constants import (
@@ -20,6 +22,7 @@ from backend.apps.scheduling.models import TimeSlot
 
 @pytest.mark.django_db
 def test_teacher_manages_only_own_constraints(authenticated_client, teacher_user, second_teacher_user, counselor_user, course):
+    # Nested URL identity and policy scope both prevent cross-teacher writes.
     qualification = Qualification.objects.create(
         code="mathematics-intermediate",
         name="Mathematics - Intermediate",
@@ -65,6 +68,7 @@ def test_shared_constraints_and_course_conflict_validation(authenticated_client,
 
 @pytest.mark.django_db
 def test_section_lock_requires_qualified_teacher_and_can_be_cleared(authenticated_client, course, academic_year, teacher_user, counselor_user):
+    # Lock validation shares the direct Section assignment qualification service.
     qualification = Qualification.objects.create(
         code="mathematics-senior",
         name="Mathematics - Senior",

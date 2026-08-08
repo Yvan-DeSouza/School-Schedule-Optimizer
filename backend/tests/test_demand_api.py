@@ -1,3 +1,5 @@
+"""Raw demand-summary authorization, validation, and aggregation tests."""
+
 import pytest
 
 from backend.apps.common.constants import (

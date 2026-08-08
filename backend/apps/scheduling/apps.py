@@ -1,3 +1,5 @@
+"""Django application configuration for planning and placement records."""
+
 from django.apps import AppConfig
 
 

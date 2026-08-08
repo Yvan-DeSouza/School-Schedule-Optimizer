@@ -1,3 +1,5 @@
+"""Section visibility, assignment qualification validation, and filtering."""
+
 import pytest
 
 from backend.apps.common.constants import (

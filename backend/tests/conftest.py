@@ -1,3 +1,9 @@
+"""Shared API/model fixtures for the Django test suite.
+
+Passwords are read from the ignored local environment and are never embedded in
+source or test output.
+"""
+
 import pytest
 import os
 from dotenv import load_dotenv
@@ -30,6 +36,8 @@ def course():
 
 
 def make_user(username, role, academic_year=None):
+    """Create an auth user plus the domain/explicit profile for one role."""
+
     user = User.objects.create_user(username=username, password=test_user_password(), is_staff=role in (RoleChoices.STAFF, RoleChoices.DIRECTOR))
     if role == RoleChoices.STUDENT:
         Student.objects.create(user=user, student_number=f"S-{username}", email=f"{username}@example.com", first_name=username, last_name="Student", date_of_birth="2009-01-01", grade_level=GRADE_LEVEL_12, academic_year=academic_year)
@@ -66,6 +74,8 @@ def api_client(): return APIClient()
 
 @pytest.fixture
 def authenticated_client():
+    """Return a factory producing a force-authenticated DRF client for a user."""
+
     def client_for(user):
         client = APIClient()
         client.force_authenticate(user=user)

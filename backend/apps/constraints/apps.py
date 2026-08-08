@@ -1,3 +1,5 @@
+"""Django application configuration for scheduling constraints."""
+
 from django.apps import AppConfig
 
 

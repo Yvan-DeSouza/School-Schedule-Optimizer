@@ -1,3 +1,5 @@
+"""Authorization for future timetable solver execution and status viewing."""
+
 from backend.apps.access.action_policies.base import BaseActionPolicy
 from backend.apps.access.rules import ActionRule
 from backend.apps.access.scopes import ActionScope
@@ -6,6 +8,8 @@ from backend.apps.people.roles import get_user_role
 
 
 class SchedulingAction:
+    """Stable names for the three downstream solver stages and status."""
+
     RUN_SECTION_PLACEMENT = "run_section_placement"
     RUN_TEACHER_ASSIGNMENT = "run_teacher_assignment"
     RUN_STUDENT_ASSIGNMENT = "run_student_assignment"
@@ -13,6 +17,8 @@ class SchedulingAction:
 
 
 class SchedulingActionPolicy(BaseActionPolicy):
+    """Staff may monitor runs; counselor/director may start solver work."""
+
     solver_run_actions = {
         SchedulingAction.RUN_SECTION_PLACEMENT,
         SchedulingAction.RUN_TEACHER_ASSIGNMENT,
@@ -28,7 +34,9 @@ class SchedulingActionPolicy(BaseActionPolicy):
     @classmethod
     def is_action_allowed(cls, user, action=None, context=None):
         if action in cls.status_actions:
+            # The base role rule already limits this to planning roles.
             return True
         if action in cls.solver_run_actions:
+            # Starting a schedule-changing solve is narrower than viewing status.
             return get_user_role(user) in {RoleChoices.COUNSELOR, RoleChoices.DIRECTOR}
         return False

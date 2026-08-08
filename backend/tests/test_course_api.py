@@ -1,3 +1,5 @@
+"""Course catalog authorization, default planning policy, and filtering tests."""
+
 import pytest
 
 from backend.apps.common.constants import COURSE_CATEGORY_MATH, COURSE_CATEGORY_SCIENCE, GRADE_LEVEL_12

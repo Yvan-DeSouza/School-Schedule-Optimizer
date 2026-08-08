@@ -1,3 +1,5 @@
+"""Django application configuration for people and role profiles."""
+
 from django.apps import AppConfig
 
 

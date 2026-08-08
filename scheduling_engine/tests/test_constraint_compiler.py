@@ -1,3 +1,5 @@
+"""Pure compiler tests for indexes, locks, and senior fail-closed rules."""
+
 import pytest
 
 from scheduling_engine.constraint_compiler import compile_constraints
@@ -9,6 +11,8 @@ from scheduling_engine.dto import (
 
 
 def complete_input(lock_teacher=True):
+    """Return a minimal senior-course graph with one qualified teacher and lock."""
+
     return SchedulingInputDTO(
         academic_year_id=1,
         academic_years=(AcademicYearDTO(1, "2026-2027"),),
@@ -45,6 +49,7 @@ def test_compiler_builds_solver_indexes_and_preserves_locks():
 
 
 def test_compiler_rejects_lock_to_unqualified_teacher():
+    # Stale/manual lock data cannot bypass normalized qualification matching.
     data = complete_input(lock_teacher=True)
     data = SchedulingInputDTO(**{**data.__dict__, "teacher_qualifications": ()})
     with pytest.raises(ValueError, match="lacks a required"):
@@ -59,6 +64,8 @@ def test_compiler_fails_closed_when_a_senior_course_has_no_required_qualificatio
 
 
 def test_compiler_allows_any_teacher_for_a_grade_ten_course_and_keeps_preferences():
+    # Grade 10 flexibility changes legal eligibility only; preferred normalized
+    # qualification IDs remain available for future objectives.
     data = complete_input()
     grade_ten_course = CourseDTO(1, "MPM2D", "Principles of Mathematics", 10, 30, grade_level=10)
     preferred = CourseQualificationRequirementDTO(1, 1, is_required=False)

@@ -1,3 +1,5 @@
+"""Django application configuration for stored translations."""
+
 from django.apps import AppConfig
 
 

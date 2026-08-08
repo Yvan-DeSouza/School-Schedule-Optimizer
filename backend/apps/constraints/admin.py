@@ -1,3 +1,5 @@
+"""Django admin registration for normalized constraint records."""
+
 from django.contrib import admin
 
 from backend.apps.constraints.models.base import (
@@ -19,6 +21,8 @@ from backend.apps.constraints.models.teacher import (
 )
 
 
+# Default ModelAdmin behavior is sufficient for development inspection; public
+# API authorization remains independent of Django admin access.
 admin.site.register([
     HardConstraint,
     SoftConstraint,

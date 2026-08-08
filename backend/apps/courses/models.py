@@ -1,3 +1,5 @@
+"""Course catalog, operational sections, demand requests, and prerequisites."""
+
 from django.core.validators import MinValueValidator
 from django.db import models
 
@@ -12,6 +14,8 @@ from backend.apps.common.constants import (
 
 
 class Course(models.Model):
+    """Catalog course plus policy references used by section planning."""
+
     name = models.CharField(max_length=200)
 
     grade_level = models.IntegerField(
@@ -24,8 +28,8 @@ class Course(models.Model):
         choices=COURSE_CATEGORY_CHOICES,
     )
 
-    # Deprecated compatibility fields remain for existing section CRUD and
-    # imports. The planning engine exclusively uses capacity_profile.
+    # Deprecated compatibility fields remain for existing section CRUD, imports,
+    # and the legacy estimator. The CP-SAT planner uses capacity_profile.
     capacity_min = models.IntegerField(
         validators=[MinValueValidator(1)],
         default=10,
@@ -34,8 +38,12 @@ class Course(models.Model):
         validators=[MinValueValidator(1)],
         default=35,
     )
+    # PROTECT prevents an active policy from disappearing underneath courses.
     capacity_profile = models.ForeignKey("scheduling.CapacityProfile", on_delete=models.PROTECT, related_name="courses")
+    # Priority is explicit administrator policy and is never inferred from a
+    # request's mandatory flag, course code, grade, or category.
     priority_profile = models.ForeignKey("scheduling.CoursePriorityProfile", on_delete=models.PROTECT, related_name="courses")
+    # Semester availability is a hard catalog rule for planning and placement.
     allowed_semester = models.CharField(
         max_length=20,
         choices=COURSE_ALLOWED_SEMESTER_CHOICES,
@@ -50,8 +58,9 @@ class Course(models.Model):
         return f"{self.course_code} - {self.name}"
 
     def save(self, *args, **kwargs):
-        # Direct ORM creation is common in imports and tests, so guarantees
-        # profiles even when callers did not pass the new foreign keys.
+        # Direct ORM creation is common in imports and tests, so guarantee
+        # profiles even when callers did not pass the new foreign keys. The local
+        # import avoids a models/services cycle during Django app initialization.
         if not self.capacity_profile_id or not self.priority_profile_id:
             from backend.apps.scheduling.services.planning_configuration import ensure_default_planning_profiles
 
@@ -64,10 +73,14 @@ class Course(models.Model):
 
 
 class Section(models.Model):
+    """One offered instance of a course in a particular semester."""
+
     course = models.ForeignKey(Course, on_delete=models.CASCADE)
     section_number = models.CharField(max_length=10)
     academic_year = models.ForeignKey("common.AcademicYear", on_delete=models.CASCADE)
     semester = models.IntegerField(choices=SEMESTER_CHOICES)
+    # Teacher is optional because plan approval creates unstaffed drafts; named
+    # assignment belongs to a later scheduling stage.
     teacher = models.ForeignKey(
         "people.Teacher",
         on_delete=models.SET_NULL,
@@ -82,7 +95,11 @@ class Section(models.Model):
         validators=[MinValueValidator(1)]
     )
 
+    # Locked sections are accepted decisions that downstream automation must not
+    # silently move or reassign.
     is_locked = models.BooleanField(default=False)
+    # Manual/legacy sections legitimately have no approval source. Generated
+    # drafts link to the exact per-course decision, then to approval/run/user.
     planning_approval_course = models.ForeignKey(
         "scheduling.SectionPlanningApprovalCourse",
         null=True,
@@ -109,6 +126,8 @@ class Section(models.Model):
 
 
 class Enrollment(models.Model):
+    """Assignment of one student to one offered section."""
+
     student = models.ForeignKey("people.Student", on_delete=models.CASCADE)
     section = models.ForeignKey(Section, on_delete=models.CASCADE)
 
@@ -126,11 +145,14 @@ class Enrollment(models.Model):
 
 
 class CourseRequest(models.Model):
+    """Student demand signal for a course in one planning year."""
+
     student = models.ForeignKey("people.Student", on_delete=models.CASCADE)
     academic_year = models.ForeignKey("common.AcademicYear", on_delete=models.CASCADE)
 
     course = models.ForeignKey(Course, on_delete=models.CASCADE)
 
+    # Mandatory is request provenance, not a source for course priority.
     is_mandatory = models.BooleanField(default=False)
 
     request_type = models.CharField(max_length=20, choices=COURSE_REQUEST_TYPE_CHOICES)
@@ -149,6 +171,8 @@ class CourseRequest(models.Model):
 
 
 class CoursePrerequisite(models.Model):
+    """Directed catalog prerequisite relation for student scheduling."""
+
     course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name="prerequisites")
 
     prerequisite = models.ForeignKey(Course, on_delete=models.CASCADE, related_name="required_for")

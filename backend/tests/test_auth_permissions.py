@@ -1,3 +1,5 @@
+"""JWT authentication, role resolution, legacy permissions, and seed command."""
+
 from types import SimpleNamespace
 
 import pytest
@@ -22,6 +24,7 @@ from backend.apps.people.permissions import (
     IsTeacher,
 )
 from backend.apps.people.roles import get_user_profile_id, get_user_role
+
 import os
 from dotenv import load_dotenv
 # Load environment variables from .env file
@@ -30,6 +33,9 @@ load_dotenv()
 PASSWORD = os.getenv("TEST_USER_PASSWORD")
 if not PASSWORD:
     raise RuntimeError("TEST_USER_PASSWORD must be set in .env before running Django tests.")
+
+
+# Auth/domain-role fixtures ---------------------------------------------------
 
 
 @pytest.fixture
@@ -160,6 +166,7 @@ def request_for(user):
 
 @pytest.mark.django_db
 def test_login_succeeds_with_valid_credentials(student_user):
+    # Authentication and self-identification endpoints -----------------------
     response = APIClient().post(
         "/api/auth/login/",
         {"username": "student", "password": PASSWORD},
@@ -227,6 +234,7 @@ def test_counselor_permission_allows_counselors_and_directors_only(
     student_user,
     teacher_user,
 ):
+    # Role and ownership permission classes ----------------------------------
     permission = IsCounselor()
 
     assert permission.has_permission(request_for(counselor_user), None)
@@ -313,6 +321,7 @@ def test_superuser_bypasses_role_permissions(superuser, student_user):
 
 @pytest.mark.django_db
 def test_seed_dev_users_creates_all_supported_roles():
+    # Local-development provisioning -----------------------------------------
     call_command("seed_dev_users")
 
     assert get_user_role(User.objects.get(username="student")) == RoleChoices.STUDENT

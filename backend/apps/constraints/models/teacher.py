@@ -1,3 +1,5 @@
+"""Teacher-owned normalized scheduling qualifications and preferences."""
+
 from django.db import models
 
 from backend.apps.common.constants import (
@@ -8,9 +10,13 @@ from backend.apps.constraints.models.base import Qualification
 
 
 class TeacherQualification(models.Model):
+    """Evidence that one teacher holds one normalized qualification."""
+
     teacher = models.ForeignKey("people.Teacher", on_delete=models.CASCADE)
     qualification = models.ForeignKey(Qualification, on_delete=models.CASCADE)
 
+    # Provenance supports Aspen/manual/import audit without making raw strings
+    # part of eligibility matching.
     source_system = models.CharField(
         max_length=20,
         choices=QUALIFICATION_SOURCE_CHOICES,
@@ -34,6 +40,8 @@ class TeacherQualification(models.Model):
 
 
 class TeacherCoursePreference(models.Model):
+    """Structured teacher interest in teaching a specific course."""
+
     teacher = models.ForeignKey("people.Teacher", on_delete=models.CASCADE)
 
     course = models.ForeignKey("courses.Course", on_delete=models.CASCADE)
@@ -52,10 +60,13 @@ class TeacherCoursePreference(models.Model):
 
 
 class TeacherAvailability(models.Model):
+    """Teacher availability for one recurring semester timeslot."""
+
     teacher = models.ForeignKey("people.Teacher", on_delete=models.CASCADE)
 
     timeslot = models.ForeignKey("scheduling.TimeSlot", on_delete=models.CASCADE)
 
+    # Explicit false records allow imports to preserve unavailable declarations.
     is_available = models.BooleanField(default=True)
 
     class Meta:
@@ -72,6 +83,8 @@ class TeacherAvailability(models.Model):
 
 
 class TeacherCurrentCourse(models.Model):
+    """Teacher/course/year history available to later preference objectives."""
+
     teacher = models.ForeignKey("people.Teacher", on_delete=models.CASCADE)
 
     course = models.ForeignKey("courses.Course", on_delete=models.CASCADE)

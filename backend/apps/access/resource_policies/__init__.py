@@ -1,3 +1,5 @@
+"""Public import surface for model/resource policies."""
+
 from backend.apps.access.resource_policies.base import BaseResourcePolicy
 from backend.apps.access.resource_policies.courses import (
     CoursePolicy,
@@ -10,6 +12,7 @@ from backend.apps.access.resource_policies.constraints import (
 )
 from backend.apps.access.resource_policies.reference_data import ReferenceDataPolicy
 
+# Explicit exports preserve a stable policy API as modules are reorganized.
 __all__ = [
     "BaseResourcePolicy",
     "CoursePolicy",

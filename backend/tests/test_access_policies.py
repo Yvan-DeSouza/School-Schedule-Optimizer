@@ -1,3 +1,9 @@
+"""Authorization contract tests from rule primitives through DRF adapters.
+
+This file intentionally tests policies independently of HTTP endpoints. Endpoint
+tests then verify that views selected the correct policy/action names.
+"""
+
 from types import SimpleNamespace
 
 import pytest
@@ -250,6 +256,9 @@ def ids(queryset):
     return set(queryset.values_list("id", flat=True))
 
 
+# Rule primitives and compatibility imports ---------------------------------
+
+
 def test_access_rule_defaults_to_no_access():
     rule = AccessRule()
 
@@ -288,6 +297,8 @@ def test_compatibility_imports_point_to_resource_policy_classes():
 
 @pytest.mark.django_db
 def test_base_policy_fails_closed_for_own_and_assigned_scopes(student_user, course):
+    # Declaring OWN/ASSIGNED is insufficient without implementing the matching
+    # queryset/object hooks; the base class must still deny access.
     class OwnPolicy(BaseAccessPolicy):
         rules = {RoleChoices.STUDENT: AccessRule(read=ReadScope.OWN, write=WriteScope.OWN)}
 
@@ -324,6 +335,7 @@ def test_course_policy_role_access(
     director_user,
     unknown_user,
 ):
+    # Concrete resource-policy matrices --------------------------------------
     queryset = Course.objects.all()
 
     assert ids(CoursePolicy.filter_read_queryset(student_user, queryset)) == {course.id}
@@ -446,6 +458,7 @@ def test_course_request_policy_admin_roles_read_and_write_all(
 
 @pytest.mark.django_db
 def test_policy_permission_denies_view_without_policy(student_user):
+    # DRF ResourcePolicyPermission translation -------------------------------
     permission = PolicyPermission()
     view = SimpleNamespace()
 
@@ -555,6 +568,7 @@ def test_demand_action_policy_allows_planning_roles_only(
     teacher_user,
     unknown_user,
 ):
+    # Named-action policy matrices -------------------------------------------
     for action in [
         DemandPlanningAction.VIEW_DEMAND_SUMMARY,
         DemandPlanningAction.RECOMMEND_COURSE_CLOSURES,
@@ -645,6 +659,7 @@ def test_override_action_policy_splits_write_actions_from_history(
 
 @pytest.mark.django_db
 def test_action_policy_permission_denies_missing_policy_or_action(counselor_user):
+    # DRF ActionPolicyPermission translation ---------------------------------
     permission = ActionPolicyPermission()
 
     assert not permission.has_permission(

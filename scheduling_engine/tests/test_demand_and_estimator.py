@@ -1,3 +1,5 @@
+"""Pure demand, historical recency, conflicts, and legacy estimator tests."""
+
 from scheduling_engine.demand_analyzer import analyze_demand
 from scheduling_engine.dto import AcademicYearDTO, CourseDTO, CourseRequestDTO, HistoricalDemandDTO, SchedulingInputDTO
 from scheduling_engine.section_estimator import estimate_section_counts
@@ -5,6 +7,7 @@ import pytest
 
 
 def test_demand_analysis_counts_requests_history_and_co_requests():
+    # One fixture exercises totals, conversion, and unordered course pairs.
     calculus = CourseDTO(1, "MCV4U", "Calculus", 10, 30)
     physics = CourseDTO(2, "SPH4U", "Physics", 10, 30)
     data = SchedulingInputDTO(
@@ -45,6 +48,7 @@ def test_section_estimator_uses_fallback_rounding_and_capacity_warning():
 
 
 def test_demand_analysis_uses_three_year_recency_half_life_and_ignores_non_history():
+    # Future/same-year outcomes must never leak into target-year forecasting.
     course = CourseDTO(1, "MCV4U", "Calculus", 10, 30)
     data = SchedulingInputDTO(
         academic_year_id=4,

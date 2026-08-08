@@ -1,3 +1,5 @@
+"""Django application configuration for shared reference data."""
+
 from django.apps import AppConfig
 
 

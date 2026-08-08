@@ -11,11 +11,15 @@ from backend.apps.constraints.models import CourseQualificationRequirement, Teac
 
 def course_requires_statutory_qualification(course):
     """Return whether a course needs a legally required teachable credential."""
+    # Keep the grade threshold centralized in common constants; do not duplicate
+    # specific grade numbers in serializers, models, or solvers.
     return course.grade_level >= STATUTORY_TEACHABLE_MIN_GRADE
 
 
 def required_qualification_ids_for_course(course):
     """Return the hard qualification ids for a course, never its preferences."""
+    # Preferred mappings may guide later assignment objectives but cannot satisfy
+    # or create a legal eligibility requirement.
     return set(
         CourseQualificationRequirement.objects.filter(
             course=course,
@@ -31,11 +35,16 @@ def teacher_meets_course_qualification_requirements(teacher, course):
     exist. Grade 11-12 fail closed if planning data has no hard requirement.
     """
     if teacher is None or not course_requires_statutory_qualification(course):
+        # Unassigned sections and legally flexible Grade 7-10 courses pass this
+        # hard-rule check. Preferences are handled elsewhere.
         return True, set()
 
     required_ids = required_qualification_ids_for_course(course)
     if not required_ids:
+        # Senior courses fail closed when administrators have not configured a
+        # normalized required teachable.
         return False, set()
+    # Compare normalized IDs only; raw Aspen strings are provenance, not rules.
     held_ids = set(
         TeacherQualification.objects.filter(teacher=teacher).values_list("qualification_id", flat=True)
     )
@@ -51,6 +60,8 @@ def validate_teacher_course_assignment(course, teacher, field_name="teacher"):
     if eligible:
         return
     if not missing:
+        # Empty missing set plus ineligible means configuration is absent, not
+        # that the selected teacher lacks a particular known credential.
         raise ValidationError({
             field_name: (
                 "This Grade 11-12 course has no required senior teachable qualification "
@@ -64,4 +75,6 @@ def validate_teacher_course_assignment(course, teacher, field_name="teacher"):
 
 def validate_locked_teacher_qualifications(section, teacher):
     """Validate a section lock using the same rule as direct assignments."""
+    # Central delegation prevents Section PATCH and SectionLock PATCH from
+    # developing subtly different legal behavior.
     validate_teacher_course_assignment(section.course, teacher, field_name="locked_teacher")

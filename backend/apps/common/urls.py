@@ -1,3 +1,5 @@
+"""Router-generated endpoints for academic years and rooms."""
+
 from rest_framework.routers import DefaultRouter
 
 from backend.apps.common.views import AcademicYearViewSet, RoomViewSet

@@ -1,3 +1,5 @@
+"""Django application configuration for the placeholder core app."""
+
 from django.apps import AppConfig
 
 

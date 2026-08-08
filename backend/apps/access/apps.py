@@ -1,3 +1,5 @@
+"""Django application configuration for authorization policies."""
+
 from django.apps import AppConfig
 
 

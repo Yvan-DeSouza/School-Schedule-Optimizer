@@ -1,3 +1,5 @@
+"""Student ownership, planner proxy entry, duplicates, and request filtering."""
+
 import pytest
 
 from backend.apps.common.constants import (

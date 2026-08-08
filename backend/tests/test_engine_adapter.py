@@ -1,3 +1,5 @@
+"""ORM-to-DTO adapter coverage across scheduling input relationships."""
+
 import pytest
 
 from backend.apps.common.constants import (
@@ -26,6 +28,8 @@ from backend.apps.scheduling.services.engine_adapter import load_scheduling_inpu
 def test_engine_adapter_loads_target_year_data_and_constraints(
     academic_year, course, student_user, teacher_user, counselor_user,
 ):
+    # Seed one representative row from each domain group, then assert adapter
+    # scoping and translation into engine-neutral DTOs.
     history_year = AcademicYear.objects.create(name="2025-2026")
     other_course = Course.objects.create(name="Physics", grade_level=GRADE_LEVEL_12, course_code="SPH4U", category=COURSE_CATEGORY_SCIENCE, capacity_min=10, capacity_max=30)
     HistoricalCourseDemand.objects.create(course=course, academic_year=history_year, requests=100, final_enrollment=90)

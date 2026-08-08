@@ -1,3 +1,10 @@
+"""Persistent planning configuration, audit records, and timetable placement.
+
+Planning configuration is mutable and affects future runs. Planning runs and
+approvals are immutable audit facts. ``SectionSchedule`` is operational state
+for later timetable placement and remains separate from section-count planning.
+"""
+
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
 from django.db import models
@@ -16,8 +23,12 @@ from backend.apps.common.constants import (
 class CapacityProfile(models.Model):
     """Reusable class-size policy used by future section-planning runs."""
 
+    # Shared profiles may be reused by many courses. Course-specific profiles
+    # support copy-on-write customization without changing other courses.
     name = models.CharField(max_length=120, unique=True)
     scope = models.CharField(max_length=20, choices=CAPACITY_PROFILE_SCOPE_CHOICES, default=CAPACITY_PROFILE_SCOPE_SHARED)
+    # Hard values define candidate legality, soft values define preferences, and
+    # target is the ideal class size used after demand priorities are protected.
     hard_min = models.PositiveIntegerField(validators=[MinValueValidator(1)])
     soft_min = models.PositiveIntegerField(validators=[MinValueValidator(1)])
     target = models.PositiveIntegerField(validators=[MinValueValidator(1)])
@@ -28,6 +39,8 @@ class CapacityProfile(models.Model):
         ordering = ["scope", "name"]
 
     def clean(self):
+        # Positivity alone is insufficient; the complete five-point policy must
+        # be monotonically ordered.
         if not (self.hard_min <= self.soft_min <= self.target <= self.soft_max <= self.hard_max):
             raise ValidationError("Capacity values must satisfy hard_min <= soft_min <= target <= soft_max <= hard_max.")
 
@@ -38,6 +51,8 @@ class CapacityProfile(models.Model):
 class CoursePriorityProfile(models.Model):
     """Named, administrator-owned demand priority; never inferred from requests."""
 
+    # Named profiles make prioritization visible and prevent hidden inference
+    # from grade, category, code, or individual mandatory-request flags.
     name = models.CharField(max_length=120, unique=True)
     tier = models.PositiveSmallIntegerField(choices=COURSE_PRIORITY_TIER_CHOICES, default=COURSE_PRIORITY_TIER_STANDARD)
 
@@ -51,9 +66,13 @@ class CoursePriorityProfile(models.Model):
 class TeacherPlanningCapacity(models.Model):
     """The planning-only source of a teacher's usable semester section load."""
 
+    # Capacity is scoped per year/semester because leave, release time, and other
+    # staffing conditions can change between terms and planning cycles.
     teacher = models.ForeignKey("people.Teacher", on_delete=models.CASCADE, related_name="planning_capacities")
     academic_year = models.ForeignKey("common.AcademicYear", on_delete=models.CASCADE)
     semester = models.IntegerField(choices=SEMESTER_CHOICES)
+    # Maximum is a ceiling, never a utilization target. Reserved load is removed
+    # before the engine receives remaining capacity.
     maximum_sections = models.PositiveIntegerField(validators=[MinValueValidator(0)])
     reserved_sections = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0)])
 
@@ -62,6 +81,8 @@ class TeacherPlanningCapacity(models.Model):
         constraints = [models.UniqueConstraint(fields=["teacher", "academic_year", "semester"], name="unique_teacher_planning_capacity")]
 
     def clean(self):
+        # Reject negative effective capacity instead of relying on the engine to
+        # clamp it and hide a configuration mistake.
         if self.reserved_sections > self.maximum_sections:
             raise ValidationError({"reserved_sections": "Cannot exceed maximum_sections."})
 
@@ -76,10 +97,15 @@ class TeacherPlanningCapacity(models.Model):
 class SectionPlanningRun(models.Model):
     """An immutable snapshot and result for one base plan or what-if scenario."""
 
+    # PROTECT retains the year identity required to interpret an audit record.
     academic_year = models.ForeignKey("common.AcademicYear", on_delete=models.PROTECT)
+    # User deletion must not erase the planning fact; null means the account no
+    # longer exists while the snapshot/result remain intact.
     created_by = models.ForeignKey("auth.User", null=True, on_delete=models.SET_NULL)
     created_at = models.DateTimeField(auto_now_add=True)
     status = models.CharField(max_length=20, choices=SECTION_PLANNING_RUN_STATUS_CHOICES)
+    # Concise counselor overrides, exact expanded engine input, and solver output
+    # answer different audit questions and are stored separately.
     scenario_constraints = models.JSONField(default=dict, blank=True)
     input_snapshot = models.JSONField(default=dict)
     result = models.JSONField(default=dict)
@@ -89,6 +115,8 @@ class SectionPlanningRun(models.Model):
         ordering = ["-created_at", "-id"]
 
     def save(self, *args, **kwargs):
+        # Runs are append-only. A changed assumption must produce a new run rather
+        # than rewriting the historical explanation.
         if self.pk:
             raise ValidationError("Section planning runs are immutable.")
         return super().save(*args, **kwargs)
@@ -97,6 +125,8 @@ class SectionPlanningRun(models.Model):
 class SectionPlanningApproval(models.Model):
     """One immutable planning-role decision approving all or part of a run."""
 
+    # One run may be approved in multiple disjoint batches. Per-course records
+    # below describe exactly what each batch covered.
     planning_run = models.ForeignKey(
         SectionPlanningRun,
         on_delete=models.PROTECT,
@@ -110,6 +140,8 @@ class SectionPlanningApproval(models.Model):
         ordering = ["approved_at", "id"]
 
     def save(self, *args, **kwargs):
+        # Corrections belong in a later explicit workflow; never rewrite who
+        # approved an existing decision or the supplied reason.
         if self.pk:
             raise ValidationError("Section planning approvals are immutable.")
         return super().save(*args, **kwargs)
@@ -124,6 +156,8 @@ class SectionPlanningApprovalCourse(models.Model):
         related_name="course_approvals",
     )
     course = models.ForeignKey("courses.Course", on_delete=models.PROTECT)
+    # Store recommendation and decision even when equal. This proves whether a
+    # planning-role user accepted or adjusted the solver result.
     recommended_semester_1_count = models.PositiveIntegerField()
     recommended_semester_2_count = models.PositiveIntegerField()
     approved_semester_1_count = models.PositiveIntegerField()
@@ -139,12 +173,17 @@ class SectionPlanningApprovalCourse(models.Model):
         ]
 
     def save(self, *args, **kwargs):
+        # Generated sections refer back to this normalized immutable audit line.
         if self.pk:
             raise ValidationError("Approved course counts are immutable.")
         return super().save(*args, **kwargs)
 
 
 class TimeSlot(models.Model):
+    """One recurring A-D timetable block in one semester/year."""
+
+    # Rotation details live in shared constants and are exposed by the serializer
+    # rather than duplicated on every row.
     block = models.CharField(max_length=1, choices=SCHEDULE_BLOCK_CHOICES)
     academic_year = models.ForeignKey("common.AcademicYear", on_delete=models.CASCADE)
 
@@ -166,10 +205,15 @@ class TimeSlot(models.Model):
 
 
 class SectionSchedule(models.Model):
+    """Operational room/timeslot placement for an existing section."""
+
+    # OneToOne permits at most one current placement. Nullable room/slot values
+    # allow draft and partially scheduled sections to exist safely.
     section = models.OneToOneField("courses.Section", on_delete=models.CASCADE)
     timeslot = models.ForeignKey(TimeSlot, on_delete=models.SET_NULL, null=True)
 
     room = models.ForeignKey("common.Room", on_delete=models.SET_NULL, null=True)
+    # This distinguishes counselor placement from future solver output.
     is_manual = models.BooleanField(default=False)
 
     class Meta:

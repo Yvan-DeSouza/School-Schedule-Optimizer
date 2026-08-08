@@ -1,3 +1,5 @@
+"""Application role linkage and student/teacher/counselor domain profiles."""
+
 from django.db import models
 
 from backend.apps.common.constants import (
@@ -19,6 +21,8 @@ from backend.apps.common.constants import (
 
 
 class RoleChoices(models.TextChoices):
+    """Django-friendly facade over canonical role constants."""
+
     STUDENT = USER_ROLE_STUDENT, USER_ROLE_STUDENT_LABEL
     TEACHER = USER_ROLE_TEACHER, USER_ROLE_TEACHER_LABEL
     COUNSELOR = USER_ROLE_COUNSELOR, USER_ROLE_COUNSELOR_LABEL
@@ -28,6 +32,10 @@ class RoleChoices(models.TextChoices):
 
 
 class UserRoleProfile(models.Model):
+    """Explicit role for users without a student/teacher/counselor profile."""
+
+    # Domain profiles take precedence during role resolution. This model mainly
+    # represents staff, directors, and explicitly unknown accounts.
     user = models.OneToOneField(
         "auth.User",
         on_delete=models.CASCADE,
@@ -48,6 +56,9 @@ class UserRoleProfile(models.Model):
 
 
 class Student(models.Model):
+    """Student identity and school-year context linked optionally to auth.User."""
+
+    # SET_NULL preserves imported school records if a login account is removed.
     user = models.OneToOneField(
         "auth.User",
         on_delete=models.SET_NULL,
@@ -82,6 +93,8 @@ class Student(models.Model):
 
 
 class Teacher(models.Model):
+    """Teacher identity plus default workload values used when no plan override exists."""
+
     user = models.OneToOneField(
         "auth.User",
         on_delete=models.SET_NULL,
@@ -99,10 +112,14 @@ class Teacher(models.Model):
 
     seniority = models.IntegerField(default=0)
 
+    # These are fallback maxima. TeacherPlanningCapacity can override each
+    # semester for a specific academic year.
     max_courses_per_semester = models.IntegerField(default=3)
 
     max_courses_total = models.IntegerField(default=6)
 
+    # reduced_load is descriptive context; effective numeric limits still come
+    # from the maximum fields/planning-capacity records.
     reduced_load = models.BooleanField(default=False)
 
     class Meta:
@@ -113,6 +130,8 @@ class Teacher(models.Model):
 
 
 class Counselor(models.Model):
+    """Counselor domain profile used for ownership and planning preferences."""
+
     user = models.OneToOneField(
         "auth.User",
         on_delete=models.SET_NULL,

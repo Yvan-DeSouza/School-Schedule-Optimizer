@@ -1,7 +1,18 @@
-"""Persistence orchestration for immutable planning runs.
+"""Persistence orchestration for planning runs and counselor approvals.
 
 This module deliberately never imports scheduling_engine; engine_adapter is the
-single Django-to-engine boundary.
+single Django-to-engine boundary.  Keeping that rule here prevents ORM objects
+from leaking into the pure solver package.
+
+There are two intentionally different write paths:
+
+* ``create_section_planning_run`` stores a frozen solver input and result but
+  never creates operational ``Section`` rows.
+* ``approve_section_planning_run`` turns an explicitly reviewed subset into
+  draft sections inside one transaction.
+
+Approval previews and writes share the same validation function so the UI sees
+the same conflicts that the transactional endpoint will enforce.
 """
 
 from django.db import transaction
@@ -27,27 +38,41 @@ from backend.apps.scheduling.services.engine_adapter import (
 
 
 class PlanningApprovalValidationError(Exception):
+    """A proposed approval is malformed or violates current catalog rules."""
+
     def __init__(self, detail):
+        # Keep structured detail so the DRF view can preserve field/diagnostic
+        # information instead of flattening it into one string.
         self.detail = detail
         super().__init__(str(detail))
 
 
 class PlanningApprovalConflictError(Exception):
+    """A valid proposal would overwrite an existing planning decision."""
+
     def __init__(self, detail):
         self.detail = detail
         super().__init__(str(detail))
 
 
 def create_section_planning_run(*, academic_year_id, created_by, course_constraints, teacher_capacity_adjustments):
+    """Execute one immutable base/what-if run and persist its full provenance."""
+
+    # Store the user's scenario separately from the expanded DTO snapshot.  The
+    # former is concise for review; the latter is sufficient for future audit.
     scenario = {
         "course_constraints": list(course_constraints),
         "teacher_capacity_adjustments": list(teacher_capacity_adjustments),
     }
+    # The adapter returns the result and the exact DTO input used for that same
+    # invocation, avoiding a race caused by loading a snapshot in a second pass.
     result, snapshot = get_section_count_plan_with_snapshot(
         academic_year_id,
         course_constraints=course_constraints,
         teacher_capacity_adjustments=teacher_capacity_adjustments,
     )
+    # A solver-level infeasible result is still a successfully recorded run, not
+    # an application exception or partially written failure.
     status = (
         SECTION_PLANNING_RUN_STATUS_COMPLETE
         if result["status"] == "complete"
@@ -65,6 +90,10 @@ def create_section_planning_run(*, academic_year_id, created_by, course_constrai
 
 
 def _course_results_by_id(run):
+    """Validate approval eligibility and index the frozen per-course results."""
+
+    # Approval is intentionally limited to completed feasible runs.  Infeasible
+    # runs remain valuable audit records but cannot create draft offerings.
     if run.status != SECTION_PLANNING_RUN_STATUS_COMPLETE or run.result.get("status") != "complete":
         raise PlanningApprovalValidationError({
             "detail": "Only a completed, feasible section-planning run can be approved."
@@ -76,13 +105,19 @@ def _course_results_by_id(run):
 
 
 def _normalize_selections(run, selections):
+    """Resolve omitted selections and reject course IDs outside the run."""
+
     result_by_course = _course_results_by_id(run)
+    # A course approved with zero sections still counts as reviewed, so the audit
+    # table—not the presence of generated Section rows—is the source of truth.
     approved_course_ids = set(
         SectionPlanningApprovalCourse.objects.filter(
             approval__planning_run=run,
         ).values_list("course_id", flat=True)
     )
     if selections is None:
+        # Omission means "all remaining recommendations."  An explicit empty
+        # array is rejected earlier by the request serializer to avoid ambiguity.
         normalized = [
             {
                 "course_id": course_id,
@@ -93,6 +128,8 @@ def _normalize_selections(run, selections):
             if course_id not in approved_course_ids
         ]
     else:
+        # Copy serializer mappings before enriching/iterating so callers do not
+        # observe accidental mutation of their validated data.
         normalized = [dict(item) for item in selections]
 
     unknown_course_ids = sorted({
@@ -101,6 +138,8 @@ def _normalize_selections(run, selections):
         if item["course_id"] not in result_by_course
     })
     if unknown_course_ids:
+        # A catalog course can exist today yet still be invalid for this run if it
+        # was absent from the frozen result.
         raise PlanningApprovalValidationError({
             "courses": (
                 "Every selected course must be present in the planning run result. "
@@ -111,13 +150,25 @@ def _normalize_selections(run, selections):
 
 
 def _append_once(values, value):
+    """Append a stable warning code without duplicating an engine warning."""
+
     if value not in values:
         values.append(value)
 
 
 def preview_section_planning_approval(run, *, selections=None):
+    """Build the exact counselor review payload without changing database state.
+
+    The preview deliberately compares the frozen run configuration with the
+    current course configuration.  Counts originate from the run (or explicit
+    counselor edits), while actual draft sections must obey current semester
+    restrictions and use current capacity-policy bounds.
+    """
+
     result_by_course, approved_course_ids, selections = _normalize_selections(run, selections)
     selected_course_ids = sorted({item["course_id"] for item in selections})
+    # Courses are loaded in one query because large runs may contain hundreds of
+    # offerings.  Missing rows are handled as structured validation errors.
     courses = {
         course.id: course
         for course in Course.objects.select_related("capacity_profile").filter(
@@ -125,6 +176,8 @@ def preview_section_planning_approval(run, *, selections=None):
         )
     }
     existing_by_course = {}
+    # Any existing section is a hard conflict.  The approval feature has no
+    # implicit replace/delete semantics; reconciliation is a separate workflow.
     for section in Section.objects.filter(
         academic_year_id=run.academic_year_id,
         course_id__in=selected_course_ids,
@@ -139,6 +192,8 @@ def preview_section_planning_approval(run, *, selections=None):
     validation_errors = []
     course_reviews = []
     for selection in selections:
+        # Frozen result values explain the recommendation; current Course values
+        # determine whether it remains safe to materialize today.
         course_id = selection["course_id"]
         result = result_by_course[course_id]
         course = courses.get(course_id)
@@ -151,11 +206,15 @@ def preview_section_planning_approval(run, *, selections=None):
             proposed_semester_1 != recommended_semester_1
             or proposed_semester_2 != recommended_semester_2
         ):
+            # Counselor adjustments are allowed and audited, but they must be
+            # visually distinguishable from the solver recommendation.
             _append_once(warnings, "counselor_adjusted_section_counts")
 
         item_validation_errors = []
         item_conflicts = []
         if course is None:
+            # Planning snapshots intentionally survive catalog deletion.  They
+            # remain readable, but a missing live Course cannot back a Section FK.
             error = {
                 "code": "course_no_longer_exists",
                 "course_id": course_id,
@@ -166,6 +225,8 @@ def preview_section_planning_approval(run, *, selections=None):
             current_capacity_policy = None
             current_allowed_semester = None
         else:
+            # Section.capacity_min/max are compatibility fields.  The approval
+            # service fills them from the current profile's hard bounds.
             current_capacity_policy = {
                 "hard_min": course.capacity_profile.hard_min,
                 "soft_min": course.capacity_profile.soft_min,
@@ -178,6 +239,8 @@ def preview_section_planning_approval(run, *, selections=None):
                 current_capacity_policy != result["capacity_policy"]
                 or current_allowed_semester != result["allowed_semester"]
             ):
+                # Configuration drift is a review warning rather than an
+                # automatic rejection unless it makes the semester split illegal.
                 _append_once(warnings, "planning_configuration_changed_since_run")
             if current_allowed_semester == COURSE_ALLOWED_SEMESTER_1_ONLY and proposed_semester_2:
                 error = {
@@ -197,6 +260,8 @@ def preview_section_planning_approval(run, *, selections=None):
                 item_validation_errors.append(error["code"])
 
         if course_id in approved_course_ids:
+            # This catches repeated zero-section approvals as well as approvals
+            # that already generated rows.
             conflict = {
                 "code": "course_already_approved_from_run",
                 "course_id": course_id,
@@ -206,6 +271,8 @@ def preview_section_planning_approval(run, *, selections=None):
             item_conflicts.append(conflict["code"])
         existing_sections = existing_by_course.get(course_id, [])
         if existing_sections:
+            # Include concrete section identifiers so the counselor can inspect
+            # the rows that require a future replace/reconciliation decision.
             course_code = result["course_code"]
             conflict = {
                 "code": "existing_sections_for_course_year",
@@ -220,6 +287,8 @@ def preview_section_planning_approval(run, *, selections=None):
             item_conflicts.append(conflict["code"])
 
         proposed_total = proposed_semester_1 + proposed_semester_2
+        # Keep recommended and proposed values side-by-side; a frontend should
+        # not need to reconstruct audit-critical differences itself.
         course_reviews.append({
             "course_id": course_id,
             "course_code": result["course_code"],
@@ -233,6 +302,8 @@ def preview_section_planning_approval(run, *, selections=None):
             "proposed_semester_2_count": proposed_semester_2,
             "proposed_annual_count": proposed_total,
             "expected_enrollment_per_section": (
+                # Zero-section decisions are valid controlled shortages and avoid
+                # division-by-zero by reporting a neutral zero class size.
                 result["predicted_enrollment"] / proposed_total
                 if proposed_total else 0
             ),
@@ -248,12 +319,15 @@ def preview_section_planning_approval(run, *, selections=None):
         })
 
     if not selections:
+        # This normally means every course in the run has already been reviewed.
         conflicts.append({
             "code": "no_unapproved_courses_remaining",
             "message": "No unapproved courses remain in this planning run.",
         })
 
     return {
+        # The response is deliberately JSON-ready because both review endpoints
+        # return it directly and approval reuses it inside the transaction.
         "planning_run_id": run.id,
         "academic_year": run.academic_year_id,
         "courses": course_reviews,
@@ -269,19 +343,31 @@ def preview_section_planning_approval(run, *, selections=None):
 
 @transaction.atomic
 def approve_section_planning_run(run, *, approved_by, selections=None, reason=""):
+    """Atomically materialize reviewed counts as auditable draft sections."""
+
+    # Serialize approvals from the same run.  This makes the already-approved
+    # check reliable even when two counselors submit concurrently.
     run = SectionPlanningRun.objects.select_for_update().get(pk=run.pk)
     _, _, normalized = _normalize_selections(run, selections)
     selected_course_ids = sorted({item["course_id"] for item in normalized})
+    # Lock courses in deterministic ID order.  Besides preventing catalog edits,
+    # the row locks serialize approvals from different runs targeting the same
+    # course/year and avoid deadlock-prone arbitrary lock ordering.
     locked_courses = list(
         Course.objects.select_for_update()
         .filter(id__in=selected_course_ids)
         .order_by("id")
     )
+    # A shared capacity profile can be edited independently of its courses.  Lock
+    # it too so every generated section in this approval receives one coherent
+    # set of hard capacity bounds.
     list(
         CapacityProfile.objects.select_for_update()
         .filter(id__in={course.capacity_profile_id for course in locked_courses})
         .order_by("id")
     )
+    # Re-run the normal preview after locks are held.  Never trust a preview that
+    # may have been shown seconds earlier against now-stale database state.
     preview = preview_section_planning_approval(run, selections=normalized)
     if preview["validation_errors"]:
         raise PlanningApprovalValidationError({
@@ -289,6 +375,8 @@ def approve_section_planning_run(run, *, approved_by, selections=None, reason=""
             "validation_errors": preview["validation_errors"],
         })
     if preview["conflicts"]:
+        # Conflicts map to HTTP 409 at the view boundary; validation errors map
+        # to 400.  Keeping them separate helps clients choose the right recovery.
         raise PlanningApprovalConflictError({
             "detail": "The proposed approval conflicts with existing planning decisions.",
             "conflicts": preview["conflicts"],
@@ -300,6 +388,8 @@ def approve_section_planning_run(run, *, approved_by, selections=None, reason=""
             id__in=selected_course_ids,
         )
     }
+    # Create the audit header before its normalized per-course decisions.  The
+    # surrounding transaction guarantees no orphaned audit row can survive.
     approval = SectionPlanningApproval.objects.create(
         planning_run=run,
         approved_by=approved_by,
@@ -307,6 +397,8 @@ def approve_section_planning_run(run, *, approved_by, selections=None, reason=""
     )
     for item in preview["courses"]:
         course = courses[item["course_id"]]
+        # Preserve both values even when they match.  Future readers can prove
+        # whether the counselor accepted or adjusted the solver output.
         approved_course = SectionPlanningApprovalCourse.objects.create(
             approval=approval,
             course=course,
@@ -320,6 +412,8 @@ def approve_section_planning_run(run, *, approved_by, selections=None, reason=""
             (SEMESTER_WINTER, item["proposed_semester_2_count"]),
         ):
             for sequence in range(1, count + 1):
+                # Semester-prefixed numbering is deterministic and unique across
+                # both terms under the existing course/year uniqueness rule.
                 Section.objects.create(
                     course=course,
                     section_number=f"S{semester}-{sequence:02d}",
@@ -329,6 +423,8 @@ def approve_section_planning_run(run, *, approved_by, selections=None, reason=""
                     capacity_min=course.capacity_profile.hard_min,
                     capacity_max=course.capacity_profile.hard_max,
                     is_locked=False,
+                    # This link makes every generated draft traceable through the
+                    # approval header to the immutable source planning run/user.
                     planning_approval_course=approved_course,
                 )
     return approval

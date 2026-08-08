@@ -1,3 +1,5 @@
+"""Django admin registration for domain and explicit role profiles."""
+
 from django.contrib import admin
 
 from backend.apps.people.models import Counselor, Student, Teacher, UserRoleProfile

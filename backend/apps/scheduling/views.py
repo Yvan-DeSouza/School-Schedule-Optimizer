@@ -1,3 +1,10 @@
+"""HTTP endpoints for timeslots, planning configuration, runs, and approvals.
+
+Views remain thin: policies authorize actions, serializers validate transport
+data, and services own business rules/transactions. Imports of the pure engine
+are restricted to ``engine_adapter`` by project convention.
+"""
+
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import APIException, NotFound, ValidationError
@@ -35,23 +42,31 @@ from backend.apps.scheduling.services.planning_configuration import apply_course
 
 
 class SectionPlanningApprovalConflict(APIException):
+    """HTTP 409 used when approval would overwrite existing decisions."""
+
     status_code = status.HTTP_409_CONFLICT
     default_code = "section_planning_approval_conflict"
 
 
 class TimeSlotViewSet(ReferenceDataViewSet):
+    """CRUD recurring A-D slots using the shared reference-data policy."""
+
     queryset = TimeSlot.objects.select_related("academic_year")
     serializer_class = TimeSlotSerializer
     filter_fields = ("academic_year", "semester", "block", "is_available")
 
 
 class SectionCountRecommendationView(APIView):
+    """Legacy read-only per-course heuristic recommendation endpoint."""
+
     permission_classes = [ActionPolicyPermission]
     action_policy_class = DemandPlanningActionPolicy
     action_name = DemandPlanningAction.RECOMMEND_SECTION_COUNTS
 
     def get(self, request):
         academic_year_id = request.query_params.get("academic_year")
+        # Validate syntax separately from existence to provide useful 400 vs 404
+        # responses rather than leaking ORM conversion exceptions.
         if not academic_year_id or not str(academic_year_id).isdigit():
             raise ValidationError({"academic_year": "This query parameter must be a valid academic year id."})
         if not AcademicYear.objects.filter(pk=academic_year_id).exists():
@@ -64,11 +79,15 @@ class SectionCountRecommendationView(APIView):
 
 
 class PlanningConfigurationViewSet(viewsets.ModelViewSet):
+    """Shared base applying role-safe policy filtering before query filters."""
+
     permission_classes = [ResourcePolicyPermission]
     resource_policy_class = PlanningConfigurationPolicy
     filter_fields = ()
 
     def get_queryset(self):
+        # Policy filtering must happen first. Query parameters may narrow an
+        # authorized set but must never broaden it.
         queryset = self.resource_policy_class.filter_read_queryset(self.request.user, self.queryset.all())
         for field in self.filter_fields:
             if (value := self.request.query_params.get(field)) is not None:
@@ -77,34 +96,46 @@ class PlanningConfigurationViewSet(viewsets.ModelViewSet):
 
 
 class CapacityProfileViewSet(PlanningConfigurationViewSet):
+    """Manage reusable and course-specific class-size profiles."""
+
     queryset = CapacityProfile.objects.all()
     serializer_class = CapacityProfileSerializer
     filter_fields = ("scope",)
 
     def perform_destroy(self, instance):
+        # Course FKs are PROTECTed as a database backstop; this precheck returns a
+        # counselor-readable API error.
         if instance.courses.exists():
             raise ValidationError({"detail": "A capacity profile assigned to courses cannot be deleted."})
         instance.delete()
 
 
 class CoursePriorityProfileViewSet(PlanningConfigurationViewSet):
+    """Manage explicit four-tier course-demand priorities."""
+
     queryset = CoursePriorityProfile.objects.all()
     serializer_class = CoursePriorityProfileSerializer
     filter_fields = ("tier",)
 
 
 class TeacherPlanningCapacityViewSet(PlanningConfigurationViewSet):
+    """Manage per-teacher, year, and semester planning ceilings."""
+
     queryset = TeacherPlanningCapacity.objects.select_related("teacher", "academic_year")
     serializer_class = TeacherPlanningCapacitySerializer
     filter_fields = ("teacher", "academic_year", "semester")
 
 
 class CourseCapacityPolicyView(APIView):
+    """Attach a shared profile or apply custom copy-on-write values."""
+
     permission_classes = [ActionPolicyPermission]
     action_policy_class = DemandPlanningActionPolicy
     action_name = DemandPlanningAction.MANAGE_PLANNING_CONFIGURATION
 
     def post(self, request, course_id):
+        # Local import avoids making this view module part of the Course model's
+        # default-profile import cycle.
         from backend.apps.courses.models import Course
 
         try:
@@ -113,6 +144,7 @@ class CourseCapacityPolicyView(APIView):
             raise NotFound("Course not found.") from error
         serializer = CourseCapacityPolicySerializer(data=request.data, context={"course": course})
         serializer.is_valid(raise_exception=True)
+        # Service owns copy-on-write behavior and its transaction boundary.
         profile = apply_course_capacity_policy(
             course,
             profile=serializer.validated_data.get("capacity_profile"),
@@ -122,6 +154,8 @@ class CourseCapacityPolicyView(APIView):
 
 
 class SectionPlanningRunViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
+    """Create/read immutable runs and review/approve their recommendations."""
+
     permission_classes = [ActionPolicyPermission]
     action_policy_class = DemandPlanningActionPolicy
     action_name = DemandPlanningAction.RUN_SECTION_PLANNING
@@ -129,10 +163,14 @@ class SectionPlanningRunViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, 
         "academic_year",
         "created_by",
     ).prefetch_related(
+        # Run responses nest approval lines and generated section IDs. Prefetching
+        # prevents one query per approval/course on list and detail responses.
         "approvals__course_approvals__generated_sections",
     )
 
     def get_permissions(self):
+        # Approval is a distinct action even though current planning roles may do
+        # both. Keeping policy names separate supports future role refinement.
         if self.action == "approve":
             self.action_name = DemandPlanningAction.APPROVE_SECTION_PLAN
         else:
@@ -140,6 +178,8 @@ class SectionPlanningRunViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, 
         return super().get_permissions()
 
     def get_serializer_class(self):
+        # Create input is intentionally much smaller than the immutable run
+        # representation returned by list/retrieve.
         return SectionPlanningRunCreateSerializer if self.action == "create" else SectionPlanningRunSerializer
 
     def create(self, request, *args, **kwargs):
@@ -149,6 +189,8 @@ class SectionPlanningRunViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, 
         if not AcademicYear.objects.filter(pk=academic_year_id).exists():
             raise NotFound("Academic year not found.")
         try:
+            # Deferred import keeps the view lightweight and preserves the
+            # adapter as the only Django-to-engine boundary.
             from backend.apps.scheduling.services.section_planning import create_section_planning_run
 
             run = create_section_planning_run(
@@ -163,6 +205,8 @@ class SectionPlanningRunViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, 
 
     @action(detail=True, methods=["get"], url_path="review")
     def review(self, request, pk=None):
+        """Preview every not-yet-approved recommendation without writing."""
+
         from backend.apps.scheduling.services.section_planning import (
             PlanningApprovalValidationError,
             preview_section_planning_approval,
@@ -177,6 +221,8 @@ class SectionPlanningRunViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, 
 
     @action(detail=True, methods=["post"], url_path="approval-preview")
     def approval_preview(self, request, pk=None):
+        """Preview a selected/adjusted subset using the approval request shape."""
+
         from backend.apps.scheduling.services.section_planning import (
             PlanningApprovalValidationError,
             preview_section_planning_approval,
@@ -196,6 +242,8 @@ class SectionPlanningRunViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, 
 
     @action(detail=True, methods=["post"], url_path="approve")
     def approve(self, request, pk=None):
+        """Atomically create draft sections and return the immutable audit row."""
+
         from backend.apps.scheduling.services.section_planning import (
             PlanningApprovalConflictError,
             PlanningApprovalValidationError,
@@ -213,9 +261,14 @@ class SectionPlanningRunViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, 
                 reason=serializer.validated_data["reason"],
             )
         except PlanningApprovalValidationError as error:
+            # Invalid current semester rules/configuration are ordinary 400s.
             raise ValidationError(error.detail) from error
         except PlanningApprovalConflictError as error:
+            # Existing sections or prior approvals require reconciliation, so
+            # communicate a state conflict rather than malformed input.
             raise SectionPlanningApprovalConflict(error.detail) from error
+        # Reload with generated sections prefetched so the 201 response contains
+        # complete audit provenance without N+1 queries.
         approval = SectionPlanningApproval.objects.prefetch_related(
             "course_approvals__generated_sections",
         ).get(pk=approval.pk)

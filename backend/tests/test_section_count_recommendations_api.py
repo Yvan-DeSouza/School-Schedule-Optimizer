@@ -1,3 +1,5 @@
+"""Compatibility tests for the legacy read-only recommendation endpoint."""
+
 import pytest
 from rest_framework.test import APIClient
 

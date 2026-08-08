@@ -1,3 +1,5 @@
+"""Fail-closed base policy for model/resource CRUD authorization."""
+
 from backend.apps.access.rules import AccessRule
 from backend.apps.access.scopes import ReadScope, WriteScope
 from backend.apps.people.models import RoleChoices
@@ -5,10 +7,18 @@ from backend.apps.people.roles import get_user_role
 
 
 class BaseResourcePolicy:
+    """Map application roles to queryset and object-level access scopes.
+
+    Subclasses must explicitly opt roles into scopes and implement ownership or
+    assignment hooks. Default hooks return no rows/False to prevent accidental
+    access when a policy declares a scope but forgets its ownership logic.
+    """
+
     rules = {}
 
     @classmethod
     def rule_for(cls, user):
+        # Anonymous and unknown-role users always receive the empty rule.
         if not user or not user.is_authenticated:
             return AccessRule()
 
@@ -20,6 +30,7 @@ class BaseResourcePolicy:
 
     @classmethod
     def filter_read_queryset(cls, user, queryset):
+        # List endpoints must call this before applying user query parameters.
         rule = cls.rule_for(user)
 
         if rule.read == ReadScope.ALL:
@@ -32,6 +43,7 @@ class BaseResourcePolicy:
 
     @classmethod
     def can_read_object(cls, user, obj):
+        # Detail endpoints mirror the queryset scope with an object predicate.
         rule = cls.rule_for(user)
 
         if rule.read == ReadScope.ALL:
@@ -44,6 +56,7 @@ class BaseResourcePolicy:
 
     @classmethod
     def can_create(cls, user, data=None, context=None):
+        # Resource-specific policies can inspect URL/data context by overriding.
         return cls.rule_for(user).write != WriteScope.NONE
 
     @classmethod
@@ -60,14 +73,17 @@ class BaseResourcePolicy:
 
     @classmethod
     def can_delete_object(cls, user, obj):
+        # Delete follows write ownership unless a subclass narrows it further.
         return cls.can_write_object(user, obj)
 
     @classmethod
     def filter_own_queryset(cls, user, queryset):
+        # Fail closed until a concrete policy defines ownership.
         return queryset.none()
 
     @classmethod
     def filter_assigned_queryset(cls, user, queryset):
+        # Fail closed until a concrete policy defines assignment.
         return queryset.none()
 
     @classmethod

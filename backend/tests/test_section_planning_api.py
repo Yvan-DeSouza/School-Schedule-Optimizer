@@ -1,3 +1,9 @@
+"""End-to-end API contract for immutable plans and draft-section approval.
+
+Coverage includes authorization, review/preview shape, partial and adjusted
+approvals, overwrite protection, audit provenance, immutability, and rollback.
+"""
+
 import pytest
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework.test import APIClient
@@ -22,6 +28,8 @@ from backend.apps.scheduling.services.section_planning import approve_section_pl
 
 
 def create_approvable_run(client, academic_year, course, student_user, teacher_user):
+    """Create minimal flexible-grade demand/staffing and return its saved run."""
+
     course.grade_level = GRADE_LEVEL_10
     course.save(update_fields=["grade_level"])
     CourseRequest.objects.create(
@@ -50,6 +58,7 @@ def create_approvable_run(client, academic_year, course, student_user, teacher_u
 def test_section_planning_run_is_role_protected_immutable_and_read_only(
     authenticated_client, academic_year, course, student_user, teacher_user, counselor_user,
 ):
+    # Planning-run creation remains recommendation-only: no Section rows appear.
     course.grade_level = GRADE_LEVEL_10
     course.save(update_fields=["grade_level"])
     CourseRequest.objects.create(
@@ -91,6 +100,7 @@ def test_planning_role_can_preview_and_approve_draft_sections_with_audit_trace(
     counselor_user,
     unknown_user,
 ):
+    # Full happy path plus anonymous/teacher/unknown authorization boundaries.
     counselor_client = authenticated_client(counselor_user)
     run = create_approvable_run(
         counselor_client,
@@ -165,6 +175,7 @@ def test_partial_approvals_create_only_selected_courses(
     teacher_user,
     counselor_user,
 ):
+    # A run may be reviewed in disjoint batches without touching other courses.
     client = authenticated_client(counselor_user)
     course.grade_level = GRADE_LEVEL_10
     course.save(update_fields=["grade_level"])
@@ -221,6 +232,8 @@ def test_approval_refuses_existing_sections_and_invalid_current_semester(
     teacher_user,
     counselor_user,
 ):
+    # Current catalog legality wins over a stale run, and existing operational
+    # sections require explicit reconciliation rather than replacement.
     client = authenticated_client(counselor_user)
     run = create_approvable_run(client, academic_year, course, student_user, teacher_user)
     approve_url = f"/api/planning/section-count-runs/{run.id}/approve/"
@@ -281,6 +294,8 @@ def test_approval_transaction_rolls_back_if_section_creation_fails(
     teacher_user,
     counselor_user,
 ):
+    # Simulate failure after one Section insert; atomicity must remove both the
+    # first draft and all approval audit rows.
     client = authenticated_client(counselor_user)
     run = create_approvable_run(client, academic_year, course, student_user, teacher_user)
     original_create = Section.objects.create

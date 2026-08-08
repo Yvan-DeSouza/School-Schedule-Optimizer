@@ -1,3 +1,5 @@
+"""Reference-data visibility, admin writes, uniqueness, and deletion guards."""
+
 import pytest
 
 from backend.apps.common.constants import (

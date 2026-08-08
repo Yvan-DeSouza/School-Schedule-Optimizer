@@ -1,3 +1,5 @@
+"""Public import surface for named-action policies."""
+
 from backend.apps.access.action_policies.base import BaseActionPolicy
 from backend.apps.access.action_policies.demand import (
     DemandPlanningAction,
@@ -12,6 +14,7 @@ from backend.apps.access.action_policies.scheduling import (
     SchedulingActionPolicy,
 )
 
+# Explicit exports keep callers out of internal module layout.
 __all__ = [
     "BaseActionPolicy",
     "DemandPlanningAction",

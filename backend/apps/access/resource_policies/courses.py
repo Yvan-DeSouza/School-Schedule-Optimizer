@@ -1,3 +1,5 @@
+"""Resource policies for courses, offered sections, and student requests."""
+
 from backend.apps.access.resource_policies.base import BaseResourcePolicy
 from backend.apps.access.rules import AccessRule
 from backend.apps.access.scopes import ReadScope, WriteScope
@@ -5,6 +7,8 @@ from backend.apps.people.models import RoleChoices
 
 
 class CoursePolicy(BaseResourcePolicy):
+    """Catalog is broadly readable; planning roles alone may mutate it."""
+
     rules = {
         RoleChoices.STUDENT: AccessRule(read=ReadScope.ALL),
         RoleChoices.TEACHER: AccessRule(read=ReadScope.ALL),
@@ -16,6 +20,8 @@ class CoursePolicy(BaseResourcePolicy):
 
 
 class SectionPolicy(BaseResourcePolicy):
+    """Teachers see assigned sections; planning roles manage all sections."""
+
     rules = {
         RoleChoices.STUDENT: AccessRule(),
         RoleChoices.TEACHER: AccessRule(read=ReadScope.ASSIGNED),
@@ -27,6 +33,7 @@ class SectionPolicy(BaseResourcePolicy):
 
     @classmethod
     def filter_assigned_queryset(cls, user, queryset):
+        # Queryset and object predicate below must express the same ownership.
         return queryset.filter(teacher__user=user)
 
     @classmethod
@@ -35,6 +42,8 @@ class SectionPolicy(BaseResourcePolicy):
 
 
 class CourseRequestPolicy(BaseResourcePolicy):
+    """Students manage only their own demand; planning roles manage all."""
+
     rules = {
         RoleChoices.STUDENT: AccessRule(read=ReadScope.OWN, write=WriteScope.OWN),
         RoleChoices.TEACHER: AccessRule(),

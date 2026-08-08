@@ -1,3 +1,5 @@
+"""Database-side course-request aggregation for counselor demand review."""
+
 from django.db.models import Count, Q
 
 from backend.apps.common.constants import COURSE_REQUEST_TYPE_ALTERNATE, COURSE_REQUEST_TYPE_PRIMARY
@@ -7,10 +9,15 @@ from backend.apps.courses.models import CourseRequest
 
 def get_course_demand_summary(academic_year_id):
     """Return per-course request totals for an academic year."""
+    # Aggregate in PostgreSQL rather than loading every request into Python. This
+    # endpoint reports raw current demand; historical forecasting lives in the
+    # independent scheduling engine.
     rows = (
         CourseRequest.objects.filter(academic_year_id=academic_year_id)
         .values("course_id", "course__course_code", "course__name")
         .annotate(
+            # Conditional counts keep primary/alternate totals in one grouped
+            # query and total_requests remains an easy consistency check.
             primary_requests=Count("id", filter=Q(request_type=COURSE_REQUEST_TYPE_PRIMARY)),
             alternate_requests=Count("id", filter=Q(request_type=COURSE_REQUEST_TYPE_ALTERNATE)),
             total_requests=Count("id"),

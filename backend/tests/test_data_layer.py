@@ -1,3 +1,9 @@
+"""Database constraints, validators, and on-delete behavior for core models.
+
+These tests are the executable schema contract in the project's migrationless
+workflow: pytest builds tables directly from current model definitions.
+"""
+
 import pytest
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
@@ -37,6 +43,9 @@ from backend.apps.courses.models import (
 )
 from backend.apps.people.models import Student, Teacher
 from backend.apps.scheduling.models import SectionSchedule, TimeSlot
+
+
+# Reusable model graph --------------------------------------------------------
 
 
 @pytest.fixture
@@ -124,6 +133,7 @@ def room():
 
 @pytest.mark.django_db
 def test_duplicate_course_request_is_rejected(student, course, academic_year):
+    # Composite uniqueness constraints ---------------------------------------
     CourseRequest.objects.create(
         student=student,
         course=course,
@@ -272,6 +282,7 @@ def test_duplicate_course_qualification_requirement_is_rejected(course):
 
 @pytest.mark.django_db
 def test_minimum_capacity_validators_are_enforced():
+    # Field/model validation --------------------------------------------------
     course = Course(
         name="Invalid Capacity Course",
         grade_level=GRADE_LEVEL_12,
@@ -291,6 +302,7 @@ def test_minimum_capacity_validators_are_enforced():
 
 @pytest.mark.django_db
 def test_set_null_relationships_preserve_schedule_records(section, timeslot, room):
+    # Relationship deletion semantics ----------------------------------------
     schedule = SectionSchedule.objects.create(
         section=section,
         timeslot=timeslot,

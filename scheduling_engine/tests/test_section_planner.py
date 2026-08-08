@@ -1,3 +1,5 @@
+"""Pure planner contract: candidates, objectives, eligibility, and diagnostics."""
+
 from scheduling_engine.dto import (
     AcademicYearDTO,
     CourseDTO,
@@ -14,6 +16,8 @@ from scheduling_engine.section_planner import generate_section_count_candidates,
 
 
 def course(*, course_id=1, grade=10, hard_min=10, soft_min=18, target=24, soft_max=30, hard_max=35, priority=4):
+    """Build a concise CourseDTO exposing policy fields relevant to tests."""
+
     return CourseDTO(
         course_id, f"C{course_id}", f"Course {course_id}", hard_min, hard_max,
         grade, "math", False, False, course_id, hard_min, soft_min, target,
@@ -22,6 +26,8 @@ def course(*, course_id=1, grade=10, hard_min=10, soft_min=18, target=24, soft_m
 
 
 def input_for(courses, demand_by_course, capacities=(3, 3)):
+    """Build independent students/requests and one teacher capacity witness."""
+
     requests = []
     students = []
     student_id = 1
@@ -45,6 +51,7 @@ def input_for(courses, demand_by_course, capacities=(3, 3)):
 
 
 def test_candidates_include_hard_feasible_range_and_under_minimum_review_option():
+    # Candidate generation is testable before CP-SAT model compilation.
     candidates = generate_section_count_candidates(60, course())
     assert [item.count for item in candidates] == [0, 2, 3, 4, 5, 6]
     review = generate_section_count_candidates(5, course())
@@ -60,6 +67,7 @@ def test_planner_prefers_smaller_classes_when_target_distance_ties():
 
 
 def test_planner_reoptimizes_globally_when_teacher_capacity_is_limited():
+    # Tier 1 demand must win when the shared pool cannot cover every course.
     tier_one = course(course_id=1, priority=1)
     elective = course(course_id=2, priority=4)
     data = input_for((tier_one, elective), {1: 60, 2: 60}, capacities=(2, 2))
@@ -71,6 +79,7 @@ def test_planner_reoptimizes_globally_when_teacher_capacity_is_limited():
 
 
 def test_grade_twelve_requires_existing_compiled_qualification_eligibility():
+    # Senior eligibility is hard and reports why demand becomes unstaffable.
     senior_course = CourseDTO(
         1, "MCV4U", "Calculus", 10, 35, 12, "math", False, True,
         1, 10, 18, 24, 30, 35, "semester_1_only", 1, 1,
@@ -93,6 +102,7 @@ def test_grade_twelve_requires_existing_compiled_qualification_eligibility():
 
 
 def test_infeasible_course_override_reports_available_candidates():
+    # Counselor hard overrides are never ignored or silently rounded.
     data = input_for((course(),), {1: 5})
 
     result = plan_section_counts(
