@@ -8,7 +8,9 @@ from backend.apps.courses.views import (
     CombineOfferingsView,
     CourseCombinationRuleViewSet,
     CourseOfferingViewSet,
+    CoursePrerequisiteViewSet,
     CourseRequestViewSet,
+    CourseSequencePreferenceViewSet,
     CourseViewSet,
     DeliveryGroupViewSet,
     DemandSummaryView,
@@ -20,6 +22,8 @@ router = DefaultRouter()
 router.register("courses", CourseViewSet, basename="course")
 router.register("sections", SectionViewSet, basename="section")
 router.register("course-requests", CourseRequestViewSet, basename="course-request")
+router.register("course-prerequisites", CoursePrerequisiteViewSet, basename="course-prerequisite")
+router.register("course-sequence-preferences", CourseSequencePreferenceViewSet, basename="course-sequence-preference")
 router.register("planning/course-offerings", CourseOfferingViewSet, basename="course-offering")
 router.register("planning/combination-rules", CourseCombinationRuleViewSet, basename="combination-rule")
 router.register("planning/delivery-groups", DeliveryGroupViewSet, basename="delivery-group")

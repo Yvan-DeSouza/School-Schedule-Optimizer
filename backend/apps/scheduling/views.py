@@ -18,11 +18,13 @@ from backend.apps.access.permissions import ActionPolicyPermission
 from backend.apps.access.resource_policies.planning import PlanningConfigurationPolicy
 from backend.apps.access.viewsets import PolicyFilteredModelViewSet
 from backend.apps.common.models import AcademicYear
+from backend.apps.common.exceptions import DomainValidationError
 from backend.apps.common.views import ReferenceDataViewSet
 from backend.apps.scheduling.codes import (
     SECTION_PLACEMENT_CONFLICT,
     SECTION_PLANNING_APPROVAL_CONFLICT,
     TEACHER_ASSIGNMENT_CONFLICT,
+    STUDENT_ASSIGNMENT_CONFLICT,
 )
 from backend.apps.scheduling.models import (
     CapacityProfile,
@@ -41,6 +43,8 @@ from backend.apps.scheduling.models import (
     TeacherTimePreference,
     TeacherAssignmentRun,
     TeacherAssignmentApproval,
+    StudentAssignmentRun,
+    StudentAssignmentApproval,
     TeacherPlanningRoster,
     TimeSlot,
     AnnualPlacementLock,
@@ -77,6 +81,10 @@ from backend.apps.scheduling.serializers import (
     TeacherAssignmentRunSerializer,
     TeacherAssignmentApprovalRequestSerializer,
     TeacherAssignmentApprovalSerializer,
+    StudentAssignmentRunCreateSerializer,
+    StudentAssignmentRunSerializer,
+    StudentAssignmentApprovalRequestSerializer,
+    StudentAssignmentApprovalSerializer,
     TeacherPlanningRosterMembersSerializer,
     TeacherPlanningRosterSerializer,
     TimeSlotSerializer,
@@ -105,6 +113,13 @@ class TeacherAssignmentConflict(APIException):
 
     status_code = status.HTTP_409_CONFLICT
     default_code = TEACHER_ASSIGNMENT_CONFLICT
+
+
+class StudentAssignmentConflict(APIException):
+    """HTTP 409 for stale or concurrently approved student candidates."""
+
+    status_code = status.HTTP_409_CONFLICT
+    default_code = STUDENT_ASSIGNMENT_CONFLICT
 
 
 class TimeSlotViewSet(ReferenceDataViewSet):
@@ -574,6 +589,90 @@ class TeacherAssignmentRunViewSet(
             raise TeacherAssignmentConflict(error.detail) from error
         approval = TeacherAssignmentApproval.objects.prefetch_related("assignments").get(pk=approval.pk)
         return Response(TeacherAssignmentApprovalSerializer(approval).data, status=status.HTTP_201_CREATED)
+
+
+class StudentAssignmentRunViewSet(
+    mixins.CreateModelMixin,
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    viewsets.GenericViewSet,
+):
+    """Review-first student enrollment assignment over accepted fixed sections."""
+
+    permission_classes = [ActionPolicyPermission]
+    action_policy_class = SchedulingActionPolicy
+    action_name = SchedulingAction.VIEW_SCHEDULING_RUN_STATUS
+    queryset = StudentAssignmentRun.objects.select_related(
+        "academic_year", "provisional_teacher_assignment_run", "created_by", "approval__approved_by",
+    ).prefetch_related("approval__enrollment_provenance__enrollment")
+
+    def get_permissions(self):
+        if self.action == "create":
+            self.action_name = SchedulingAction.RUN_STUDENT_ASSIGNMENT
+        elif self.action == "approve":
+            self.action_name = SchedulingAction.APPROVE_STUDENT_ASSIGNMENT
+        else:
+            self.action_name = SchedulingAction.VIEW_SCHEDULING_RUN_STATUS
+        return super().get_permissions()
+
+    def get_serializer_class(self):
+        return StudentAssignmentRunCreateSerializer if self.action == "create" else StudentAssignmentRunSerializer
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        if not AcademicYear.objects.filter(pk=serializer.validated_data["academic_year"]).exists():
+            raise NotFound("Academic year not found.")
+        from backend.apps.scheduling.services.student_assignment import create_student_assignment_run
+
+        try:
+            run = create_student_assignment_run(created_by=request.user, **serializer.validated_data)
+        except (ValueError, DomainValidationError) as error:
+            detail = error.detail if isinstance(error, DomainValidationError) else {"detail": str(error)}
+            raise ValidationError(detail) from error
+        return Response(StudentAssignmentRunSerializer(run).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["get"])
+    def review(self, request, pk=None):
+        from backend.apps.scheduling.services.student_assignment import (
+            StudentAssignmentConflictError,
+            StudentAssignmentValidationError,
+            preview_student_assignment_approval,
+        )
+
+        try:
+            preview = preview_student_assignment_approval(self.get_object())
+        except StudentAssignmentValidationError as error:
+            raise ValidationError(error.detail) from error
+        except StudentAssignmentConflictError as error:
+            raise StudentAssignmentConflict(error.detail) from error
+        return Response(preview)
+
+    @action(detail=True, methods=["post"], url_path="approval-preview")
+    def approval_preview(self, request, pk=None):
+        return self.review(request, pk=pk)
+
+    @action(detail=True, methods=["post"])
+    def approve(self, request, pk=None):
+        from backend.apps.scheduling.services.student_assignment import (
+            StudentAssignmentConflictError,
+            StudentAssignmentValidationError,
+            approve_student_assignment_run,
+        )
+
+        serializer = StudentAssignmentApprovalRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            approval = approve_student_assignment_run(
+                self.get_object(), approved_by=request.user,
+                reason=serializer.validated_data["reason"],
+            )
+        except StudentAssignmentValidationError as error:
+            raise ValidationError(error.detail) from error
+        except StudentAssignmentConflictError as error:
+            raise StudentAssignmentConflict(error.detail) from error
+        approval = StudentAssignmentApproval.objects.prefetch_related("enrollment_provenance").get(pk=approval.pk)
+        return Response(StudentAssignmentApprovalSerializer(approval).data, status=status.HTTP_201_CREATED)
 
 
 class SectionPlanningRunViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):

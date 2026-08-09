@@ -8,8 +8,8 @@ from rest_framework.response import Response
 from backend.apps.access.resource_policies.planning import PlanningConfigurationPolicy
 from backend.apps.access.viewsets import PolicyFilteredModelViewSet
 from backend.apps.common.exceptions import DomainValidationError
-from backend.apps.people.models import Teacher
-from backend.apps.people.serializers import TeacherArchiveSerializer, TeacherSerializer
+from backend.apps.people.models import Student, Teacher
+from backend.apps.people.serializers import StudentRosterSerializer, TeacherArchiveSerializer, TeacherSerializer
 from backend.apps.people.services.teacher_directory import (
     archive_teacher,
     restore_teacher,
@@ -69,3 +69,13 @@ class TeacherViewSet(PolicyFilteredModelViewSet):
         except DomainValidationError as error:
             raise ValidationError(error.detail) from error
         return Response(TeacherSerializer(teacher).data, status=status.HTTP_200_OK)
+
+
+class StudentRosterViewSet(PolicyFilteredModelViewSet):
+    """Planning-only, non-sensitive roster used to review assignment results."""
+
+    resource_policy_class = PlanningConfigurationPolicy
+    queryset = Student.objects.select_related("academic_year")
+    serializer_class = StudentRosterSerializer
+    filter_fields = ("academic_year", "grade_level")
+    http_method_names = ("get", "head", "options")

@@ -28,6 +28,9 @@ from backend.apps.common.constants import (
 from backend.apps.scheduling.constants import (
     SECTION_PLACEMENT_INPUT_MODE_CHOICES,
     SECTION_PLACEMENT_RUN_STATUS_CHOICES,
+    STUDENT_ASSIGNMENT_BASIS_CHOICES,
+    STUDENT_ASSIGNMENT_RUN_STATUS_CHOICES,
+    STUDENT_ASSIGNMENT_STAFFING_MODE_CHOICES,
     TEACHER_ASSIGNMENT_RUN_STATUS_CHOICES,
     TEACHER_TIME_PREFERENCE_CHOICES,
 )
@@ -880,4 +883,79 @@ class TeacherAssignmentApprovalAssignment(models.Model):
     def save(self, *args, **kwargs):
         if self.pk:
             raise ValidationError("Teacher assignment approval lines are immutable.")
+        return super().save(*args, **kwargs)
+
+
+class StudentAssignmentRun(models.Model):
+    """Immutable student-to-section recommendation over accepted section context."""
+
+    academic_year = models.ForeignKey("common.AcademicYear", on_delete=models.PROTECT)
+    staffing_mode = models.CharField(
+        max_length=30,
+        choices=STUDENT_ASSIGNMENT_STAFFING_MODE_CHOICES,
+    )
+    provisional_teacher_assignment_run = models.ForeignKey(
+        TeacherAssignmentRun,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="provisional_student_assignment_runs",
+    )
+    created_by = models.ForeignKey("auth.User", null=True, on_delete=models.SET_NULL)
+    created_at = models.DateTimeField(auto_now_add=True)
+    status = models.CharField(max_length=20, choices=STUDENT_ASSIGNMENT_RUN_STATUS_CHOICES)
+    input_snapshot = models.JSONField(default=dict)
+    result = models.JSONField(default=dict)
+    solver_metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise ValidationError("Student assignment runs are immutable.")
+        return super().save(*args, **kwargs)
+
+
+class StudentAssignmentApproval(models.Model):
+    """One immutable approval accepting an unchanged complete student run."""
+
+    student_assignment_run = models.OneToOneField(
+        StudentAssignmentRun,
+        on_delete=models.PROTECT,
+        related_name="approval",
+    )
+    approved_by = models.ForeignKey("auth.User", null=True, on_delete=models.SET_NULL)
+    approved_at = models.DateTimeField(auto_now_add=True)
+    reason = models.TextField()
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise ValidationError("Student assignment approvals are immutable.")
+        return super().save(*args, **kwargs)
+
+
+class StudentAssignmentApprovalEnrollment(models.Model):
+    """Immutable provenance for one enrollment written by student approval."""
+
+    approval = models.ForeignKey(
+        StudentAssignmentApproval,
+        on_delete=models.PROTECT,
+        related_name="enrollment_provenance",
+    )
+    enrollment = models.OneToOneField(
+        "courses.Enrollment",
+        on_delete=models.PROTECT,
+        related_name="student_assignment_provenance",
+    )
+    course_request = models.ForeignKey("courses.CourseRequest", on_delete=models.PROTECT)
+    assignment_basis = models.CharField(max_length=30, choices=STUDENT_ASSIGNMENT_BASIS_CHOICES)
+    backup_resolution_snapshot = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ["approval", "enrollment"]
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise ValidationError("Student assignment enrollment provenance is immutable.")
         return super().save(*args, **kwargs)

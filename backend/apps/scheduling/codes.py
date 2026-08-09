@@ -3,6 +3,7 @@
 SECTION_PLANNING_APPROVAL_CONFLICT = "section_planning_approval_conflict"
 SECTION_PLACEMENT_CONFLICT = "section_placement_conflict"
 TEACHER_ASSIGNMENT_CONFLICT = "teacher_assignment_conflict"
+STUDENT_ASSIGNMENT_CONFLICT = "student_assignment_conflict"
 
 ACTIVE_DELIVERY_GROUPS_CHANGED_SINCE_RUN = "active_delivery_groups_changed_since_run"
 EXACT_BUDGET_TOTAL_MISMATCH = "exact_budget_total_mismatch"

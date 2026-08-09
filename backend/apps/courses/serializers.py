@@ -17,6 +17,8 @@ from backend.apps.courses.models import (
     CourseCombinationRule,
     CourseCombinationRuleMember,
     CourseOffering,
+    CoursePrerequisite,
+    CourseSequencePreference,
     DeliveryGroup,
     CourseRequest,
     Section,
@@ -261,6 +263,98 @@ class CourseRequestSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError({
                         "request_type": "A student may have only one backup course per academic year."
                     })
+        return attrs
+
+
+def _would_create_directed_cycle(model_class, *, source_id, target_id, source_field, target_field, instance_id=None):
+    """Return whether adding source -> target closes a catalog graph cycle."""
+
+    if source_id == target_id:
+        return True
+    edges = model_class.objects.all()
+    if instance_id:
+        edges = edges.exclude(pk=instance_id)
+    adjacency = {}
+    for edge_source, edge_target in edges.values_list(
+        f"{source_field}_id", f"{target_field}_id"
+    ):
+        adjacency.setdefault(edge_source, set()).add(edge_target)
+    # A path from proposed target back to proposed source would close a cycle.
+    pending = [target_id]
+    visited = set()
+    while pending:
+        current = pending.pop()
+        if current == source_id:
+            return True
+        if current not in visited:
+            visited.add(current)
+            pending.extend(adjacency.get(current, ()))
+    return False
+
+
+class CoursePrerequisiteSerializer(serializers.ModelSerializer):
+    """Planning-owned hard prerequisite configuration with cycle protection."""
+
+    class Meta:
+        model = CoursePrerequisite
+        fields = ("id", "course", "prerequisite")
+        validators = []
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        course = attrs.get("course", getattr(self.instance, "course", None))
+        prerequisite = attrs.get("prerequisite", getattr(self.instance, "prerequisite", None))
+        if course and prerequisite and _would_create_directed_cycle(
+            CoursePrerequisite,
+            source_id=prerequisite.id,
+            target_id=course.id,
+            source_field="prerequisite",
+            target_field="course",
+            instance_id=getattr(self.instance, "id", None),
+        ):
+            raise serializers.ValidationError({
+                "prerequisite": "Prerequisites must not be self-referential or form a directed cycle."
+            })
+        duplicate = CoursePrerequisite.objects.filter(course=course, prerequisite=prerequisite)
+        if self.instance:
+            duplicate = duplicate.exclude(pk=self.instance.pk)
+        if duplicate.exists():
+            raise serializers.ValidationError("This prerequisite already exists.")
+        return attrs
+
+
+class CourseSequencePreferenceSerializer(serializers.ModelSerializer):
+    """Planning-owned non-binding course ordering preference configuration."""
+
+    class Meta:
+        model = CourseSequencePreference
+        fields = ("id", "earlier_course", "later_course", "is_active", "created_by", "created_at")
+        read_only_fields = ("created_by", "created_at")
+        validators = []
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        earlier_course = attrs.get("earlier_course", getattr(self.instance, "earlier_course", None))
+        later_course = attrs.get("later_course", getattr(self.instance, "later_course", None))
+        if earlier_course and later_course and _would_create_directed_cycle(
+            CourseSequencePreference,
+            source_id=earlier_course.id,
+            target_id=later_course.id,
+            source_field="earlier_course",
+            target_field="later_course",
+            instance_id=getattr(self.instance, "id", None),
+        ):
+            raise serializers.ValidationError({
+                "later_course": "Sequence preferences must not be self-referential or form a directed cycle."
+            })
+        duplicate = CourseSequencePreference.objects.filter(
+            earlier_course=earlier_course,
+            later_course=later_course,
+        )
+        if self.instance:
+            duplicate = duplicate.exclude(pk=self.instance.pk)
+        if duplicate.exists():
+            raise serializers.ValidationError("This course sequence preference already exists.")
         return attrs
 
 

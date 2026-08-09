@@ -31,6 +31,9 @@ from backend.apps.scheduling.models import (
     TeacherAssignmentRun,
     TeacherAssignmentApproval,
     TeacherAssignmentApprovalAssignment,
+    StudentAssignmentRun,
+    StudentAssignmentApproval,
+    StudentAssignmentApprovalEnrollment,
     TimeSlot,
 )
 
@@ -47,6 +50,9 @@ admin.site.register([
     TeacherAssignmentRun,
     TeacherAssignmentApproval,
     TeacherAssignmentApprovalAssignment,
+    StudentAssignmentRun,
+    StudentAssignmentApproval,
+    StudentAssignmentApprovalEnrollment,
     SectionPlanningRun,
     SectionPlanningApproval,
     SectionPlanningApprovalCourse,

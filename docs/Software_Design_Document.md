@@ -105,7 +105,7 @@ The design goals are:
 | Counselor control | Solver output remains a recommendation until a planning-role user explicitly approves it. |
 | Reviewability | Runs store the input snapshot, result, diagnostics, and solver metadata needed for review. |
 | Stable history | Approvals and audit rows are append-only; section reconciliation retires rather than deletes surplus generated sections. |
-| Staged computation | Section counts, placement, and named teacher assignment are independent reviewed stages. Student assignment and conflict analysis remain later stages. |
+| Staged computation | Section counts, placement, named teacher assignment, and first-release student assignment are independent reviewed stages. Conflict analysis remains a later stage. |
 | Safe authorization | Resource and action policies fail closed, and policy filtering occurs before client query filtering. |
 | Explainable failure | Stable diagnostic and workflow codes accompany human-readable messages. |
 | Maintainable engine boundary | Django owns persistence and orchestration; the pure engine consumes immutable DTOs and returns plain result data. |
@@ -134,6 +134,7 @@ migrations.
   section-plan reconciliation with active/retired lifecycle semantics.
 - Annual placement locks and counselor-reviewed semester/A-D placement.
 - Counselor-reviewed named teacher assignment after accepted placement.
+- Counselor-reviewed student-to-section assignment with immutable enrollment approval provenance.
 - API tests for role access, workflow validation, transactional approval, and
   relevant pure-engine contracts.
 
@@ -154,7 +155,6 @@ migrations.
 ### 3.3 Not Yet Implemented
 
 - Room assignment.
-- Student-to-section assignment and enrollment approval.
 - A composed timetable or personal schedule endpoints.
 - A read-only post-solve conflict analyzer.
 - General manual override application and genuine scoped re-solving.
@@ -179,12 +179,12 @@ but those foundations do not constitute an implemented capability.
 | FR-6 | Capture hard/soft constraints, course conflicts, section locks, and annual placement locks. | Partially implemented | CRUD and lock workflows exist; the `Section.is_locked`/`SectionLock` synchronization invariant and general override workflow remain unresolved. |
 | FR-7 | Place active sections in semesters and recurring A-D timeslots while proving anonymous staffing feasibility. | Implemented | `section_placement.py`, placement run/approval services, and placement tests. Rooms are deliberately excluded. |
 | FR-8 | Assign named teachers after accepted placement. | Implemented | `teacher_assignment.py`, named-teacher decision record, and teacher-assignment tests. |
-| FR-9 | Assign students to sections while respecting capacity, prerequisites, and block conflicts. | Not yet implemented | No student-assignment engine module or end-to-end API exists. |
+| FR-9 | Assign students to sections while respecting capacity, prerequisites, and block conflicts. | Implemented first release | Immutable student-assignment run/review/approval, fixed enrollment context, and stable diagnostics exist; transcript evidence and locks are deferred. |
 | FR-10 | Produce a derived report of unresolved timetable conflicts and issues. | Not yet implemented | No conflict-analyzer module or conflict-report endpoint exists. |
 | FR-11 | Apply a manual change and re-solve only the affected scope. | Partially implemented | Locks and action-policy names exist; no general application service or scoped solver contract exists. |
 | FR-12 | Persist manual and automated decisions with reason, actor, and before/after evidence. | Partially implemented | Planning, placement, teacher-assignment, offering, and reconciliation audit models exist; general override history is incomplete. |
 | FR-13 | Serve bilingual user-interface text through translations. | Partially implemented | `Translation` model/admin exist; translation API, frontend, and UI consumption do not. |
-| FR-14 | Let teachers and students view their own finalized schedules. | Not yet implemented | Assigned-section visibility exists for teachers, but no composed timetable or personal schedule endpoint exists; student assignment is absent. |
+| FR-14 | Let teachers and students view their own finalized schedules. | Not yet implemented | Student assignment exists, but no composed timetable or personal schedule endpoint exists. |
 
 ---
 
@@ -224,9 +224,10 @@ execution model:
    unchanged complete result in a transaction. Approval writes only the
    stage's operational state.
 
-The implemented sequence reaches named teacher assignment. Student assignment,
-room assignment, conflict analysis, and frontend presentation remain future
-work. The engine never reads PostgreSQL directly and never performs ORM writes.
+The implemented sequence reaches first-release student assignment. Room
+assignment, conflict analysis, composed timetables, and frontend presentation
+remain future work. The engine never reads PostgreSQL directly and never
+performs ORM writes.
 
 ---
 
@@ -327,8 +328,9 @@ are described in Section 16.
 The `scheduling_engine` package is a pure Python package built around immutable
 dataclasses and OR-Tools CP-SAT where optimization is required. It currently
 implements demand analysis, section-count planning, physical budget planning,
-staffing feasibility, semester/A-D placement, and named teacher assignment.
-Student assignment and conflict analysis do not yet have engine modules.
+staffing feasibility, semester/A-D placement, named teacher assignment, and
+first-release student assignment. Conflict analysis does not yet have an engine
+module.
 
 ### 9.5 Supporting Components
 
@@ -452,7 +454,7 @@ the accepted semester/A-D timing, assign rooms, or enroll students.
 | Semester/A-D placement | Implemented | accepted timeslot-only `SectionSchedule` |
 | Named teacher assignment | Implemented | approved `Section.teacher` assignments |
 | Room assignment | Not yet implemented | no operational room assignment |
-| Student assignment | Not yet implemented | no enrollment solver/approval |
+| Student assignment, first release | Implemented | immutable run/review/approval and new `Enrollment` provenance |
 | Conflict analysis | Not yet implemented | no derived timetable issue report |
 | General manual overrides/scoped re-solving | Partially implemented | lock/audit foundations only |
 
@@ -474,7 +476,7 @@ flowchart TD
     SEC --> MATRIX["Conflict matrix and annual locks\nImplemented"]
     MATRIX --> PLACE["Semester/A-D placement\nImplemented"]
     PLACE --> TEACH["Named teacher assignment\nImplemented"]
-    TEACH --> STUDENT["Student assignment\nNot yet implemented"]
+    TEACH --> STUDENT["Student assignment\nFirst release implemented"]
     STUDENT --> REPORT["Conflict analysis\nNot yet implemented"]
     REPORT --> OVERRIDE["General override and scoped re-solve\nPartially implemented foundations"]
     OVERRIDE -. "future reviewed correction" .-> MATRIX
@@ -491,10 +493,10 @@ delivery-group counts, solves semester and A-D assignment, and materializes
 sections at approval. A hidden staffing witness is a feasibility proof, not a
 named assignment.
 
-Student assignment and conflict analysis are not merely omitted from the
-diagram for simplicity. No end-to-end implementation exists for them. The
-manual override action-policy names are also not evidence of a completed
-feedback loop.
+Student assignment is implemented as a narrow first release: it consumes fixed
+active placed sections and writes only approved new enrollments. Conflict
+analysis, student locks, partial reruns, and general override action-policy
+names are not evidence of a completed feedback loop.
 
 ---
 
@@ -537,7 +539,7 @@ flowchart LR
 | `scheduling_engine/constraint_compiler.py` | Normalized qualification/index compilation and fail-closed eligibility sets. | Implemented |
 | `scheduling_engine/section_placement.py` | Semester/A-D timing solve with conflict weights, locks, and anonymous staffing witnesses. | Implemented |
 | `scheduling_engine/teacher_assignment.py` | Named teacher candidate solve using compiled eligibility, availability, capacities, locks, rules, and factual soft evidence. | Implemented |
-| `scheduling_engine/student_assignment.py` | Student-to-section enrollment solve. | Not yet implemented; file does not exist. |
+| `scheduling_engine/student_assignment.py` | Student-to-section enrollment solve. | Implemented first release; consumes fixed accepted sections and existing enrollments. |
 | `scheduling_engine/conflict_analyzer.py` | Post-solve issue report. | Not yet implemented; file does not exist. |
 
 There is no `scheduling_engine/solvers/` directory in the current repository.
@@ -607,10 +609,10 @@ provenance.
 |---|---|
 | `common` | `AcademicYear`, `Room`, `HistoricalCourseDemand`, and shared school values/reference-data APIs. |
 | `people` | `UserRoleProfile`, `Student`, `Teacher`, `TeacherStatusDecision`, and `Counselor`. |
-| `courses` | `Course`, capacity/priority references, `CourseCombinationRule` and members, `DeliveryGroup`, `CourseOffering` and decisions, `Section`, `Enrollment`, `CourseRequest`, and `CoursePrerequisite`. |
+| `courses` | `Course`, capacity/priority references, `CourseCombinationRule` and members, `DeliveryGroup`, `CourseOffering` and decisions, `Section`, `Enrollment`, `CourseRequest`, `CoursePrerequisite`, and `CourseSequencePreference`. |
 | `constraints` | Hard/soft constraints, counselor preferences, normalized `Qualification`, teacher qualifications/preferences/current courses/availability, course room/qualification requirements, `CourseConflictMatrix`, and `CourseConflict`. |
 | `control` | `ManualOverride` audit rows and structured `SectionLock` current-state rows. |
-| `scheduling` | Capacity and priority profiles; teacher semester/annual capacities, rules, preferences, rosters; budget/staffing/planning runs and approvals; backup resolutions; reconciliation/lifecycle audit rows; `TimeSlot`, `SectionSchedule`, annual locks; placement runs/approvals; teacher-assignment runs/approvals. |
+| `scheduling` | Capacity and priority profiles; teacher semester/annual capacities, rules, preferences, rosters; budget/staffing/planning runs and approvals; backup resolutions; reconciliation/lifecycle audit rows; `TimeSlot`, `SectionSchedule`, annual locks; placement runs/approvals; teacher-assignment runs/approvals; student-assignment runs/approvals and enrollment provenance. |
 | `translations` | `Translation` key/English/French/context records. |
 
 The `backend/apps/core/` directory is a legacy placeholder app configuration;
@@ -759,17 +761,18 @@ The current downstream run routes are:
   `approval-preview`, and `approve`; and
 - `/api/planning/teacher-assignment-runs/` with `review`,
   `approval-preview`, and `approve`.
+- `/api/planning/student-assignment-runs/` with `review`,
+  `approval-preview`, and `approve`.
 
-The corresponding services are `section_placement.py` and
-`teacher_assignment.py`. Placement approval writes timeslot-only schedules;
-teacher-assignment approval writes named teachers. Neither endpoint assigns
-rooms or students.
+The corresponding services are `section_placement.py`, `teacher_assignment.py`,
+and `student_assignment.py`. Placement approval writes timeslot-only schedules;
+teacher-assignment approval writes named teachers; student-assignment approval
+writes only new enrollments. None assigns rooms.
 
 ### 17.7 Planned but Not Implemented Endpoints
 
 The repository does not currently implement endpoints for:
 
-- student-assignment runs or enrollment approval;
 - a composed timetable or personal student/teacher schedules;
 - a post-solve conflict report;
 - general manual override create/apply/history; or
@@ -958,12 +961,15 @@ Approval revalidates the relevant state and writes `Section.teacher` and
 immutable assignment-provenance rows. It never changes timing, assigns rooms,
 or creates enrollments.
 
-### 20.6 Not-Yet-Implemented Engine Modules
+### 20.6 Student Assignment and Remaining Engine Modules
 
-There is no working `student_assignment.py`. The repository has student,
-request, prerequisite, section, enrollment, and timing models, but it does not
-have a prerequisite-completion evidence contract, assignment solver, review
-run, enrollment approval service, or student assignment diagnostics.
+`student_assignment.py` is a pure first-release enrollment solver. It consumes
+active sections with accepted A-D placement, offered delivery-group membership,
+fixed existing enrollments, effective requests, hard prerequisite edges, and
+soft sequence preferences. It returns an immutable review candidate and never
+changes teachers, sections, timing, or rooms. The Django service writes only
+new enrollment rows after complete-candidate approval. Prior prerequisite
+completion is intentionally assumed until transcript/SIS evidence is added.
 
 There is no working `conflict_analyzer.py`. A future read-only analyzer should
 report unmet requests, incomplete schedules, capacity issues, unstaffed
@@ -1131,7 +1137,7 @@ planned modules already exist:
 
 | Capability | Depends on | Current boundary |
 |---|---|---|
-| Student assignment | Accepted section timing and a prerequisite-evidence decision | Add a pure engine module, DTO/result contract, review run, approval service, and enrollment writes. |
+| Student assignment, next increment | Accepted enrollments and the first-release run contract | Add transcript/SIS evidence only through a new reviewed prerequisite decision; add locks/scoped reruns separately. |
 | Conflict analysis | Accepted timing, staffing, and eventually enrollments | Add a read-only derived report; it must not mutate schedule state. |
 | Room assignment | Accepted semester/A-D timing and room requirements | Separate reviewed stage; do not add rooms to placement or named-teacher assignment implicitly. |
 | Manual overrides | Real downstream stage outputs | Add typed action/history API, stale-write protection, fixed-context synchronization, and genuine scoped re-solving. |
@@ -1153,7 +1159,7 @@ and AI decisions that bypass counselor approval remain explicitly deferred.
 | Risk or trade-off | Current consequence | Mitigation or open decision |
 |---|---|---|
 | Sequential rather than joint optimization | A later stage cannot globally optimize all earlier choices at once. | Preserve stage review and stable fixed context; revisit only with evidence that quality is insufficient. |
-| No student assignment yet | The system stops before enrollments and final student schedules. | Define prerequisite evidence first, then build assignment and conflict analysis as separate stages. |
+| Temporary prerequisite assumption | The first student stage assumes prior completion rather than validating transcript evidence. | Add transcript/SIS completion evidence as a separate future decision; keep same-year hard ordering explicit. |
 | No room assignment yet | Accepted placement is timing-only and cannot be presented as a complete timetable. | Keep `SectionSchedule.room` nullable and build a separate reviewed room stage. |
 | Synchronous execution | A large solve can occupy the request process. | Benchmark representative workloads before choosing a worker/queue. |
 | Section lock representations | `Section.is_locked` and `SectionLock` can diverge because the invariant is not fully consolidated. | Shared fixed-context logic protects both; make synchronization an explicit future decision. |
@@ -1173,10 +1179,10 @@ the roadmap table.
 
 At this snapshot, the implementation has completed the core section-planning
 lifecycle/reconciliation workflow, staffing-aware physical planning,
-semester/A-D placement with anonymous staffing feasibility, and named teacher
-assignment. The next end-to-end product gaps are student assignment/conflict
-analysis, separate room assignment, audited general overrides/scoped
-re-solving, frontend work, and final hardening.
+semester/A-D placement with anonymous staffing feasibility, named teacher
+assignment, and first-release student assignment. The next end-to-end product
+gaps are read-only conflict analysis, separate room assignment, audited general
+overrides/scoped re-solving, frontend work, and final hardening.
 
 The roadmap records the accepted decision divergences that matter here:
 

@@ -13,6 +13,11 @@ from backend.apps.common.constants import (
     CAPACITY_PROFILE_SCOPE_SHARED,
     SECTION_BUDGET_TYPE_CHOICES,
 )
+from backend.apps.scheduling.constants import (
+    SOFT_CONSTRAINT_IMPORTANCE_CHOICES,
+    STUDENT_ASSIGNMENT_STAFFING_MODE_PROVISIONAL_STAFFING,
+    STUDENT_ASSIGNMENT_STAFFING_MODE_CHOICES,
+)
 from backend.apps.scheduling.models import (
     CapacityProfile,
     CoursePriorityProfile,
@@ -43,6 +48,9 @@ from backend.apps.scheduling.models import (
     TeacherAssignmentRun,
     TeacherAssignmentApproval,
     TeacherAssignmentApprovalAssignment,
+    StudentAssignmentRun,
+    StudentAssignmentApproval,
+    StudentAssignmentApprovalEnrollment,
 )
 from backend.apps.scheduling.domain.capacity import (
     CAPACITY_FIELDS,
@@ -232,6 +240,94 @@ class TeacherAssignmentRunSerializer(serializers.ModelSerializer):
         fields = (
             "id", "academic_year", "teacher_roster", "created_by", "created_at", "status",
             "input_snapshot", "result", "solver_metadata", "approval",
+        )
+        read_only_fields = fields
+
+
+class StudentAssignmentSoftConstraintImportanceSerializer(serializers.Serializer):
+    """Counselor labels only; engine weights are intentionally never exposed."""
+
+    section_utilization_balance = serializers.ChoiceField(choices=SOFT_CONSTRAINT_IMPORTANCE_CHOICES)
+    student_semester_balance = serializers.ChoiceField(choices=SOFT_CONSTRAINT_IMPORTANCE_CHOICES)
+    course_sequence_preferences = serializers.ChoiceField(choices=SOFT_CONSTRAINT_IMPORTANCE_CHOICES)
+
+
+class StudentAssignmentRunCreateSerializer(serializers.Serializer):
+    """Create one immutable student assignment run over fixed section context."""
+
+    academic_year = serializers.IntegerField(min_value=1)
+    staffing_mode = serializers.ChoiceField(choices=STUDENT_ASSIGNMENT_STAFFING_MODE_CHOICES)
+    provisional_teacher_assignment_run = serializers.PrimaryKeyRelatedField(
+        queryset=TeacherAssignmentRun.objects.all(),
+        required=False,
+        allow_null=True,
+    )
+    soft_constraint_importance = StudentAssignmentSoftConstraintImportanceSerializer()
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        provisional = attrs.get("provisional_teacher_assignment_run")
+        if attrs["staffing_mode"] == STUDENT_ASSIGNMENT_STAFFING_MODE_PROVISIONAL_STAFFING:
+            if provisional is None:
+                raise serializers.ValidationError({
+                    "provisional_teacher_assignment_run": "This field is required for provisional_staffing."
+                })
+        elif provisional is not None:
+            raise serializers.ValidationError({
+                "provisional_teacher_assignment_run": "This field is allowed only for provisional_staffing."
+            })
+        return attrs
+
+
+class StudentAssignmentApprovalRequestSerializer(serializers.Serializer):
+    """Approval is an auditable acceptance, never an in-place candidate edit."""
+
+    reason = serializers.CharField(required=True, allow_blank=False, max_length=2000)
+
+    def validate_reason(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("An approval reason is required.")
+        return value
+
+
+class StudentAssignmentApprovalEnrollmentSerializer(serializers.ModelSerializer):
+    """Read-only provenance for a new enrollment created by run approval."""
+
+    class Meta:
+        model = StudentAssignmentApprovalEnrollment
+        fields = (
+            "id", "enrollment", "course_request", "assignment_basis",
+            "backup_resolution_snapshot",
+        )
+        read_only_fields = fields
+
+
+class StudentAssignmentApprovalSerializer(serializers.ModelSerializer):
+    """Immutable approval plus each enrollment fact it created."""
+
+    enrollment_provenance = StudentAssignmentApprovalEnrollmentSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = StudentAssignmentApproval
+        fields = (
+            "id", "student_assignment_run", "approved_by", "approved_at", "reason",
+            "enrollment_provenance",
+        )
+        read_only_fields = fields
+
+
+class StudentAssignmentRunSerializer(serializers.ModelSerializer):
+    """Immutable student assignment candidate and, when present, approval audit."""
+
+    approval = StudentAssignmentApprovalSerializer(read_only=True)
+
+    class Meta:
+        model = StudentAssignmentRun
+        fields = (
+            "id", "academic_year", "staffing_mode", "provisional_teacher_assignment_run",
+            "created_by", "created_at", "status", "input_snapshot", "result",
+            "solver_metadata", "approval",
         )
         read_only_fields = fields
 

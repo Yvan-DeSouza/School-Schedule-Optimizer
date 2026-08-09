@@ -33,6 +33,9 @@ from scheduling_engine.dto import (
     FixedTeacherAssignmentDTO, TeacherAssignmentInputDTO,
     TeacherAssignmentSectionDTO, TeacherAssignmentTeacherDTO,
     TeacherCourseAssignmentRuleDTO,
+    CourseSequencePreferenceDTO, FixedEnrollmentDTO,
+    StudentAssignmentInputDTO, StudentAssignmentRequestDTO,
+    StudentAssignmentSectionDTO,
 )
 from scheduling_engine.constraint_compiler import compile_constraints
 from scheduling_engine.section_estimator import estimate_section_counts
@@ -40,6 +43,7 @@ from scheduling_engine.section_planner import plan_section_counts
 
 from backend.apps.common.constants import (
     COURSE_REQUEST_TYPE_PRIMARY,
+    COURSE_REQUEST_TYPE_ALTERNATE,
     DELIVERY_GROUP_STATUS_ACTIVE,
     COURSE_OFFERING_STATUS_OFFERED,
     QUALIFICATION_ENFORCEMENT_REQUIRED,
@@ -56,9 +60,12 @@ from backend.apps.constraints.models import (
 from backend.apps.control.models import SectionLock
 from backend.apps.courses.models import (
     Course,
+    CourseOffering,
     CoursePrerequisite,
+    CourseSequencePreference,
     CourseRequest,
     DeliveryGroup,
+    Enrollment,
     Section,
 )
 from backend.apps.courses.selectors import (
@@ -70,6 +77,7 @@ from backend.apps.scheduling.models import (
     TeacherPlanningCapacity,
     TeacherPlanningAnnualCapacity,
     TeacherPlanningRoster,
+    TeacherAssignmentRun,
     TimeSlot,
 )
 
@@ -618,6 +626,308 @@ def load_teacher_assignment_input(*, academic_year_id):
         academic_year_id=academic_year_id, sections=tuple(section_dtos),
         teachers=tuple(teachers), rules=rules, fixed_assignments=tuple(fixed),
     ), roster
+
+
+def _has_directed_cycle(edges):
+    """Return whether ``(earlier, later)`` edges form a directed cycle."""
+
+    adjacency = defaultdict(set)
+    for earlier, later in edges:
+        adjacency[earlier].add(later)
+    visiting, visited = set(), set()
+
+    def visit(node):
+        if node in visiting:
+            return True
+        if node in visited:
+            return False
+        visiting.add(node)
+        cyclic = any(visit(next_node) for next_node in adjacency[node])
+        visiting.remove(node)
+        visited.add(node)
+        return cyclic
+
+    return any(visit(node) for node in list(adjacency))
+
+
+def _student_assignment_staffing_context(*, academic_year_id, sections, staffing_mode, provisional_teacher_assignment_run):
+    """Validate and snapshot the selected counselor staffing-assumption mode."""
+
+    from backend.apps.scheduling.constants import (
+        STUDENT_ASSIGNMENT_STAFFING_MODE_FINAL_STAFFING,
+        STUDENT_ASSIGNMENT_STAFFING_MODE_PARTIAL_STAFFING,
+        STUDENT_ASSIGNMENT_STAFFING_MODE_PROVISIONAL_STAFFING,
+        STUDENT_ASSIGNMENT_STAFFING_MODE_SECTIONS_ONLY,
+    )
+
+    if staffing_mode == STUDENT_ASSIGNMENT_STAFFING_MODE_SECTIONS_ONLY:
+        if provisional_teacher_assignment_run is not None:
+            raise ValueError("sections_only does not accept a provisional teacher-assignment run.")
+        # Deliberately omit teacher facts so changes never stale Mode A.
+        return {"staffing_mode": staffing_mode}
+    if staffing_mode == STUDENT_ASSIGNMENT_STAFFING_MODE_PARTIAL_STAFFING:
+        if provisional_teacher_assignment_run is not None:
+            raise ValueError("partial_staffing does not accept a provisional teacher-assignment run.")
+        return {
+            "staffing_mode": staffing_mode,
+            "section_teacher_ids": [
+                {"section_id": section.id, "teacher_id": section.teacher_id}
+                for section in sorted(sections, key=lambda item: item.id)
+            ],
+        }
+    if staffing_mode == STUDENT_ASSIGNMENT_STAFFING_MODE_FINAL_STAFFING:
+        if provisional_teacher_assignment_run is not None:
+            raise ValueError("final_staffing does not accept a provisional teacher-assignment run.")
+        missing = [section.id for section in sections if section.teacher_id is None]
+        if missing:
+            raise ValueError(f"final_staffing requires a final teacher on every active section: {missing}.")
+        return {
+            "staffing_mode": staffing_mode,
+            "section_teacher_ids": [
+                {"section_id": section.id, "teacher_id": section.teacher_id}
+                for section in sorted(sections, key=lambda item: item.id)
+            ],
+        }
+    if staffing_mode != STUDENT_ASSIGNMENT_STAFFING_MODE_PROVISIONAL_STAFFING:
+        raise ValueError("Unknown student-assignment staffing mode.")
+    if provisional_teacher_assignment_run is None:
+        raise ValueError("provisional_staffing requires provisional_teacher_assignment_run.")
+    if provisional_teacher_assignment_run.academic_year_id != int(academic_year_id):
+        raise ValueError("The provisional teacher-assignment run belongs to another academic year.")
+    if provisional_teacher_assignment_run.status != "complete" or provisional_teacher_assignment_run.result.get("status") != "complete":
+        raise ValueError("The provisional teacher-assignment run must be complete.")
+    if hasattr(provisional_teacher_assignment_run, "approval"):
+        raise ValueError("A provisional teacher-assignment run cannot already be approved.")
+    final_teacher_sections = [section.id for section in sections if section.teacher_id is not None]
+    if final_teacher_sections:
+        raise ValueError(
+            "provisional_staffing requires every active section to remain without a final Section.teacher: "
+            f"{final_teacher_sections}."
+        )
+    assignments = provisional_teacher_assignment_run.result.get("assignments", [])
+    assignment_by_section = {int(item["section_id"]): int(item["teacher_id"]) for item in assignments}
+    section_ids = {section.id for section in sections}
+    if set(assignment_by_section) != section_ids:
+        raise ValueError("The provisional teacher-assignment run does not cover exactly the active sections.")
+    # Staleness of the unapproved source is determined from the same current
+    # detached staffing input that created it, without treating it as final.
+    teacher_data, _roster = load_teacher_assignment_input(academic_year_id=academic_year_id)
+    teacher_snapshot = asdict(teacher_data)
+    if placement_input_fingerprint(teacher_snapshot) != provisional_teacher_assignment_run.input_snapshot.get("fingerprint"):
+        raise ValueError("The provisional teacher-assignment run is stale.")
+    return {
+        "staffing_mode": staffing_mode,
+        "provisional_teacher_assignment_run_id": provisional_teacher_assignment_run.id,
+        "provisional_teacher_assignments": [
+            {"section_id": section_id, "teacher_id": assignment_by_section[section_id]}
+            for section_id in sorted(assignment_by_section)
+        ],
+        "provisional_teacher_input_fingerprint": provisional_teacher_assignment_run.input_snapshot.get("fingerprint"),
+    }
+
+
+def _active_assignment_backup_resolutions(*, academic_year_id, sections):
+    """Return approved, active-source cancellation resolution facts by student."""
+
+    from backend.apps.scheduling.models import PlanningRequestResolution, StaffingRequestResolution
+
+    staffing_run_ids = {
+        section.staffing_approval_offering.approval.staffing_run_id
+        for section in sections
+        if section.staffing_approval_offering_id
+    }
+    budget_approval_ids = {
+        section.staffing_approval_offering.approval.staffing_run.budget_approval_id
+        for section in sections
+        if section.staffing_approval_offering_id
+        and section.staffing_approval_offering.approval.staffing_run.budget_approval_id
+    }
+    resolutions = []
+    if staffing_run_ids:
+        resolutions.extend(StaffingRequestResolution.objects.filter(
+            staffing_run_id__in=staffing_run_ids,
+            staffing_run__approval__isnull=False,
+        ).select_related("backup_request"))
+    if budget_approval_ids:
+        resolutions.extend(PlanningRequestResolution.objects.filter(
+            approval_id__in=budget_approval_ids,
+        ).select_related("backup_request"))
+    by_student = defaultdict(list)
+    for resolution in resolutions:
+        by_student[resolution.student_id].append({
+            "cancelled_course_ids": tuple(sorted(int(item) for item in resolution.cancelled_course_ids)),
+            "backup_request_id": resolution.backup_request_id,
+            "outcome": resolution.outcome,
+            "unresolved_course_count": resolution.unresolved_course_count,
+        })
+    return by_student
+
+
+def load_student_assignment_input(
+    *, academic_year_id, staffing_mode, provisional_teacher_assignment_run=None,
+    soft_constraint_importance,
+):
+    """Load immutable student-assignment facts and declared staffing context once."""
+
+    academic_year_id = int(academic_year_id)
+    AcademicYear.objects.get(pk=academic_year_id)
+    required_importance_keys = {
+        "section_utilization_balance",
+        "student_semester_balance",
+        "course_sequence_preferences",
+    }
+    if set(soft_constraint_importance) != required_importance_keys:
+        raise ValueError("All three student-assignment soft_constraint_importance values are required.")
+    sections = list(active_sections_for_year(academic_year_id).select_related(
+        "course", "delivery_group__capacity_profile", "teacher",
+        "staffing_approval_offering__approval__staffing_run",
+    ).prefetch_related("delivery_group__offerings__course__priority_profile").order_by("id"))
+    from backend.apps.scheduling.models import SectionSchedule
+    schedules = {
+        item.section_id: item
+        for item in SectionSchedule.objects.filter(section_id__in=[section.id for section in sections]).select_related("timeslot")
+    }
+    section_dtos = []
+    for section in sections:
+        schedule = schedules.get(section.id)
+        if schedule is None or schedule.timeslot_id is None or schedule.timeslot.academic_year_id != academic_year_id:
+            raise ValueError(f"Section {section.id} has no accepted target-year SectionSchedule.timeslot.")
+        if schedule.timeslot.semester != section.semester:
+            raise ValueError(f"Section {section.id} has a timeslot in a different semester.")
+        if section.delivery_group_id:
+            offerings = list(section.delivery_group.offerings.filter(
+                academic_year_id=academic_year_id,
+                status=COURSE_OFFERING_STATUS_OFFERED,
+            ).select_related("course__priority_profile"))
+            if not offerings:
+                raise ValueError(f"Section {section.id} has no active offered delivery-group membership.")
+            target_capacity = section.delivery_group.capacity_profile.target
+        elif section.course_id:
+            offerings = list(CourseOffering.objects.filter(
+                academic_year_id=academic_year_id,
+                course_id=section.course_id,
+                status=COURSE_OFFERING_STATUS_OFFERED,
+            ).select_related("course__priority_profile"))
+            if len(offerings) != 1:
+                raise ValueError(f"Legacy section {section.id} does not map unambiguously to one offered CourseOffering.")
+            target_capacity = offerings[0].course.capacity_profile.target
+        else:
+            raise ValueError(f"Section {section.id} has no physical delivery identity.")
+        section_dtos.append(StudentAssignmentSectionDTO(
+            section_id=section.id,
+            delivery_group_id=section.delivery_group_id or -section.course_id,
+            member_course_offering_ids=tuple(item.id for item in offerings),
+            member_course_ids=tuple(item.course_id for item in offerings),
+            semester=section.semester,
+            timeslot_id=schedule.timeslot_id,
+            capacity_max=section.capacity_max,
+            target_capacity=target_capacity,
+        ))
+    staffing_context = _student_assignment_staffing_context(
+        academic_year_id=academic_year_id,
+        sections=sections,
+        staffing_mode=staffing_mode,
+        provisional_teacher_assignment_run=provisional_teacher_assignment_run,
+    )
+    offered_by_course = {
+        item.course_id: item
+        for item in CourseOffering.objects.filter(
+            academic_year_id=academic_year_id,
+            status=COURSE_OFFERING_STATUS_OFFERED,
+        ).select_related("course__priority_profile")
+    }
+    fixed_rows = []
+    fixed_course_by_student = set()
+    section_by_id = {item.section_id: item for item in section_dtos}
+    for enrollment in Enrollment.objects.filter(section_id__in=section_by_id).select_related("course_offering", "section__course"):
+        section = section_by_id[enrollment.section_id]
+        offering = enrollment.course_offering
+        if offering is None:
+            candidates = [
+                offering_id for offering_id in section.member_course_offering_ids
+                if len(section.member_course_offering_ids) == 1
+            ]
+            if len(candidates) != 1:
+                raise ValueError(f"Legacy enrollment {enrollment.id} cannot be mapped unambiguously to an offering.")
+            offering = CourseOffering.objects.get(pk=candidates[0])
+        if offering.id not in section.member_course_offering_ids:
+            raise ValueError(f"Enrollment {enrollment.id} offering does not belong to its physical section.")
+        fixed_rows.append(FixedEnrollmentDTO(
+            student_id=enrollment.student_id, section_id=enrollment.section_id,
+            course_offering_id=offering.id, course_id=offering.course_id,
+            semester=section.semester, timeslot_id=section.timeslot_id,
+        ))
+        fixed_course_by_student.add((enrollment.student_id, offering.course_id))
+    resolutions_by_student = _active_assignment_backup_resolutions(
+        academic_year_id=academic_year_id,
+        sections=sections,
+    )
+    requests = []
+    for request in CourseRequest.objects.filter(academic_year_id=academic_year_id).select_related(
+        "course__priority_profile"
+    ).order_by("id"):
+        if (request.student_id, request.course_id) in fixed_course_by_student:
+            continue
+        offering = offered_by_course.get(request.course_id)
+        if request.request_type == COURSE_REQUEST_TYPE_ALTERNATE:
+            continue
+        if offering:
+            requests.append(StudentAssignmentRequestDTO(
+                request_id=request.id, student_id=request.student_id, course_id=request.course_id,
+                course_offering_id=offering.id, is_primary=True,
+                is_mandatory=request.is_mandatory,
+                priority_tier=request.course.priority_profile.tier,
+            ))
+            continue
+        relevant = [
+            item for item in resolutions_by_student[request.student_id]
+            if request.course_id in item["cancelled_course_ids"]
+        ]
+        possibilities = {(item["outcome"], item["backup_request_id"]) for item in relevant}
+        if len(possibilities) != 1:
+            raise ValueError(
+                f"Cancelled primary request {request.id} has no unambiguous approved active-source backup resolution."
+            )
+        outcome, backup_request_id = possibilities.pop()
+        if outcome != "backup_promoted" or not backup_request_id:
+            raise ValueError(f"Cancelled primary request {request.id} remains unresolved by approved upstream planning.")
+        backup = CourseRequest.objects.select_related("course__priority_profile").get(pk=backup_request_id)
+        backup_offering = offered_by_course.get(backup.course_id)
+        if backup.student_id != request.student_id or backup_offering is None:
+            raise ValueError(f"Approved backup for cancelled request {request.id} is no longer usable.")
+        if (backup.student_id, backup.course_id) not in fixed_course_by_student:
+            requests.append(StudentAssignmentRequestDTO(
+                request_id=backup.id, student_id=backup.student_id, course_id=backup.course_id,
+                course_offering_id=backup_offering.id, is_primary=False,
+                is_mandatory=False, priority_tier=backup.course.priority_profile.tier,
+                assignment_basis="approved_backup",
+                backup_resolution_snapshot={
+                    "cancelled_primary_request_id": request.id,
+                    "cancelled_course_id": request.course_id,
+                    "outcome": outcome,
+                },
+            ))
+    hard_edges = list(CoursePrerequisite.objects.values_list("prerequisite_id", "course_id"))
+    if _has_directed_cycle(hard_edges):
+        raise ValueError("Hard CoursePrerequisite configuration contains a directed cycle.")
+    soft_edges = list(CourseSequencePreference.objects.filter(is_active=True).values_list("earlier_course_id", "later_course_id"))
+    if _has_directed_cycle(soft_edges):
+        raise ValueError("CourseSequencePreference configuration contains a directed cycle.")
+    return StudentAssignmentInputDTO(
+        academic_year_id=academic_year_id,
+        requests=tuple(requests), sections=tuple(section_dtos), fixed_enrollments=tuple(fixed_rows),
+        hard_prerequisites=tuple(
+            CoursePrerequisiteDTO(course_id=course_id, prerequisite_id=prerequisite_id)
+            for prerequisite_id, course_id in hard_edges
+        ),
+        soft_sequence_preferences=tuple(
+            CourseSequencePreferenceDTO(earlier_course_id=earlier, later_course_id=later)
+            for earlier, later in soft_edges
+        ),
+        section_utilization_balance_importance=soft_constraint_importance["section_utilization_balance"],
+        student_semester_balance_importance=soft_constraint_importance["student_semester_balance"],
+        course_sequence_preferences_importance=soft_constraint_importance["course_sequence_preferences"],
+    ), staffing_context
 
 
 def load_section_placement_input(*, academic_year_id, input_mode, budget_approval=None, conflict_matrix=None):

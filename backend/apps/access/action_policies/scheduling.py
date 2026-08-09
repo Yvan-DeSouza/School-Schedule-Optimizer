@@ -8,13 +8,14 @@ from backend.apps.people.roles import get_user_role
 
 
 class SchedulingAction:
-    """Stable names for the three downstream solver stages and status."""
+    """Stable names for reviewed downstream solver stages and status."""
 
     RUN_SECTION_PLACEMENT = "run_section_placement"
     APPROVE_SECTION_PLACEMENT = "approve_section_placement"
     RUN_TEACHER_ASSIGNMENT = "run_teacher_assignment"
     APPROVE_TEACHER_ASSIGNMENT = "approve_teacher_assignment"
     RUN_STUDENT_ASSIGNMENT = "run_student_assignment"
+    APPROVE_STUDENT_ASSIGNMENT = "approve_student_assignment"
     VIEW_SCHEDULING_RUN_STATUS = "view_scheduling_run_status"
 
 
@@ -29,6 +30,7 @@ class SchedulingActionPolicy(BaseActionPolicy):
     approval_actions = {
         SchedulingAction.APPROVE_SECTION_PLACEMENT,
         SchedulingAction.APPROVE_TEACHER_ASSIGNMENT,
+        SchedulingAction.APPROVE_STUDENT_ASSIGNMENT,
     }
     status_actions = {SchedulingAction.VIEW_SCHEDULING_RUN_STATUS}
     rules = {

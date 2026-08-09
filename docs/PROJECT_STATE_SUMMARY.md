@@ -15,7 +15,7 @@ actual code, tests, and docs in this checkout, not on prior chat memory.
 | Section budgeting and staffing-feasible physical counts | Implemented | `backend/apps/scheduling/services/section_budget_planning.py`, `backend/apps/scheduling/services/staffing_planning.py`, `backend/tests/test_upstream_planning_workflow.py` |
 | Semester/A-D placement with staffing feasibility | Implemented | `backend/apps/scheduling/services/section_placement.py`, `scheduling_engine/section_placement.py`, `backend/tests/test_section_placement_service.py`, `scheduling_engine/tests/test_section_placement.py` |
 | Named teacher assignment | Implemented | `backend/apps/scheduling/services/teacher_assignment.py`, `scheduling_engine/teacher_assignment.py`, `backend/tests/test_teacher_assignment_service.py`, `scheduling_engine/tests/test_teacher_assignment.py` |
-| Student assignment | Not implemented | Roadmap only |
+| Student assignment, first release | Implemented | `backend/apps/scheduling/services/student_assignment.py`, `scheduling_engine/student_assignment.py`, `backend/tests/test_student_assignment_service.py`, `scheduling_engine/tests/test_student_assignment.py` |
 | Room assignment | Not implemented | Deferred by the placement and teacher-assignment decisions |
 | Frontend | Not started | `docs/Implementation_Roadmap.md` phase 6, no frontend directory in repo |
 
@@ -29,7 +29,7 @@ This is a school scheduling system for counselors, staff, and directors. The
 product does not try to fully automate scheduling in one step. Instead, it
 breaks the work into reviewed stages:
 
-`demand -> offering changes -> section counts -> staffing feasibility -> semester/A-D placement -> named teacher assignment -> later student and room work`
+`demand -> offering changes -> section counts -> staffing feasibility -> semester/A-D placement -> optional named-teacher context -> student assignment -> later room/conflict work`
 
 That staged shape is visible in `README.md`, `docs/Implementation_Roadmap.md`,
 `docs/decisions/semester-placement-and-staffing-feasibility.md`, and
@@ -466,9 +466,10 @@ workflow.
 
 Where the workflow stops today:
 
-- no student assignment solver yet;
+- the first student-assignment solver/review/approval stage is implemented;
 - no room assignment solver yet;
-- no composed timetable or personal schedule endpoint yet;
+- no composed timetable, personal schedule endpoint, conflict analyzer, locks,
+  partial rerun, or general enrollment override workflow yet;
 - no frontend application yet.
 
 ## 9. Known Divergences Between the SDD/Roadmap and Actual Code
@@ -528,10 +529,10 @@ Current results:
 | Command | Result |
 | --- | --- |
 | `backend\manage.py check` | `System check identified no issues (0 silenced).` |
-| `pytest -q scheduling_engine/tests` | `38 passed in 9.17s` |
-| `pytest --collect-only -q scheduling_engine/tests` | `38 tests collected` |
-| `pytest -q backend/tests` | `116 passed, 1 failed in 7m21s` |
-| `pytest --collect-only -q backend/tests` | `117 tests collected` |
+| `pytest -q scheduling_engine/tests` | `44 passed in 2.23s` |
+| `pytest --collect-only -q scheduling_engine/tests` | `44 tests collected` |
+| `pytest -q backend/tests` | `123 passed, 1 failed in 5m42s` |
+| `pytest --collect-only -q backend/tests` | `124 tests collected in 1.01s` |
 
 The one failing backend test is
 `backend/tests/test_upstream_planning_workflow.py::test_combined_delivery_moves_from_ready_roster_to_one_physical_section`.
@@ -541,34 +542,23 @@ teacher.
 
 ## 12. Recommended Next Phase
 
-The next phase should be student assignment, not room assignment.
+The next student-scheduling increment should be a read-only conflict analyzer,
+not another mutation workflow. It should explain incomplete student schedules,
+unmet requests, capacity and timing issues from accepted state without moving
+sections, teachers, or enrollments.
 
-Why:
-
-- the system already knows which sections exist and when they run;
-- named teachers are already a separate later stage;
-- the counselor workflow explicitly said student assignment should only need
-  accepted section timing, not a named teacher;
-- the current code already has the inputs for requests, enrollments, sections,
-  prerequisites, and fixed context;
-- the missing contract is the student-assignment evidence model, especially how
-  prerequisite completion is represented and validated.
-
-So the practical next build should be:
-
-1. define the prerequisite-evidence contract for students;
-2. add a student-assignment solver and review/approval workflow;
-3. add read-only conflict analysis for incomplete schedules and collisions;
-4. keep room assignment as a separate later stage.
-
-That sequencing matches the staged architecture already in the roadmap and
-keeps the new work from depending on named teachers or room data.
+Before transcript/SIS completion evidence is introduced, the implemented
+student stage deliberately assumes prior prerequisite completion and enforces
+only same-year ordering when both courses are assigned. Locks, partial reruns,
+and overrides should remain a later separate decision rather than being folded
+into the first assignment workflow.
 
 ## 13. Open Questions / Explicitly Deferred Decisions
 
-- What is the authoritative data source for prerequisite completion evidence?
-- Should the project publish OpenAPI now, or wait until student assignment is
-  implemented?
+- What is the authoritative data source for prerequisite completion evidence
+  when the temporary assumed-prior-completion policy is replaced?
+- Should the project publish OpenAPI now that the student-assignment API
+  surface exists, or wait until the next scheduling increment?
 - Should downstream solver runs get background orchestration only after a
   measured solve-time benchmark justifies it?
 - When should room assignment become its own reviewed stage relative to student

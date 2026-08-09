@@ -228,6 +228,112 @@ class CoursePrerequisiteDTO:
 
 
 @dataclass(frozen=True)
+class StudentAssignmentRequestDTO:
+    """One effective request that may receive one new enrollment."""
+
+    request_id: int
+    student_id: int
+    course_id: int
+    course_offering_id: int
+    is_primary: bool
+    is_mandatory: bool
+    priority_tier: int
+    assignment_basis: str = "primary_request"
+    backup_resolution_snapshot: Mapping[str, object] | None = None
+
+
+@dataclass(frozen=True)
+class StudentAssignmentSectionDTO:
+    """Fixed active physical section eligible for new enrollment."""
+
+    section_id: int
+    delivery_group_id: int
+    member_course_offering_ids: Tuple[int, ...]
+    member_course_ids: Tuple[int, ...]
+    semester: int
+    timeslot_id: int
+    capacity_max: int
+    target_capacity: int
+
+
+@dataclass(frozen=True)
+class FixedEnrollmentDTO:
+    """Existing enrollment that consumes capacity and a student timeslot."""
+
+    student_id: int
+    section_id: int
+    course_offering_id: int
+    course_id: int
+    semester: int
+    timeslot_id: int
+
+
+@dataclass(frozen=True)
+class CourseSequencePreferenceDTO:
+    """Non-binding earlier-course to later-course sequencing relation."""
+
+    earlier_course_id: int
+    later_course_id: int
+
+
+@dataclass(frozen=True)
+class StudentAssignmentInputDTO:
+    """Detached facts consumed by the pure student-to-section engine."""
+
+    academic_year_id: int
+    requests: Tuple[StudentAssignmentRequestDTO, ...]
+    sections: Tuple[StudentAssignmentSectionDTO, ...]
+    fixed_enrollments: Tuple[FixedEnrollmentDTO, ...]
+    hard_prerequisites: Tuple[CoursePrerequisiteDTO, ...]
+    soft_sequence_preferences: Tuple[CourseSequencePreferenceDTO, ...]
+    section_utilization_balance_importance: str
+    student_semester_balance_importance: str
+    course_sequence_preferences_importance: str
+    time_limit_seconds: float = 20.0
+
+
+@dataclass(frozen=True)
+class StudentAssignmentDTO:
+    """One recommendation to create an enrollment after counselor approval."""
+
+    request_id: int
+    student_id: int
+    section_id: int
+    course_offering_id: int
+    course_id: int
+    semester: int
+    timeslot_id: int
+    assignment_basis: str
+    backup_resolution_snapshot: Mapping[str, object] | None = None
+
+
+@dataclass(frozen=True)
+class StudentAssignmentUnmetRequestDTO:
+    """A request left unassigned in the best diagnostic recommendation."""
+
+    request_id: int
+    student_id: int
+    course_id: int
+    is_primary: bool
+    is_mandatory: bool
+    assignment_basis: str
+    diagnostic_code: str
+
+
+@dataclass(frozen=True)
+class StudentAssignmentResultDTO:
+    """Complete or partial student-assignment recommendation and diagnostics."""
+
+    status: str
+    solver_outcome: str
+    assignments: Tuple[StudentAssignmentDTO, ...]
+    unmet_requests: Tuple[StudentAssignmentUnmetRequestDTO, ...]
+    diagnostics: Tuple[Mapping[str, object], ...]
+    objective_components: Mapping[str, float]
+    sequence_outcomes: Tuple[Mapping[str, object], ...]
+
+
+@dataclass(frozen=True)
 class CourseConflictDTO:
     """Weighted co-request conflict used by future section placement."""
 

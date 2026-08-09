@@ -1,5 +1,6 @@
 """Course catalog, operational sections, demand requests, and prerequisites."""
 
+from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
 from django.db import models
 
@@ -348,8 +349,37 @@ class Enrollment(models.Model):
             models.UniqueConstraint(
                 fields=["student", "section"],
                 name="unique_student_section_enrollment"
-            )
+            ),
+            # Legacy rows may not have an offering, but every new solver write
+            # identifies the exact offering a student is taking.
+            models.UniqueConstraint(
+                fields=["student", "course_offering"],
+                condition=models.Q(course_offering__isnull=False),
+                name="unique_student_course_offering_enrollment",
+            ),
         ]
+
+    def clean(self):
+        """Keep new offering-aware enrollment rows tied to one physical class."""
+
+        super().clean()
+        if not self.course_offering_id or not self.section_id:
+            return
+        section = self.section
+        offering = self.course_offering
+        if offering.academic_year_id != section.academic_year_id:
+            raise ValidationError({
+                "course_offering": "The offering must belong to the section's academic year."
+            })
+        if section.delivery_group_id:
+            if offering.delivery_group_id != section.delivery_group_id:
+                raise ValidationError({
+                    "course_offering": "The offering must belong to the section's physical delivery group."
+                })
+        elif section.course_id != offering.course_id:
+            raise ValidationError({
+                "course_offering": "A legacy standalone section may enroll only its own course offering."
+            })
 
     def __str__(self):
         return f"{self.student} -> {self.section}"
@@ -404,3 +434,37 @@ class CoursePrerequisite(models.Model):
 
     def __str__(self):
         return f"{self.course} requires {self.prerequisite}"
+
+
+class CourseSequencePreference(models.Model):
+    """A non-binding catalog preference for same-year course order."""
+
+    earlier_course = models.ForeignKey(
+        Course,
+        on_delete=models.CASCADE,
+        related_name="sequence_preferences_as_earlier",
+    )
+    later_course = models.ForeignKey(
+        Course,
+        on_delete=models.CASCADE,
+        related_name="sequence_preferences_as_later",
+    )
+    is_active = models.BooleanField(default=True)
+    created_by = models.ForeignKey("auth.User", null=True, on_delete=models.SET_NULL)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["earlier_course", "later_course"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["earlier_course", "later_course"],
+                name="unique_course_sequence_preference",
+            ),
+            models.CheckConstraint(
+                condition=~models.Q(earlier_course=models.F("later_course")),
+                name="course_sequence_preference_not_self_referential",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Prefer {self.earlier_course} before {self.later_course}"

@@ -37,9 +37,12 @@ Every future solver phase must preserve a review checkpoint. Solver output is a 
 
 The working system presently reaches this point:
 
-`Course requests → offering cancellation/combination → backup policy → teacher-independent section budget → confirmed teacher roster → staffing-aware physical counts → counselor approval → unstaffed, unlocked draft Section records`
+`Course requests → offering cancellation/combination → backup policy → teacher-independent section budget → confirmed teacher roster → staffing-aware physical counts → counselor approval → active sections → semester/A–D placement → optional named-teacher context → student-assignment review → enrollment approval`
 
-The system does **not** yet proceed from those draft sections to A–D block placement, room placement, named teacher assignment, student assignment, or a composed timetable.
+The system now supports first-release student-to-section assignment after
+accepted semester/A–D placement. Room assignment, conflict analysis, composed
+timetables, student locks, scoped reruns, and frontend work remain outside the
+implemented boundary.
 
 ### Completed
 
@@ -152,7 +155,7 @@ These areas contain useful foundations but are not complete Version 1 capabiliti
 | Section lifecycle | Draft sections, physical delivery identity, planning provenance, safe refusal to overwrite, and audited reconciliation with retirement/reactivation | A physical-delivery reconciliation path for changing an already-materialized combined group; late combination remains intentionally blocked |
 | Timetable data | `TimeSlot`, permanent A–D rotation, `Room`, `SectionSchedule`, room requirements, course conflicts, and section locks | No solver or review workflow assigns a block or room |
 | Teacher scheduling foundation | Normalized qualifications, compiled eligibility, availability, preferences, current-course history, workload fields, and planning capacity | No named-teacher assignment solver, recommendation run, approval, or assignment diagnostics |
-| Student scheduling foundation | Course requests, sections, enrollments, prerequisites, and student grade | No student assignment solver; no defined source of completed-course/transcript evidence for prerequisite evaluation |
+| Student scheduling, first release | Immutable runs/approval, fixed existing enrollments, prerequisites, course sequence preferences, planning roster API, and four staffing-assumption modes | No transcript/SIS completion evidence, locks, partial reruns, manual overrides, personal timetables, or conflict analyzer |
 | Manual controls | `SectionLock`, `Section.is_locked`, `ManualOverride` model, admin registration, and future action-policy names | No enforced synchronization invariant between lock row/flag; no override application service/API, typed action workflow, optimistic concurrency, override history endpoint, or scoped re-solve |
 | Timetable visibility | Teachers can read sections already assigned to them | No composed timetable endpoint and no student/teacher personal schedule endpoint |
 | Internationalization | `Translation` model and admin registration | No translation API and no user interface consuming translations |
@@ -165,12 +168,11 @@ These areas contain useful foundations but are not complete Version 1 capabiliti
 - Automated section placement into A–D blocks.
 - Automated room assignment.
 - Named teacher-to-section assignment.
-- Student-to-section assignment.
 - Post-solve conflict and issue analysis across the completed timetable.
 - General manual override application and immutable history APIs.
 - Genuine scoped re-solving with out-of-scope entities held fixed.
 - Persistent status tracking for downstream scheduling runs.
-- Staff-facing student roster, historical-demand, and prerequisite-management API coverage required by later workflows.
+- Historical-demand management API coverage required by later workflows.
 - A counselor/administrator, teacher, or student frontend.
 - Final timetable and personal-schedule APIs.
 
@@ -499,88 +501,37 @@ backend/tests/
 
 ## Phase 4 — Student Assignment and Conflict Analysis
 
-**Current Status:** **Not implemented; basic request, prerequisite, enrollment, section, and student models exist.** The repository does not yet define reliable completed-course evidence for prerequisite evaluation.
+**Current Status:** **Partially implemented.** The first counselor-reviewed
+student-assignment release is implemented. Conflict analysis, composed
+timetables, locks, manual overrides, scoped reruns, transcript/SIS evidence,
+and personal schedule endpoints remain deferred.
 
-**Goal:** Recommend student-to-section enrollments that maximize required and primary request fulfillment while respecting placed blocks, section capacity, prerequisites, and per-student conflicts, then report unresolved issues across the schedule.
+**Implemented first release:**
 
-**Why It Comes Next:** Student assignment depends on stable sections and timeslots. Completing it after teacher assignment gives counselors a coherent placed and staffed schedule to review before allocating students, while retaining the SDD's staged architecture.
+- A Django-free `scheduling_engine/student_assignment.py` solver and detached
+  DTO input snapshot.
+- Immutable `StudentAssignmentRun`, `StudentAssignmentApproval`, and
+  per-enrollment provenance rows; approval creates new `Enrollment` rows in
+  one transaction and never replaces existing ones.
+- Planning-only roster, hard-prerequisite, and soft-sequence configuration
+  APIs, plus four counselor-visible staffing-assumption modes.
+- Fixed active placed sections, capacity, shared combined-section capacity,
+  existing enrollments, student A–D collisions, and same-year hard
+  prerequisite sequencing.
+- Mandatory and primary fulfillment before approved backups and selected soft
+  objectives for sequencing, utilization, and semester-load balance.
+- The temporary explicit policy that prior prerequisite completion is assumed;
+  the system does not validate transcripts, grades, credits, CSV files, or SIS
+  data in this release.
 
-**Dependencies:** Phase 2 placement; preferably accepted Phase 3 teacher assignments; course requests; section capacities; prerequisites; a deliberate source of prerequisite-completion evidence.
+The accepted scope and deliberate exclusions are recorded in
+`docs/decisions/student-assignment-first-release.md`.
 
-**Deliverables:**
-
-- An architecture decision defining how Version 1 proves prerequisite completion. If an additive student-course-history model is required, document and test it before solving.
-- Planning-role student roster/course-history APIs and course-prerequisite management needed to supply and review real assignment inputs.
-- A pure student-assignment CP-SAT solver and immutable recommendation run.
-- Lexicographic or otherwise explicit objectives protecting mandatory/primary requests before alternates and balancing section utilization only afterward.
-- Hard constraints for one section per requested course, no overlapping blocks, capacity, and the approved prerequisite rule.
-- Counselor review and transactional approval that creates `Enrollment` rows without implicit replacement.
-- A read-only conflict analyzer covering unmet requests, incomplete schedules, under/over-capacity sections, unstaffed sections, teacher overload, and unresolved locks/configuration.
-- Composed timetable and role-safe personal-schedule APIs.
-- Tests for primary versus alternate choices, mandatory demand, prerequisites, capacity, collisions, partial feasibility, permissions, approval, and rollback.
-
-**Major Tasks:**
-
-1. Resolve the missing prerequisite-evidence contract before modeling prerequisite constraints.
-2. Expose the student roster, course-history evidence, and prerequisite relationships through role-safe APIs.
-3. Define assignment DTOs and explainable result categories, including why each unmet request failed.
-4. Load out-of-scope or already accepted enrollments as fixed capacity and conflict context.
-5. Model section choice per student/course request and block conflicts per student.
-6. Protect mandatory and primary fulfillment before secondary balancing objectives.
-7. Persist recommendations as immutable run data and require counselor approval before enrollment writes.
-8. Build the conflict analyzer as a read-only service over accepted schedule state and run diagnostics.
-9. Expose counselor timetable, teacher-own schedule, and student-own schedule through policy-filtered APIs.
-10. Benchmark at the SDD target scale, where student assignment is likely the largest model.
-
-**Suggested Folder/Module Structure:**
-
-```text
-scheduling_engine/solvers/
-  student_assignment.py
-scheduling_engine/
-  conflict_analyzer.py
-backend/apps/scheduling/services/
-  student_assignment.py
-  conflict_reporting.py
-backend/apps/scheduling/
-  views.py
-  serializers.py
-backend/apps/people/
-  serializers.py
-  views.py                          # planning-role student roster/history API
-  urls.py
-backend/apps/courses/
-  serializers.py                   # prerequisite management
-  views.py
-  urls.py
-scheduling_engine/tests/
-  test_student_assignment.py
-  test_conflict_analyzer.py
-backend/tests/
-  test_student_assignment_api.py
-  test_timetable_api.py
-```
-
-**Estimated Difficulty:** 10/10
-
-**Common Mistakes to Avoid:**
-
-- Claiming prerequisites are enforced when the database has no evidence that a student completed them.
-- Assigning students before section timeslots exist.
-- Counting a request as fulfilled more than once.
-- Allowing alternates or fill balancing to displace mandatory/primary demand silently.
-- Deleting and rebuilding all enrollments without a reviewed replacement decision.
-- Exposing another student's timetable through a broad queryset.
-- Making conflict analysis mutate the schedule.
-
-**Definition of Done:**
-
-- Approved enrollments contain no student block conflict and do not exceed accepted capacity rules.
-- Mandatory and primary fulfillment has explicit priority over alternates.
-- Every unmet request has a stable reason code.
-- Prerequisite behavior is backed by real data and tests, not inferred from grade alone.
-- The conflict report agrees with intentionally seeded problem scenarios.
-- Students and teachers can retrieve only their own accepted schedules; planning roles can inspect the full timetable.
+**Next increment:** Add a read-only conflict analyzer and, separately, decide
+whether to introduce transcript/SIS completion evidence before changing the
+temporary prerequisite assumption. Do not add locks, partial reruns, general
+overrides, room assignment, or personal schedules as incidental extensions of
+this release.
 
 ---
 

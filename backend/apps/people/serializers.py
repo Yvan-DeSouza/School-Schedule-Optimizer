@@ -2,7 +2,7 @@
 
 from rest_framework import serializers
 
-from backend.apps.people.models import Teacher
+from backend.apps.people.models import Student, Teacher
 
 
 class TeacherSerializer(serializers.ModelSerializer):
@@ -35,3 +35,18 @@ class TeacherArchiveSerializer(serializers.Serializer):
         if not value.strip():
             raise serializers.ValidationError("An archive reason is required.")
         return value.strip()
+
+
+class StudentRosterSerializer(serializers.ModelSerializer):
+    """Minimal planning roster; deliberately omits contact and birth-date data."""
+
+    class Meta:
+        model = Student
+        fields = (
+            "id",
+            "student_number",
+            "first_name",
+            "last_name",
+            "grade_level",
+            "academic_year",
+        )

@@ -20,6 +20,8 @@ from backend.apps.courses.models import (
     Course,
     CourseCombinationRule,
     CourseOffering,
+    CoursePrerequisite,
+    CourseSequencePreference,
     CourseRequest,
     DeliveryGroup,
     Section,
@@ -28,6 +30,8 @@ from backend.apps.courses.serializers import (
     CombineOfferingsRequestSerializer,
     CourseCombinationRuleSerializer,
     CourseOfferingSerializer,
+    CoursePrerequisiteSerializer,
+    CourseSequencePreferenceSerializer,
     CourseRequestSerializer,
     CourseSerializer,
     DeliveryGroupSerializer,
@@ -194,6 +198,27 @@ class CourseCombinationRuleViewSet(PolicyFilteredViewSet):
     serializer_class = CourseCombinationRuleSerializer
     resource_policy_class = PlanningConfigurationPolicy
     filter_fields = ("is_active",)
+
+
+class CoursePrerequisiteViewSet(PolicyFilteredViewSet):
+    """Planning-role CRUD for catalog-owned hard prerequisite edges."""
+
+    queryset = CoursePrerequisite.objects.select_related("course", "prerequisite")
+    serializer_class = CoursePrerequisiteSerializer
+    resource_policy_class = PlanningConfigurationPolicy
+    filter_fields = ("course", "prerequisite")
+
+
+class CourseSequencePreferenceViewSet(PolicyFilteredViewSet):
+    """Planning-role CRUD for non-binding catalog course sequencing."""
+
+    queryset = CourseSequencePreference.objects.select_related("earlier_course", "later_course", "created_by")
+    serializer_class = CourseSequencePreferenceSerializer
+    resource_policy_class = PlanningConfigurationPolicy
+    filter_fields = ("earlier_course", "later_course", "is_active")
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
 
 
 class DeliveryGroupViewSet(PolicyFilteredViewSet):
