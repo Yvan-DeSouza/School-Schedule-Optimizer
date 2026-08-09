@@ -13,6 +13,10 @@ from backend.apps.access.action_policies.scheduling import (
     SchedulingAction,
     SchedulingActionPolicy,
 )
+from backend.apps.access.action_policies.student_assignment import (
+    StudentAssignmentLockAction,
+    StudentAssignmentLockActionPolicy,
+)
 
 # Explicit exports keep callers out of internal module layout.
 __all__ = [
@@ -23,4 +27,6 @@ __all__ = [
     "OverrideActionPolicy",
     "SchedulingAction",
     "SchedulingActionPolicy",
+    "StudentAssignmentLockAction",
+    "StudentAssignmentLockActionPolicy",
 ]

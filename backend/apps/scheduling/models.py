@@ -29,7 +29,17 @@ from backend.apps.scheduling.constants import (
     SECTION_PLACEMENT_INPUT_MODE_CHOICES,
     SECTION_PLACEMENT_RUN_STATUS_CHOICES,
     STUDENT_ASSIGNMENT_BASIS_CHOICES,
+    STUDENT_ASSIGNMENT_LOCK_TYPE_CHOICES,
+    STUDENT_ASSIGNMENT_LOCK_TYPE_COURSE_ROSTER,
+    STUDENT_ASSIGNMENT_LOCK_TYPE_EXACT_SECTION,
+    STUDENT_ASSIGNMENT_LOCK_TYPE_SECTION_ROSTER,
+    STUDENT_ASSIGNMENT_LOCK_TYPE_STUDENT_GROUP,
+    STUDENT_ASSIGNMENT_LOCK_TYPE_STUDENT_TEACHER,
+    STUDENT_ASSIGNMENT_LOCK_TYPE_WHOLE_SCHEDULE,
     STUDENT_ASSIGNMENT_RUN_STATUS_CHOICES,
+    STUDENT_ASSIGNMENT_RUN_SCOPE_CHOICES,
+    STUDENT_ASSIGNMENT_RUN_SCOPE_FULL,
+    STUDENT_ASSIGNMENT_RUN_SCOPE_SCOPED,
     STUDENT_ASSIGNMENT_STAFFING_MODE_CHOICES,
     TEACHER_ASSIGNMENT_RUN_STATUS_CHOICES,
     TEACHER_TIME_PREFERENCE_CHOICES,
@@ -901,6 +911,22 @@ class StudentAssignmentRun(models.Model):
         on_delete=models.PROTECT,
         related_name="provisional_student_assignment_runs",
     )
+    # A scoped rerun is based on an accepted student-assignment approval, not
+    # on a mutable current table state. The exact resolved scope remains in the
+    # JSON snapshot; these fields make run history queryable without replacing
+    # that canonical snapshot.
+    source_approval = models.ForeignKey(
+        "StudentAssignmentApproval",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="scoped_student_assignment_runs",
+    )
+    scope_type = models.CharField(
+        max_length=20,
+        choices=STUDENT_ASSIGNMENT_RUN_SCOPE_CHOICES,
+        default=STUDENT_ASSIGNMENT_RUN_SCOPE_FULL,
+    )
     created_by = models.ForeignKey("auth.User", null=True, on_delete=models.SET_NULL)
     created_at = models.DateTimeField(auto_now_add=True)
     status = models.CharField(max_length=20, choices=STUDENT_ASSIGNMENT_RUN_STATUS_CHOICES)
@@ -910,6 +936,16 @@ class StudentAssignmentRun(models.Model):
 
     class Meta:
         ordering = ["-created_at", "-id"]
+
+    def clean(self):
+        super().clean()
+        errors = {}
+        if self.scope_type == STUDENT_ASSIGNMENT_RUN_SCOPE_FULL and self.source_approval_id:
+            errors["source_approval"] = "A full student-assignment run cannot have a source approval."
+        if self.scope_type == STUDENT_ASSIGNMENT_RUN_SCOPE_SCOPED and not self.source_approval_id:
+            errors["source_approval"] = "A scoped student-assignment run requires a source approval."
+        if errors:
+            raise ValidationError(errors)
 
     def save(self, *args, **kwargs):
         if self.pk:
@@ -958,4 +994,204 @@ class StudentAssignmentApprovalEnrollment(models.Model):
     def save(self, *args, **kwargs):
         if self.pk:
             raise ValidationError("Student assignment enrollment provenance is immutable.")
+        return super().save(*args, **kwargs)
+
+
+class StudentAssignmentLock(models.Model):
+    """One counselor decision that protects a student-assignment fact."""
+
+    academic_year = models.ForeignKey("common.AcademicYear", on_delete=models.PROTECT)
+    lock_type = models.CharField(max_length=40, choices=STUDENT_ASSIGNMENT_LOCK_TYPE_CHOICES)
+
+    # These nullable targets share one table because each lock type protects a
+    # different level of the same workflow. ``clean`` enforces the exact target
+    # shape; nullable columns are not permission to create an ambiguous lock.
+    student = models.ForeignKey(
+        "people.Student",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="student_assignment_locks",
+    )
+    section = models.ForeignKey(
+        "courses.Section",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="student_assignment_locks",
+    )
+    course = models.ForeignKey(
+        "courses.Course",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="student_assignment_locks",
+    )
+    teacher = models.ForeignKey(
+        "people.Teacher",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="student_assignment_locks",
+    )
+
+    reason = models.TextField()
+    created_by = models.ForeignKey(
+        "auth.User",
+        on_delete=models.PROTECT,
+        related_name="created_student_assignment_locks",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    # Release is a one-way state transition. Keeping release facts on the lock
+    # makes the current state queryable while preserving who ended the
+    # decision and why; target and creation facts cannot be rewritten.
+    is_active = models.BooleanField(default=True)
+    released_at = models.DateTimeField(null=True, blank=True)
+    released_by = models.ForeignKey(
+        "auth.User",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="released_student_assignment_locks",
+    )
+    release_reason = models.TextField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["academic_year", "created_at", "id"]
+        indexes = [
+            models.Index(fields=["academic_year", "is_active", "lock_type"]),
+        ]
+
+    @property
+    def is_released(self):
+        """Expose the domain state in prose without storing a second flag."""
+
+        return not self.is_active
+
+    def clean(self):
+        super().clean()
+        errors = {}
+        if not isinstance(self.reason, str) or not self.reason.strip():
+            errors["reason"] = "A non-blank reason is required for a student-assignment lock."
+        if not self.created_by_id:
+            errors["created_by"] = "A creator is required for a student-assignment lock."
+
+        expected_targets = {
+            STUDENT_ASSIGNMENT_LOCK_TYPE_EXACT_SECTION: {"student", "section", "course"},
+            STUDENT_ASSIGNMENT_LOCK_TYPE_WHOLE_SCHEDULE: {"student"},
+            STUDENT_ASSIGNMENT_LOCK_TYPE_SECTION_ROSTER: {"section"},
+            STUDENT_ASSIGNMENT_LOCK_TYPE_COURSE_ROSTER: {"course"},
+            STUDENT_ASSIGNMENT_LOCK_TYPE_STUDENT_GROUP: {"course"},
+            STUDENT_ASSIGNMENT_LOCK_TYPE_STUDENT_TEACHER: {"student", "course", "teacher"},
+        }
+        required_targets = expected_targets.get(self.lock_type)
+        if required_targets is None:
+            errors["lock_type"] = "Choose a recognized student-assignment lock type."
+        else:
+            target_ids = {
+                field_name
+                for field_name in ("student", "section", "course", "teacher")
+                if getattr(self, f"{field_name}_id") is not None
+            }
+            missing = required_targets - target_ids
+            unexpected = target_ids - required_targets
+            for field_name in sorted(missing):
+                errors[field_name] = "This target is required for the selected lock type."
+            for field_name in sorted(unexpected):
+                errors[field_name] = "This target is not used by the selected lock type."
+
+        if self.is_active:
+            if self.released_at is not None or self.released_by_id or self.release_reason:
+                errors["is_active"] = "An active lock cannot contain release facts."
+        else:
+            if self.released_at is None:
+                errors["released_at"] = "A released lock must record when it was released."
+            if not self.released_by_id:
+                errors["released_by"] = "A released lock must record the releasing actor."
+            if not isinstance(self.release_reason, str) or not self.release_reason.strip():
+                errors["release_reason"] = "A non-blank release reason is required."
+
+        if self.student_id and self.student.academic_year_id != self.academic_year_id:
+            errors["student"] = "The student must belong to the lock's academic year."
+        if self.section_id:
+            if self.section.academic_year_id != self.academic_year_id:
+                errors["section"] = "The section must belong to the lock's academic year."
+            elif self.section.lifecycle_status != "active":
+                errors["section"] = "Retired sections cannot receive student-assignment locks."
+        if self.section_id and self.course_id:
+            belongs_to_section = (
+                self.section.delivery_group.offerings.filter(course_id=self.course_id).exists()
+                if self.section.delivery_group_id
+                else self.section.course_id == self.course_id
+            )
+            if not belongs_to_section:
+                errors["course"] = "The course must be offered by the selected section."
+
+        # A group lock is created with its members by the service. This check
+        # also protects later direct model validation from accepting an empty
+        # group after the lock row already exists.
+        if self.pk and self.lock_type == STUDENT_ASSIGNMENT_LOCK_TYPE_STUDENT_GROUP and not self.members.exists():
+            errors["members"] = "A student-group lock must contain at least two students."
+
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            previous = type(self).objects.get(pk=self.pk)
+            immutable_fields = (
+                "academic_year_id", "lock_type", "student_id", "section_id",
+                "course_id", "teacher_id", "reason", "created_by_id", "created_at",
+            )
+            if not previous.is_active:
+                raise ValidationError("Released student-assignment locks are immutable.")
+            if any(getattr(previous, field) != getattr(self, field) for field in immutable_fields):
+                raise ValidationError("Student-assignment lock decisions are append-only; release instead.")
+            if self.is_active:
+                raise ValidationError("An active student-assignment lock can only be released.")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Student-assignment locks are append-only; release instead of deleting.")
+
+
+class StudentAssignmentLockMember(models.Model):
+    """One student included in a same-section group lock."""
+
+    student_assignment_lock = models.ForeignKey(
+        StudentAssignmentLock,
+        on_delete=models.PROTECT,
+        related_name="members",
+    )
+    student = models.ForeignKey(
+        "people.Student",
+        on_delete=models.PROTECT,
+        related_name="student_assignment_lock_memberships",
+    )
+
+    class Meta:
+        ordering = ["student_assignment_lock", "student"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["student_assignment_lock", "student"],
+                name="unique_student_assignment_lock_member",
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+        errors = {}
+        if self.student_assignment_lock.lock_type != STUDENT_ASSIGNMENT_LOCK_TYPE_STUDENT_GROUP:
+            errors["student_assignment_lock"] = "Only group locks may have student members."
+        if not self.student_assignment_lock.is_active:
+            errors["student_assignment_lock"] = "Released group locks cannot gain members."
+        if self.student.academic_year_id != self.student_assignment_lock.academic_year_id:
+            errors["student"] = "The member must belong to the lock's academic year."
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise ValidationError("Student-assignment lock membership is immutable.")
         return super().save(*args, **kwargs)

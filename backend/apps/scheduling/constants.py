@@ -76,6 +76,34 @@ STUDENT_ASSIGNMENT_STAFFING_MODE_CHOICES = (
     (STUDENT_ASSIGNMENT_STAFFING_MODE_FINAL_STAFFING, "Final staffing"),
 )
 
+# A full run has no accepted student-assignment baseline. A scoped run must
+# point to the approval that represents the accepted schedule it may revise;
+# the resolved IDs remain in the immutable input snapshot.
+STUDENT_ASSIGNMENT_RUN_SCOPE_FULL = "full"
+STUDENT_ASSIGNMENT_RUN_SCOPE_SCOPED = "scoped"
+STUDENT_ASSIGNMENT_RUN_SCOPE_CHOICES = (
+    (STUDENT_ASSIGNMENT_RUN_SCOPE_FULL, "Full student assignment"),
+    (STUDENT_ASSIGNMENT_RUN_SCOPE_SCOPED, "Scoped student-assignment rerun"),
+)
+
+# These values describe counselor decisions, not solver outcomes. Keeping them
+# in the scheduling domain lets models, services, and future serializers share
+# one stable vocabulary without putting workflow values in common/constants.py.
+STUDENT_ASSIGNMENT_LOCK_TYPE_EXACT_SECTION = "exact_student_section"
+STUDENT_ASSIGNMENT_LOCK_TYPE_WHOLE_SCHEDULE = "whole_student_schedule"
+STUDENT_ASSIGNMENT_LOCK_TYPE_SECTION_ROSTER = "section_roster"
+STUDENT_ASSIGNMENT_LOCK_TYPE_COURSE_ROSTER = "course_roster"
+STUDENT_ASSIGNMENT_LOCK_TYPE_STUDENT_GROUP = "student_group_same_section"
+STUDENT_ASSIGNMENT_LOCK_TYPE_STUDENT_TEACHER = "student_teacher_course"
+STUDENT_ASSIGNMENT_LOCK_TYPE_CHOICES = (
+    (STUDENT_ASSIGNMENT_LOCK_TYPE_EXACT_SECTION, "Exact student section"),
+    (STUDENT_ASSIGNMENT_LOCK_TYPE_WHOLE_SCHEDULE, "Whole student schedule"),
+    (STUDENT_ASSIGNMENT_LOCK_TYPE_SECTION_ROSTER, "Section roster"),
+    (STUDENT_ASSIGNMENT_LOCK_TYPE_COURSE_ROSTER, "Course roster"),
+    (STUDENT_ASSIGNMENT_LOCK_TYPE_STUDENT_GROUP, "Student group in one section"),
+    (STUDENT_ASSIGNMENT_LOCK_TYPE_STUDENT_TEACHER, "Student and teacher for course"),
+)
+
 SOFT_CONSTRAINT_IMPORTANCE_NOT_IMPORTANT = "not_important"
 SOFT_CONSTRAINT_IMPORTANCE_A_LITTLE_BIT_IMPORTANT = "a_little_bit_important"
 SOFT_CONSTRAINT_IMPORTANCE_IMPORTANT = "important"
