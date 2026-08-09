@@ -8,7 +8,7 @@ IDs are opaque identifiers supplied by the adapter.  The engine uses them for
 joins and returns them in results, but never assumes database behavior.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Mapping, Optional, Tuple
 
 
@@ -240,6 +240,10 @@ class StudentAssignmentRequestDTO:
     priority_tier: int
     assignment_basis: str = "primary_request"
     backup_resolution_snapshot: Mapping[str, object] | None = None
+    # A scoped rerun may represent a course that already has an active
+    # enrollment. The adapter supplies this opaque identifier so review and a
+    # later approval service can preserve the replacement audit trail.
+    current_enrollment_id: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -254,11 +258,19 @@ class StudentAssignmentSectionDTO:
     timeslot_id: int
     capacity_max: int
     target_capacity: int
+    # Teacher identity remains fixed context. It is only needed by the
+    # next-release student-to-teacher lock; the engine never assigns teachers.
+    teacher_id: Optional[int] = None
 
 
 @dataclass(frozen=True)
 class FixedEnrollmentDTO:
-    """Existing enrollment that consumes capacity and a student timeslot."""
+    """Existing enrollment and its operational status for a rerun.
+
+    Historical rows are audit evidence only and must not consume capacity or a
+    timeslot. An active row becomes a decision variable only when it is both
+    in scope and unlocked; all other active rows remain fixed context.
+    """
 
     student_id: int
     section_id: int
@@ -266,6 +278,36 @@ class FixedEnrollmentDTO:
     course_id: int
     semester: int
     timeslot_id: int
+    enrollment_id: Optional[int] = None
+    is_active: bool = True
+    is_locked: bool = False
+    is_historical: bool = False
+    is_in_scope: bool = False
+    lock_ids: Tuple[int, ...] = ()
+
+
+@dataclass(frozen=True)
+class StudentAssignmentLockDTO:
+    """One active counselor lock expressed without Django model references."""
+
+    lock_id: int
+    lock_type: str
+    student_id: Optional[int] = None
+    section_id: Optional[int] = None
+    course_id: Optional[int] = None
+    teacher_id: Optional[int] = None
+    member_student_ids: Tuple[int, ...] = ()
+    is_active: bool = True
+
+
+@dataclass(frozen=True)
+class StudentAssignmentScopeDTO:
+    """Resolved full-year or scoped rerun boundary frozen in engine input."""
+
+    scope_type: str = "full"
+    student_ids: Tuple[int, ...] = ()
+    course_ids: Tuple[int, ...] = ()
+    section_ids: Tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -290,6 +332,14 @@ class StudentAssignmentInputDTO:
     student_semester_balance_importance: str
     course_sequence_preferences_importance: str
     time_limit_seconds: float = 20.0
+    student_assignment_locks: Tuple[StudentAssignmentLockDTO, ...] = ()
+    schedule_preservation_level: str = "none"
+    priority_request_ids: Tuple[int, ...] = ()
+    # This is a resolved, run-snapshot value. The future school-wide
+    # configuration model owns the default; the engine only enforces the
+    # supplied bound and never reads Django configuration.
+    priority_request_limit: Optional[int] = None
+    scope: StudentAssignmentScopeDTO = field(default_factory=StudentAssignmentScopeDTO)
 
 
 @dataclass(frozen=True)
@@ -305,6 +355,8 @@ class StudentAssignmentDTO:
     timeslot_id: int
     assignment_basis: str
     backup_resolution_snapshot: Mapping[str, object] | None = None
+    previous_enrollment_id: Optional[int] = None
+    previous_section_id: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -318,6 +370,39 @@ class StudentAssignmentUnmetRequestDTO:
     is_mandatory: bool
     assignment_basis: str
     diagnostic_code: str
+    blocking_lock_id: Optional[int] = None
+    blocking_section_id: Optional[int] = None
+    blocking_student_id: Optional[int] = None
+    remediation_codes: Tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class StudentAssignmentLockCostDTO:
+    """Counterfactual unresolved-request cost of one active lock."""
+
+    lock_id: int
+    attributable_request_count: int
+    unresolved_request_ids: Tuple[int, ...]
+
+
+@dataclass(frozen=True)
+class StudentAssignmentSeatContentionDTO:
+    """Demand evidence for a physical section whose seats were awarded."""
+
+    section_id: int
+    available_seat_count: int
+    awarded_request_ids: Tuple[int, ...]
+    competing_request_ids: Tuple[int, ...]
+
+
+@dataclass(frozen=True)
+class StudentAssignmentSectionBalanceDTO:
+    """Observed final enrollment count against the section's target capacity."""
+
+    section_id: int
+    enrollment_count: int
+    target_capacity: int
+    diagnostic_code: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -331,6 +416,9 @@ class StudentAssignmentResultDTO:
     diagnostics: Tuple[Mapping[str, object], ...]
     objective_components: Mapping[str, float]
     sequence_outcomes: Tuple[Mapping[str, object], ...]
+    lock_costs: Tuple[StudentAssignmentLockCostDTO, ...] = ()
+    seat_contention: Tuple[StudentAssignmentSeatContentionDTO, ...] = ()
+    section_balance_facts: Tuple[StudentAssignmentSectionBalanceDTO, ...] = ()
 
 
 @dataclass(frozen=True)

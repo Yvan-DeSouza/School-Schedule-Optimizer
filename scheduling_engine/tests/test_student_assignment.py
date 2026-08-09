@@ -5,6 +5,7 @@ from scheduling_engine.dto import (
     CourseSequencePreferenceDTO,
     FixedEnrollmentDTO,
     StudentAssignmentInputDTO,
+    StudentAssignmentLockDTO,
     StudentAssignmentRequestDTO,
     StudentAssignmentSectionDTO,
 )
@@ -115,3 +116,155 @@ def test_soft_sequence_is_reported_when_both_courses_apply():
     assert result.sequence_outcomes == ({
         "student_id": 1, "earlier_course_id": 1, "later_course_id": 2, "satisfied": True,
     },)
+
+
+def test_locked_active_enrollment_cannot_be_moved_in_a_rerun():
+    result = solve_student_assignment(_input(
+        sections=(
+            _section(1, capacity_max=1),
+            _section(2, delivery_group_id=2, timeslot_id=202),
+        ),
+        fixed_enrollments=(FixedEnrollmentDTO(
+            enrollment_id=101,
+            student_id=1,
+            section_id=1,
+            course_offering_id=11,
+            course_id=1,
+            semester=1,
+            timeslot_id=101,
+            is_locked=True,
+            is_in_scope=True,
+            lock_ids=(41,),
+        ),),
+    ))
+
+    assert result.assignments == ()
+    assert result.unmet_requests[0].diagnostic_code == "student_assignment_locked_enrollment_blocks_request"
+    assert result.unmet_requests[0].blocking_lock_id == 41
+
+
+def test_group_lock_assigns_all_members_to_one_section_or_none():
+    result = solve_student_assignment(_input(
+        requests=(
+            _request(1, student_id=1),
+            _request(2, student_id=2),
+        ),
+        sections=(
+            _section(1, capacity_max=1),
+            _section(2, delivery_group_id=2, timeslot_id=202, capacity_max=2),
+        ),
+        student_assignment_locks=(StudentAssignmentLockDTO(
+            lock_id=51,
+            lock_type="student_group_same_section",
+            course_id=1,
+            member_student_ids=(1, 2),
+        ),),
+    ))
+
+    assert result.status == "complete"
+    assert {row.section_id for row in result.assignments} == {2}
+
+
+def test_priority_request_beats_ordinary_primary_for_one_remaining_seat():
+    result = solve_student_assignment(_input(
+        requests=(
+            _request(1, student_id=1),
+            _request(2, student_id=2),
+        ),
+        sections=(_section(capacity_max=1),),
+        priority_request_ids=(2,),
+        priority_request_limit=100,
+    ))
+
+    assert [row.request_id for row in result.assignments] == [2]
+    assert result.objective_components["priority_primary_fulfilled"] == 1
+
+
+def test_strong_schedule_preservation_penalizes_a_move_from_current_enrollment():
+    movable = FixedEnrollmentDTO(
+        enrollment_id=71,
+        student_id=1,
+        section_id=2,
+        course_offering_id=11,
+        course_id=1,
+        semester=1,
+        timeslot_id=202,
+        is_in_scope=True,
+    )
+    values = dict(
+        sections=(
+            _section(1, capacity_max=2),
+            _section(2, delivery_group_id=2, timeslot_id=202, capacity_max=2),
+        ),
+        fixed_enrollments=(movable,),
+        section_utilization_balance_importance="not_important",
+        student_semester_balance_importance="not_important",
+        course_sequence_preferences_importance="not_important",
+    )
+
+    without_preservation = solve_student_assignment(_input(**values))
+    with_strong_preservation = solve_student_assignment(_input(
+        **values,
+        schedule_preservation_level="strong",
+    ))
+
+    assert without_preservation.assignments[0].section_id == 1
+    assert with_strong_preservation.assignments[0].section_id == 2
+    assert with_strong_preservation.objective_components["schedule_preservation_move_penalty"] == 0
+
+
+def test_unresolved_request_includes_a_stable_structured_reason_and_remediation():
+    result = solve_student_assignment(_input(
+        requests=(_request(course_id=9, course_offering_id=99),),
+    ))
+
+    unmet = result.unmet_requests[0]
+    assert unmet.diagnostic_code == "student_assignment_no_active_placed_section"
+    assert unmet.remediation_codes == ("student_assignment_requires_placed_section",)
+
+
+def test_historical_enrollment_is_audit_context_not_capacity_or_timeslot_context():
+    result = solve_student_assignment(_input(
+        fixed_enrollments=(FixedEnrollmentDTO(
+            enrollment_id=99,
+            student_id=1,
+            section_id=1,
+            course_offering_id=11,
+            course_id=1,
+            semester=1,
+            timeslot_id=101,
+            is_historical=True,
+        ),),
+        sections=(_section(capacity_max=1),),
+    ))
+
+    assert result.status == "complete"
+    assert result.assignments[0].section_id == 1
+
+
+def test_active_lock_cost_and_section_review_facts_are_returned():
+    result = solve_student_assignment(_input(
+        requests=(
+            _request(1, student_id=1),
+            _request(2, student_id=2),
+        ),
+        sections=(
+            _section(1, capacity_max=0, target_capacity=1),
+            _section(2, delivery_group_id=2, timeslot_id=202, capacity_max=1, target_capacity=1),
+        ),
+        student_assignment_locks=(StudentAssignmentLockDTO(
+            lock_id=61,
+            lock_type="exact_student_section",
+            student_id=1,
+            course_id=1,
+            section_id=1,
+        ),),
+    ))
+
+    lock_cost = result.lock_costs[0]
+    assert lock_cost.lock_id == 61
+    assert lock_cost.unresolved_request_ids == (1,)
+    assert lock_cost.attributable_request_count == 1
+    assert result.seat_contention[0].section_id == 2
+    assert result.seat_contention[0].competing_request_ids == (2,)
+    assert result.section_balance_facts[0].diagnostic_code == "student_assignment_section_below_target_capacity"

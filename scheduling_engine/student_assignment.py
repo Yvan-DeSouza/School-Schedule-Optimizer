@@ -1,28 +1,42 @@
 """Pure student-to-section assignment over fixed accepted schedule context.
 
-This module is intentionally independent of Django.  It never changes section
-timing, rooms, teachers, or existing enrollments; it only recommends new
-enrollment facts for a counselor-reviewed immutable run.
+This module intentionally has no Django dependency.  It consumes a detached
+snapshot, recommends enrollment creation or replacement facts, and never
+changes section timing, rooms, teachers, or persisted enrollment records.
 """
 
 from __future__ import annotations
 
 from collections import defaultdict
+from dataclasses import replace
 
 from ortools.sat.python import cp_model
 
 from .diagnostics import (
     NO_COMPLETE_STUDENT_ASSIGNMENT,
     STUDENT_ASSIGNMENT_HARD_PREREQUISITE_SEQUENCE_UNAVAILABLE,
+    STUDENT_ASSIGNMENT_LIMITED_SEAT_CONTENTION,
+    STUDENT_ASSIGNMENT_LOCKED_ENROLLMENT_BLOCKS_REQUEST,
+    STUDENT_ASSIGNMENT_NO_ACTIVE_PLACED_SECTION,
     STUDENT_ASSIGNMENT_NO_ELIGIBLE_SECTION,
+    STUDENT_ASSIGNMENT_REQUIRES_ADDITIONAL_CAPACITY,
+    STUDENT_ASSIGNMENT_REQUIRES_LOCK_RELEASE,
+    STUDENT_ASSIGNMENT_REQUIRES_PLACED_SECTION,
+    STUDENT_ASSIGNMENT_REQUIRES_PREREQUISITE_SEQUENCE_CHANGE,
+    STUDENT_ASSIGNMENT_REQUIRES_TIMESLOT_CHANGE,
+    STUDENT_ASSIGNMENT_SECTION_BELOW_TARGET_CAPACITY,
     STUDENT_ASSIGNMENT_SECTION_CAPACITY_EXHAUSTED,
+    STUDENT_ASSIGNMENT_SECTION_OVER_TARGET_CONCENTRATION,
     STUDENT_ASSIGNMENT_TIMESLOT_COLLISION,
     STUDENT_ASSIGNMENT_UNRESOLVED_REQUIRED_REQUEST,
 )
 from .dto import (
     StudentAssignmentDTO,
     StudentAssignmentInputDTO,
+    StudentAssignmentLockCostDTO,
     StudentAssignmentResultDTO,
+    StudentAssignmentSeatContentionDTO,
+    StudentAssignmentSectionBalanceDTO,
     StudentAssignmentUnmetRequestDTO,
 )
 
@@ -33,6 +47,30 @@ IMPORTANCE_LEVELS = {
     "important": 2,
     "really_important": 3,
     "extremely_important": 4,
+}
+
+# These labels deliberately mirror the scheduling-domain constants without
+# importing backend code. The engine owns no Django vocabulary dependency.
+SCHEDULE_PRESERVATION_LEVELS = {
+    "none": 0,
+    "slight": 1,
+    "moderate": 2,
+    "strong": 4,
+}
+
+LOCK_TYPE_EXACT_SECTION = "exact_student_section"
+LOCK_TYPE_WHOLE_SCHEDULE = "whole_student_schedule"
+LOCK_TYPE_SECTION_ROSTER = "section_roster"
+LOCK_TYPE_COURSE_ROSTER = "course_roster"
+LOCK_TYPE_STUDENT_GROUP = "student_group_same_section"
+LOCK_TYPE_STUDENT_TEACHER = "student_teacher_course"
+LOCK_TYPES = {
+    LOCK_TYPE_EXACT_SECTION,
+    LOCK_TYPE_WHOLE_SCHEDULE,
+    LOCK_TYPE_SECTION_ROSTER,
+    LOCK_TYPE_COURSE_ROSTER,
+    LOCK_TYPE_STUDENT_GROUP,
+    LOCK_TYPE_STUDENT_TEACHER,
 }
 
 
@@ -63,6 +101,37 @@ def _solve_lexicographically(model, objectives, time_limit_seconds):
     return (solver if status in {cp_model.OPTIMAL, cp_model.FEASIBLE} else None), status
 
 
+def _is_active_enrollment(enrollment):
+    """Historical DTO rows are audit-only even if an older caller leaves is_active true."""
+
+    return enrollment.is_active and not enrollment.is_historical
+
+
+def _scope_includes_enrollment(data, enrollment):
+    """Apply the immutable resolved scope before the model sees an enrollment.
+
+    A scoped run may identify a row directly in ``is_in_scope`` after the
+    adapter resolves its three queryable scope dimensions. The explicit IDs
+    remain available so a detached snapshot is sufficient to reproduce that
+    decision without an ORM query.
+    """
+
+    if data.scope.scope_type == "full":
+        return True
+    return (
+        enrollment.is_in_scope
+        or enrollment.student_id in data.scope.student_ids
+        or enrollment.course_id in data.scope.course_ids
+        or enrollment.section_id in data.scope.section_ids
+    )
+
+
+def _request_matches_enrollment(request, enrollment):
+    if request.student_id != enrollment.student_id or request.course_id != enrollment.course_id:
+        return False
+    return request.current_enrollment_id is None or request.current_enrollment_id == enrollment.enrollment_id
+
+
 def _validate_input(data):
     section_ids = set()
     offering_sections = defaultdict(list)
@@ -74,15 +143,13 @@ def _validate_input(data):
         section_ids.add(section.section_id)
         for offering_id in section.member_course_offering_ids:
             offering_sections[offering_id].append(section)
+
     request_ids = set()
     for request in data.requests:
         if request.request_id in request_ids:
             raise ValueError(f"Duplicate effective course request {request.request_id}.")
         request_ids.add(request.request_id)
-        if request.course_offering_id not in offering_sections:
-            # A cancelled/unoffered request remains in the result as an honest
-            # unmet request instead of causing a cryptic model error.
-            continue
+
     for importance in (
         data.section_utilization_balance_importance,
         data.student_semester_balance_importance,
@@ -90,24 +157,242 @@ def _validate_input(data):
     ):
         if importance not in IMPORTANCE_LEVELS:
             raise ValueError("Student-assignment importance values are invalid.")
+    if data.schedule_preservation_level not in SCHEDULE_PRESERVATION_LEVELS:
+        raise ValueError("Student-assignment schedule preservation level is invalid.")
+    if data.scope.scope_type not in {"full", "scoped"}:
+        raise ValueError("Student-assignment scope_type must be full or scoped.")
+    if data.scope.scope_type == "scoped" and not any(
+        (data.scope.student_ids, data.scope.course_ids, data.scope.section_ids)
+    ):
+        raise ValueError("A scoped student-assignment input requires at least one resolved scope ID.")
+    if len(set(data.priority_request_ids)) != len(data.priority_request_ids):
+        raise ValueError("Priority request IDs must be unique.")
+    priority_ids = set(data.priority_request_ids)
+    unknown_priority_ids = priority_ids - request_ids
+    if unknown_priority_ids:
+        raise ValueError("Priority request IDs must identify requests in this input.")
+    if data.priority_request_limit is not None:
+        if data.priority_request_limit < 0:
+            raise ValueError("Priority request limit cannot be negative.")
+        if len(priority_ids) > data.priority_request_limit:
+            raise ValueError("Priority request IDs exceed the resolved run limit.")
+    if any(not request.is_primary for request in data.requests if request.request_id in priority_ids):
+        raise ValueError("Only primary requests may receive student-assignment priority.")
+
+    lock_ids = set()
+    for lock in data.student_assignment_locks:
+        if lock.lock_id in lock_ids:
+            raise ValueError(f"Duplicate student-assignment lock {lock.lock_id}.")
+        lock_ids.add(lock.lock_id)
+        if lock.lock_type not in LOCK_TYPES:
+            raise ValueError(f"Unrecognized student-assignment lock type {lock.lock_type!r}.")
+        if lock.lock_type == LOCK_TYPE_STUDENT_GROUP and lock.is_active:
+            if len(set(lock.member_student_ids)) < 2:
+                raise ValueError("An active student-group lock requires at least two distinct members.")
+            if lock.course_id is None:
+                raise ValueError("An active student-group lock requires a course target.")
     return offering_sections
 
 
-def solve_student_assignment(data: StudentAssignmentInputDTO) -> StudentAssignmentResultDTO:
-    """Return the best safe recommendation, marking unmet required demand partial."""
+def _active_locks(data):
+    return tuple(sorted(
+        (lock for lock in data.student_assignment_locks if lock.is_active),
+        key=lambda lock: lock.lock_id,
+    ))
 
+
+def _diagnostic_for_unmet_request(
+    *, request, offering_sections, candidates, fixed_slots, fixed_slot_rows,
+    request_lock_blockers, direct_protected_requests, hard_sequence_impossible,
+    selected_by_section, fixed_by_section, sections,
+):
+    """Return a stable reason plus the most specific available blocking IDs."""
+
+    potential_sections = tuple(offering_sections.get(request.course_offering_id, ()))
+    lock_ids = sorted(request_lock_blockers.get(request.request_id, ()))
+    has_direct_protection = request.request_id in direct_protected_requests
+    direct_protection = direct_protected_requests.get(request.request_id)
+    if not potential_sections:
+        return (
+            STUDENT_ASSIGNMENT_NO_ACTIVE_PLACED_SECTION,
+            None,
+            None,
+            None,
+            (STUDENT_ASSIGNMENT_REQUIRES_PLACED_SECTION,),
+        )
+    if has_direct_protection or (lock_ids and not candidates):
+        return (
+            STUDENT_ASSIGNMENT_LOCKED_ENROLLMENT_BLOCKS_REQUEST,
+            direct_protection or lock_ids[0],
+            None,
+            None,
+            (STUDENT_ASSIGNMENT_REQUIRES_LOCK_RELEASE,),
+        )
+    if any(
+        student_id == request.student_id
+        and request.course_id in {prerequisite_id, course_id}
+        for student_id, prerequisite_id, course_id in hard_sequence_impossible
+    ):
+        return (
+            STUDENT_ASSIGNMENT_HARD_PREREQUISITE_SEQUENCE_UNAVAILABLE,
+            None,
+            None,
+            None,
+            (STUDENT_ASSIGNMENT_REQUIRES_PREREQUISITE_SEQUENCE_CHANGE,),
+        )
+    collided_rows = [
+        row
+        for section in potential_sections
+        if section.timeslot_id in fixed_slots[request.student_id]
+        for row in fixed_slot_rows[request.student_id, section.timeslot_id]
+    ]
+    if collided_rows and not candidates:
+        lock_id = next((lock_id for row in collided_rows for lock_id in row.lock_ids), None)
+        return (
+            STUDENT_ASSIGNMENT_TIMESLOT_COLLISION,
+            lock_id,
+            collided_rows[0].section_id,
+            collided_rows[0].student_id,
+            (STUDENT_ASSIGNMENT_REQUIRES_TIMESLOT_CHANGE,),
+        )
+    if candidates:
+        full_sections = []
+        for section, _variable in candidates:
+            assigned = selected_by_section.get(section.section_id, ())
+            occupied = len(fixed_by_section[section.section_id]) + len(assigned)
+            if occupied >= sections[section.section_id].capacity_max:
+                blocking_student_id = assigned[0].student_id if assigned else (
+                    fixed_by_section[section.section_id][0].student_id
+                    if fixed_by_section[section.section_id] else None
+                )
+                full_sections.append((section.section_id, blocking_student_id))
+        if full_sections:
+            section_id, student_id = sorted(full_sections)[0]
+            return (
+                STUDENT_ASSIGNMENT_SECTION_CAPACITY_EXHAUSTED,
+                None,
+                section_id,
+                student_id,
+                (STUDENT_ASSIGNMENT_REQUIRES_ADDITIONAL_CAPACITY,),
+            )
+    return STUDENT_ASSIGNMENT_NO_ELIGIBLE_SECTION, None, None, None, ()
+
+
+def _build_lock_costs(data, result):
+    """Measure each lock's cost with an internal deterministic relaxation.
+
+    This is result evidence, not the counselor-facing what-if workflow. Each
+    comparison removes exactly one active lock from the same immutable input.
+    A request counts only when it is unresolved with that lock and becomes
+    assigned without it, so overlapping locks are never presented as a claim
+    that their individual counts sum to the total unmet demand.
+    """
+
+    base_unmet_request_ids = {item.request_id for item in result.unmet_requests}
+    costs = []
+    for lock in _active_locks(data):
+        relaxed_data = replace(
+            data,
+            student_assignment_locks=tuple(
+                item for item in data.student_assignment_locks if item.lock_id != lock.lock_id
+            ),
+            # Lock-cost evidence is bounded independently of the main run so a
+            # large number of locks cannot turn a review request into an
+            # unbounded sequence of counterfactual solves.
+            time_limit_seconds=min(data.time_limit_seconds, 5.0),
+        )
+        relaxed_result = _solve_student_assignment(relaxed_data, include_lock_costs=False)
+        newly_assigned = {
+            item.request_id for item in relaxed_result.assignments
+        } & base_unmet_request_ids
+        costs.append(StudentAssignmentLockCostDTO(
+            lock_id=lock.lock_id,
+            attributable_request_count=len(newly_assigned),
+            unresolved_request_ids=tuple(sorted(newly_assigned)),
+        ))
+    return tuple(costs)
+
+
+def solve_student_assignment(data: StudentAssignmentInputDTO) -> StudentAssignmentResultDTO:
+    """Return the best safe recommendation with immutable review evidence."""
+
+    return _solve_student_assignment(data, include_lock_costs=True)
+
+
+def _solve_student_assignment(data, *, include_lock_costs):
     offering_sections = _validate_input(data)
     model = cp_model.CpModel()
     sections = {item.section_id: item for item in data.sections}
+    requests_by_id = {item.request_id: item for item in data.requests}
+    active_locks = _active_locks(data)
+
+    whole_schedule_lock_ids = defaultdict(set)
+    frozen_section_lock_ids = defaultdict(set)
+    frozen_course_lock_ids = defaultdict(set)
+    exact_locks_by_student_course = defaultdict(list)
+    teacher_locks_by_student_course = defaultdict(list)
+    group_locks = []
+    for lock in active_locks:
+        if lock.lock_type == LOCK_TYPE_WHOLE_SCHEDULE and lock.student_id is not None:
+            whole_schedule_lock_ids[lock.student_id].add(lock.lock_id)
+        elif lock.lock_type == LOCK_TYPE_SECTION_ROSTER and lock.section_id is not None:
+            frozen_section_lock_ids[lock.section_id].add(lock.lock_id)
+        elif lock.lock_type == LOCK_TYPE_COURSE_ROSTER and lock.course_id is not None:
+            frozen_course_lock_ids[lock.course_id].add(lock.lock_id)
+        elif lock.lock_type == LOCK_TYPE_EXACT_SECTION and lock.student_id is not None and lock.course_id is not None:
+            exact_locks_by_student_course[lock.student_id, lock.course_id].append(lock)
+        elif lock.lock_type == LOCK_TYPE_STUDENT_TEACHER and lock.student_id is not None and lock.course_id is not None:
+            teacher_locks_by_student_course[lock.student_id, lock.course_id].append(lock)
+        elif lock.lock_type == LOCK_TYPE_STUDENT_GROUP:
+            group_locks.append(lock)
+
+    active_enrollments = [
+        row for row in data.fixed_enrollments if _is_active_enrollment(row)
+    ]
+    for enrollment in active_enrollments:
+        if enrollment.section_id not in sections:
+            raise ValueError(f"Active enrollment references inactive section {enrollment.section_id}.")
+
+    # A movable enrollment must have a matching request in this run. Without
+    # one, releasing its capacity would silently erase a student's accepted
+    # course, so it remains fixed even inside a full run.
+    potential_movable = []
+    fixed_rows = []
+    for enrollment in active_enrollments:
+        exact_locks = exact_locks_by_student_course[enrollment.student_id, enrollment.course_id]
+        is_fixed = (
+            not _scope_includes_enrollment(data, enrollment)
+            or enrollment.is_locked
+            or enrollment.student_id in whole_schedule_lock_ids
+            or enrollment.section_id in frozen_section_lock_ids
+            or enrollment.course_id in frozen_course_lock_ids
+            or any(lock.section_id == enrollment.section_id for lock in exact_locks)
+        )
+        if is_fixed:
+            fixed_rows.append(enrollment)
+        else:
+            potential_movable.append(enrollment)
+    movable_rows = []
+    for enrollment in potential_movable:
+        if any(_request_matches_enrollment(request, enrollment) for request in data.requests):
+            movable_rows.append(enrollment)
+        else:
+            fixed_rows.append(enrollment)
+
+    movable_by_student_course = defaultdict(list)
+    for enrollment in movable_rows:
+        movable_by_student_course[enrollment.student_id, enrollment.course_id].append(enrollment)
+    if any(len(rows) > 1 for rows in movable_by_student_course.values()):
+        raise ValueError("A student/course pair cannot have multiple movable active enrollments.")
+
     fixed_by_section = defaultdict(list)
     fixed_slots = defaultdict(set)
+    fixed_slot_rows = defaultdict(list)
     fixed_courses = defaultdict(list)
-    diagnostics = []
-    for enrollment in data.fixed_enrollments:
-        if enrollment.section_id not in sections:
-            raise ValueError(f"Fixed enrollment references inactive section {enrollment.section_id}.")
+    for enrollment in fixed_rows:
         fixed_by_section[enrollment.section_id].append(enrollment)
         fixed_slots[enrollment.student_id].add(enrollment.timeslot_id)
+        fixed_slot_rows[enrollment.student_id, enrollment.timeslot_id].append(enrollment)
         fixed_courses[enrollment.student_id, enrollment.course_id].append(enrollment)
     for section_id, rows in fixed_by_section.items():
         if len(rows) > sections[section_id].capacity_max:
@@ -115,36 +400,157 @@ def solve_student_assignment(data: StudentAssignmentInputDTO) -> StudentAssignme
 
     variables = {}
     request_candidates = {}
+    request_lock_blockers = defaultdict(set)
+    direct_protected_requests = {}
+    previous_enrollment_by_request = {}
     for request in sorted(data.requests, key=lambda item: item.request_id):
+        student_course_key = request.student_id, request.course_id
+        existing_fixed = fixed_courses[student_course_key]
+        if existing_fixed:
+            lock_ids = {
+                lock_id for row in existing_fixed for lock_id in row.lock_ids
+            }
+            lock_ids.update(whole_schedule_lock_ids[request.student_id])
+            for row in existing_fixed:
+                lock_ids.update(frozen_section_lock_ids[row.section_id])
+            lock_ids.update(frozen_course_lock_ids[request.course_id])
+            for lock in exact_locks_by_student_course[student_course_key]:
+                lock_ids.add(lock.lock_id)
+            if any(row.is_locked for row in existing_fixed) or lock_ids:
+                direct_protected_requests[request.request_id] = min(lock_ids) if lock_ids else None
+            request_lock_blockers[request.request_id].update(lock_ids)
+            request_candidates[request.request_id] = []
+            continue
+
+        movable_rows_for_request = [
+            row for row in movable_by_student_course[student_course_key]
+            if _request_matches_enrollment(request, row)
+        ]
+        if movable_rows_for_request:
+            previous_enrollment_by_request[request.request_id] = movable_rows_for_request[0]
+
+        if request.student_id in whole_schedule_lock_ids:
+            request_lock_blockers[request.request_id].update(whole_schedule_lock_ids[request.student_id])
+            request_candidates[request.request_id] = []
+            continue
+        if request.course_id in frozen_course_lock_ids:
+            request_lock_blockers[request.request_id].update(frozen_course_lock_ids[request.course_id])
+            request_candidates[request.request_id] = []
+            continue
+
+        exact_locks = exact_locks_by_student_course[student_course_key]
+        # Two active exact locks must both be true. Their target intersection
+        # therefore fails closed when an invalid duplicate configuration names
+        # different sections for the same student/course pair.
+        allowed_exact_section_ids = (
+            {lock.section_id for lock in exact_locks}
+            if len({lock.section_id for lock in exact_locks}) == 1
+            else set()
+        )
+        teacher_locks = teacher_locks_by_student_course[student_course_key]
+        allowed_teacher_ids = (
+            {lock.teacher_id for lock in teacher_locks}
+            if len({lock.teacher_id for lock in teacher_locks}) == 1
+            else set()
+        )
         candidates = []
         for section in offering_sections.get(request.course_offering_id, ()):
             if section.timeslot_id in fixed_slots[request.student_id]:
+                continue
+            if section.section_id in frozen_section_lock_ids:
+                request_lock_blockers[request.request_id].update(
+                    frozen_section_lock_ids[section.section_id]
+                )
+                continue
+            if exact_locks and section.section_id not in allowed_exact_section_ids:
+                request_lock_blockers[request.request_id].update(lock.lock_id for lock in exact_locks)
+                continue
+            if teacher_locks and section.teacher_id not in allowed_teacher_ids:
+                request_lock_blockers[request.request_id].update(lock.lock_id for lock in teacher_locks)
                 continue
             variable = model.NewBoolVar(f"enroll_{request.request_id}_{section.section_id}")
             variables[request.request_id, section.section_id] = variable
             candidates.append((section, variable))
         request_candidates[request.request_id] = candidates
+
+    # Group locks express one indivisible counselor decision. Restricting every
+    # member to the same candidate section before capacity constraints prevents
+    # a partial group placement from looking like a successful recommendation.
+    requests_by_student_course = defaultdict(list)
+    for request in data.requests:
+        requests_by_student_course[request.student_id, request.course_id].append(request)
+    for lock in group_locks:
+        members = tuple(sorted(set(lock.member_student_ids)))
+        member_requests = [
+            requests_by_student_course[student_id, lock.course_id]
+            for student_id in members
+        ]
+        if any(len(rows) != 1 for rows in member_requests):
+            for rows in member_requests:
+                for request in rows:
+                    request_candidates[request.request_id] = []
+                    request_lock_blockers[request.request_id].add(lock.lock_id)
+            continue
+        group_requests = [rows[0] for rows in member_requests]
+        fixed_group_sections = {
+            row.section_id
+            for student_id in members
+            for row in fixed_courses[student_id, lock.course_id]
+        }
+        candidate_sets = [
+            {section.section_id for section, _variable in request_candidates[request.request_id]}
+            for request in group_requests
+        ]
+        common_section_ids = set.intersection(*candidate_sets) if candidate_sets else set()
+        if fixed_group_sections:
+            # A fixed group member establishes the only lawful destination for
+            # the movable members. Multiple fixed destinations are already an
+            # irreconcilable group lock, so no member may be reassigned.
+            common_section_ids &= fixed_group_sections if len(fixed_group_sections) == 1 else set()
+        if not common_section_ids:
+            for request in group_requests:
+                request_candidates[request.request_id] = []
+                request_lock_blockers[request.request_id].add(lock.lock_id)
+            continue
+        for request in group_requests:
+            request_candidates[request.request_id] = [
+                (section, variable)
+                for section, variable in request_candidates[request.request_id]
+                if section.section_id in common_section_ids
+            ]
+        if fixed_group_sections:
+            for request in group_requests:
+                model.Add(sum(variable for _section, variable in request_candidates[request.request_id]) == 1)
+        else:
+            for section_id in sorted(common_section_ids):
+                member_variables = [
+                    next(
+                        variable
+                        for section, variable in request_candidates[request.request_id]
+                        if section.section_id == section_id
+                    )
+                    for request in group_requests
+                ]
+                for variable in member_variables[1:]:
+                    model.Add(member_variables[0] == variable)
+
+    for candidates in request_candidates.values():
         if candidates:
             model.Add(sum(variable for _section, variable in candidates) <= 1)
-        else:
-            diagnostics.append({
-                "code": STUDENT_ASSIGNMENT_NO_ELIGIBLE_SECTION,
-                "request_id": request.request_id,
-                "student_id": request.student_id,
-                "course_id": request.course_id,
-            })
 
     by_section = defaultdict(list)
     by_student_timeslot = defaultdict(list)
     by_student_section = defaultdict(list)
     by_student_course_semester = defaultdict(list)
-    for (request_id, section_id), variable in variables.items():
-        request = next(item for item in data.requests if item.request_id == request_id)
-        section = sections[section_id]
-        by_section[section_id].append(variable)
-        by_student_timeslot[request.student_id, section.timeslot_id].append(variable)
-        by_student_section[request.student_id, section_id].append(variable)
-        by_student_course_semester[request.student_id, request.course_id, section.semester].append(variable)
+    for request_id, candidates in request_candidates.items():
+        request = requests_by_id[request_id]
+        for section, variable in candidates:
+            by_section[section.section_id].append(variable)
+            by_student_timeslot[request.student_id, section.timeslot_id].append(variable)
+            by_student_section[request.student_id, section.section_id].append(variable)
+            by_student_course_semester[
+                request.student_id, request.course_id, section.semester
+            ].append(variable)
     for section_id, rows in by_section.items():
         remaining = sections[section_id].capacity_max - len(fixed_by_section[section_id])
         model.Add(sum(rows) <= remaining)
@@ -156,7 +562,8 @@ def solve_student_assignment(data: StudentAssignmentInputDTO) -> StudentAssignme
         model.Add(sum(rows) <= 1)
 
     # Same-year hard prerequisites apply only when both courses are actually
-    # assigned in this target year.  Prior completion is deliberately assumed.
+    # assigned in this target year. Prior completion remains deliberately
+    # assumed by the accepted first-release decision.
     student_ids = {request.student_id for request in data.requests} | set(fixed_slots)
     fixed_semesters = {
         (student_id, course_id): {row.semester for row in rows}
@@ -177,8 +584,14 @@ def solve_student_assignment(data: StudentAssignmentInputDTO) -> StudentAssignme
                 if candidate_student == student_id and course_id == edge.course_id
                 for variable in variables_for_course
             ]
-            prerequisite_rows.extend((semester, None) for semester in fixed_semesters.get((student_id, edge.prerequisite_id), ()))
-            dependent_rows.extend((semester, None) for semester in fixed_semesters.get((student_id, edge.course_id), ()))
+            prerequisite_rows.extend(
+                (semester, None)
+                for semester in fixed_semesters.get((student_id, edge.prerequisite_id), ())
+            )
+            dependent_rows.extend(
+                (semester, None)
+                for semester in fixed_semesters.get((student_id, edge.course_id), ())
+            )
             for prerequisite_semester, prerequisite_variable in prerequisite_rows:
                 for dependent_semester, dependent_variable in dependent_rows:
                     if prerequisite_semester == 1 and dependent_semester == 2:
@@ -191,15 +604,7 @@ def solve_student_assignment(data: StudentAssignmentInputDTO) -> StudentAssignme
                         model.Add(prerequisite_variable == 0)
                     else:
                         model.Add(prerequisite_variable + dependent_variable <= 1)
-    for student_id, prerequisite_id, course_id in sorted(hard_sequence_impossible):
-        diagnostics.append({
-            "code": STUDENT_ASSIGNMENT_HARD_PREREQUISITE_SEQUENCE_UNAVAILABLE,
-            "student_id": student_id,
-            "prerequisite_course_id": prerequisite_id,
-            "course_id": course_id,
-        })
 
-    all_variables = list(variables.values())
     objectives = []
     mandatory = [
         variable
@@ -207,11 +612,24 @@ def solve_student_assignment(data: StudentAssignmentInputDTO) -> StudentAssignme
         for _section, variable in request_candidates[request.request_id]
     ]
     objectives.append(-sum(mandatory or [0]))
+    priority_request_ids = set(data.priority_request_ids)
+    priority_rows = [
+        variable
+        for request in data.requests
+        if request.request_id in priority_request_ids and request.is_primary and not request.is_mandatory
+        for _section, variable in request_candidates[request.request_id]
+    ]
+    objectives.append(-sum(priority_rows or [0]))
     for priority_tier in sorted({request.priority_tier for request in data.requests if request.is_primary}):
         rows = [
             variable
             for request in data.requests
-            if request.is_primary and request.priority_tier == priority_tier
+            if (
+                request.is_primary
+                and not request.is_mandatory
+                and request.request_id not in priority_request_ids
+                and request.priority_tier == priority_tier
+            )
             for _section, variable in request_candidates[request.request_id]
         ]
         objectives.append(-sum(rows or [0]))
@@ -258,8 +676,16 @@ def solve_student_assignment(data: StudentAssignmentInputDTO) -> StudentAssignme
             for right in group_sections[index + 1:]:
                 left_count = len(fixed_by_section[left.section_id]) + sum(by_section[left.section_id])
                 right_count = len(fixed_by_section[right.section_id]) + sum(by_section[right.section_id])
-                difference = model.NewIntVar(-max(left.capacity_max, right.capacity_max), max(left.capacity_max, right.capacity_max), f"utilization_difference_{left.section_id}_{right.section_id}")
-                penalty = model.NewIntVar(0, max(left.capacity_max, right.capacity_max), f"utilization_penalty_{left.section_id}_{right.section_id}")
+                difference = model.NewIntVar(
+                    -max(left.capacity_max, right.capacity_max),
+                    max(left.capacity_max, right.capacity_max),
+                    f"utilization_difference_{left.section_id}_{right.section_id}",
+                )
+                penalty = model.NewIntVar(
+                    0,
+                    max(left.capacity_max, right.capacity_max),
+                    f"utilization_penalty_{left.section_id}_{right.section_id}",
+                )
                 model.Add(difference == left_count - right_count)
                 model.AddAbsEquality(penalty, difference)
                 section_balance_terms.append(penalty)
@@ -269,7 +695,7 @@ def solve_student_assignment(data: StudentAssignmentInputDTO) -> StudentAssignme
 
     semester_balance_terms = []
     for student_id in student_ids:
-        requested_course_ids = {request.course_id for request in data.requests}
+        requested_course_ids = {request.course_id for request in data.requests if request.student_id == student_id}
         semester_1 = sum(
             variable
             for course_id in requested_course_ids
@@ -280,80 +706,158 @@ def solve_student_assignment(data: StudentAssignmentInputDTO) -> StudentAssignme
             for course_id in requested_course_ids
             for variable in by_student_course_semester[student_id, course_id, 2]
         )
-        semester_1 += sum(1 for row in data.fixed_enrollments if row.student_id == student_id and row.semester == 1)
-        semester_2 += sum(1 for row in data.fixed_enrollments if row.student_id == student_id and row.semester == 2)
-        penalty = model.NewIntVar(0, len(data.requests) + len(data.fixed_enrollments), f"semester_balance_{student_id}")
+        semester_1 += sum(1 for row in fixed_rows if row.student_id == student_id and row.semester == 1)
+        semester_2 += sum(1 for row in fixed_rows if row.student_id == student_id and row.semester == 2)
+        penalty = model.NewIntVar(
+            0,
+            len(data.requests) + len(fixed_rows),
+            f"semester_balance_{student_id}",
+        )
         model.AddAbsEquality(penalty, semester_1 - semester_2)
         semester_balance_terms.append(penalty)
     semester_level = IMPORTANCE_LEVELS[data.student_semester_balance_importance]
     if semester_level:
         soft_objectives[semester_level].append(sum(semester_balance_terms or [0]))
+
+    preservation_terms = []
+    for request_id, enrollment in previous_enrollment_by_request.items():
+        preservation_terms.extend(
+            variable
+            for section, variable in request_candidates[request_id]
+            if section.section_id != enrollment.section_id
+        )
+    preservation_level = SCHEDULE_PRESERVATION_LEVELS[data.schedule_preservation_level]
+    if preservation_level:
+        # A stronger counselor choice both promotes this objective above lower
+        # soft tiers and scales its internal penalty without exposing numeric
+        # weights through the public contract.
+        soft_objectives[preservation_level].append(
+            preservation_level * sum(preservation_terms or [0])
+        )
     for level in sorted(soft_objectives, reverse=True):
         objectives.append(sum(soft_objectives[level]))
     # A final opaque-ID objective makes equivalent recommendations stable.
-    objectives.append(sum((request_id * 100000 + section_id) * variable for (request_id, section_id), variable in variables.items()) if variables else 0)
+    objectives.append(
+        sum(
+            (request_id * 100000 + section_id) * variable
+            for (request_id, section_id), variable in variables.items()
+            if any(
+                candidate_section.section_id == section_id and candidate_variable is variable
+                for candidate_section, candidate_variable in request_candidates[request_id]
+            )
+        ) if variables else 0
+    )
 
     solver, outcome = _solve_lexicographically(model, objectives, data.time_limit_seconds)
     if solver is None:
-        diagnostics.append({"code": NO_COMPLETE_STUDENT_ASSIGNMENT})
-        return StudentAssignmentResultDTO(
+        result = StudentAssignmentResultDTO(
             status="infeasible",
             solver_outcome=_outcome_name(outcome),
             assignments=(),
             unmet_requests=tuple(
                 StudentAssignmentUnmetRequestDTO(
-                    request_id=item.request_id, student_id=item.student_id,
-                    course_id=item.course_id, is_primary=item.is_primary,
-                    is_mandatory=item.is_mandatory, assignment_basis=item.assignment_basis,
+                    request_id=item.request_id,
+                    student_id=item.student_id,
+                    course_id=item.course_id,
+                    is_primary=item.is_primary,
+                    is_mandatory=item.is_mandatory,
+                    assignment_basis=item.assignment_basis,
                     diagnostic_code=STUDENT_ASSIGNMENT_UNRESOLVED_REQUIRED_REQUEST,
-                ) for item in data.requests
+                )
+                for item in data.requests
             ),
-            diagnostics=tuple(diagnostics), objective_components={}, sequence_outcomes=(),
+            diagnostics=({"code": NO_COMPLETE_STUDENT_ASSIGNMENT},),
+            objective_components={},
+            sequence_outcomes=(),
         )
+        return replace(result, lock_costs=_build_lock_costs(data, result)) if include_lock_costs else result
 
     assignments = []
     assigned_request_ids = set()
+    selected_by_section = defaultdict(list)
     for request in sorted(data.requests, key=lambda item: item.request_id):
         for section, variable in request_candidates[request.request_id]:
             if solver.Value(variable):
-                assignments.append(StudentAssignmentDTO(
-                    request_id=request.request_id, student_id=request.student_id,
-                    section_id=section.section_id, course_offering_id=request.course_offering_id,
-                    course_id=request.course_id, semester=section.semester,
-                    timeslot_id=section.timeslot_id, assignment_basis=request.assignment_basis,
+                previous = previous_enrollment_by_request.get(request.request_id)
+                assignment = StudentAssignmentDTO(
+                    request_id=request.request_id,
+                    student_id=request.student_id,
+                    section_id=section.section_id,
+                    course_offering_id=request.course_offering_id,
+                    course_id=request.course_id,
+                    semester=section.semester,
+                    timeslot_id=section.timeslot_id,
+                    assignment_basis=request.assignment_basis,
                     backup_resolution_snapshot=request.backup_resolution_snapshot,
-                ))
+                    previous_enrollment_id=previous.enrollment_id if previous else None,
+                    previous_section_id=previous.section_id if previous else None,
+                )
+                assignments.append(assignment)
+                selected_by_section[section.section_id].append(assignment)
                 assigned_request_ids.add(request.request_id)
                 break
+
     unmet = []
+    diagnostics = []
     for request in data.requests:
         if request.request_id in assigned_request_ids:
             continue
-        diagnostic_code = (
-            STUDENT_ASSIGNMENT_SECTION_CAPACITY_EXHAUSTED
-            if request_candidates[request.request_id]
-            else STUDENT_ASSIGNMENT_NO_ELIGIBLE_SECTION
+        diagnostic_code, blocking_lock_id, blocking_section_id, blocking_student_id, remediation_codes = (
+            _diagnostic_for_unmet_request(
+                request=request,
+                offering_sections=offering_sections,
+                candidates=request_candidates[request.request_id],
+                fixed_slots=fixed_slots,
+                fixed_slot_rows=fixed_slot_rows,
+                request_lock_blockers=request_lock_blockers,
+                direct_protected_requests=direct_protected_requests,
+                hard_sequence_impossible=hard_sequence_impossible,
+                selected_by_section=selected_by_section,
+                fixed_by_section=fixed_by_section,
+                sections=sections,
+            )
         )
-        if any(
-            sections[section.section_id].timeslot_id in fixed_slots[request.student_id]
-            for section in offering_sections.get(request.course_offering_id, ())
-        ):
-            diagnostic_code = STUDENT_ASSIGNMENT_TIMESLOT_COLLISION
         unmet.append(StudentAssignmentUnmetRequestDTO(
-            request_id=request.request_id, student_id=request.student_id,
-            course_id=request.course_id, is_primary=request.is_primary,
-            is_mandatory=request.is_mandatory, assignment_basis=request.assignment_basis,
+            request_id=request.request_id,
+            student_id=request.student_id,
+            course_id=request.course_id,
+            is_primary=request.is_primary,
+            is_mandatory=request.is_mandatory,
+            assignment_basis=request.assignment_basis,
             diagnostic_code=diagnostic_code,
+            blocking_lock_id=blocking_lock_id,
+            blocking_section_id=blocking_section_id,
+            blocking_student_id=blocking_student_id,
+            remediation_codes=remediation_codes,
         ))
+        diagnostics.append({
+            "code": diagnostic_code,
+            "request_id": request.request_id,
+            "student_id": request.student_id,
+            "course_id": request.course_id,
+            **({"blocking_lock_id": blocking_lock_id} if blocking_lock_id is not None else {}),
+            **({"blocking_section_id": blocking_section_id} if blocking_section_id is not None else {}),
+            **({"blocking_student_id": blocking_student_id} if blocking_student_id is not None else {}),
+            **({"remediation_codes": remediation_codes} if remediation_codes else {}),
+        })
+
     required_unmet = [item for item in unmet if item.is_mandatory or item.is_primary]
     if required_unmet:
         diagnostics.append({
             "code": STUDENT_ASSIGNMENT_UNRESOLVED_REQUIRED_REQUEST,
             "request_ids": [item.request_id for item in required_unmet],
         })
+    for student_id, prerequisite_id, course_id in sorted(hard_sequence_impossible):
+        diagnostics.append({
+            "code": STUDENT_ASSIGNMENT_HARD_PREREQUISITE_SEQUENCE_UNAVAILABLE,
+            "student_id": student_id,
+            "prerequisite_course_id": prerequisite_id,
+            "course_id": course_id,
+        })
+
     sequence_outcomes = []
     assigned_courses = defaultdict(dict)
-    for row in data.fixed_enrollments:
+    for row in fixed_rows:
         assigned_courses[row.student_id][row.course_id] = row.semester
     for row in assignments:
         assigned_courses[row.student_id][row.course_id] = row.semester
@@ -364,19 +868,79 @@ def solve_student_assignment(data: StudentAssignmentInputDTO) -> StudentAssignme
                     "student_id": student_id,
                     "earlier_course_id": preference.earlier_course_id,
                     "later_course_id": preference.later_course_id,
-                    "satisfied": courses[preference.earlier_course_id] == 1 and courses[preference.later_course_id] == 2,
+                    "satisfied": courses[preference.earlier_course_id] == 1
+                    and courses[preference.later_course_id] == 2,
                 })
-    return StudentAssignmentResultDTO(
+
+    seat_contention = []
+    for section_id, awarded in sorted(selected_by_section.items()):
+        competing_request_ids = tuple(sorted({
+            request_id
+            for request_id, candidates in request_candidates.items()
+            if any(section.section_id == section_id for section, _variable in candidates)
+        }))
+        if len(competing_request_ids) > len(awarded):
+            diagnostics.append({
+                "code": STUDENT_ASSIGNMENT_LIMITED_SEAT_CONTENTION,
+                "section_id": section_id,
+                "competing_request_ids": competing_request_ids,
+                "awarded_request_ids": tuple(item.request_id for item in awarded),
+            })
+        seat_contention.append(StudentAssignmentSeatContentionDTO(
+            section_id=section_id,
+            available_seat_count=sections[section_id].capacity_max - len(fixed_by_section[section_id]),
+            awarded_request_ids=tuple(item.request_id for item in awarded),
+            competing_request_ids=competing_request_ids,
+        ))
+
+    section_balance_facts = []
+    for section in sorted(data.sections, key=lambda item: item.section_id):
+        enrollment_count = len(fixed_by_section[section.section_id]) + len(selected_by_section.get(section.section_id, ()))
+        balance_code = None
+        if enrollment_count < section.target_capacity:
+            balance_code = STUDENT_ASSIGNMENT_SECTION_BELOW_TARGET_CAPACITY
+        elif enrollment_count > section.target_capacity:
+            balance_code = STUDENT_ASSIGNMENT_SECTION_OVER_TARGET_CONCENTRATION
+        if balance_code:
+            diagnostics.append({
+                "code": balance_code,
+                "section_id": section.section_id,
+                "enrollment_count": enrollment_count,
+                "target_capacity": section.target_capacity,
+            })
+        section_balance_facts.append(StudentAssignmentSectionBalanceDTO(
+            section_id=section.section_id,
+            enrollment_count=enrollment_count,
+            target_capacity=section.target_capacity,
+            diagnostic_code=balance_code,
+        ))
+
+    result = StudentAssignmentResultDTO(
         status="complete" if not required_unmet and not hard_sequence_impossible else "partial",
         solver_outcome=_outcome_name(outcome),
-        assignments=tuple(assignments), unmet_requests=tuple(unmet), diagnostics=tuple(diagnostics),
+        assignments=tuple(assignments),
+        unmet_requests=tuple(unmet),
+        diagnostics=tuple(diagnostics),
         objective_components={
-            "mandatory_fulfilled": float(sum(1 for row in assignments if next(item for item in data.requests if item.request_id == row.request_id).is_mandatory)),
-            "primary_fulfilled": float(sum(1 for row in assignments if next(item for item in data.requests if item.request_id == row.request_id).is_primary)),
-            "approved_backup_fulfilled": float(sum(1 for row in assignments if not next(item for item in data.requests if item.request_id == row.request_id).is_primary)),
+            "mandatory_fulfilled": float(sum(
+                1 for row in assignments if requests_by_id[row.request_id].is_mandatory
+            )),
+            "priority_primary_fulfilled": float(sum(
+                1 for row in assignments if row.request_id in priority_request_ids
+            )),
+            "primary_fulfilled": float(sum(
+                1 for row in assignments if requests_by_id[row.request_id].is_primary
+            )),
+            "approved_backup_fulfilled": float(sum(
+                1 for row in assignments if not requests_by_id[row.request_id].is_primary
+            )),
             "section_utilization_balance_penalty": float(sum(solver.Value(item) for item in section_balance_terms)),
             "student_semester_balance_penalty": float(sum(solver.Value(item) for item in semester_balance_terms)),
+            "schedule_preservation_move_penalty": float(sum(solver.Value(item) for item in preservation_terms)),
             "soft_sequence_preferences_satisfied": float(sum(item["satisfied"] for item in sequence_outcomes)),
         },
         sequence_outcomes=tuple(sequence_outcomes),
+        seat_contention=tuple(seat_contention),
+        section_balance_facts=tuple(section_balance_facts),
     )
+    return replace(result, lock_costs=_build_lock_costs(data, result)) if include_lock_costs else result
