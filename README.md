@@ -419,7 +419,7 @@ python -m pytest -c scheduling_engine/pytest.ini scheduling_engine/tests
 
 Each semester uses four recurring timetable blocks: `A`, `B`, `C`, and `D`.
 A `TimeSlot` represents one block, not a single calendar-day occurrence. The
-fixed rotation is defined in `backend/apps/common/constants.py`:
+fixed rotation is defined in `backend/apps/common/school_values.py`:
 
 | Block | Day 1 | Day 2 | Day 3 | Day 4 |
 | --- | --- | --- | --- | --- |
@@ -430,13 +430,22 @@ fixed rotation is defined in `backend/apps/common/constants.py`:
 
 ## Shared Domain Constants
 
-`backend/apps/common/constants.py` is the single source of truth for reusable
-selectable values: grade levels, room types, course categories, semesters,
-course-request types, A-D blocks and rotation positions, and application role
-values. It also defines qualification kinds, canonical teachable subjects,
-divisions, enforcement levels, and source systems. Add or change a supported
-option there; Django models, services, API tests, and the adapter import the
-relevant named constant rather than defining their own copy.
+Authoritative reusable constants live in the owning domain modules:
+
+- `backend/apps/common/school_values.py` for school-wide values such as grade
+  levels, room types, semesters, A-D blocks, and rotation positions;
+- `backend/apps/people/constants.py` for application role values;
+- `backend/apps/courses/constants.py` for course, request, offering, and
+  delivery-group values;
+- `backend/apps/constraints/constants.py` for qualification and constraint
+  values;
+- `backend/apps/scheduling/constants.py` for planning, roster, backup, and
+  section-lifecycle values.
+
+`backend/apps/common/constants.py` is a compatibility export for older imports.
+Add or change a supported option in the domain module that owns it; Django
+models, services, API tests, and the adapter should import that named constant
+rather than defining their own copy.
 
 ## Semester and A-D Placement API
 
