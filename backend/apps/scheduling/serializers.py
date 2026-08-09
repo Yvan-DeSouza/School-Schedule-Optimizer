@@ -523,11 +523,11 @@ class SectionPlanningRunCreateSerializer(serializers.Serializer):
             if key in seen_capacities:
                 raise serializers.ValidationError({"teacher_capacity_adjustments": "Only one adjustment is allowed per teacher and semester."})
             seen_capacities.add(key)
-            if item.get("excluded") and "reduce_by" in item:
+            if item.get("is_excluded") and "reduce_by" in item:
                 # Exclusion already means zero remaining capacity; combining it
                 # with a numeric reduction obscures intent.
-                raise serializers.ValidationError({"teacher_capacity_adjustments": "excluded cannot be combined with reduce_by."})
-            if not item.get("excluded"):
+                raise serializers.ValidationError({"teacher_capacity_adjustments": "is_excluded cannot be combined with reduce_by."})
+            if not item.get("is_excluded"):
                 reduction = item.get("reduce_by", 0)
                 if not isinstance(reduction, int) or reduction < 0:
                     raise serializers.ValidationError({"teacher_capacity_adjustments": "reduce_by must be a non-negative integer."})
@@ -887,13 +887,13 @@ class TeacherCapacityAdjustmentSerializer(serializers.Serializer):
 
     teacher_id = serializers.IntegerField(min_value=1)
     semester = serializers.ChoiceField(choices=(1, 2))
-    excluded = serializers.BooleanField(required=False, default=False)
+    is_excluded = serializers.BooleanField(required=False, default=False)
     reduce_by = serializers.IntegerField(min_value=0, required=False, default=0)
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
-        if attrs["excluded"] and attrs["reduce_by"]:
-            raise serializers.ValidationError("excluded cannot be combined with reduce_by.")
+        if attrs["is_excluded"] and attrs["reduce_by"]:
+            raise serializers.ValidationError("is_excluded cannot be combined with reduce_by.")
         return attrs
 
 

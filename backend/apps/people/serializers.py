@@ -20,7 +20,7 @@ class TeacherSerializer(serializers.ModelSerializer):
             "seniority",
             "max_courses_per_semester",
             "max_courses_total",
-            "reduced_load",
+            "is_reduced_load",
             "is_archived",
         )
         read_only_fields = ("is_archived",)

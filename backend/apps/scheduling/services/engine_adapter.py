@@ -295,7 +295,7 @@ def load_scheduling_input(academic_year_id, *, require_ready_roster=False):
             for student in Student.objects.filter(Q(academic_year_id=academic_year_id) | Q(id__in=request_student_ids)).distinct()
         ),
         teachers=tuple(
-            TeacherDTO(teacher.id, teacher.max_courses_per_semester, teacher.max_courses_total, teacher.seniority, teacher.reduced_load)
+            TeacherDTO(teacher.id, teacher.max_courses_per_semester, teacher.max_courses_total, teacher.seniority, teacher.is_reduced_load)
             for teacher in teachers
         ),
         # Produce an explicit two-semester record for every teacher.  This keeps

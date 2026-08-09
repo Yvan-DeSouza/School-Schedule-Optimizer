@@ -118,9 +118,9 @@ class Teacher(models.Model):
 
     max_courses_total = models.IntegerField(default=6)
 
-    # reduced_load is descriptive context; effective numeric limits still come
+    # is_reduced_load is descriptive context; effective numeric limits still come
     # from the maximum fields/planning-capacity records.
-    reduced_load = models.BooleanField(default=False)
+    is_reduced_load = models.BooleanField(default=False)
     # Referenced teachers are archived rather than deleted so old runs,
     # assignments, and qualification evidence remain explainable.
     is_archived = models.BooleanField(default=False)

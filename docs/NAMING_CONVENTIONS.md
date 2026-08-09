@@ -168,7 +168,7 @@ has_prerequisite
 requires_statutory_qualification
 ```
 
-Existing names such as `reduced_load` and
+Existing names such as `is_reduced_load` and
 `uses_current_demand_fallback` remain valid legacy names. New fields should
 avoid vague names such as `flag`, `value`, or `enabled` unless the meaning
 is unambiguous.
@@ -491,22 +491,14 @@ Backend services now import the existing diagnostic constants from
 domain-owned constants modules as authoritative, and describes
 `backend/apps/common/constants.py` as a compatibility export.
 
-### 4. Boolean naming exceptions — open, separate decision
+### 4. Boolean naming exceptions — done
 
-The existing names `reduced_load` and `excluded` remain unchanged. This item
-is still under consideration rather than permanently deferred. Because the
-project has no production data and no frontend yet, this is the cheapest point
-to rename these fields if the project decides to do so.
-
-Any rename has concrete scope: `reduced_load` touches
-`backend/apps/people/models.py` (a database-column rename under the project's
-migrationless `run-syncdb` workflow), `backend/apps/people/serializers.py`,
-`backend/apps/scheduling/services/engine_adapter.py`, and
-`scheduling_engine/dto.py`. `excluded` touches multiple locations in
-`backend/apps/scheduling/serializers.py` and
-`scheduling_engine/planning_core.py`; both renames may also require test
-fixture/factory updates. This remains a deliberate, separate decision. No
-action should be taken on it as part of this cleanup pass.
+The approved boolean renames are complete: `reduced_load` is now
+`is_reduced_load`, and `excluded` is now `is_excluded`. The model, serializer,
+engine adapter, DTO, planning-core lookup, and supporting documentation were
+updated together. No migration file was created; the local database must be
+recreated under the project's migrationless `run-syncdb` workflow before using
+the renamed model column.
 
 ### 5. Core app path configuration — done
 

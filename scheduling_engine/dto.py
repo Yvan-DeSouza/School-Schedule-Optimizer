@@ -120,7 +120,7 @@ class TeacherDTO:
     max_courses_per_semester: int
     max_courses_total: int
     seniority: int = 0
-    reduced_load: bool = False
+    is_reduced_load: bool = False
 
 
 @dataclass(frozen=True)

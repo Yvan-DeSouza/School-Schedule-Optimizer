@@ -716,7 +716,7 @@ This section provides the detailed design of each computationally significant st
 | Aspect | Detail |
 |---|---|
 | Responsibilities | Assign a `Teacher` to each unlocked `Section` (post-placement). |
-| Inputs | Placed `Section`s (from 20.2), `TeacherQualification`, `CourseQualificationRequirement`, `TeacherAvailability` (cross-referenced against each section's assigned `TimeSlot`), `TeacherCoursePreference`, `Teacher.seniority`, `Teacher.max_courses_per_semester`/`max_courses_total`, `Teacher.reduced_load`, existing `SectionLock.locked_teacher`. |
+| Inputs | Placed `Section`s (from 20.2), `TeacherQualification`, `CourseQualificationRequirement`, `TeacherAvailability` (cross-referenced against each section's assigned `TimeSlot`), `TeacherCoursePreference`, `Teacher.seniority`, `Teacher.max_courses_per_semester`/`max_courses_total`, `Teacher.is_reduced_load`, existing `SectionLock.locked_teacher`. |
 | Hard Constraints | A teacher is qualified for the course (via `CourseQualificationRequirement` ⊆ `TeacherQualification`); a teacher is available at the section's timeslot; a teacher is never assigned two sections at overlapping timeslots; workload caps are respected. |
 | Soft Constraints (Objective Terms) | Maximize satisfied `TeacherCoursePreference`; balance workload distribution; weight by seniority where preferences conflict (using `CounselorConstraintPreference` weights). |
 | Outputs | `Section.teacher` assignment. |

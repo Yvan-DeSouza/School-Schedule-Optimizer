@@ -190,7 +190,7 @@ def remaining_teacher_capacities(data: SchedulingInputDTO, adjustments) -> dict[
             raise ValueError(
                 "Teacher capacity adjustment references an unknown teacher or semester."
             )
-        if adjustment.get("excluded"):
+        if adjustment.get("is_excluded"):
             values[key] = 0
         else:
             values[key] = max(0, values[key] - int(adjustment.get("reduce_by", 0)))
