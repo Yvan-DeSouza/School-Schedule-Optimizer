@@ -29,6 +29,16 @@ from backend.apps.common.constants import (
 from backend.apps.common.constants import COURSE_OFFERING_STATUS_OFFERED
 from backend.apps.courses.models import Course, CourseOffering, Section
 from backend.apps.courses.services.offerings import ensure_academic_year_offerings
+from backend.apps.scheduling.codes import (
+    COMBINED_OFFERING_REQUIRES_PHYSICAL_STAFFING_WORKFLOW,
+    COURSE_ALREADY_APPROVED_FROM_RUN,
+    COURSE_NO_LONGER_EXISTS,
+    COURSE_NOT_ALLOWED_IN_SEMESTER_1,
+    COURSE_NOT_ALLOWED_IN_SEMESTER_2,
+    COURSE_OFFERING_NOT_ACTIVE,
+    EXISTING_SECTIONS_FOR_COURSE_YEAR,
+    NO_UNAPPROVED_COURSES_REMAINING,
+)
 from backend.apps.scheduling.models import (
     CapacityProfile,
     SectionPlanningApproval,
@@ -235,7 +245,7 @@ def preview_section_planning_approval(run, *, selections=None):
             # Planning snapshots intentionally survive catalog deletion.  They
             # remain readable, but a missing live Course cannot back a Section FK.
             error = {
-                "code": "course_no_longer_exists",
+                "code": COURSE_NO_LONGER_EXISTS,
                 "course_id": course_id,
                 "message": "The course no longer exists and cannot be approved.",
             }
@@ -260,7 +270,7 @@ def preview_section_planning_approval(run, *, selections=None):
                 or not offering.delivery_group_id
             ):
                 error = {
-                    "code": "course_offering_not_active",
+                    "code": COURSE_OFFERING_NOT_ACTIVE,
                     "course_id": course_id,
                     "message": f"{course.course_code} is not an active offering for this year.",
                 }
@@ -268,7 +278,7 @@ def preview_section_planning_approval(run, *, selections=None):
                 item_validation_errors.append(error["code"])
             elif offering.delivery_group.offerings.count() > 1:
                 error = {
-                    "code": "combined_offering_requires_physical_staffing_workflow",
+                    "code": COMBINED_OFFERING_REQUIRES_PHYSICAL_STAFFING_WORKFLOW,
                     "course_id": course_id,
                     "message": (
                         f"{course.course_code} belongs to a combined physical class. "
@@ -286,7 +296,7 @@ def preview_section_planning_approval(run, *, selections=None):
                 _append_once(warnings, "planning_configuration_changed_since_run")
             if current_allowed_semester == COURSE_ALLOWED_SEMESTER_1_ONLY and proposed_semester_2:
                 error = {
-                    "code": "course_not_allowed_in_semester_2",
+                    "code": COURSE_NOT_ALLOWED_IN_SEMESTER_2,
                     "course_id": course_id,
                     "message": f"{course.course_code} is currently restricted to Semester 1.",
                 }
@@ -294,7 +304,7 @@ def preview_section_planning_approval(run, *, selections=None):
                 item_validation_errors.append(error["code"])
             if current_allowed_semester == COURSE_ALLOWED_SEMESTER_2_ONLY and proposed_semester_1:
                 error = {
-                    "code": "course_not_allowed_in_semester_1",
+                    "code": COURSE_NOT_ALLOWED_IN_SEMESTER_1,
                     "course_id": course_id,
                     "message": f"{course.course_code} is currently restricted to Semester 2.",
                 }
@@ -305,7 +315,7 @@ def preview_section_planning_approval(run, *, selections=None):
             # This catches repeated zero-section approvals as well as approvals
             # that already generated rows.
             conflict = {
-                "code": "course_already_approved_from_run",
+                "code": COURSE_ALREADY_APPROVED_FROM_RUN,
                 "course_id": course_id,
                 "message": "This course has already been approved from this planning run.",
             }
@@ -317,7 +327,7 @@ def preview_section_planning_approval(run, *, selections=None):
             # the rows that require a future replace/reconciliation decision.
             course_code = result["course_code"]
             conflict = {
-                "code": "existing_sections_for_course_year",
+                "code": EXISTING_SECTIONS_FOR_COURSE_YEAR,
                 "course_id": course_id,
                 "message": (
                     f"{course_code} already has {len(existing_sections)} section(s) in this "
@@ -363,7 +373,7 @@ def preview_section_planning_approval(run, *, selections=None):
     if not selections:
         # This normally means every course in the run has already been reviewed.
         conflicts.append({
-            "code": "no_unapproved_courses_remaining",
+            "code": NO_UNAPPROVED_COURSES_REMAINING,
             "message": "No unapproved courses remain in this planning run.",
         })
 

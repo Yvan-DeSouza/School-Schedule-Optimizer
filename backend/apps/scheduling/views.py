@@ -19,6 +19,11 @@ from backend.apps.access.resource_policies.planning import PlanningConfiguration
 from backend.apps.access.viewsets import PolicyFilteredModelViewSet
 from backend.apps.common.models import AcademicYear
 from backend.apps.common.views import ReferenceDataViewSet
+from backend.apps.scheduling.codes import (
+    SECTION_PLACEMENT_CONFLICT,
+    SECTION_PLANNING_APPROVAL_CONFLICT,
+    TEACHER_ASSIGNMENT_CONFLICT,
+)
 from backend.apps.scheduling.models import (
     CapacityProfile,
     CoursePriorityProfile,
@@ -85,21 +90,21 @@ class SectionPlanningApprovalConflict(APIException):
     """HTTP 409 used when approval would overwrite existing decisions."""
 
     status_code = status.HTTP_409_CONFLICT
-    default_code = "section_planning_approval_conflict"
+    default_code = SECTION_PLANNING_APPROVAL_CONFLICT
 
 
 class SectionPlacementConflict(APIException):
     """HTTP 409 for stale placement input or an already-approved run."""
 
     status_code = status.HTTP_409_CONFLICT
-    default_code = "section_placement_conflict"
+    default_code = SECTION_PLACEMENT_CONFLICT
 
 
 class TeacherAssignmentConflict(APIException):
     """HTTP 409 for stale named-teacher candidates or concurrent approval."""
 
     status_code = status.HTTP_409_CONFLICT
-    default_code = "teacher_assignment_conflict"
+    default_code = TEACHER_ASSIGNMENT_CONFLICT
 
 
 class TimeSlotViewSet(ReferenceDataViewSet):

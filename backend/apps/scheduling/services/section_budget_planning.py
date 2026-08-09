@@ -23,6 +23,13 @@ from backend.apps.courses.services.offerings import (
     ensure_academic_year_offerings,
     get_combination_suggestions,
 )
+from backend.apps.scheduling.codes import (
+    ACTIVE_DELIVERY_GROUPS_CHANGED_SINCE_RUN,
+    ADJUSTED_BUDGET_NO_LONGER_FEASIBLE,
+    BUDGET_RUN_ALREADY_APPROVED,
+    EXACT_BUDGET_TOTAL_MISMATCH,
+    SECTION_BUDGET_EXCEEDED,
+)
 from backend.apps.scheduling.models import (
     PlanningRequestResolution,
     SectionBudgetApproval,
@@ -171,7 +178,7 @@ def preview_section_budget_approval(run, *, selections=None):
     )
     if current_active_group_ids != set(recommendations):
         errors.append({
-            "code": "active_delivery_groups_changed_since_run",
+            "code": ACTIVE_DELIVERY_GROUPS_CHANGED_SINCE_RUN,
             "run_delivery_group_ids": sorted(recommendations),
             "current_delivery_group_ids": sorted(current_active_group_ids),
         })
@@ -227,13 +234,13 @@ def preview_section_budget_approval(run, *, selections=None):
         })
     if run.budget_type == SECTION_BUDGET_EXACT and approved_total != run.section_budget:
         errors.append({
-            "code": "exact_budget_total_mismatch",
+            "code": EXACT_BUDGET_TOTAL_MISMATCH,
             "required_total": run.section_budget,
             "approved_total": approved_total,
         })
     if approved_total > run.section_budget:
         errors.append({
-            "code": "section_budget_exceeded",
+            "code": SECTION_BUDGET_EXCEEDED,
             "section_budget": run.section_budget,
             "approved_total": approved_total,
         })
@@ -279,7 +286,7 @@ def preview_section_budget_approval(run, *, selections=None):
             )
         if proof["status"] != "complete":
             errors.append({
-                "code": "adjusted_budget_no_longer_feasible",
+                "code": ADJUSTED_BUDGET_NO_LONGER_FEASIBLE,
                 "diagnostics": proof.get("diagnostics", []),
             })
     return {
@@ -308,7 +315,7 @@ def approve_section_budget_run(run, *, approved_by, reason, selections=None):
     if SectionBudgetApproval.objects.filter(budget_run=run).exists():
         raise PlanningApprovalConflictError({
             "detail": "This section-budget run has already been approved.",
-            "conflicts": [{"code": "budget_run_already_approved"}],
+            "conflicts": [{"code": BUDGET_RUN_ALREADY_APPROVED}],
         })
     preview = preview_section_budget_approval(run, selections=selections)
     if preview["validation_errors"]:

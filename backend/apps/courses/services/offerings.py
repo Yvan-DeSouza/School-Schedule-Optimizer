@@ -21,6 +21,13 @@ from backend.apps.common.constants import (
     DELIVERY_GROUP_STATUS_ACTIVE,
     DELIVERY_GROUP_STATUS_RETIRED,
 )
+from backend.apps.courses.codes import (
+    ACTIVE_SECTIONS_BLOCK_OFFERING_CHANGE,
+    COMBINED_OFFERING_MUST_BE_SEPARATED_FIRST,
+    OFFERING_ALREADY_CANCELLED,
+    OFFERING_ALREADY_COMBINED,
+    OFFERING_NOT_CANCELLED,
+)
 from backend.apps.courses.models import (
     Course,
     CourseCombinationRule,
@@ -100,7 +107,7 @@ def _active_section_conflict(groups):
         raise OfferingConflictError({
             "detail": "Active sections must be retired before changing their course offering.",
             "conflicts": [{
-                "code": "active_sections_block_offering_change",
+                "code": ACTIVE_SECTIONS_BLOCK_OFFERING_CHANGE,
                 "sections": sections,
             }],
         })
@@ -146,7 +153,7 @@ def cancel_course_offering(offering, *, actor, reason):
     if offering.status == COURSE_OFFERING_STATUS_CANCELLED:
         raise OfferingConflictError({
             "detail": "This course offering is already cancelled.",
-            "conflicts": [{"code": "offering_already_cancelled"}],
+            "conflicts": [{"code": OFFERING_ALREADY_CANCELLED}],
         })
     old_group = offering.delivery_group
     _active_section_conflict([old_group] if old_group else [])
@@ -156,7 +163,7 @@ def cancel_course_offering(offering, *, actor, reason):
                 "Separate the combined delivery group before cancelling one of "
                 "its member courses."
             ),
-            "conflicts": [{"code": "combined_offering_must_be_separated_first"}],
+            "conflicts": [{"code": COMBINED_OFFERING_MUST_BE_SEPARATED_FIRST}],
         })
     previous_status = offering.status
     offering.status = COURSE_OFFERING_STATUS_CANCELLED
@@ -193,7 +200,7 @@ def restore_course_offering(offering, *, actor, reason):
     if offering.status != COURSE_OFFERING_STATUS_CANCELLED:
         raise OfferingConflictError({
             "detail": "Only a cancelled offering can be restored.",
-            "conflicts": [{"code": "offering_not_cancelled"}],
+            "conflicts": [{"code": OFFERING_NOT_CANCELLED}],
         })
     group = _standalone_group(
         offering.course,
@@ -260,7 +267,7 @@ def combine_course_offerings(rule, academic_year, *, actor, reason):
     if any(group.offerings.count() != 1 for group in old_groups):
         raise OfferingConflictError({
             "detail": "Every selected course must currently be a standalone offering.",
-            "conflicts": [{"code": "offering_already_combined"}],
+            "conflicts": [{"code": OFFERING_ALREADY_COMBINED}],
         })
     _active_section_conflict(old_groups)
     courses = [item.course for item in offerings]

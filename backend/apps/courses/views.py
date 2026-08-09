@@ -15,6 +15,7 @@ from backend.apps.access.resource_policies.planning import PlanningConfiguration
 from backend.apps.access.viewsets import PolicyFilteredModelViewSet
 from backend.apps.common.models import AcademicYear
 from backend.apps.common.constants import SECTION_LIFECYCLE_ACTIVE
+from backend.apps.courses.codes import SECTION_STATE_CONFLICT
 from backend.apps.courses.models import (
     Course,
     CourseCombinationRule,
@@ -43,7 +44,7 @@ class SectionStateConflict(APIException):
     """HTTP 409 for deletion or mutation that would bypass section history."""
 
     status_code = status.HTTP_409_CONFLICT
-    default_code = "section_state_conflict"
+    default_code = SECTION_STATE_CONFLICT
 
 
 class PolicyFilteredViewSet(PolicyFilteredModelViewSet):

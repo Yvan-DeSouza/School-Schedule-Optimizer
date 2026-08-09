@@ -11,6 +11,7 @@ from backend.apps.access.permissions import ResourcePolicyPermission
 from backend.apps.access.resource_policies.constraints import PlanningResourcePolicy, TeacherOwnedResourcePolicy
 from backend.apps.access.viewsets import PolicyFilteredModelViewSet
 from backend.apps.common.exceptions import DomainConflictError, DomainValidationError
+from backend.apps.constraints.codes import RETIRED_SECTION_CONFLICT
 from backend.apps.constraints.models import (
     CounselorConstraintPreference, CourseConflict, CourseConflictMatrix, CourseQualificationRequirement,
     CourseRoomRequirement, HardConstraint, Qualification, SoftConstraint,
@@ -43,7 +44,7 @@ class RetiredSectionConflict(APIException):
     """Prevent new hard-lock state from being attached to retired history."""
 
     status_code = status.HTTP_409_CONFLICT
-    default_code = "retired_section_conflict"
+    default_code = RETIRED_SECTION_CONFLICT
 
 
 class PolicyFilteredViewSet(PolicyFilteredModelViewSet):

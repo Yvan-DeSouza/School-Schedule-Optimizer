@@ -22,6 +22,14 @@ from backend.apps.courses.services.offerings import (
     combined_allowed_semester,
     ensure_academic_year_offerings,
 )
+from backend.apps.scheduling.codes import (
+    ACTIVE_DELIVERY_GROUPS_CHANGED_SINCE_RUN,
+    ADJUSTED_COUNTS_NOT_STAFFING_FEASIBLE,
+    EXISTING_SECTIONS_FOR_DELIVERY_GROUP,
+    LINKED_BUDGET_TOTAL_MUST_BE_PRESERVED,
+    STAFFING_CONFIGURATION_CHANGED_SINCE_RUN,
+    STAFFING_RUN_ALREADY_APPROVED,
+)
 from backend.apps.scheduling.models import (
     StaffingPlanApproval,
     StaffingPlanApprovalOffering,
@@ -249,7 +257,7 @@ def preview_staffing_plan_approval(run, *, selections=None):
     )
     if current_active_group_ids != set(recommendations):
         validation_errors.append({
-            "code": "active_delivery_groups_changed_since_run",
+            "code": ACTIVE_DELIVERY_GROUPS_CHANGED_SINCE_RUN,
             "run_delivery_group_ids": sorted(recommendations),
             "current_delivery_group_ids": sorted(current_active_group_ids),
         })
@@ -287,9 +295,9 @@ def preview_staffing_plan_approval(run, *, selections=None):
                 ).values("id", "section_number", "lifecycle_status")
             )
             if existing:
-                item_conflicts.append("existing_sections_for_delivery_group")
+                item_conflicts.append(EXISTING_SECTIONS_FOR_DELIVERY_GROUP)
                 conflicts.append({
-                    "code": "existing_sections_for_delivery_group",
+                    "code": EXISTING_SECTIONS_FOR_DELIVERY_GROUP,
                     "offering_id": offering_id,
                     "sections": existing,
                 })
@@ -309,12 +317,12 @@ def preview_staffing_plan_approval(run, *, selections=None):
             "can_approve": not item_errors and not item_conflicts,
         })
     if hasattr(run, "approval"):
-        conflicts.append({"code": "staffing_run_already_approved"})
+        conflicts.append({"code": STAFFING_RUN_ALREADY_APPROVED})
     linked_total = run.result.get("linked_budget_total")
     proposed_total = sum(item["proposed_annual_count"] for item in reviews)
     if linked_total is not None and proposed_total != linked_total:
         validation_errors.append({
-            "code": "linked_budget_total_must_be_preserved",
+            "code": LINKED_BUDGET_TOTAL_MUST_BE_PRESERVED,
             "required_total": linked_total,
             "proposed_total": proposed_total,
         })
@@ -353,12 +361,12 @@ def preview_staffing_plan_approval(run, *, selections=None):
             )
             if proof["status"] != "complete":
                 validation_errors.append({
-                    "code": "adjusted_counts_not_staffing_feasible",
+                    "code": ADJUSTED_COUNTS_NOT_STAFFING_FEASIBLE,
                     "diagnostics": proof.get("diagnostics", []),
                 })
         except ValueError as error:
             validation_errors.append({
-                "code": "staffing_configuration_changed_since_run",
+                "code": STAFFING_CONFIGURATION_CHANGED_SINCE_RUN,
                 "message": str(error),
             })
     return {

@@ -27,6 +27,15 @@ from backend.apps.courses.services.section_state import (
     fixed_context_reasons as _protection_reasons,
     section_dependency_sets as _dependency_sets,
 )
+from backend.apps.scheduling.codes import (
+    COURSE_ALREADY_APPROVED_FROM_RUN,
+    COURSE_NO_LONGER_EXISTS,
+    COURSE_NOT_ALLOWED_IN_SEMESTER_1,
+    COURSE_NOT_ALLOWED_IN_SEMESTER_2,
+    NO_UNAPPROVED_COURSES_REMAINING,
+    PROTECTED_SECTIONS_EXCEED_TARGET,
+    RECONCILIATION_PREVIEW_STALE,
+)
 from backend.apps.scheduling.models import (
     CapacityProfile,
     SectionPlanningApproval,
@@ -165,7 +174,7 @@ def _build_course_delta(
     for semester in (SEMESTER_FALL, SEMESTER_WINTER):
         if len(protected[semester]) > proposed_counts[semester]:
             conflicts.append({
-                "code": "protected_sections_exceed_target",
+                "code": PROTECTED_SECTIONS_EXCEED_TARGET,
                 "course_id": course.id,
                 "semester": semester,
                 "protected_section_count": len(protected[semester]),
@@ -364,7 +373,7 @@ def preview_section_plan_reconciliation(run, *, selections=None):
             # omitted "all remaining" selection. A revised decision belongs to
             # a newer run, never a second application of this frozen result.
             conflict = {
-                "code": "course_already_approved_from_run",
+                "code": COURSE_ALREADY_APPROVED_FROM_RUN,
                 "course_id": course_id,
                 "message": "This course has already been approved from this planning run.",
             }
@@ -373,7 +382,7 @@ def preview_section_plan_reconciliation(run, *, selections=None):
 
         if course is None:
             error = {
-                "code": "course_no_longer_exists",
+                "code": COURSE_NO_LONGER_EXISTS,
                 "course_id": course_id,
                 "message": "The course no longer exists and cannot be reconciled.",
             }
@@ -392,7 +401,7 @@ def preview_section_plan_reconciliation(run, *, selections=None):
                 _append_once(warnings, "planning_configuration_changed_since_run")
             if proposed[SEMESTER_WINTER] and current_allowed_semester == COURSE_ALLOWED_SEMESTER_1_ONLY:
                 error = {
-                    "code": "course_not_allowed_in_semester_2",
+                    "code": COURSE_NOT_ALLOWED_IN_SEMESTER_2,
                     "course_id": course_id,
                     "message": f"{course.course_code} is currently restricted to Semester 1.",
                 }
@@ -400,7 +409,7 @@ def preview_section_plan_reconciliation(run, *, selections=None):
                 item_errors.append(error["code"])
             if proposed[SEMESTER_FALL] and current_allowed_semester == COURSE_ALLOWED_SEMESTER_2_ONLY:
                 error = {
-                    "code": "course_not_allowed_in_semester_1",
+                    "code": COURSE_NOT_ALLOWED_IN_SEMESTER_1,
                     "course_id": course_id,
                     "message": f"{course.course_code} is currently restricted to Semester 2.",
                 }
@@ -456,7 +465,7 @@ def preview_section_plan_reconciliation(run, *, selections=None):
 
     if not normalized:
         conflicts.append({
-            "code": "no_unapproved_courses_remaining",
+            "code": NO_UNAPPROVED_COURSES_REMAINING,
             "message": "No unapproved courses remain in this planning run.",
         })
 
@@ -551,7 +560,7 @@ def reconcile_section_planning_run(
         raise PlanningApprovalConflictError({
             "detail": "The section state changed after preview. Preview the reconciliation again.",
             "conflicts": [{
-                "code": "reconciliation_preview_stale",
+                "code": RECONCILIATION_PREVIEW_STALE,
                 "message": "The reconciliation preview is stale.",
             }],
         })

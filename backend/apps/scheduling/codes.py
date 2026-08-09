@@ -1,0 +1,29 @@
+"""Stable API error codes owned by the scheduling domain."""
+
+SECTION_PLANNING_APPROVAL_CONFLICT = "section_planning_approval_conflict"
+SECTION_PLACEMENT_CONFLICT = "section_placement_conflict"
+TEACHER_ASSIGNMENT_CONFLICT = "teacher_assignment_conflict"
+
+ACTIVE_DELIVERY_GROUPS_CHANGED_SINCE_RUN = "active_delivery_groups_changed_since_run"
+EXACT_BUDGET_TOTAL_MISMATCH = "exact_budget_total_mismatch"
+SECTION_BUDGET_EXCEEDED = "section_budget_exceeded"
+ADJUSTED_BUDGET_NO_LONGER_FEASIBLE = "adjusted_budget_no_longer_feasible"
+BUDGET_RUN_ALREADY_APPROVED = "budget_run_already_approved"
+
+COURSE_NO_LONGER_EXISTS = "course_no_longer_exists"
+COURSE_OFFERING_NOT_ACTIVE = "course_offering_not_active"
+COMBINED_OFFERING_REQUIRES_PHYSICAL_STAFFING_WORKFLOW = "combined_offering_requires_physical_staffing_workflow"
+COURSE_NOT_ALLOWED_IN_SEMESTER_2 = "course_not_allowed_in_semester_2"
+COURSE_NOT_ALLOWED_IN_SEMESTER_1 = "course_not_allowed_in_semester_1"
+COURSE_ALREADY_APPROVED_FROM_RUN = "course_already_approved_from_run"
+EXISTING_SECTIONS_FOR_COURSE_YEAR = "existing_sections_for_course_year"
+NO_UNAPPROVED_COURSES_REMAINING = "no_unapproved_courses_remaining"
+
+PROTECTED_SECTIONS_EXCEED_TARGET = "protected_sections_exceed_target"
+RECONCILIATION_PREVIEW_STALE = "reconciliation_preview_stale"
+
+EXISTING_SECTIONS_FOR_DELIVERY_GROUP = "existing_sections_for_delivery_group"
+STAFFING_RUN_ALREADY_APPROVED = "staffing_run_already_approved"
+LINKED_BUDGET_TOTAL_MUST_BE_PRESERVED = "linked_budget_total_must_be_preserved"
+ADJUSTED_COUNTS_NOT_STAFFING_FEASIBLE = "adjusted_counts_not_staffing_feasible"
+STAFFING_CONFIGURATION_CHANGED_SINCE_RUN = "staffing_configuration_changed_since_run"

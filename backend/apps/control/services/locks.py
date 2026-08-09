@@ -10,6 +10,10 @@ from django.db import transaction
 
 from backend.apps.common.exceptions import DomainConflictError
 from backend.apps.constraints.services import validate_locked_teacher_qualifications
+from backend.apps.control.codes import (
+    LOCKED_TIMESLOT_OUTSIDE_SECTION_SEMESTER,
+    LOCKED_TIMESLOT_OUTSIDE_SECTION_YEAR,
+)
 from backend.apps.control.models import SectionLock
 from backend.apps.scheduling.constants import SECTION_LIFECYCLE_RETIRED
 
@@ -29,12 +33,12 @@ def apply_section_lock(section, *, locked_teacher=None, locked_timeslot=None, lo
         # no placement stage can faithfully honour.
         if locked_timeslot.academic_year_id != section.academic_year_id:
             raise DomainConflictError({
-                "code": "locked_timeslot_outside_section_year",
+                "code": LOCKED_TIMESLOT_OUTSIDE_SECTION_YEAR,
                 "detail": "A section lock must use a timeslot from the section's academic year.",
             })
         if locked_timeslot.semester != section.semester:
             raise DomainConflictError({
-                "code": "locked_timeslot_outside_section_semester",
+                "code": LOCKED_TIMESLOT_OUTSIDE_SECTION_SEMESTER,
                 "detail": "A section lock must use a timeslot in the section's semester.",
             })
 
