@@ -4,6 +4,10 @@ from dataclasses import asdict
 
 from django.db import transaction
 
+from scheduling_engine.diagnostics import (
+    TEACHER_ASSIGNMENT_FIXED_CONTEXT_CHANGED_SINCE_RUN,
+    TEACHER_ASSIGNMENT_INPUT_CHANGED_SINCE_RUN,
+)
 from scheduling_engine.teacher_assignment import solve_teacher_assignment
 
 from backend.apps.common.exceptions import DomainConflictError, DomainValidationError
@@ -74,12 +78,12 @@ def _current_input_for_run(run):
     snapshot = asdict(data)
     if placement_input_fingerprint(snapshot) != run.input_snapshot.get("fingerprint"):
         raise TeacherAssignmentConflictError({
-            "code": "teacher_assignment_input_changed_since_run",
+            "code": TEACHER_ASSIGNMENT_INPUT_CHANGED_SINCE_RUN,
             "detail": "Teacher-assignment input changed since this run; create and review a new run.",
         })
     if roster.id != run.input_snapshot.get("roster_id"):
         raise TeacherAssignmentConflictError({
-            "code": "teacher_assignment_fixed_context_changed_since_run",
+            "code": TEACHER_ASSIGNMENT_FIXED_CONTEXT_CHANGED_SINCE_RUN,
             "detail": "The confirmed teacher roster changed since this run; create a new run.",
         })
     return data

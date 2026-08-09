@@ -4,6 +4,10 @@ from dataclasses import asdict
 
 from django.db import transaction
 
+from scheduling_engine.diagnostics import (
+    FIXED_CONTEXT_CHANGED_SINCE_RUN,
+    PLACEMENT_INPUT_CHANGED_SINCE_RUN,
+)
 from scheduling_engine.section_placement import solve_section_placement
 
 from backend.apps.common.exceptions import DomainConflictError, DomainValidationError
@@ -103,12 +107,12 @@ def _current_input_for_run(run):
     fingerprint = placement_input_fingerprint(snapshot)
     if fingerprint != run.input_snapshot.get("fingerprint"):
         raise SectionPlacementConflictError({
-            "code": "placement_input_changed_since_run",
+            "code": PLACEMENT_INPUT_CHANGED_SINCE_RUN,
             "detail": "Placement input changed since this run; create and review a new run.",
         })
     if matrix.revision != run.input_snapshot.get("matrix_revision") or roster.id != run.input_snapshot.get("roster_id"):
         raise SectionPlacementConflictError({
-            "code": "fixed_context_changed_since_run",
+            "code": FIXED_CONTEXT_CHANGED_SINCE_RUN,
             "detail": "The conflict matrix or confirmed roster changed since this run; create a new run.",
         })
     return data

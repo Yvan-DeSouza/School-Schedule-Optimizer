@@ -2,6 +2,8 @@
 
 from django.db import transaction
 
+from scheduling_engine.diagnostics import ANNUAL_LOCK_OUTSIDE_ANNUAL_COUNT
+
 from backend.apps.common.exceptions import DomainConflictError, DomainValidationError
 from backend.apps.scheduling.models import AnnualPlacementLock, SectionBudgetApprovalOffering
 from backend.apps.courses.constants import (
@@ -45,7 +47,7 @@ def _validate_lock_values(*, academic_year, delivery_group, annual_index, locked
     )
     if annual_index > maximum:
         raise DomainConflictError({
-            "code": "annual_lock_outside_annual_count",
+            "code": ANNUAL_LOCK_OUTSIDE_ANNUAL_COUNT,
             "detail": "This annual slot is outside every approved annual count for the delivery group.",
         })
 
