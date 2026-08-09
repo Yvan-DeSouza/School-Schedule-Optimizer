@@ -14,6 +14,12 @@ target-year `SectionSchedule.timeslot`; rooms remain out of scope. Existing
 enrollments are fixed capacity and student-timeslot context. Approval neither
 deletes nor moves them.
 
+This describes the implemented first release. The accepted follow-on decision
+[`student-assignment-reruns-and-locks.md`](student-assignment-reruns-and-locks.md)
+defines a future, explicitly approved replacement workflow for scoped,
+unlocked active enrollments. It does not change the behavior or audit meaning
+of existing first-release runs.
+
 ## Staffing-assumption modes
 
 The counselor chooses one transparent staffing mode for every immutable run:
@@ -79,6 +85,11 @@ approved alternates may remain in a complete result.
 - partial/scoped reruns and manual enrollment overrides;
 - conflict-analysis and composed personal-timetable endpoints;
 - room assignment, frontend work, asynchronous workers, and background jobs.
+
+The first two deferred areas now have an accepted implementation-pending
+contract in
+[`student-assignment-reruns-and-locks.md`](student-assignment-reruns-and-locks.md).
+They remain deliberately absent from this implemented first release.
 
 Development schema changes follow the repository's migrationless local
 `migrate --run-syncdb` workflow. This decision does not authorize generating

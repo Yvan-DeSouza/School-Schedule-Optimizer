@@ -54,6 +54,20 @@ PLACEMENT_INPUT_CHANGED_SINCE_RUN = "placement_input_changed_since_run"
 
 # Student assignment diagnostics.  These are machine-readable planning facts,
 # not counselor-facing English copy.
+# The next-release review contract reserves these names before its solver paths
+# exist. Keeping them here prevents services or future API views from creating
+# competing literals for client-facing planning facts.
+STUDENT_ASSIGNMENT_NO_ACTIVE_PLACED_SECTION = "student_assignment_no_active_placed_section"
+STUDENT_ASSIGNMENT_LOCKED_ENROLLMENT_BLOCKS_REQUEST = "student_assignment_locked_enrollment_blocks_request"
+STUDENT_ASSIGNMENT_SECTION_BELOW_TARGET_CAPACITY = "student_assignment_section_below_target_capacity"
+STUDENT_ASSIGNMENT_SECTION_OVER_TARGET_CONCENTRATION = "student_assignment_section_over_target_concentration"
+STUDENT_ASSIGNMENT_LIMITED_SEAT_CONTENTION = "student_assignment_limited_seat_contention"
+STUDENT_ASSIGNMENT_REQUIRES_ADDITIONAL_CAPACITY = "student_assignment_requires_additional_capacity"
+STUDENT_ASSIGNMENT_REQUIRES_TIMESLOT_CHANGE = "student_assignment_requires_timeslot_change"
+STUDENT_ASSIGNMENT_REQUIRES_LOCK_RELEASE = "student_assignment_requires_lock_release"
+STUDENT_ASSIGNMENT_REQUIRES_PLACED_SECTION = "student_assignment_requires_placed_section"
+STUDENT_ASSIGNMENT_REQUIRES_PREREQUISITE_SEQUENCE_CHANGE = "student_assignment_requires_prerequisite_sequence_change"
+
 STUDENT_ASSIGNMENT_MISSING_ACCEPTED_PLACEMENT = "student_assignment_missing_accepted_placement"
 STUDENT_ASSIGNMENT_INVALID_SECTION_CONTEXT = "student_assignment_invalid_section_context"
 STUDENT_ASSIGNMENT_NO_ELIGIBLE_SECTION = "student_assignment_no_eligible_section"
