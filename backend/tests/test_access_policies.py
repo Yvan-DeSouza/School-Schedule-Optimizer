@@ -609,6 +609,15 @@ def test_scheduling_action_policy_splits_solver_runs_from_status(
         assert not SchedulingActionPolicy.can_execute(teacher_user, action=action)
         assert not SchedulingActionPolicy.can_execute(unknown_user, action=action)
 
+    for action in [
+        SchedulingAction.APPROVE_SECTION_PLACEMENT,
+        SchedulingAction.APPROVE_TEACHER_ASSIGNMENT,
+    ]:
+        assert SchedulingActionPolicy.can_execute(counselor_user, action=action)
+        assert SchedulingActionPolicy.can_execute(director_user, action=action)
+        assert not SchedulingActionPolicy.can_execute(staff_user, action=action)
+        assert not SchedulingActionPolicy.can_execute(teacher_user, action=action)
+
     for user in [counselor_user, staff_user, director_user]:
         assert SchedulingActionPolicy.can_execute(
             user,

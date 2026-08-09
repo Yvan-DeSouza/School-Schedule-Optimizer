@@ -31,6 +31,11 @@ from backend.apps.scheduling.models import (
     StaffingPlanApproval,
     StaffingPlanRun,
     TeacherPlanningCapacity,
+    TeacherPlanningAnnualCapacity,
+    TeacherCourseAssignmentRule,
+    TeacherTimePreference,
+    TeacherAssignmentRun,
+    TeacherAssignmentApproval,
     TeacherPlanningRoster,
     TimeSlot,
     AnnualPlacementLock,
@@ -60,6 +65,13 @@ from backend.apps.scheduling.serializers import (
     StaffingRequestResolutionSerializer,
     PlanningRequestResolutionSerializer,
     TeacherPlanningCapacitySerializer,
+    TeacherPlanningAnnualCapacitySerializer,
+    TeacherCourseAssignmentRuleSerializer,
+    TeacherTimePreferenceSerializer,
+    TeacherAssignmentRunCreateSerializer,
+    TeacherAssignmentRunSerializer,
+    TeacherAssignmentApprovalRequestSerializer,
+    TeacherAssignmentApprovalSerializer,
     TeacherPlanningRosterMembersSerializer,
     TeacherPlanningRosterSerializer,
     TimeSlotSerializer,
@@ -81,6 +93,13 @@ class SectionPlacementConflict(APIException):
 
     status_code = status.HTTP_409_CONFLICT
     default_code = "section_placement_conflict"
+
+
+class TeacherAssignmentConflict(APIException):
+    """HTTP 409 for stale named-teacher candidates or concurrent approval."""
+
+    status_code = status.HTTP_409_CONFLICT
+    default_code = "teacher_assignment_conflict"
 
 
 class TimeSlotViewSet(ReferenceDataViewSet):
@@ -224,6 +243,69 @@ class TeacherPlanningCapacityViewSet(PlanningConfigurationViewSet):
         from backend.apps.scheduling.services.staffing_configuration import invalidate_roster
 
         invalidate_roster(academic_year_id)
+
+
+class TeacherPlanningAnnualCapacityViewSet(PlanningConfigurationViewSet):
+    """Manage year-wide teacher load ceilings required by a ready roster."""
+
+    queryset = TeacherPlanningAnnualCapacity.objects.select_related("teacher", "academic_year")
+    serializer_class = TeacherPlanningAnnualCapacitySerializer
+    filter_fields = ("teacher", "academic_year")
+
+    def perform_create(self, serializer):
+        from backend.apps.scheduling.services.teacher_assignment_configuration import save_annual_capacity
+
+        save_annual_capacity(serializer, actor=self.request.user)
+
+    def perform_update(self, serializer):
+        previous_year_id = serializer.instance.academic_year_id
+        from backend.apps.scheduling.services.teacher_assignment_configuration import save_annual_capacity
+        from backend.apps.scheduling.services.staffing_configuration import invalidate_roster
+
+        item = save_annual_capacity(serializer, actor=self.request.user)
+        invalidate_roster(previous_year_id)
+        return item
+
+    def perform_destroy(self, instance):
+        from backend.apps.scheduling.services.teacher_assignment_configuration import delete_annual_capacity
+
+        delete_annual_capacity(instance)
+
+
+class TeacherCourseAssignmentRuleViewSet(PlanningConfigurationViewSet):
+    """Manage exact/min/max annual hard course assignments per teacher."""
+
+    queryset = TeacherCourseAssignmentRule.objects.select_related("academic_year", "teacher", "course")
+    serializer_class = TeacherCourseAssignmentRuleSerializer
+    filter_fields = ("academic_year", "teacher", "course")
+
+    def perform_create(self, serializer):
+        from backend.apps.scheduling.services.teacher_assignment_configuration import save_course_rule
+
+        save_course_rule(serializer, actor=self.request.user)
+
+    def perform_update(self, serializer):
+        from backend.apps.scheduling.services.teacher_assignment_configuration import save_course_rule
+
+        save_course_rule(serializer, actor=self.request.user)
+
+
+class TeacherTimePreferenceViewSet(PlanningConfigurationViewSet):
+    """Manage soft preferred/avoid recurring slots independently of availability."""
+
+    queryset = TeacherTimePreference.objects.select_related("academic_year", "teacher", "timeslot")
+    serializer_class = TeacherTimePreferenceSerializer
+    filter_fields = ("academic_year", "teacher", "timeslot", "preference")
+
+    def perform_create(self, serializer):
+        from backend.apps.scheduling.services.teacher_assignment_configuration import save_time_preference
+
+        save_time_preference(serializer, actor=self.request.user)
+
+    def perform_update(self, serializer):
+        from backend.apps.scheduling.services.teacher_assignment_configuration import save_time_preference
+
+        save_time_preference(serializer, actor=self.request.user)
 
 
 class TeacherPlanningRosterViewSet(PlanningConfigurationViewSet):
@@ -399,6 +481,94 @@ class SectionPlacementRunViewSet(
             raise SectionPlacementConflict(error.detail) from error
         approval = SectionPlacementApproval.objects.prefetch_related("assignments").get(pk=approval.pk)
         return Response(SectionPlacementApprovalSerializer(approval).data, status=status.HTTP_201_CREATED)
+
+
+class TeacherAssignmentRunViewSet(
+    mixins.CreateModelMixin,
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    viewsets.GenericViewSet,
+):
+    """Review-first named teacher assignment over accepted section timing."""
+
+    permission_classes = [ActionPolicyPermission]
+    action_policy_class = SchedulingActionPolicy
+    action_name = SchedulingAction.VIEW_SCHEDULING_RUN_STATUS
+    queryset = TeacherAssignmentRun.objects.select_related(
+        "academic_year", "teacher_roster", "created_by", "approval__approved_by",
+    ).prefetch_related("approval__assignments__section", "approval__assignments__teacher")
+
+    def get_permissions(self):
+        if self.action == "create":
+            self.action_name = SchedulingAction.RUN_TEACHER_ASSIGNMENT
+        elif self.action == "approve":
+            self.action_name = SchedulingAction.APPROVE_TEACHER_ASSIGNMENT
+        else:
+            self.action_name = SchedulingAction.VIEW_SCHEDULING_RUN_STATUS
+        return super().get_permissions()
+
+    def get_serializer_class(self):
+        return TeacherAssignmentRunCreateSerializer if self.action == "create" else TeacherAssignmentRunSerializer
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        if not AcademicYear.objects.filter(pk=serializer.validated_data["academic_year"]).exists():
+            raise NotFound("Academic year not found.")
+        from backend.apps.scheduling.services.teacher_assignment import create_teacher_assignment_run
+
+        try:
+            run = create_teacher_assignment_run(created_by=request.user, **serializer.validated_data)
+        except (ValueError, DomainValidationError) as error:
+            detail = error.detail if isinstance(error, DomainValidationError) else {"detail": str(error)}
+            raise ValidationError(detail) from error
+        return Response(TeacherAssignmentRunSerializer(run).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["get"])
+    def review(self, request, pk=None):
+        """Show the named candidate and current stale-state readiness."""
+
+        from backend.apps.scheduling.services.teacher_assignment import (
+            TeacherAssignmentConflictError, TeacherAssignmentValidationError,
+            preview_teacher_assignment_approval,
+        )
+
+        try:
+            preview = preview_teacher_assignment_approval(self.get_object())
+        except TeacherAssignmentValidationError as error:
+            raise ValidationError(error.detail) from error
+        except TeacherAssignmentConflictError as error:
+            raise TeacherAssignmentConflict(error.detail) from error
+        return Response(preview)
+
+    @action(detail=True, methods=["post"], url_path="approval-preview")
+    def approval_preview(self, request, pk=None):
+        serializer = TeacherAssignmentApprovalRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        return self.review(request, pk=pk)
+
+    @action(detail=True, methods=["post"])
+    def approve(self, request, pk=None):
+        """Atomically accept the reviewed candidate; no direct assignment edits exist."""
+
+        from backend.apps.scheduling.services.teacher_assignment import (
+            TeacherAssignmentConflictError, TeacherAssignmentValidationError,
+            approve_teacher_assignment_run,
+        )
+
+        serializer = TeacherAssignmentApprovalRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            approval = approve_teacher_assignment_run(
+                self.get_object(), approved_by=request.user,
+                reason=serializer.validated_data["reason"],
+            )
+        except TeacherAssignmentValidationError as error:
+            raise ValidationError(error.detail) from error
+        except TeacherAssignmentConflictError as error:
+            raise TeacherAssignmentConflict(error.detail) from error
+        approval = TeacherAssignmentApproval.objects.prefetch_related("assignments").get(pk=approval.pk)
+        return Response(TeacherAssignmentApprovalSerializer(approval).data, status=status.HTTP_201_CREATED)
 
 
 class SectionPlanningRunViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):

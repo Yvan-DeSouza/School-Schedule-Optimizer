@@ -28,6 +28,8 @@ from backend.apps.common.constants import (
 from backend.apps.scheduling.constants import (
     SECTION_PLACEMENT_INPUT_MODE_CHOICES,
     SECTION_PLACEMENT_RUN_STATUS_CHOICES,
+    TEACHER_ASSIGNMENT_RUN_STATUS_CHOICES,
+    TEACHER_TIME_PREFERENCE_CHOICES,
 )
 from backend.apps.scheduling.domain.capacity import (
     CAPACITY_ORDER_MESSAGE,
@@ -110,6 +112,96 @@ class TeacherPlanningCapacity(models.Model):
 
     def __str__(self):
         return f"{self.teacher} {self.academic_year} S{self.semester}"
+
+
+class TeacherPlanningAnnualCapacity(models.Model):
+    """Year-specific total teaching capacity used by named assignment.
+
+    Semester ceilings alone cannot express a counselor decision such as a
+    teacher teaching at most two sections across the entire year.  This row is
+    separate from the teacher-directory fallback so every ready roster freezes
+    the exact annual workload policy used by downstream runs.
+    """
+
+    teacher = models.ForeignKey("people.Teacher", on_delete=models.CASCADE, related_name="planning_annual_capacities")
+    academic_year = models.ForeignKey("common.AcademicYear", on_delete=models.CASCADE)
+    maximum_sections = models.PositiveIntegerField(validators=[MinValueValidator(0)])
+    reserved_sections = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0)])
+
+    class Meta:
+        ordering = ["academic_year", "teacher"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["teacher", "academic_year"],
+                name="unique_teacher_planning_annual_capacity",
+            )
+        ]
+
+    def clean(self):
+        if self.reserved_sections > self.maximum_sections:
+            raise ValidationError({"reserved_sections": "Cannot exceed maximum_sections."})
+
+    @property
+    def remaining_sections(self):
+        return self.maximum_sections - self.reserved_sections
+
+    def __str__(self):
+        return f"{self.teacher} {self.academic_year} annual"
+
+
+class TeacherCourseAssignmentRule(models.Model):
+    """Counselor-owned annual hard bounds for one teacher/course pairing."""
+
+    academic_year = models.ForeignKey("common.AcademicYear", on_delete=models.CASCADE)
+    teacher = models.ForeignKey("people.Teacher", on_delete=models.CASCADE, related_name="course_assignment_rules")
+    course = models.ForeignKey("courses.Course", on_delete=models.PROTECT, related_name="teacher_assignment_rules")
+    minimum_sections = models.PositiveIntegerField(default=0)
+    maximum_sections = models.PositiveIntegerField(null=True, blank=True)
+    reason = models.TextField()
+    created_by = models.ForeignKey("auth.User", null=True, on_delete=models.SET_NULL, related_name="created_teacher_course_assignment_rules")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_by = models.ForeignKey("auth.User", null=True, blank=True, on_delete=models.SET_NULL, related_name="updated_teacher_course_assignment_rules")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["academic_year", "teacher", "course"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["academic_year", "teacher", "course"],
+                name="unique_teacher_course_assignment_rule",
+            )
+        ]
+
+    def clean(self):
+        if self.maximum_sections is not None and self.minimum_sections > self.maximum_sections:
+            raise ValidationError({"maximum_sections": "Cannot be less than minimum_sections."})
+
+
+class TeacherTimePreference(models.Model):
+    """A non-binding counselor/teacher preference for one recurring slot."""
+
+    academic_year = models.ForeignKey("common.AcademicYear", on_delete=models.CASCADE)
+    teacher = models.ForeignKey("people.Teacher", on_delete=models.CASCADE, related_name="time_preferences")
+    timeslot = models.ForeignKey("scheduling.TimeSlot", on_delete=models.CASCADE)
+    preference = models.CharField(max_length=20, choices=TEACHER_TIME_PREFERENCE_CHOICES)
+    reason = models.TextField()
+    created_by = models.ForeignKey("auth.User", null=True, on_delete=models.SET_NULL, related_name="created_teacher_time_preferences")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_by = models.ForeignKey("auth.User", null=True, blank=True, on_delete=models.SET_NULL, related_name="updated_teacher_time_preferences")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["academic_year", "teacher", "timeslot"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["academic_year", "teacher", "timeslot"],
+                name="unique_teacher_time_preference",
+            )
+        ]
+
+    def clean(self):
+        if self.timeslot_id and self.academic_year_id and self.timeslot.academic_year_id != self.academic_year_id:
+            raise ValidationError({"timeslot": "Timeslot must belong to the same academic year."})
 
 
 class TeacherPlanningRoster(models.Model):
@@ -729,4 +821,63 @@ class SectionPlacementApprovalAssignment(models.Model):
     def save(self, *args, **kwargs):
         if self.pk:
             raise ValidationError("Section placement assignments are immutable.")
+        return super().save(*args, **kwargs)
+
+
+class TeacherAssignmentRun(models.Model):
+    """Immutable named-teacher recommendation over accepted timing context."""
+
+    academic_year = models.ForeignKey("common.AcademicYear", on_delete=models.PROTECT)
+    teacher_roster = models.ForeignKey(
+        TeacherPlanningRoster, on_delete=models.PROTECT, related_name="teacher_assignment_runs",
+    )
+    created_by = models.ForeignKey("auth.User", null=True, on_delete=models.SET_NULL)
+    created_at = models.DateTimeField(auto_now_add=True)
+    status = models.CharField(max_length=20, choices=TEACHER_ASSIGNMENT_RUN_STATUS_CHOICES)
+    input_snapshot = models.JSONField(default=dict)
+    result = models.JSONField(default=dict)
+    solver_metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise ValidationError("Teacher assignment runs are immutable.")
+        return super().save(*args, **kwargs)
+
+
+class TeacherAssignmentApproval(models.Model):
+    """One immutable counselor decision accepting a complete teacher run."""
+
+    teacher_assignment_run = models.OneToOneField(
+        TeacherAssignmentRun, on_delete=models.PROTECT, related_name="approval",
+    )
+    approved_by = models.ForeignKey("auth.User", null=True, on_delete=models.SET_NULL)
+    approved_at = models.DateTimeField(auto_now_add=True)
+    reason = models.TextField()
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise ValidationError("Teacher assignment approvals are immutable.")
+        return super().save(*args, **kwargs)
+
+
+class TeacherAssignmentApprovalAssignment(models.Model):
+    """Immutable provenance for one named assignment written to Section.teacher."""
+
+    approval = models.ForeignKey(
+        TeacherAssignmentApproval, on_delete=models.PROTECT, related_name="assignments",
+    )
+    section = models.OneToOneField(
+        "courses.Section", on_delete=models.PROTECT, related_name="teacher_assignment",
+    )
+    teacher = models.ForeignKey("people.Teacher", on_delete=models.PROTECT)
+
+    class Meta:
+        ordering = ["approval", "section"]
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise ValidationError("Teacher assignment approval lines are immutable.")
         return super().save(*args, **kwargs)

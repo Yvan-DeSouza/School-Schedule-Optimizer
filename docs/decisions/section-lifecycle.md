@@ -50,6 +50,11 @@ An active section is fixed when any of the following is true:
 - it has an `Enrollment`;
 - it has a `ManualOverride`.
 
+An approved named-teacher assignment is recorded as an immutable approval line
+and then becomes fixed through `Section.teacher`. Re-running teacher assignment
+must treat that value as context; changing it requires a later explicit
+reassignment/override workflow rather than replacing it during approval.
+
 Fixed sections count toward the requested semester target. If their number is
 already above that target, preview reports a conflict and apply writes nothing.
 This conservative rule protects downstream work even while the project retains

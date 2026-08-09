@@ -288,6 +288,16 @@ def test_qualification_review_and_teacher_changes_invalidate_ready_roster(
             },
             format="json",
         )
+    counselor.post(
+        "/api/planning/teacher-annual-capacities/",
+        {
+            "teacher": teacher_user.teacher_profile.id,
+            "academic_year": academic_year.id,
+            "maximum_sections": 2,
+            "reserved_sections": 0,
+        },
+        format="json",
+    )
     roster = counselor.post(
         "/api/planning/teacher-rosters/",
         {"academic_year": academic_year.id},

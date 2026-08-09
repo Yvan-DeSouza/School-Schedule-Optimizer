@@ -839,6 +839,13 @@ These are not excuses to leave Version 1 gaps unresolved. They are boundaries pr
 > paragraph in this roadmap that says Phase 2 assigns rooms or requires a queue
 > is historical planning context, not the current implementation contract.
 
+> **Superseded implementation update (2026-08-08):** Phase 3 is now
+> **Counselor-Reviewed Named Teacher Assignment**. See
+> `docs/decisions/named-teacher-assignment.md`. It runs synchronously after
+> accepted timing, respects qualifications, availability, annual/semester load,
+> locks, and counselor course rules, and writes named teachers only after
+> approval. Rooms and students remain separate later stages.
+
 Begin **Phase 2 — Counselor-Reviewed A–D Block and Room Placement** after final integration review of the completed core reconciliation workflow.
 
 The system now makes staffing-aware section recommendations, records immutable runs, creates traceable drafts after approval, and safely reconciles later plans without deleting operational history. Counselors can see the exact keep/move/create/retire/reactivate consequences before applying them, while protected sections remain fixed.

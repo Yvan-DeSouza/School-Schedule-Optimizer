@@ -465,6 +465,22 @@ users may list, inspect, review, and preview them. A run is rejected at approval
 if the matrix, roster, lock, qualification, capacity, schedule, or other input
 facts changed after the reviewed snapshot.
 
+## Named Teacher Assignment API
+
+Named teacher assignment uses already accepted semester/A-D section timing. It
+assigns no rooms and no students. Configure annual capacity, hard course bounds,
+and soft time preferences with:
+
+- `GET/POST /api/planning/teacher-annual-capacities/`
+- `GET/POST /api/planning/teacher-course-assignment-rules/`
+- `GET/POST /api/planning/teacher-time-preferences/`
+
+Create a reviewed candidate with `POST /api/planning/teacher-assignment-runs/`
+and `{"academic_year": 1}`. Use `GET /{id}/review/`, then
+`POST /approval-preview/` or `POST /approve/` with a nonblank reason. Only a
+complete, unchanged run is approvable; approval writes `Section.teacher` and
+immutable assignment provenance, never a room or enrollment.
+
 ## Local Schema Rebuild
 
 Project apps intentionally do not use migration files. After pulling model

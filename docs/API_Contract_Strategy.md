@@ -10,7 +10,15 @@ contract that frontend work can depend on.
 - Serializers remain the runtime source of request/response shape.
 - Every backend API view must declare a resource policy or action policy.
 - Endpoint tests should cover role access, important response fields, and stable
-  diagnostic/error codes.
+diagnostic/error codes.
+
+## Named teacher assignment
+
+The named-teacher planning configuration and run endpoints follow the same
+policy, serializer, review, and approval contract as placement. The frontend
+must use stable codes from `scheduling_engine/diagnostics.py`, not diagnostic
+text. Teacher-assignment run review responses intentionally include the proposed
+teacher identity; placement witness responses intentionally do not.
 - Human docs in `README.md` are helpful, but they are not the authoritative
   machine-readable API contract.
 

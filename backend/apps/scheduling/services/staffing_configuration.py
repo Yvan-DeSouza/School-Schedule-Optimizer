@@ -10,6 +10,7 @@ from backend.apps.common.constants import (
 )
 from backend.apps.people.models import Teacher
 from backend.apps.scheduling.models import (
+    TeacherPlanningAnnualCapacity,
     TeacherPlanningCapacity,
     TeacherPlanningRoster,
     TeacherPlanningRosterMember,
@@ -73,7 +74,7 @@ def set_roster_members(roster, *, teacher_ids, actor):
 
 @transaction.atomic
 def confirm_roster_ready(roster, *, actor):
-    """Confirm only a complete two-semester capacity snapshot as ready."""
+    """Confirm only a complete semester-and-annual capacity snapshot as ready."""
 
     roster = TeacherPlanningRoster.objects.select_for_update().get(pk=roster.pk)
     teacher_ids = list(roster.members.values_list("teacher_id", flat=True))
@@ -108,6 +109,20 @@ def confirm_roster_ready(roster, *, actor):
                     "use an explicit zero when unavailable."
                 ),
                 "missing": missing,
+            }
+        })
+    annual_teacher_ids = set(
+        TeacherPlanningAnnualCapacity.objects.filter(
+            academic_year=roster.academic_year,
+            teacher_id__in=teacher_ids,
+        ).values_list("teacher_id", flat=True)
+    )
+    annual_missing = [teacher_id for teacher_id in teacher_ids if teacher_id not in annual_teacher_ids]
+    if annual_missing:
+        raise StaffingConfigurationError({
+            "annual_capacities": {
+                "message": "Every roster teacher needs an annual capacity row; use an explicit zero when unavailable.",
+                "missing_teacher_ids": annual_missing,
             }
         })
     roster.status = TEACHER_ROSTER_STATUS_READY

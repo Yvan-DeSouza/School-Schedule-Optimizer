@@ -13,6 +13,10 @@ from backend.apps.scheduling.views import (
     SectionBudgetRunViewSet,
     StaffingPlanRunViewSet,
     TeacherPlanningCapacityViewSet,
+    TeacherPlanningAnnualCapacityViewSet,
+    TeacherCourseAssignmentRuleViewSet,
+    TeacherTimePreferenceViewSet,
+    TeacherAssignmentRunViewSet,
     TeacherPlanningRosterViewSet,
     TimeSlotViewSet,
     AnnualPlacementLockViewSet,
@@ -24,10 +28,14 @@ router.register("timeslots", TimeSlotViewSet, basename="timeslot")
 router.register("planning/capacity-profiles", CapacityProfileViewSet, basename="capacity-profile")
 router.register("planning/course-priority-profiles", CoursePriorityProfileViewSet, basename="course-priority-profile")
 router.register("planning/teacher-capacities", TeacherPlanningCapacityViewSet, basename="teacher-planning-capacity")
+router.register("planning/teacher-annual-capacities", TeacherPlanningAnnualCapacityViewSet, basename="teacher-planning-annual-capacity")
+router.register("planning/teacher-course-assignment-rules", TeacherCourseAssignmentRuleViewSet, basename="teacher-course-assignment-rule")
+router.register("planning/teacher-time-preferences", TeacherTimePreferenceViewSet, basename="teacher-time-preference")
 router.register("planning/teacher-rosters", TeacherPlanningRosterViewSet, basename="teacher-planning-roster")
 router.register("planning/annual-placement-locks", AnnualPlacementLockViewSet, basename="annual-placement-lock")
 router.register("planning/section-count-runs", SectionPlanningRunViewSet, basename="section-planning-run")
 router.register("planning/section-placement-runs", SectionPlacementRunViewSet, basename="section-placement-run")
+router.register("planning/teacher-assignment-runs", TeacherAssignmentRunViewSet, basename="teacher-assignment-run")
 router.register("planning/section-budget-runs", SectionBudgetRunViewSet, basename="section-budget-run")
 router.register("planning/staffing-runs", StaffingPlanRunViewSet, basename="staffing-plan-run")
 

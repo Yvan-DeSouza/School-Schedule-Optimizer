@@ -69,6 +69,14 @@ future scheduling stages do not reimplement the same rules in different places.
   assignment remains its own later reviewed stage.
 - Rooms are not inferred by semester/A-D placement. A timeslot-only accepted
   schedule is fixed context for later stages; room selection remains explicit.
+- Named teacher assignment consumes accepted timeslot-only sections and must
+  not alter their semester/block or introduce a room/student decision.
+- A `Section.teacher` is fixed teacher context; `SectionLock.locked_teacher`
+  is an exact candidate requirement. A timeslot-only lock is not a teacher lock.
+- Ready rosters require explicit annual and semester capacities. Availability
+  is available by default; only explicit unavailable records remove a slot.
+- Named teacher candidates are immutable runs reviewed before approval. A
+  partial named-teacher result is diagnostic-only and cannot be approved.
 
 ## Immutable Workflow Records
 

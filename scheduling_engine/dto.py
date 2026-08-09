@@ -404,6 +404,93 @@ class PlacementResultDTO:
 
 
 @dataclass(frozen=True)
+class TeacherAssignmentSectionDTO:
+    """One accepted-timing section considered by named teacher assignment."""
+
+    section_id: int
+    delivery_group_id: int
+    member_course_ids: Tuple[int, ...]
+    semester: int
+    timeslot_id: int
+    locked_teacher_id: Optional[int] = None
+    is_fixed: bool = False
+    assigned_teacher_id: Optional[int] = None
+
+
+@dataclass(frozen=True)
+class TeacherAssignmentTeacherDTO:
+    """Detached teacher facts used by the pure named-assignment solver."""
+
+    id: int
+    eligible_course_ids: Tuple[int, ...]
+    remaining_semester_1: int
+    remaining_semester_2: int
+    remaining_annual: int
+    unavailable_timeslot_ids: Tuple[int, ...] = ()
+    preferred_course_ids: Tuple[int, ...] = ()
+    prior_year_course_ids: Tuple[int, ...] = ()
+    preferred_timeslot_ids: Tuple[int, ...] = ()
+    avoided_timeslot_ids: Tuple[int, ...] = ()
+    seniority: int = 0
+
+
+@dataclass(frozen=True)
+class TeacherCourseAssignmentRuleDTO:
+    """Annual teacher/course hard bounds; a physical combined section counts per member course."""
+
+    teacher_id: int
+    course_id: int
+    minimum_sections: int = 0
+    maximum_sections: Optional[int] = None
+
+
+@dataclass(frozen=True)
+class FixedTeacherAssignmentDTO:
+    """Named assignment outside the current write set that occupies teacher capacity."""
+
+    section_id: int
+    teacher_id: int
+    semester: int
+    timeslot_id: int
+    member_course_ids: Tuple[int, ...] = ()
+
+
+@dataclass(frozen=True)
+class TeacherAssignmentInputDTO:
+    """Pure input for assigning teachers after semester/block placement."""
+
+    academic_year_id: int
+    sections: Tuple[TeacherAssignmentSectionDTO, ...]
+    teachers: Tuple[TeacherAssignmentTeacherDTO, ...]
+    rules: Tuple[TeacherCourseAssignmentRuleDTO, ...] = ()
+    fixed_assignments: Tuple[FixedTeacherAssignmentDTO, ...] = ()
+    time_limit_seconds: int = 30
+
+
+@dataclass(frozen=True)
+class TeacherAssignmentDTO:
+    """Reviewable named result for one section; timing is input, never a decision."""
+
+    section_id: int
+    teacher_id: int
+    semester: int
+    timeslot_id: int
+    explanation: Mapping[str, object]
+
+
+@dataclass(frozen=True)
+class TeacherAssignmentResultDTO:
+    """Pure named-teacher recommendation and stable diagnostic evidence."""
+
+    status: str
+    solver_outcome: str
+    assignments: Tuple[TeacherAssignmentDTO, ...]
+    unassigned_section_ids: Tuple[int, ...]
+    diagnostics: Tuple[dict, ...]
+    objective_components: Mapping[str, float]
+
+
+@dataclass(frozen=True)
 class DemandSummaryDTO:
     """Per-course request totals and historical-ratio provenance."""
 

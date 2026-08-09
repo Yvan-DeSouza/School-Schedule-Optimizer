@@ -31,12 +31,18 @@ from backend.apps.scheduling.models import (
     StaffingPlanRun,
     StaffingRequestResolution,
     TeacherPlanningCapacity,
+    TeacherPlanningAnnualCapacity,
+    TeacherCourseAssignmentRule,
+    TeacherTimePreference,
     TeacherPlanningRoster,
     TimeSlot,
     AnnualPlacementLock,
     SectionPlacementApproval,
     SectionPlacementApprovalAssignment,
     SectionPlacementRun,
+    TeacherAssignmentRun,
+    TeacherAssignmentApproval,
+    TeacherAssignmentApprovalAssignment,
 )
 from backend.apps.scheduling.domain.capacity import (
     CAPACITY_FIELDS,
@@ -178,6 +184,58 @@ class SectionPlacementRunSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class TeacherAssignmentRunCreateSerializer(serializers.Serializer):
+    """Small request contract: all accepted placements in one year are scoped."""
+
+    academic_year = serializers.IntegerField(min_value=1)
+
+
+class TeacherAssignmentApprovalRequestSerializer(serializers.Serializer):
+    """Approval cannot edit candidates; configuration changes require a new run."""
+
+    reason = serializers.CharField(required=True, allow_blank=False, max_length=2000)
+
+    def validate_reason(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("An approval reason is required.")
+        return value
+
+
+class TeacherAssignmentApprovalAssignmentSerializer(serializers.ModelSerializer):
+    """Read-only provenance for one Section.teacher write."""
+
+    class Meta:
+        model = TeacherAssignmentApprovalAssignment
+        fields = ("id", "section", "teacher")
+        read_only_fields = fields
+
+
+class TeacherAssignmentApprovalSerializer(serializers.ModelSerializer):
+    """Append-only counselor approval and its exact named assignments."""
+
+    assignments = TeacherAssignmentApprovalAssignmentSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = TeacherAssignmentApproval
+        fields = ("id", "teacher_assignment_run", "approved_by", "approved_at", "reason", "assignments")
+        read_only_fields = fields
+
+
+class TeacherAssignmentRunSerializer(serializers.ModelSerializer):
+    """Immutable named-teacher candidate and optionally accepted provenance."""
+
+    approval = TeacherAssignmentApprovalSerializer(read_only=True)
+
+    class Meta:
+        model = TeacherAssignmentRun
+        fields = (
+            "id", "academic_year", "teacher_roster", "created_by", "created_at", "status",
+            "input_snapshot", "result", "solver_metadata", "approval",
+        )
+        read_only_fields = fields
+
+
 class SectionCountRecommendationSerializer(serializers.Serializer):
     """Read-only shape for the legacy heuristic recommendation endpoint."""
 
@@ -258,6 +316,94 @@ class TeacherPlanningCapacitySerializer(serializers.ModelSerializer):
                 duplicate = duplicate.exclude(pk=self.instance.pk)
             if duplicate.exists():
                 raise serializers.ValidationError("A planning capacity already exists for this teacher, year, and semester.")
+        return attrs
+
+
+class TeacherPlanningAnnualCapacitySerializer(serializers.ModelSerializer):
+    """Year-scoped total teacher load, separate from semester ceilings."""
+
+    remaining_sections = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = TeacherPlanningAnnualCapacity
+        fields = ("id", "teacher", "academic_year", "maximum_sections", "reserved_sections", "remaining_sections")
+        validators = []
+
+    def validate(self, attrs):
+        maximum = attrs.get("maximum_sections", getattr(self.instance, "maximum_sections", None))
+        reserved = attrs.get("reserved_sections", getattr(self.instance, "reserved_sections", 0))
+        if reserved > maximum:
+            raise serializers.ValidationError({"reserved_sections": "Cannot exceed maximum_sections."})
+        teacher = attrs.get("teacher", getattr(self.instance, "teacher", None))
+        year = attrs.get("academic_year", getattr(self.instance, "academic_year", None))
+        if teacher and year:
+            duplicate = TeacherPlanningAnnualCapacity.objects.filter(teacher=teacher, academic_year=year)
+            if self.instance:
+                duplicate = duplicate.exclude(pk=self.instance.pk)
+            if duplicate.exists():
+                raise serializers.ValidationError("An annual planning capacity already exists for this teacher and year.")
+        return attrs
+
+
+class TeacherCourseAssignmentRuleSerializer(serializers.ModelSerializer):
+    """Transport contract for annual course-specific hard teaching bounds."""
+
+    class Meta:
+        model = TeacherCourseAssignmentRule
+        fields = (
+            "id", "academic_year", "teacher", "course", "minimum_sections", "maximum_sections",
+            "reason", "created_by", "created_at", "updated_by", "updated_at",
+        )
+        read_only_fields = ("id", "created_by", "created_at", "updated_by", "updated_at")
+        validators = []
+
+    def validate(self, attrs):
+        minimum = attrs.get("minimum_sections", getattr(self.instance, "minimum_sections", 0))
+        maximum = attrs.get("maximum_sections", getattr(self.instance, "maximum_sections", None))
+        if maximum is not None and minimum > maximum:
+            raise serializers.ValidationError({"maximum_sections": "Cannot be less than minimum_sections."})
+        reason = attrs.get("reason", getattr(self.instance, "reason", ""))
+        if not isinstance(reason, str) or not reason.strip():
+            raise serializers.ValidationError({"reason": "A reason is required for a teacher course rule."})
+        teacher = attrs.get("teacher", getattr(self.instance, "teacher", None))
+        course = attrs.get("course", getattr(self.instance, "course", None))
+        year = attrs.get("academic_year", getattr(self.instance, "academic_year", None))
+        if teacher and course and year:
+            duplicate = TeacherCourseAssignmentRule.objects.filter(teacher=teacher, course=course, academic_year=year)
+            if self.instance:
+                duplicate = duplicate.exclude(pk=self.instance.pk)
+            if duplicate.exists():
+                raise serializers.ValidationError("A rule already exists for this teacher, course, and year.")
+        return attrs
+
+
+class TeacherTimePreferenceSerializer(serializers.ModelSerializer):
+    """A soft preferred/avoid slot; hard denial remains TeacherAvailability."""
+
+    class Meta:
+        model = TeacherTimePreference
+        fields = (
+            "id", "academic_year", "teacher", "timeslot", "preference", "reason",
+            "created_by", "created_at", "updated_by", "updated_at",
+        )
+        read_only_fields = ("id", "created_by", "created_at", "updated_by", "updated_at")
+        validators = []
+
+    def validate(self, attrs):
+        year = attrs.get("academic_year", getattr(self.instance, "academic_year", None))
+        timeslot = attrs.get("timeslot", getattr(self.instance, "timeslot", None))
+        reason = attrs.get("reason", getattr(self.instance, "reason", ""))
+        if year and timeslot and timeslot.academic_year_id != year.id:
+            raise serializers.ValidationError({"timeslot": "Timeslot must belong to the selected academic year."})
+        if not isinstance(reason, str) or not reason.strip():
+            raise serializers.ValidationError({"reason": "A reason is required for a teacher time preference."})
+        teacher = attrs.get("teacher", getattr(self.instance, "teacher", None))
+        if teacher and year and timeslot:
+            duplicate = TeacherTimePreference.objects.filter(teacher=teacher, academic_year=year, timeslot=timeslot)
+            if self.instance:
+                duplicate = duplicate.exclude(pk=self.instance.pk)
+            if duplicate.exists():
+                raise serializers.ValidationError("A preference already exists for this teacher and timeslot.")
         return attrs
 
 

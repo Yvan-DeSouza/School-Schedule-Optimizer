@@ -30,6 +30,9 @@ from scheduling_engine.dto import (
     PlanningOfferingDTO,
     FixedPlacementDTO, PlacementConflictDTO, PlacementInputDTO,
     PlacementTeacherDTO, PlacementUnitDTO,
+    FixedTeacherAssignmentDTO, TeacherAssignmentInputDTO,
+    TeacherAssignmentSectionDTO, TeacherAssignmentTeacherDTO,
+    TeacherCourseAssignmentRuleDTO,
 )
 from scheduling_engine.constraint_compiler import compile_constraints
 from scheduling_engine.section_estimator import estimate_section_counts
@@ -65,6 +68,7 @@ from backend.apps.courses.selectors import (
 from backend.apps.people.models import Student, Teacher
 from backend.apps.scheduling.models import (
     TeacherPlanningCapacity,
+    TeacherPlanningAnnualCapacity,
     TeacherPlanningRoster,
     TimeSlot,
 )
@@ -447,6 +451,173 @@ def _group_allowed_semesters(group):
         for offering in group.offerings.all()
     ]
     return tuple(sorted(set.intersection(*values))) if values else ()
+
+
+def load_teacher_assignment_input(*, academic_year_id):
+    """Load accepted placement context into a detached named-assignment snapshot.
+
+    The adapter subtracts only teacher assignments already fixed outside the
+    decision set.  Locked-but-unassigned sections remain solver candidates, so
+    their load is not accidentally removed twice before the model constrains it.
+    """
+
+    from backend.apps.control.models import SectionLock
+    from backend.apps.courses.models import Section
+    from backend.apps.scheduling.models import (
+        SectionSchedule, TeacherCourseAssignmentRule, TeacherPlanningAnnualCapacity,
+        TeacherPlanningRoster, TeacherTimePreference,
+    )
+
+    academic_year_id = int(academic_year_id)
+    base = load_scheduling_input(academic_year_id, require_ready_roster=True)
+    compiled = compile_constraints(base)
+    roster = TeacherPlanningRoster.objects.get(academic_year_id=academic_year_id)
+    roster_teacher_ids = [teacher.id for teacher in base.teachers]
+    timeslots = {item.id: item for item in base.timeslots}
+    locks = {
+        item.section_id: item
+        for item in SectionLock.objects.filter(
+            section__academic_year_id=academic_year_id,
+            section__lifecycle_status=SECTION_LIFECYCLE_ACTIVE,
+        ).select_related("locked_teacher")
+    }
+    schedules = {
+        item.section_id: item
+        for item in SectionSchedule.objects.filter(
+            section__academic_year_id=academic_year_id,
+            section__lifecycle_status=SECTION_LIFECYCLE_ACTIVE,
+        ).select_related("timeslot")
+    }
+    sections = list(
+        active_sections_for_year(academic_year_id)
+        .select_related("course", "delivery_group", "teacher")
+        .prefetch_related("delivery_group__offerings__course")
+        .order_by("id")
+    )
+    section_dtos, fixed = [], []
+    for section in sections:
+        schedule = schedules.get(section.id)
+        if schedule is None or schedule.timeslot_id is None:
+            raise ValueError(
+                f"Section {section.id} has no accepted semester/A-D placement and cannot enter teacher assignment."
+            )
+        if schedule.timeslot_id not in timeslots:
+            raise ValueError(f"Section {section.id} references a timeslot outside the target year.")
+        if section.delivery_group_id:
+            member_course_ids = tuple(
+                offering.course_id for offering in section.delivery_group.offerings.all()
+            )
+        elif section.course_id:
+            member_course_ids = (section.course_id,)
+        else:
+            raise ValueError(f"Section {section.id} has no course delivery identity.")
+        lock = locks.get(section.id)
+        # A pre-existing named teacher is accepted fixed context.  A teacher lock
+        # without Section.teacher is still a decision candidate, forced to that
+        # named teacher by the pure model and written only on approval.
+        is_fixed = section.teacher_id is not None
+        section_dtos.append(TeacherAssignmentSectionDTO(
+            section_id=section.id,
+            delivery_group_id=section.delivery_group_id or -section.course_id,
+            member_course_ids=member_course_ids,
+            semester=section.semester,
+            timeslot_id=schedule.timeslot_id,
+            locked_teacher_id=lock.locked_teacher_id if lock else None,
+            is_fixed=is_fixed,
+            assigned_teacher_id=section.teacher_id,
+        ))
+        if is_fixed:
+            fixed.append(FixedTeacherAssignmentDTO(
+                section_id=section.id, teacher_id=section.teacher_id,
+                semester=section.semester, timeslot_id=schedule.timeslot_id,
+                member_course_ids=member_course_ids,
+            ))
+
+    configured_semester = {
+        (item.teacher_id, item.semester): item
+        for item in TeacherPlanningCapacity.objects.filter(
+            academic_year_id=academic_year_id, teacher_id__in=roster_teacher_ids,
+        )
+    }
+    configured_annual = {
+        item.teacher_id: item
+        for item in TeacherPlanningAnnualCapacity.objects.filter(
+            academic_year_id=academic_year_id, teacher_id__in=roster_teacher_ids,
+        )
+    }
+    missing = [
+        teacher.id for teacher in base.teachers
+        if teacher.id not in configured_annual
+        or any((teacher.id, semester) not in configured_semester for semester in (1, 2))
+    ]
+    if missing:
+        raise ValueError(f"Ready roster is missing annual or semester capacity for teacher IDs: {missing}.")
+    fixed_load = defaultdict(int)
+    for item in fixed:
+        fixed_load[item.teacher_id, item.semester] += 1
+        fixed_load[item.teacher_id, 0] += 1
+    denied = defaultdict(set)
+    for item in TeacherAvailability.objects.filter(
+        teacher_id__in=roster_teacher_ids,
+        timeslot__academic_year_id=academic_year_id,
+        is_available=False,
+    ):
+        denied[item.teacher_id].add(item.timeslot_id)
+    preferred_time, avoided_time = defaultdict(set), defaultdict(set)
+    for item in TeacherTimePreference.objects.filter(
+        academic_year_id=academic_year_id, teacher_id__in=roster_teacher_ids,
+    ):
+        (preferred_time if item.preference == "preferred" else avoided_time)[item.teacher_id].add(item.timeslot_id)
+
+    target_year = AcademicYear.objects.get(pk=academic_year_id)
+    target_start = parse_academic_year_start(target_year.name)
+    previous_years = [
+        year for year in AcademicYear.objects.exclude(pk=academic_year_id)
+        if parse_academic_year_start(year.name) < target_start
+    ]
+    previous_year_id = max(previous_years, key=lambda year: parse_academic_year_start(year.name)).id if previous_years else None
+    previous_courses = defaultdict(set)
+    if previous_year_id:
+        for item in TeacherCurrentCourse.objects.filter(
+            teacher_id__in=roster_teacher_ids, academic_year_id=previous_year_id,
+        ):
+            previous_courses[item.teacher_id].add(item.course_id)
+
+    teachers = []
+    for teacher in base.teachers:
+        annual = configured_annual[teacher.id]
+        sem_1, sem_2 = configured_semester[teacher.id, 1], configured_semester[teacher.id, 2]
+        teachers.append(TeacherAssignmentTeacherDTO(
+            id=teacher.id,
+            eligible_course_ids=tuple(sorted(
+                course_id for course_id, teacher_ids in compiled.qualified_teacher_ids_by_course.items()
+                if teacher.id in teacher_ids
+            )),
+            remaining_semester_1=max(0, sem_1.maximum_sections - sem_1.reserved_sections - fixed_load[teacher.id, 1]),
+            remaining_semester_2=max(0, sem_2.maximum_sections - sem_2.reserved_sections - fixed_load[teacher.id, 2]),
+            remaining_annual=max(0, annual.maximum_sections - annual.reserved_sections - fixed_load[teacher.id, 0]),
+            unavailable_timeslot_ids=tuple(sorted(denied[teacher.id])),
+            preferred_course_ids=tuple(sorted(
+                item.course_id for item in TeacherCoursePreference.objects.filter(teacher_id=teacher.id)
+            )),
+            prior_year_course_ids=tuple(sorted(previous_courses[teacher.id])),
+            preferred_timeslot_ids=tuple(sorted(preferred_time[teacher.id])),
+            avoided_timeslot_ids=tuple(sorted(avoided_time[teacher.id])),
+            seniority=teacher.seniority or 0,
+        ))
+    rules = tuple(
+        TeacherCourseAssignmentRuleDTO(
+            teacher_id=item.teacher_id, course_id=item.course_id,
+            minimum_sections=item.minimum_sections, maximum_sections=item.maximum_sections,
+        )
+        for item in TeacherCourseAssignmentRule.objects.filter(
+            academic_year_id=academic_year_id, teacher_id__in=roster_teacher_ids,
+        ).order_by("teacher_id", "course_id")
+    )
+    return TeacherAssignmentInputDTO(
+        academic_year_id=academic_year_id, sections=tuple(section_dtos),
+        teachers=tuple(teachers), rules=rules, fixed_assignments=tuple(fixed),
+    ), roster
 
 
 def load_section_placement_input(*, academic_year_id, input_mode, budget_approval=None, conflict_matrix=None):

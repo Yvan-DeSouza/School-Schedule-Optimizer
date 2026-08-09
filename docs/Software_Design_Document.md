@@ -884,4 +884,16 @@ Where the provided schema did not fully specify a concern (authentication linkag
 
 ---
 
+## Implementation Supersession Note
+
+The current implementation follows the newer decision records and architecture
+rules where they differ from this original design. In particular, placement and
+named teacher assignment are synchronous, review-first stages; accepted timing
+is completed before named teacher approval; rooms are not part of either stage;
+and student assignment is a later stage that depends on accepted section timing
+rather than named teacher identity. Do not introduce a queue or room-coupled
+solver solely because older sections of this document describe one.
+
+---
+
 *End of Software Design Document.*
