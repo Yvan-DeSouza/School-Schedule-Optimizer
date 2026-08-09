@@ -23,6 +23,21 @@ def apply_section_lock(section, *, locked_teacher=None, locked_timeslot=None, lo
             "detail": "Retired sections are read-only and cannot receive scheduling locks."
         })
 
+    if locked_timeslot is not None:
+        # A timing lock is a promise about this concrete section, so accepting a
+        # block from another year or semester would create a configuration that
+        # no placement stage can faithfully honour.
+        if locked_timeslot.academic_year_id != section.academic_year_id:
+            raise DomainConflictError({
+                "code": "locked_timeslot_outside_section_year",
+                "detail": "A section lock must use a timeslot from the section's academic year.",
+            })
+        if locked_timeslot.semester != section.semester:
+            raise DomainConflictError({
+                "code": "locked_timeslot_outside_section_semester",
+                "detail": "A section lock must use a timeslot in the section's semester.",
+            })
+
     validate_locked_teacher_qualifications(section, locked_teacher)
     lock = (
         SectionLock.objects

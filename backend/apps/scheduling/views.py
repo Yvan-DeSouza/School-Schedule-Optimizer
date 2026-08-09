@@ -13,6 +13,7 @@ from rest_framework.views import APIView
 from django.db.models import Count
 
 from backend.apps.access.action_policies.demand import DemandPlanningAction, DemandPlanningActionPolicy
+from backend.apps.access.action_policies.scheduling import SchedulingAction, SchedulingActionPolicy
 from backend.apps.access.permissions import ActionPolicyPermission
 from backend.apps.access.resource_policies.planning import PlanningConfigurationPolicy
 from backend.apps.access.viewsets import PolicyFilteredModelViewSet
@@ -23,6 +24,8 @@ from backend.apps.scheduling.models import (
     CoursePriorityProfile,
     SectionPlanningApproval,
     SectionPlanningRun,
+    SectionPlacementApproval,
+    SectionPlacementRun,
     SectionBudgetApproval,
     SectionBudgetRun,
     StaffingPlanApproval,
@@ -30,6 +33,7 @@ from backend.apps.scheduling.models import (
     TeacherPlanningCapacity,
     TeacherPlanningRoster,
     TimeSlot,
+    AnnualPlacementLock,
 )
 from backend.apps.scheduling.serializers import (
     CapacityProfileSerializer,
@@ -42,6 +46,10 @@ from backend.apps.scheduling.serializers import (
     SectionPlanningReconciliationSerializer,
     SectionPlanningRunCreateSerializer,
     SectionPlanningRunSerializer,
+    SectionPlacementApprovalRequestSerializer,
+    SectionPlacementApprovalSerializer,
+    SectionPlacementRunCreateSerializer,
+    SectionPlacementRunSerializer,
     SectionBudgetApprovalRequestSerializer,
     SectionBudgetApprovalSerializer,
     SectionBudgetRunCreateSerializer,
@@ -55,6 +63,7 @@ from backend.apps.scheduling.serializers import (
     TeacherPlanningRosterMembersSerializer,
     TeacherPlanningRosterSerializer,
     TimeSlotSerializer,
+    AnnualPlacementLockSerializer,
 )
 from backend.apps.scheduling.services.engine_adapter import get_section_count_recommendations
 from backend.apps.scheduling.services.planning_configuration import apply_course_capacity_policy
@@ -67,12 +76,69 @@ class SectionPlanningApprovalConflict(APIException):
     default_code = "section_planning_approval_conflict"
 
 
+class SectionPlacementConflict(APIException):
+    """HTTP 409 for stale placement input or an already-approved run."""
+
+    status_code = status.HTTP_409_CONFLICT
+    default_code = "section_placement_conflict"
+
+
 class TimeSlotViewSet(ReferenceDataViewSet):
     """CRUD recurring A-D slots using the shared reference-data policy."""
 
     queryset = TimeSlot.objects.select_related("academic_year")
     serializer_class = TimeSlotSerializer
     filter_fields = ("academic_year", "semester", "block", "is_available")
+
+
+class AnnualPlacementLockViewSet(PolicyFilteredModelViewSet):
+    """Manage pre-section annual locks through the transactional lock service."""
+
+    queryset = AnnualPlacementLock.objects.select_related(
+        "academic_year", "delivery_group", "locked_timeslot", "materialized_section",
+    )
+    serializer_class = AnnualPlacementLockSerializer
+    resource_policy_class = PlanningConfigurationPolicy
+    filter_fields = ("academic_year", "delivery_group")
+
+    def perform_create(self, serializer):
+        from backend.apps.scheduling.services.annual_placement_locks import create_annual_placement_lock
+
+        try:
+            lock = create_annual_placement_lock(actor=self.request.user, **serializer.validated_data)
+        except DomainValidationError as error:
+            raise ValidationError(error.detail) from error
+        except DomainConflictError as error:
+            raise SectionPlanningApprovalConflict(error.detail) from error
+        serializer.instance = lock
+
+    def perform_update(self, serializer):
+        from backend.apps.scheduling.services.annual_placement_locks import update_annual_placement_lock
+
+        try:
+            if "reason" not in serializer.validated_data:
+                raise DomainValidationError({"reason": "A reason is required when changing an annual placement lock."})
+            lock = update_annual_placement_lock(
+                serializer.instance,
+                actor=self.request.user,
+                locked_timeslot=serializer.validated_data.get("locked_timeslot", serializer.instance.locked_timeslot),
+                reason=serializer.validated_data.get("reason", serializer.instance.reason),
+            )
+        except DomainValidationError as error:
+            raise ValidationError(error.detail) from error
+        except DomainConflictError as error:
+            raise SectionPlanningApprovalConflict(error.detail) from error
+        serializer.instance = lock
+
+    def perform_destroy(self, instance):
+        from backend.apps.scheduling.services.annual_placement_locks import delete_annual_placement_lock
+
+        try:
+            delete_annual_placement_lock(instance, reason=self.request.data.get("reason"))
+        except DomainValidationError as error:
+            raise ValidationError(error.detail) from error
+        except DomainConflictError as error:
+            raise SectionPlanningApprovalConflict(error.detail) from error
 
 
 class SectionCountRecommendationView(APIView):
@@ -244,6 +310,95 @@ class CourseCapacityPolicyView(APIView):
             values={key: serializer.validated_data[key] for key in ("hard_min", "soft_min", "target", "soft_max", "hard_max") if key in serializer.validated_data} or None,
         )
         return Response(CapacityProfileSerializer(profile).data)
+
+
+class SectionPlacementRunViewSet(
+    mixins.CreateModelMixin,
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    viewsets.GenericViewSet,
+):
+    """Review-first semester/A-D placement; approval alone writes schedules."""
+
+    permission_classes = [ActionPolicyPermission]
+    action_policy_class = SchedulingActionPolicy
+    action_name = SchedulingAction.VIEW_SCHEDULING_RUN_STATUS
+    queryset = SectionPlacementRun.objects.select_related(
+        "academic_year", "budget_approval", "conflict_matrix", "teacher_roster", "created_by",
+        "approval__approved_by",
+    ).prefetch_related("approval__assignments__section", "approval__assignments__timeslot")
+
+    def get_permissions(self):
+        if self.action in {"create"}:
+            self.action_name = SchedulingAction.RUN_SECTION_PLACEMENT
+        elif self.action in {"approve"}:
+            self.action_name = SchedulingAction.APPROVE_SECTION_PLACEMENT
+        else:
+            # Staff may read a candidate and preview approval readiness, but
+            # cannot launch or accept a scheduling-changing run.
+            self.action_name = SchedulingAction.VIEW_SCHEDULING_RUN_STATUS
+        return super().get_permissions()
+
+    def get_serializer_class(self):
+        return SectionPlacementRunCreateSerializer if self.action == "create" else SectionPlacementRunSerializer
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        if not AcademicYear.objects.filter(pk=serializer.validated_data["academic_year"]).exists():
+            raise NotFound("Academic year not found.")
+        try:
+            from backend.apps.scheduling.services.section_placement import create_section_placement_run
+
+            run = create_section_placement_run(created_by=request.user, **serializer.validated_data)
+        except (ValueError, DomainValidationError) as error:
+            detail = error.detail if isinstance(error, DomainValidationError) else {"detail": str(error)}
+            raise ValidationError(detail) from error
+        return Response(SectionPlacementRunSerializer(run).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["get"])
+    def review(self, request, pk=None):
+        from backend.apps.scheduling.services.section_placement import (
+            SectionPlacementConflictError, SectionPlacementValidationError,
+            preview_section_placement_approval,
+        )
+
+        try:
+            preview = preview_section_placement_approval(self.get_object())
+        except SectionPlacementValidationError as error:
+            raise ValidationError(error.detail) from error
+        except SectionPlacementConflictError as error:
+            raise SectionPlacementConflict(error.detail) from error
+        return Response(preview)
+
+    @action(detail=True, methods=["post"], url_path="approval-preview")
+    def approval_preview(self, request, pk=None):
+        # No selection JSON is accepted: adding/changing a lock is the explicit,
+        # auditable way to obtain a different candidate before making a new run.
+        serializer = SectionPlacementApprovalRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        return self.review(request, pk=pk)
+
+    @action(detail=True, methods=["post"])
+    def approve(self, request, pk=None):
+        from backend.apps.scheduling.services.section_placement import (
+            SectionPlacementConflictError, SectionPlacementValidationError,
+            approve_section_placement_run,
+        )
+
+        serializer = SectionPlacementApprovalRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            approval = approve_section_placement_run(
+                self.get_object(), approved_by=request.user,
+                reason=serializer.validated_data["reason"],
+            )
+        except SectionPlacementValidationError as error:
+            raise ValidationError(error.detail) from error
+        except SectionPlacementConflictError as error:
+            raise SectionPlacementConflict(error.detail) from error
+        approval = SectionPlacementApproval.objects.prefetch_related("assignments").get(pk=approval.pk)
+        return Response(SectionPlacementApprovalSerializer(approval).data, status=status.HTTP_201_CREATED)
 
 
 class SectionPlanningRunViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):

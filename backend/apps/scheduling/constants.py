@@ -27,6 +27,26 @@ SECTION_PLANNING_RUN_STATUS_CHOICES = (
     (SECTION_PLANNING_RUN_STATUS_FAILED, "Failed"),
 )
 
+# Placement has an additional useful review state: a partial result can explain
+# what fits, but it is never eligible for approval.
+SECTION_PLACEMENT_RUN_STATUS_COMPLETE = "complete"
+SECTION_PLACEMENT_RUN_STATUS_PARTIAL = "partial"
+SECTION_PLACEMENT_RUN_STATUS_INFEASIBLE = "infeasible"
+SECTION_PLACEMENT_RUN_STATUS_FAILED = "failed"
+SECTION_PLACEMENT_RUN_STATUS_CHOICES = (
+    (SECTION_PLACEMENT_RUN_STATUS_COMPLETE, "Complete"),
+    (SECTION_PLACEMENT_RUN_STATUS_PARTIAL, "Partial"),
+    (SECTION_PLACEMENT_RUN_STATUS_INFEASIBLE, "Infeasible"),
+    (SECTION_PLACEMENT_RUN_STATUS_FAILED, "Failed"),
+)
+
+SECTION_PLACEMENT_INPUT_FIXED_SEMESTER = "fixed_semester"
+SECTION_PLACEMENT_INPUT_ANNUAL_TOTAL = "annual_total"
+SECTION_PLACEMENT_INPUT_MODE_CHOICES = (
+    (SECTION_PLACEMENT_INPUT_FIXED_SEMESTER, "Existing fixed-semester sections"),
+    (SECTION_PLACEMENT_INPUT_ANNUAL_TOTAL, "Approved annual section totals"),
+)
+
 # Operational section lifecycle. Retired sections remain stored for audit but
 # are excluded from active planning, placement, staffing, and enrollment work.
 SECTION_LIFECYCLE_ACTIVE = "active"
@@ -69,4 +89,3 @@ TEACHER_ROSTER_STATUS_CHOICES = (
     (TEACHER_ROSTER_STATUS_DRAFT, "Draft"),
     (TEACHER_ROSTER_STATUS_READY, "Ready"),
 )
-

@@ -10,6 +10,8 @@ from backend.apps.constraints.models.base import (
 )
 from backend.apps.constraints.models.course import (
     CourseConflict,
+    CourseConflictAdjustment,
+    CourseConflictMatrix,
     CourseQualificationRequirement,
     CourseRoomRequirement,
 )
@@ -35,4 +37,6 @@ admin.site.register([
     CourseRoomRequirement,
     CourseQualificationRequirement,
     CourseConflict,
+    CourseConflictMatrix,
+    CourseConflictAdjustment,
 ])

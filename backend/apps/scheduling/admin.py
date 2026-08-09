@@ -21,6 +21,10 @@ from backend.apps.scheduling.models import (
     TeacherPlanningRoster,
     TeacherPlanningRosterMember,
     SectionSchedule,
+    AnnualPlacementLock,
+    SectionPlacementRun,
+    SectionPlacementApproval,
+    SectionPlacementApprovalAssignment,
     TimeSlot,
 )
 
@@ -30,6 +34,10 @@ from backend.apps.scheduling.models import (
 admin.site.register([
     TimeSlot,
     SectionSchedule,
+    AnnualPlacementLock,
+    SectionPlacementRun,
+    SectionPlacementApproval,
+    SectionPlacementApprovalAssignment,
     SectionPlanningRun,
     SectionPlanningApproval,
     SectionPlanningApprovalCourse,

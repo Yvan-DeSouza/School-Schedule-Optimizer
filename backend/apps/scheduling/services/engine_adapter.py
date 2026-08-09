@@ -13,6 +13,9 @@ solver write-back should likewise remain an explicit transactional service.
 """
 
 from dataclasses import asdict
+from collections import defaultdict
+from hashlib import sha256
+import json
 
 from django.db.models import Q
 
@@ -25,7 +28,10 @@ from scheduling_engine.dto import (
     StudentDTO, TeacherAvailabilityDTO, TeacherCoursePreferenceDTO, TeacherCurrentCourseDTO,
     TeacherDTO, TeacherPlanningCapacityDTO, TeacherQualificationDTO, TimeSlotDTO,
     PlanningOfferingDTO,
+    FixedPlacementDTO, PlacementConflictDTO, PlacementInputDTO,
+    PlacementTeacherDTO, PlacementUnitDTO,
 )
+from scheduling_engine.constraint_compiler import compile_constraints
 from scheduling_engine.section_estimator import estimate_section_counts
 from scheduling_engine.section_planner import plan_section_counts
 
@@ -358,7 +364,10 @@ def load_scheduling_input(academic_year_id, *, require_ready_roster=False):
             for item in CourseQualificationRequirement.objects.all()
         ),
         course_prerequisites=tuple(CoursePrerequisiteDTO(item.course_id, item.prerequisite_id) for item in CoursePrerequisite.objects.all()),
-        course_conflicts=tuple(CourseConflictDTO(item.course_a_id, item.course_b_id, item.weight) for item in CourseConflict.objects.all()),
+        # Legacy generic planning does not consume annual matrix rows. Loading
+        # only pre-matrix edges prevents one course pair from appearing once per
+        # year and violating the old compiler's unique-pair contract.
+        course_conflicts=tuple(CourseConflictDTO(item.course_a_id, item.course_b_id, item.weight) for item in CourseConflict.objects.filter(matrix__isnull=True)),
         # Locks are scoped to the target year; unrelated historical locks must
         # never constrain the current solve.
         section_locks=tuple(
@@ -411,3 +420,219 @@ def get_section_planning_snapshot(academic_year_id):
     # ``asdict`` recursively removes dataclass instances so JSONField can store
     # the snapshot without any engine-specific encoder.
     return asdict(load_scheduling_input(academic_year_id))
+
+
+def placement_input_fingerprint(snapshot):
+    """Return one deterministic stale-input fingerprint for placement reviews."""
+
+    return sha256(json.dumps(snapshot, sort_keys=True, separators=(",", ":"), default=str).encode()).hexdigest()
+
+
+def _allowed_semester_ids(value):
+    from backend.apps.courses.constants import (
+        COURSE_ALLOWED_SEMESTER_1_ONLY,
+        COURSE_ALLOWED_SEMESTER_2_ONLY,
+    )
+
+    if value == COURSE_ALLOWED_SEMESTER_1_ONLY:
+        return (1,)
+    if value == COURSE_ALLOWED_SEMESTER_2_ONLY:
+        return (2,)
+    return (1, 2)
+
+
+def _group_allowed_semesters(group):
+    values = [
+        set(_allowed_semester_ids(offering.course.allowed_semester))
+        for offering in group.offerings.all()
+    ]
+    return tuple(sorted(set.intersection(*values))) if values else ()
+
+
+def load_section_placement_input(*, academic_year_id, input_mode, budget_approval=None, conflict_matrix=None):
+    """Build the exact ORM-to-placement DTO snapshot once for a solver run.
+
+    The adapter separately computes remaining workload from administrative
+    reservations and accepted *outside-scope* placements. This prevents a
+    decision unit from being subtracted once here and again by the witness model.
+    """
+
+    from backend.apps.constraints.models import CourseConflictMatrix, TeacherAvailability
+    from backend.apps.control.models import ManualOverride, SectionLock
+    from backend.apps.courses.models import DeliveryGroup, Enrollment, Section
+    from backend.apps.courses.selectors import active_delivery_groups_for_year, active_sections_for_year
+    from backend.apps.scheduling.constants import (
+        SECTION_PLACEMENT_INPUT_ANNUAL_TOTAL,
+        SECTION_PLACEMENT_INPUT_FIXED_SEMESTER,
+    )
+    from backend.apps.scheduling.models import (
+        AnnualPlacementLock, SectionBudgetApproval, SectionSchedule,
+        TeacherPlanningCapacity, TeacherPlanningRoster,
+    )
+
+    if input_mode not in {SECTION_PLACEMENT_INPUT_FIXED_SEMESTER, SECTION_PLACEMENT_INPUT_ANNUAL_TOTAL}:
+        raise ValueError("Placement input_mode must be fixed_semester or annual_total.")
+    base = load_scheduling_input(academic_year_id, require_ready_roster=True)
+    # Reuse the normalized, fail-closed qualification compiler rather than
+    # reimplementing Grade 11-12 eligibility in a placement-specific adapter.
+    compiled = compile_constraints(base)
+    roster = TeacherPlanningRoster.objects.get(academic_year_id=academic_year_id)
+    if conflict_matrix is None:
+        try:
+            conflict_matrix = CourseConflictMatrix.objects.get(academic_year_id=academic_year_id)
+        except CourseConflictMatrix.DoesNotExist as error:
+            raise ValueError("Create the current academic year's course conflict matrix before placement.") from error
+    if conflict_matrix.academic_year_id != int(academic_year_id):
+        raise ValueError("The selected course conflict matrix belongs to another academic year.")
+
+    group_queryset = active_delivery_groups_for_year(academic_year_id).prefetch_related("offerings__course")
+    groups = {group.id: group for group in group_queryset}
+    schedule_rows = {
+        item.section_id: item
+        for item in SectionSchedule.objects.filter(
+            section__academic_year_id=academic_year_id,
+            section__lifecycle_status=SECTION_LIFECYCLE_ACTIVE,
+        ).select_related("timeslot", "section")
+    }
+    locks = {
+        item.section_id: item
+        for item in SectionLock.objects.filter(
+            section__academic_year_id=academic_year_id,
+            section__lifecycle_status=SECTION_LIFECYCLE_ACTIVE,
+        ).select_related("locked_timeslot", "locked_teacher")
+    }
+    dependency_section_ids = set(Enrollment.objects.filter(
+        section__academic_year_id=academic_year_id,
+        section__lifecycle_status=SECTION_LIFECYCLE_ACTIVE,
+    ).values_list("section_id", flat=True)) | set(ManualOverride.objects.filter(
+        section__academic_year_id=academic_year_id,
+        section__lifecycle_status=SECTION_LIFECYCLE_ACTIVE,
+    ).values_list("section_id", flat=True))
+    units, fixed = [], []
+    if input_mode == SECTION_PLACEMENT_INPUT_FIXED_SEMESTER:
+        sections = active_sections_for_year(academic_year_id).select_related("course", "delivery_group").prefetch_related("delivery_group__offerings__course")
+        for section in sections:
+            lock = locks.get(section.id)
+            schedule = schedule_rows.get(section.id)
+            fixed_teacher_id = lock.locked_teacher_id if lock and lock.locked_teacher_id else section.teacher_id
+            if schedule:
+                if schedule.timeslot_id is None:
+                    raise ValueError(f"Section {section.id} has a schedule row without accepted timing.")
+                fixed.append(FixedPlacementDTO(section.id, schedule.timeslot_id, fixed_teacher_id))
+                continue
+            if (
+                section.planning_approval_course_id is None
+                and section.staffing_approval_offering_id is None
+                and section.annual_placement_approval_id is None
+            ):
+                # A manually created unscheduled section has no solver-owned
+                # replacement contract. Counselors must first give it timing or
+                # create it through an approved planning workflow.
+                raise ValueError(f"Section {section.id} is manual fixed context without accepted timing.")
+            if section.is_locked and (lock is None or lock.locked_timeslot_id is None):
+                raise ValueError(f"Section {section.id} is locked but has no usable locked timeslot.")
+            if section.id in dependency_section_ids:
+                raise ValueError(f"Section {section.id} has downstream dependency context without accepted timing.")
+            if not section.delivery_group_id and not section.course_id:
+                raise ValueError(f"Section {section.id} has no course or delivery group.")
+            group = groups.get(section.delivery_group_id) if section.delivery_group_id else None
+            member_course_ids = tuple(item.course_id for item in group.offerings.all()) if group else (section.course_id,)
+            allowed = _group_allowed_semesters(group) if group else _allowed_semester_ids(section.course.allowed_semester)
+            units.append(PlacementUnitDTO(
+                key=f"section:{section.id}", section_id=section.id,
+                delivery_group_id=section.delivery_group_id or -section.course_id,
+                member_course_ids=member_course_ids, allowed_semesters=allowed,
+                fixed_semester=section.semester,
+                locked_timeslot_id=lock.locked_timeslot_id if lock else None,
+                locked_teacher_id=lock.locked_teacher_id if lock else None,
+                source_mode=input_mode,
+            ))
+    else:
+        if budget_approval is None:
+            raise ValueError("annual_total placement requires an approved section budget.")
+        if budget_approval.budget_run.academic_year_id != int(academic_year_id):
+            raise ValueError("The budget approval belongs to another academic year.")
+        approval_rows = list(budget_approval.offering_approvals.select_related("delivery_group").order_by("delivery_group_id"))
+        approval_group_ids = {row.delivery_group_id for row in approval_rows}
+        active_sections = active_sections_for_year(academic_year_id).filter(delivery_group_id__in=approval_group_ids)
+        if active_sections.exists():
+            raise ValueError("Annual placement cannot overwrite delivery groups that already have active materialized sections.")
+        annual_locks = {
+            (item.delivery_group_id, item.annual_index): item
+            for item in AnnualPlacementLock.objects.filter(
+                academic_year_id=academic_year_id,
+                delivery_group_id__in=approval_group_ids,
+            ).select_related("locked_timeslot")
+        }
+        for row in approval_rows:
+            group = groups.get(row.delivery_group_id)
+            if group is None:
+                raise ValueError("A budget approval references an inactive delivery group.")
+            allowed = _group_allowed_semesters(group)
+            if not allowed:
+                raise ValueError(f"Delivery group {group.id} has no legal shared semester.")
+            for annual_index in range(1, row.approved_annual_count + 1):
+                lock = annual_locks.get((group.id, annual_index))
+                units.append(PlacementUnitDTO(
+                    key=f"annual:{group.id}:{annual_index}", delivery_group_id=group.id,
+                    member_course_ids=tuple(item.course_id for item in group.offerings.all()),
+                    allowed_semesters=allowed,
+                    locked_timeslot_id=lock.locked_timeslot_id if lock else None,
+                    annual_index=annual_index, source_mode=input_mode,
+                ))
+        out_of_range = [
+            f"{group_id}:{index}"
+            for (group_id, index) in annual_locks
+            if index > next(row.approved_annual_count for row in approval_rows if row.delivery_group_id == group_id)
+        ]
+        if out_of_range:
+            raise ValueError(f"Annual placement lock(s) are outside approved annual counts: {', '.join(out_of_range)}.")
+
+    # Existing accepted schedules outside the current decision scope reserve a
+    # teacher at that block and consume workload before candidates are modelled.
+    decision_section_ids = {unit.section_id for unit in units if unit.section_id}
+    fixed_context = [item for item in fixed if item.section_id not in decision_section_ids]
+    fixed_load = {}
+    for item in fixed_context:
+        if item.teacher_id:
+            slot = next(slot for slot in base.timeslots if slot.id == item.timeslot_id)
+            fixed_load[item.teacher_id, slot.semester] = fixed_load.get((item.teacher_id, slot.semester), 0) + 1
+    configured = {
+        (item.teacher_id, item.semester): item
+        for item in TeacherPlanningCapacity.objects.filter(academic_year_id=academic_year_id)
+    }
+    explicit_unavailable = defaultdict(set)
+    for item in TeacherAvailability.objects.filter(
+        teacher_id__in=[teacher.id for teacher in base.teachers],
+        timeslot__academic_year_id=academic_year_id,
+        is_available=False,
+    ):
+        explicit_unavailable[item.teacher_id].add(item.timeslot_id)
+    teachers = []
+    for teacher in base.teachers:
+        sem_capacity = {}
+        for semester in (1, 2):
+            config = configured[teacher.id, semester]
+            sem_capacity[semester] = max(0, config.maximum_sections - config.reserved_sections - fixed_load.get((teacher.id, semester), 0))
+        annual = max(0, teacher.max_courses_total - sum(configured[teacher.id, semester].reserved_sections for semester in (1, 2)) - sum(fixed_load.get((teacher.id, semester), 0) for semester in (1, 2)))
+        teachers.append(PlacementTeacherDTO(
+            id=teacher.id,
+            eligible_course_ids=tuple(sorted(course_id for course_id, teacher_ids in compiled.qualified_teacher_ids_by_course.items() if teacher.id in teacher_ids)),
+            remaining_semester_1=sem_capacity[1], remaining_semester_2=sem_capacity[2], remaining_annual=annual,
+            unavailable_timeslot_ids=tuple(sorted(explicit_unavailable[teacher.id])),
+        ))
+    conflicts = tuple(
+        PlacementConflictDTO(
+            item.course_a_id, item.course_b_id, float(item.weight),
+            float(item.estimated_retained_co_request_count),
+        )
+        for item in conflict_matrix.conflicts.filter(
+            course_a_id__in=[course.id for course in base.courses],
+            course_b_id__in=[course.id for course in base.courses],
+        )
+    )
+    return PlacementInputDTO(
+        academic_year_id=int(academic_year_id), input_mode=input_mode,
+        units=tuple(units), fixed_placements=tuple(fixed_context),
+        timeslots=base.timeslots, teachers=tuple(teachers), conflicts=conflicts,
+    ), conflict_matrix, roster

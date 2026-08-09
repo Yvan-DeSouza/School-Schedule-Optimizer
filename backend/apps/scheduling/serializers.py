@@ -33,6 +33,10 @@ from backend.apps.scheduling.models import (
     TeacherPlanningCapacity,
     TeacherPlanningRoster,
     TimeSlot,
+    AnnualPlacementLock,
+    SectionPlacementApproval,
+    SectionPlacementApprovalAssignment,
+    SectionPlacementRun,
 )
 from backend.apps.scheduling.domain.capacity import (
     CAPACITY_FIELDS,
@@ -81,6 +85,97 @@ class TimeSlotSerializer(serializers.ModelSerializer):
                     "A timeslot for this academic year, semester, and block already exists."
                 )
         return attrs
+
+
+class AnnualPlacementLockSerializer(serializers.ModelSerializer):
+    """Transport validation for annual virtual-slot locks; service owns policy."""
+
+    class Meta:
+        model = AnnualPlacementLock
+        fields = (
+            "id", "academic_year", "delivery_group", "annual_index", "locked_timeslot",
+            "reason", "created_by", "created_at", "updated_by", "updated_at",
+            "materialized_section",
+        )
+        read_only_fields = (
+            "id", "created_by", "created_at", "updated_by", "updated_at",
+            "materialized_section",
+        )
+
+    def validate(self, attrs):
+        # A virtual slot's identity is immutable. Moving it to a different group
+        # or ordinal would silently change what a counselor's earlier reason
+        # referred to; delete/recreate is the explicit workflow instead.
+        if self.instance:
+            for field in ("academic_year", "delivery_group", "annual_index"):
+                if field in attrs and attrs[field] != getattr(self.instance, field):
+                    raise serializers.ValidationError({field: "Annual lock identity cannot be changed."})
+        return attrs
+
+
+class SectionPlacementRunCreateSerializer(serializers.Serializer):
+    """Small request contract for fixed-semester or annual-total placement."""
+
+    academic_year = serializers.IntegerField(min_value=1)
+    input_mode = serializers.ChoiceField(choices=("fixed_semester", "annual_total"))
+    budget_approval = serializers.PrimaryKeyRelatedField(
+        queryset=SectionBudgetApproval.objects.all(), required=False, allow_null=True,
+    )
+
+    def validate(self, attrs):
+        annual = attrs["input_mode"] == "annual_total"
+        if annual and not attrs.get("budget_approval"):
+            raise serializers.ValidationError({"budget_approval": "Annual-total placement requires an approved section budget."})
+        if not annual and attrs.get("budget_approval"):
+            raise serializers.ValidationError({"budget_approval": "Fixed-semester placement does not accept a budget approval."})
+        return attrs
+
+
+class SectionPlacementApprovalRequestSerializer(serializers.Serializer):
+    """Approval has no edit payload: locks are the explicit change mechanism."""
+
+    reason = serializers.CharField(required=True, allow_blank=False, max_length=2000)
+
+    def validate_reason(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("An approval reason is required.")
+        return value
+
+
+class SectionPlacementApprovalAssignmentSerializer(serializers.ModelSerializer):
+    """Read-only per-section approved timeslot provenance."""
+
+    class Meta:
+        model = SectionPlacementApprovalAssignment
+        fields = ("id", "section", "timeslot", "annual_index")
+        read_only_fields = fields
+
+
+class SectionPlacementApprovalSerializer(serializers.ModelSerializer):
+    """Append-only approval header and exact timing lines it created."""
+
+    assignments = SectionPlacementApprovalAssignmentSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = SectionPlacementApproval
+        fields = ("id", "placement_run", "approved_by", "approved_at", "reason", "assignments")
+        read_only_fields = fields
+
+
+class SectionPlacementRunSerializer(serializers.ModelSerializer):
+    """Immutable recommendation; result deliberately omits witness teacher IDs."""
+
+    approval = SectionPlacementApprovalSerializer(read_only=True)
+
+    class Meta:
+        model = SectionPlacementRun
+        fields = (
+            "id", "academic_year", "input_mode", "budget_approval", "conflict_matrix",
+            "teacher_roster", "created_by", "created_at", "status", "input_snapshot",
+            "result", "solver_metadata", "approval",
+        )
+        read_only_fields = fields
 
 
 class SectionCountRecommendationSerializer(serializers.Serializer):

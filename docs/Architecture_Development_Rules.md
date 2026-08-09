@@ -61,6 +61,14 @@ future scheduling stages do not reimplement the same rules in different places.
   underscore functions from sibling solver modules.
 - New solver stages return recommendations first. Operational writes happen
   only after an explicit authorized approval workflow.
+- Annual placement locks are pre-section timing decisions keyed by academic
+  year, physical delivery group, and stable annual ordinal. Do not make
+  `Section.semester` nullable or create fake Section rows to represent them.
+- A staffing-feasibility witness proves a legal future teacher assignment but
+  is never a persisted or API-returned teacher recommendation. Named teacher
+  assignment remains its own later reviewed stage.
+- Rooms are not inferred by semester/A-D placement. A timeslot-only accepted
+  schedule is fixed context for later stages; room selection remains explicit.
 
 ## Immutable Workflow Records
 
@@ -86,4 +94,3 @@ future scheduling stages do not reimplement the same rules in different places.
   boundaries, solver modeling choices, or non-obvious compatibility behavior.
 - Avoid comments that restate a single line of code. Comments should save a
   future developer from rediscovering the rule behind the code.
-

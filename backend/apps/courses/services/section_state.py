@@ -60,7 +60,14 @@ def fixed_context_reasons(section, dependencies=None):
         dependencies = section_dependency_sets([section.id])
 
     reasons = []
-    if section.planning_approval_course_id is None:
+    # A section may originate from section-count approval, staffing approval,
+    # or annual placement materialization.  Only a section with none of those
+    # auditable generated origins is considered manually created context.
+    if (
+        section.planning_approval_course_id is None
+        and section.staffing_approval_offering_id is None
+        and section.annual_placement_approval_id is None
+    ):
         reasons.append(FIXED_REASON_MANUAL_SECTION)
     if section.teacher_id is not None:
         reasons.append(FIXED_REASON_ASSIGNED_TEACHER)
@@ -93,6 +100,8 @@ def section_delete_conflicts(section):
         conflicts.append("planning_generated")
     if section.staffing_approval_offering_id:
         conflicts.append("staffing_plan_generated")
+    if section.annual_placement_approval_id:
+        conflicts.append("annual_placement_generated")
     if section.planning_reconciliation_actions.exists():
         conflicts.append("reconciliation_audit")
     if section.teacher_id:
@@ -107,4 +116,3 @@ def section_delete_conflicts(section):
         if section.id in section_ids
     )
     return conflicts
-

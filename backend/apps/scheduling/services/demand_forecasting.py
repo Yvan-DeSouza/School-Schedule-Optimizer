@@ -24,3 +24,20 @@ def predicted_primary_demand_by_course(academic_year):
         )
         for item in summaries
     }
+
+
+def historical_conversion_evidence_by_course(academic_year):
+    """Return planner-consistent ratios without leaking engine imports upstream.
+
+    Counselor-owned conflict matrices need the exact same historical conversion
+    rule as section planning.  This scheduling facade keeps the pure-engine
+    dependency out of the constraints app.
+    """
+
+    return {
+        item.course_id: {
+            "ratio": 1.0 if item.historical_conversion_ratio is None else item.historical_conversion_ratio,
+            "uses_current_demand_fallback": item.lacks_historical_data,
+        }
+        for item in analyze_demand(load_scheduling_input(academic_year.id)).summaries
+    }

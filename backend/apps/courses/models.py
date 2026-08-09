@@ -290,6 +290,16 @@ class Section(models.Model):
         on_delete=models.PROTECT,
         related_name="generated_sections",
     )
+    # Annual placement materializes virtual annual slots only after counselors
+    # approve a semester/block candidate. This provenance prevents those rows
+    # from being mistaken for manually-created sections by lifecycle helpers.
+    annual_placement_approval = models.ForeignKey(
+        "scheduling.SectionPlacementApproval",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="materialized_sections",
+    )
 
     class Meta:
         ordering = ["academic_year", "course", "section_number"]

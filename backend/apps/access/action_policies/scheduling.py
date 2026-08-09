@@ -11,6 +11,7 @@ class SchedulingAction:
     """Stable names for the three downstream solver stages and status."""
 
     RUN_SECTION_PLACEMENT = "run_section_placement"
+    APPROVE_SECTION_PLACEMENT = "approve_section_placement"
     RUN_TEACHER_ASSIGNMENT = "run_teacher_assignment"
     RUN_STUDENT_ASSIGNMENT = "run_student_assignment"
     VIEW_SCHEDULING_RUN_STATUS = "view_scheduling_run_status"
@@ -24,6 +25,7 @@ class SchedulingActionPolicy(BaseActionPolicy):
         SchedulingAction.RUN_TEACHER_ASSIGNMENT,
         SchedulingAction.RUN_STUDENT_ASSIGNMENT,
     }
+    approval_actions = {SchedulingAction.APPROVE_SECTION_PLACEMENT}
     status_actions = {SchedulingAction.VIEW_SCHEDULING_RUN_STATUS}
     rules = {
         RoleChoices.COUNSELOR: ActionRule(execute=ActionScope.ALLOWED),
@@ -38,5 +40,7 @@ class SchedulingActionPolicy(BaseActionPolicy):
             return True
         if action in cls.solver_run_actions:
             # Starting a schedule-changing solve is narrower than viewing status.
+            return get_user_role(user) in {RoleChoices.COUNSELOR, RoleChoices.DIRECTOR}
+        if action in cls.approval_actions:
             return get_user_role(user) in {RoleChoices.COUNSELOR, RoleChoices.DIRECTOR}
         return False

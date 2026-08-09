@@ -3,6 +3,7 @@
 from rest_framework import serializers
 
 from backend.apps.common.exceptions import DomainValidationError
+from backend.apps.common.models import AcademicYear
 from backend.apps.common.constants import (
     QUALIFICATION_DIVISION_NONE,
     QUALIFICATION_DIVISION_SENIOR,
@@ -11,7 +12,7 @@ from backend.apps.common.constants import (
     STATUTORY_TEACHABLE_MIN_GRADE,
 )
 from backend.apps.constraints.models import (
-    CounselorConstraintPreference, CourseConflict, CourseQualificationRequirement,
+    CounselorConstraintPreference, CourseConflict, CourseConflictMatrix, CourseQualificationRequirement,
     CourseRoomRequirement, HardConstraint, Qualification, SoftConstraint,
     TeacherAvailability, TeacherCoursePreference, TeacherCurrentCourse, TeacherQualification,
 )
@@ -163,7 +164,13 @@ class CourseConflictSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CourseConflict
-        fields = ("id", "course_a", "course_b", "weight")
+        fields = (
+            "id", "matrix", "course_a", "course_b", "computed_weight", "weight",
+            "co_request_count", "union_request_count",
+            "estimated_retained_co_request_count", "uses_current_demand_fallback",
+            "is_overridden",
+        )
+        read_only_fields = fields
 
     def validate(self, attrs):
         # Model constraints catch self-conflict at write time; serializer checks
@@ -180,6 +187,46 @@ class CourseConflictSerializer(serializers.ModelSerializer):
         if errors:
             raise serializers.ValidationError(errors)
         return attrs
+
+
+class CourseConflictMatrixCreateSerializer(serializers.Serializer):
+    """Request shape for a fresh annual matrix or carried counselor overrides."""
+
+    academic_year = serializers.PrimaryKeyRelatedField(queryset=AcademicYear.objects.all())
+    initialization_mode = serializers.ChoiceField(
+        choices=("fresh_current_demand", "carry_prior_overrides"),
+    )
+    source_matrix = serializers.PrimaryKeyRelatedField(
+        queryset=CourseConflictMatrix.objects.all(), required=False, allow_null=True,
+    )
+
+    def validate(self, attrs):
+        if attrs["initialization_mode"] == "carry_prior_overrides" and not attrs.get("source_matrix"):
+            raise serializers.ValidationError({"source_matrix": "Required when carrying prior overrides."})
+        return attrs
+
+
+class CourseConflictMatrixSerializer(serializers.ModelSerializer):
+    """Summary only; the grid action supplies matrix rows on demand."""
+
+    class Meta:
+        model = CourseConflictMatrix
+        fields = (
+            "id", "academic_year", "initialization_mode", "source_matrix",
+            "revision", "request_fingerprint", "created_by", "created_at",
+            "refreshed_by", "refreshed_at",
+        )
+        read_only_fields = (
+            "id", "revision", "request_fingerprint", "created_by", "created_at",
+            "refreshed_by", "refreshed_at",
+        )
+
+
+class CourseConflictAdjustSerializer(serializers.Serializer):
+    """Counselor edit that always produces an immutable adjustment audit row."""
+
+    weight = serializers.DecimalField(max_digits=5, decimal_places=2, min_value=0, max_value=100)
+    reason = serializers.CharField(max_length=2000, allow_blank=False)
 
 
 class CourseRoomRequirementSerializer(serializers.ModelSerializer):

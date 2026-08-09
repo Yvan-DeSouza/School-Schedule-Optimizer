@@ -25,6 +25,10 @@ from backend.apps.common.constants import (
     TEACHER_ROSTER_STATUS_DRAFT,
     SEMESTER_CHOICES,
 )
+from backend.apps.scheduling.constants import (
+    SECTION_PLACEMENT_INPUT_MODE_CHOICES,
+    SECTION_PLACEMENT_RUN_STATUS_CHOICES,
+)
 from backend.apps.scheduling.domain.capacity import (
     CAPACITY_ORDER_MESSAGE,
     capacity_values,
@@ -608,9 +612,121 @@ class SectionSchedule(models.Model):
     room = models.ForeignKey("common.Room", on_delete=models.SET_NULL, null=True)
     # This distinguishes counselor placement from future solver output.
     is_manual = models.BooleanField(default=False)
+    # Timing placement is deliberately earlier than room assignment. The
+    # provenance row proves which immutable recommendation supplied a partial
+    # timeslot-only schedule without pretending a room was selected.
+    placement_approval_assignment = models.OneToOneField(
+        "SectionPlacementApprovalAssignment",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="scheduled_section",
+    )
 
     class Meta:
         ordering = ["section"]
 
     def __str__(self):
         return f"Schedule for {self.section}"
+
+
+class AnnualPlacementLock(models.Model):
+    """A pre-section timeslot lock for one annual physical delivery slot."""
+
+    academic_year = models.ForeignKey("common.AcademicYear", on_delete=models.CASCADE)
+    delivery_group = models.ForeignKey("courses.DeliveryGroup", on_delete=models.CASCADE)
+    annual_index = models.PositiveIntegerField()
+    locked_timeslot = models.ForeignKey(TimeSlot, on_delete=models.PROTECT)
+    reason = models.TextField()
+    created_by = models.ForeignKey("auth.User", null=True, on_delete=models.SET_NULL)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_by = models.ForeignKey(
+        "auth.User", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="updated_annual_placement_locks",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+    materialized_section = models.OneToOneField(
+        "courses.Section", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="annual_placement_lock",
+    )
+
+    class Meta:
+        ordering = ["academic_year", "delivery_group", "annual_index"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["academic_year", "delivery_group", "annual_index"],
+                name="unique_annual_placement_lock_slot",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.delivery_group} annual slot {self.annual_index}"
+
+
+class SectionPlacementRun(models.Model):
+    """Immutable semester/A-D recommendation with a hidden staffing witness."""
+
+    academic_year = models.ForeignKey("common.AcademicYear", on_delete=models.PROTECT)
+    input_mode = models.CharField(max_length=30, choices=SECTION_PLACEMENT_INPUT_MODE_CHOICES)
+    budget_approval = models.ForeignKey(
+        SectionBudgetApproval, null=True, blank=True, on_delete=models.PROTECT,
+        related_name="placement_runs",
+    )
+    conflict_matrix = models.ForeignKey(
+        "constraints.CourseConflictMatrix", on_delete=models.PROTECT,
+        related_name="placement_runs",
+    )
+    teacher_roster = models.ForeignKey(
+        TeacherPlanningRoster, on_delete=models.PROTECT, related_name="placement_runs",
+    )
+    created_by = models.ForeignKey("auth.User", null=True, on_delete=models.SET_NULL)
+    created_at = models.DateTimeField(auto_now_add=True)
+    status = models.CharField(max_length=20, choices=SECTION_PLACEMENT_RUN_STATUS_CHOICES)
+    input_snapshot = models.JSONField(default=dict)
+    result = models.JSONField(default=dict)
+    solver_metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise ValidationError("Section placement runs are immutable.")
+        return super().save(*args, **kwargs)
+
+
+class SectionPlacementApproval(models.Model):
+    """One immutable approval for a complete, unchanged placement candidate."""
+
+    placement_run = models.OneToOneField(
+        SectionPlacementRun, on_delete=models.PROTECT, related_name="approval",
+    )
+    approved_by = models.ForeignKey("auth.User", null=True, on_delete=models.SET_NULL)
+    approved_at = models.DateTimeField(auto_now_add=True)
+    reason = models.TextField()
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise ValidationError("Section placement approvals are immutable.")
+        return super().save(*args, **kwargs)
+
+
+class SectionPlacementApprovalAssignment(models.Model):
+    """Immutable per-section timing fact approved from a placement run."""
+
+    approval = models.ForeignKey(
+        SectionPlacementApproval, on_delete=models.PROTECT, related_name="assignments",
+    )
+    section = models.OneToOneField(
+        "courses.Section", on_delete=models.PROTECT, related_name="placement_assignment",
+    )
+    timeslot = models.ForeignKey(TimeSlot, on_delete=models.PROTECT)
+    annual_index = models.PositiveIntegerField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["approval", "section"]
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise ValidationError("Section placement assignments are immutable.")
+        return super().save(*args, **kwargs)

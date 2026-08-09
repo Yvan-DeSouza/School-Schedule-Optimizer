@@ -21,3 +21,19 @@ SHARED_QUALIFIED_STAFFING_POOL_INFEASIBLE = "shared_qualified_staffing_pool_infe
 STAFFING_CHANGED_DEMAND_PLAN = "staffing_changed_demand_plan"
 TOTAL_STAFFING_CAPACITY_SHORTFALL = "total_staffing_capacity_shortfall"
 UNMET_DEMAND_AFTER_STAFFING = "unmet_demand_after_staffing"
+
+# Semester/A-D placement diagnostics. These are stable API/UI contract values;
+# detailed wording remains a backend concern and can improve without breaking a
+# counselor dashboard.
+MISSING_CONFLICT_MATRIX = "missing_conflict_matrix"
+ANNUAL_LOCK_OUTSIDE_ANNUAL_COUNT = "annual_lock_outside_annual_count"
+LOCKED_TIMESLOT_OUTSIDE_YEAR_OR_SEMESTER = "locked_timeslot_outside_year_or_semester"
+SECTION_LOCKED_WITHOUT_USABLE_TIMING = "section_locked_without_usable_timing"
+NO_LEGAL_SEMESTER = "no_legal_semester"
+NO_AVAILABLE_TIMESLOT = "no_available_timeslot"
+NO_ELIGIBLE_TEACHER = "no_eligible_teacher"
+TEACHER_AVAILABILITY_COLLISION = "teacher_availability_collision"
+TEACHER_SEMESTER_OR_ANNUAL_CAPACITY_SHORTAGE = "teacher_semester_or_annual_capacity_shortage"
+NO_COMPLETE_PLACEMENT = "no_complete_placement"
+FIXED_CONTEXT_CHANGED_SINCE_RUN = "fixed_context_changed_since_run"
+PLACEMENT_INPUT_CHANGED_SINCE_RUN = "placement_input_changed_since_run"

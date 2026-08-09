@@ -69,3 +69,12 @@ QUALIFICATION_SOURCE_CHOICES = (
     (QUALIFICATION_SOURCE_IMPORT, "Approved import"),
 )
 
+# A conflict matrix is year-specific because it describes one cohort's course
+# requests.  Carry-forward intentionally preserves only explicit counselor
+# judgment; ordinary calculated values are regenerated from the new cohort.
+COURSE_CONFLICT_MATRIX_FRESH = "fresh_current_demand"
+COURSE_CONFLICT_MATRIX_CARRY_OVERRIDES = "carry_prior_overrides"
+COURSE_CONFLICT_MATRIX_INITIALIZATION_CHOICES = (
+    (COURSE_CONFLICT_MATRIX_FRESH, "Fresh current-year demand"),
+    (COURSE_CONFLICT_MATRIX_CARRY_OVERRIDES, "Carry prior counselor overrides"),
+)

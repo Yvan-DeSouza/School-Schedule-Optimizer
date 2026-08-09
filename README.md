@@ -438,6 +438,33 @@ divisions, enforcement levels, and source systems. Add or change a supported
 option there; Django models, services, API tests, and the adapter import the
 relevant named constant rather than defining their own copy.
 
+## Semester and A-D Placement API
+
+Placement is a counselor-reviewed timing stage. It chooses semesters when an
+approved budget supplies annual totals, places sections in recurring A-D blocks,
+and proves anonymous staffing feasibility. It does not assign rooms, named
+teachers, or students.
+
+- `POST /api/planning/course-conflict-matrices/` creates the one annual
+  primary-request conflict matrix. Use `GET /{id}/grid/`, `POST /{id}/refresh/`,
+  and `POST /{id}/conflicts/{conflict_id}/adjust/` to inspect, refresh, or
+  reason-track a counselor score override.
+- `GET/POST /api/planning/annual-placement-locks/` and
+  `GET/PATCH/DELETE /api/planning/annual-placement-locks/{id}/` manage locks for
+  stable annual virtual sections before real Section rows exist.
+- `POST /api/planning/section-placement-runs/` accepts either
+  `{"academic_year": 1, "input_mode": "fixed_semester"}` or
+  `{"academic_year": 1, "input_mode": "annual_total", "budget_approval": 14}`.
+- Use `GET /api/planning/section-placement-runs/{id}/review/`, then
+  `POST /approval-preview/` or `POST /approve/` with a nonblank `reason`.
+  Approval materializes annual virtual slots if needed and writes only a
+  timeslot to `SectionSchedule`; it never changes an unreviewed candidate.
+
+Counselor/director users may create and approve runs. Counselor/staff/director
+users may list, inspect, review, and preview them. A run is rejected at approval
+if the matrix, roster, lock, qualification, capacity, schedule, or other input
+facts changed after the reviewed snapshot.
+
 ## Local Schema Rebuild
 
 Project apps intentionally do not use migration files. After pulling model

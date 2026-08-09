@@ -45,6 +45,15 @@
 
 ## 1. Executive Summary
 
+> **Current implementation supersession (2026-08-08):** Where this older SDD
+> describes queue-first execution or combines rooms with the first placement
+> solver, follow `Implementation_Roadmap.md` and
+> `docs/decisions/semester-placement-and-staffing-feasibility.md` instead. The
+> implemented stage runs synchronously with a bounded review-first workflow,
+> places semester/A-D timing only, and uses anonymous staffing witnesses. It
+> neither assigns rooms nor persists named teacher recommendations. Workers are
+> deferred until representative benchmarks justify them.
+
 Ontario secondary school timetabling is, in practice, a multi-week, multi-stakeholder planning exercise rather than a single computational event. Guidance counselors and administrators move through course-selection analysis, section-count planning, staffing evaluation, teacher assignment, constraint gathering, timetable construction, and iterative correction — often revisiting earlier stages as new information surfaces. Existing tools in this space tend to fall into one of two unsatisfying categories: fully manual spreadsheet-based processes that do not scale past a few hundred students, or "black box" optimizers that produce a single output schedule with no support for the iterative, human-in-the-loop process that schools actually follow.
 
 This document specifies the software architecture for a decision-support timetabling system that automates the computationally difficult and repetitive parts of this process — demand analysis, section placement, teacher-to-section assignment, and student-to-section assignment — while preserving guidance counselors as the final authority over every consequential decision. The system is explicitly **not** designed to produce a final, unreviewable timetable. It is designed to produce strong candidate schedules quickly, to surface exactly the conflicts and edge cases that require human judgment, and to let counselors lock in decisions that the optimizer must then treat as immovable constraints on every subsequent run.

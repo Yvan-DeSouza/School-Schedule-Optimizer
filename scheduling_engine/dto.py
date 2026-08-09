@@ -312,6 +312,98 @@ class SchedulingInputDTO:
 
 
 @dataclass(frozen=True)
+class PlacementUnitDTO:
+    """One real section or stable pre-materialization annual delivery slot.
+
+    Annual keys exist so a counselor can lock "Physics slot 3" before a
+    semester-specific Section row exists.  They are deliberately not fake
+    SectionDTOs with a nullable semester.
+    """
+
+    key: str
+    delivery_group_id: int
+    member_course_ids: Tuple[int, ...]
+    allowed_semesters: Tuple[int, ...]
+    section_id: Optional[int] = None
+    fixed_semester: Optional[int] = None
+    locked_timeslot_id: Optional[int] = None
+    locked_teacher_id: Optional[int] = None
+    annual_index: Optional[int] = None
+    source_mode: str = "fixed_semester"
+
+
+@dataclass(frozen=True)
+class FixedPlacementDTO:
+    """Accepted timing context outside this placement run's decision scope."""
+
+    section_id: int
+    timeslot_id: int
+    teacher_id: Optional[int] = None
+
+
+@dataclass(frozen=True)
+class PlacementTeacherDTO:
+    """Anonymous-to-output staffing facts used only to prove feasibility."""
+
+    id: int
+    eligible_course_ids: Tuple[int, ...]
+    remaining_semester_1: int
+    remaining_semester_2: int
+    remaining_annual: int
+    unavailable_timeslot_ids: Tuple[int, ...] = ()
+
+
+@dataclass(frozen=True)
+class PlacementConflictDTO:
+    """Effective course-pair score plus estimated affected-student volume."""
+
+    course_a_id: int
+    course_b_id: int
+    weight: float
+    estimated_retained_co_request_count: float
+
+
+@dataclass(frozen=True)
+class PlacementInputDTO:
+    """Detached input for semester/A-D placement with staffing feasibility."""
+
+    academic_year_id: int
+    input_mode: str
+    units: Tuple[PlacementUnitDTO, ...]
+    fixed_placements: Tuple[FixedPlacementDTO, ...]
+    timeslots: Tuple[TimeSlotDTO, ...]
+    teachers: Tuple[PlacementTeacherDTO, ...]
+    conflicts: Tuple[PlacementConflictDTO, ...]
+    time_limit_seconds: int = 30
+
+
+@dataclass(frozen=True)
+class PlacementAssignmentDTO:
+    """A reviewable timing decision; it intentionally excludes a teacher name."""
+
+    unit_key: str
+    section_id: Optional[int]
+    delivery_group_id: int
+    semester: int
+    timeslot_id: int
+    block: str
+    annual_index: Optional[int] = None
+
+
+@dataclass(frozen=True)
+class PlacementResultDTO:
+    """Pure placement result with diagnostics and non-sensitive evidence only."""
+
+    status: str
+    solver_outcome: str
+    assignments: Tuple[PlacementAssignmentDTO, ...]
+    unplaced_unit_keys: Tuple[str, ...]
+    diagnostics: Tuple[dict, ...]
+    objective_components: Mapping[str, float]
+    staffing_summary: Mapping[str, object]
+
+
+@dataclass(frozen=True)
 class DemandSummaryDTO:
     """Per-course request totals and historical-ratio provenance."""
 

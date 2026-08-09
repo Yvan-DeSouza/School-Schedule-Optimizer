@@ -12,12 +12,13 @@ from backend.apps.access.resource_policies.constraints import PlanningResourcePo
 from backend.apps.access.viewsets import PolicyFilteredModelViewSet
 from backend.apps.common.exceptions import DomainConflictError, DomainValidationError
 from backend.apps.constraints.models import (
-    CounselorConstraintPreference, CourseConflict, CourseQualificationRequirement,
+    CounselorConstraintPreference, CourseConflict, CourseConflictMatrix, CourseQualificationRequirement,
     CourseRoomRequirement, HardConstraint, Qualification, SoftConstraint,
     TeacherAvailability, TeacherCoursePreference, TeacherCurrentCourse, TeacherQualification,
 )
 from backend.apps.constraints.serializers import (
-    CounselorConstraintPreferenceSerializer, CourseConflictSerializer,
+    CounselorConstraintPreferenceSerializer, CourseConflictAdjustSerializer,
+    CourseConflictMatrixCreateSerializer, CourseConflictMatrixSerializer, CourseConflictSerializer,
     CourseQualificationRequirementSerializer, CourseRoomRequirementSerializer,
     HardConstraintSerializer, QualificationSerializer, SectionLockSerializer,
     SoftConstraintSerializer, TeacherAvailabilitySerializer, TeacherCoursePreferenceSerializer,
@@ -35,6 +36,7 @@ from backend.apps.common.constants import (
 from backend.apps.courses.models import Section
 from backend.apps.people.models import RoleChoices, Teacher
 from backend.apps.people.roles import get_user_role
+from backend.apps.access.resource_policies.planning import PlanningConfigurationPolicy
 
 
 class RetiredSectionConflict(APIException):
@@ -211,9 +213,94 @@ class CounselorConstraintPreferenceViewSet(SharedConstraintViewSet):
 
 
 class CourseConflictViewSet(SharedConstraintViewSet):
-    queryset = CourseConflict.objects.select_related("course_a", "course_b")
+    """Read matrix rows; all score changes go through the audited action."""
+
+    queryset = CourseConflict.objects.select_related("matrix", "course_a", "course_b").filter(matrix__isnull=False)
     serializer_class = CourseConflictSerializer
-    filter_fields = ("course_a", "course_b")
+    filter_fields = ("matrix", "course_a", "course_b")
+
+    def create(self, request, *args, **kwargs):
+        # Preserve a useful 400 for legacy clients while refusing the old
+        # untracked mutable conflict write path.
+        raise ValidationError({"detail": "Create a yearly conflict matrix, then use its audited adjust action."})
+
+    def update(self, request, *args, **kwargs):
+        raise ValidationError({"detail": "Conflict scores are changed only through matrix adjustments."})
+
+    def partial_update(self, request, *args, **kwargs):
+        return self.update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        raise ValidationError({"detail": "Conflict matrix rows are retained as planning history."})
+
+
+class CourseConflictMatrixViewSet(PolicyFilteredViewSet):
+    """Set up, inspect, refresh, and audit counselor co-request matrices."""
+
+    resource_policy_class = PlanningConfigurationPolicy
+    queryset = CourseConflictMatrix.objects.select_related(
+        "academic_year", "source_matrix", "created_by", "refreshed_by",
+    )
+    serializer_class = CourseConflictMatrixSerializer
+    filter_fields = ("academic_year",)
+
+    def get_serializer_class(self):
+        return CourseConflictMatrixCreateSerializer if self.action == "create" else CourseConflictMatrixSerializer
+
+    def create(self, request, *args, **kwargs):
+        from backend.apps.constraints.conflict_matrix import create_course_conflict_matrix
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            matrix = create_course_conflict_matrix(actor=request.user, **serializer.validated_data)
+        except DomainValidationError as error:
+            raise ValidationError(error.detail) from error
+        except DomainConflictError as error:
+            raise RetiredSectionConflict(error.detail) from error
+        return Response(CourseConflictMatrixSerializer(matrix).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["get"])
+    def grid(self, request, pk=None):
+        """Render symmetric logical matrix data without storing mirrored rows."""
+
+        matrix = self.get_object()
+        conflicts = CourseConflict.objects.filter(matrix=matrix).select_related("course_a", "course_b")
+        course_ids = sorted({
+            identifier
+            for item in conflicts
+            for identifier in (item.course_a_id, item.course_b_id)
+        })
+        return Response({
+            "matrix": CourseConflictMatrixSerializer(matrix).data,
+            "course_ids": course_ids,
+            "conflicts": CourseConflictSerializer(conflicts, many=True).data,
+        })
+
+    @action(detail=True, methods=["post"])
+    def refresh(self, request, pk=None):
+        from backend.apps.constraints.conflict_matrix import refresh_course_conflict_matrix
+
+        try:
+            matrix = refresh_course_conflict_matrix(self.get_object(), actor=request.user)
+        except DomainValidationError as error:
+            raise ValidationError(error.detail) from error
+        return Response(CourseConflictMatrixSerializer(matrix).data)
+
+    @action(detail=True, methods=["post"], url_path=r"conflicts/(?P<conflict_id>[^/.]+)/adjust")
+    def adjust(self, request, pk=None, conflict_id=None):
+        from backend.apps.constraints.conflict_matrix import adjust_course_conflict
+
+        serializer = CourseConflictAdjustSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            conflict = adjust_course_conflict(
+                matrix=self.get_object(), conflict_id=conflict_id, actor=request.user,
+                new_weight=serializer.validated_data["weight"], reason=serializer.validated_data["reason"],
+            )
+        except DomainValidationError as error:
+            raise ValidationError(error.detail) from error
+        return Response(CourseConflictSerializer(conflict).data)
 
 
 class CourseRoomRequirementViewSet(SharedConstraintViewSet):

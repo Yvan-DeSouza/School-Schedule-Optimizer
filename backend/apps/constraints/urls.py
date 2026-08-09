@@ -4,7 +4,7 @@ from django.urls import path
 from rest_framework.routers import DefaultRouter
 
 from backend.apps.constraints.views import (
-    CounselorConstraintPreferenceViewSet, CourseConflictViewSet,
+    CounselorConstraintPreferenceViewSet, CourseConflictMatrixViewSet, CourseConflictViewSet,
     CourseQualificationRequirementViewSet, CourseRoomRequirementViewSet,
     HardConstraintViewSet, QualificationViewSet, SectionLockView, SoftConstraintViewSet,
     TeacherAvailabilityViewSet, TeacherCoursePreferenceViewSet, TeacherCurrentCourseViewSet,
@@ -18,6 +18,7 @@ router.register("constraints/hard", HardConstraintViewSet, basename="hard-constr
 router.register("constraints/soft", SoftConstraintViewSet, basename="soft-constraint")
 router.register("constraints/preferences", CounselorConstraintPreferenceViewSet, basename="constraint-preference")
 router.register("course-conflicts", CourseConflictViewSet, basename="course-conflict")
+router.register("planning/course-conflict-matrices", CourseConflictMatrixViewSet, basename="course-conflict-matrix")
 router.register("course-room-requirements", CourseRoomRequirementViewSet, basename="course-room-requirement")
 router.register("course-qualification-requirements", CourseQualificationRequirementViewSet, basename="course-qualification-requirement")
 

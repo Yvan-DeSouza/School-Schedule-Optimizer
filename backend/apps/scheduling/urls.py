@@ -9,11 +9,13 @@ from backend.apps.scheduling.views import (
     CoursePriorityProfileViewSet,
     SectionCountRecommendationView,
     SectionPlanningRunViewSet,
+    SectionPlacementRunViewSet,
     SectionBudgetRunViewSet,
     StaffingPlanRunViewSet,
     TeacherPlanningCapacityViewSet,
     TeacherPlanningRosterViewSet,
     TimeSlotViewSet,
+    AnnualPlacementLockViewSet,
 )
 
 router = DefaultRouter()
@@ -23,7 +25,9 @@ router.register("planning/capacity-profiles", CapacityProfileViewSet, basename="
 router.register("planning/course-priority-profiles", CoursePriorityProfileViewSet, basename="course-priority-profile")
 router.register("planning/teacher-capacities", TeacherPlanningCapacityViewSet, basename="teacher-planning-capacity")
 router.register("planning/teacher-rosters", TeacherPlanningRosterViewSet, basename="teacher-planning-roster")
+router.register("planning/annual-placement-locks", AnnualPlacementLockViewSet, basename="annual-placement-lock")
 router.register("planning/section-count-runs", SectionPlanningRunViewSet, basename="section-planning-run")
+router.register("planning/section-placement-runs", SectionPlacementRunViewSet, basename="section-placement-run")
 router.register("planning/section-budget-runs", SectionBudgetRunViewSet, basename="section-budget-run")
 router.register("planning/staffing-runs", StaffingPlanRunViewSet, basename="staffing-plan-run")
 
