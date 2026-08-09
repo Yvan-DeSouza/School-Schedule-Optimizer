@@ -38,6 +38,15 @@ COURSE_REQUEST_TYPE_CHOICES = (
     (COURSE_REQUEST_TYPE_ALTERNATE, "Alternate"),
 )
 
+# Enrollment history is append-only. Active rows participate in current
+# capacity/timeslot decisions; historical rows remain audit evidence only.
+ENROLLMENT_LIFECYCLE_ACTIVE = "active"
+ENROLLMENT_LIFECYCLE_HISTORICAL = "historical"
+ENROLLMENT_LIFECYCLE_CHOICES = (
+    (ENROLLMENT_LIFECYCLE_ACTIVE, "Active"),
+    (ENROLLMENT_LIFECYCLE_HISTORICAL, "Historical"),
+)
+
 # Course-offering decisions are year-specific. A catalog course continues to
 # exist when its offering is cancelled, so requests and history remain intact.
 COURSE_OFFERING_STATUS_OFFERED = "offered"
@@ -64,4 +73,3 @@ COURSE_OFFERING_ACTION_CHOICES = (
     (COURSE_OFFERING_ACTION_COMBINED, "Combined"),
     (COURSE_OFFERING_ACTION_SEPARATED, "Separated"),
 )
-

@@ -86,6 +86,10 @@ STUDENT_ASSIGNMENT_RUN_SCOPE_CHOICES = (
     (STUDENT_ASSIGNMENT_RUN_SCOPE_SCOPED, "Scoped student-assignment rerun"),
 )
 
+# This is the temporary effective default until the approved school-wide
+# StudentAssignmentConfiguration model owns the setting.
+STUDENT_ASSIGNMENT_DEFAULT_MAX_PRIORITY_REQUESTS = 100
+
 # These values describe counselor decisions, not solver outcomes. Keeping them
 # in the scheduling domain lets models, services, and future serializers share
 # one stable vocabulary without putting workflow values in common/constants.py.

@@ -24,6 +24,7 @@ from backend.apps.common.constants import (
 from backend.apps.courses.models import Course, CourseOffering, Section
 from backend.apps.courses.services.offerings import ensure_academic_year_offerings
 from backend.apps.courses.services.section_state import (
+    active_enrollment_students_by_section as _active_enrollment_students,
     fixed_context_reasons as _protection_reasons,
     section_dependency_sets as _dependency_sets,
 )
@@ -35,6 +36,7 @@ from backend.apps.scheduling.codes import (
     NO_UNAPPROVED_COURSES_REMAINING,
     PROTECTED_SECTIONS_EXCEED_TARGET,
     RECONCILIATION_PREVIEW_STALE,
+    STUDENT_ASSIGNMENT_SECTION_CANCELLATION_REQUIRES_RERUN,
 )
 from backend.apps.scheduling.models import (
     CapacityProfile,
@@ -171,6 +173,9 @@ def _build_course_delta(
         values.sort(key=lambda item: (item.id, item.section_number))
 
     conflicts = []
+    active_students_by_section = _active_enrollment_students(
+        [section.id for section in active]
+    )
     for semester in (SEMESTER_FALL, SEMESTER_WINTER):
         if len(protected[semester]) > proposed_counts[semester]:
             conflicts.append({
@@ -185,6 +190,26 @@ def _build_course_delta(
                     f"{semester} section(s), above the proposed count of {proposed_counts[semester]}."
                 ),
             })
+            affected_sections = [
+                section for section in protected[semester]
+                if section.id in active_students_by_section
+            ]
+            if affected_sections:
+                conflicts.append({
+                    "code": STUDENT_ASSIGNMENT_SECTION_CANCELLATION_REQUIRES_RERUN,
+                    "course_id": course.id,
+                    "semester": semester,
+                    "section_ids": [section.id for section in affected_sections],
+                    "student_ids": sorted({
+                        student_id
+                        for section in affected_sections
+                        for student_id in active_students_by_section[section.id]
+                    }),
+                    "message": (
+                        "A section with active student enrollments cannot be cancelled "
+                        "until a reviewed student-assignment rerun resolves those students."
+                    ),
+                })
 
     if conflicts:
         for section in active:

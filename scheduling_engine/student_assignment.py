@@ -320,6 +320,22 @@ def solve_student_assignment(data: StudentAssignmentInputDTO) -> StudentAssignme
 
 
 def _solve_student_assignment(data, *, include_lock_costs):
+    if data.scope.scope_type == "scoped":
+        # Keep the complete request list in the detached run snapshot, but do
+        # not let a partial rerun silently rewrite demand outside its approved
+        # boundary. The adapter resolves the flag; the engine only consumes it.
+        data = replace(
+            data,
+            requests=tuple(request for request in data.requests if request.is_in_scope),
+            priority_request_ids=tuple(
+                request_id
+                for request_id in data.priority_request_ids
+                if any(
+                    request.request_id == request_id and request.is_in_scope
+                    for request in data.requests
+                )
+            ),
+        )
     offering_sections = _validate_input(data)
     model = cp_model.CpModel()
     sections = {item.section_id: item for item in data.sections}

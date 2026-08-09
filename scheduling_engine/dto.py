@@ -244,6 +244,9 @@ class StudentAssignmentRequestDTO:
     # enrollment. The adapter supplies this opaque identifier so review and a
     # later approval service can preserve the replacement audit trail.
     current_enrollment_id: Optional[int] = None
+    # Scoped reruns retain out-of-scope request facts in the snapshot for
+    # drift detection, while the pure solver ignores requests marked false.
+    is_in_scope: bool = True
 
 
 @dataclass(frozen=True)

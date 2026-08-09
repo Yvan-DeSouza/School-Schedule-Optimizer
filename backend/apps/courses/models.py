@@ -16,6 +16,8 @@ from backend.apps.common.constants import (
     COURSE_OFFERING_STATUS_OFFERED,
     DELIVERY_GROUP_STATUS_ACTIVE,
     DELIVERY_GROUP_STATUS_CHOICES,
+    ENROLLMENT_LIFECYCLE_ACTIVE,
+    ENROLLMENT_LIFECYCLE_CHOICES,
     SECTION_LIFECYCLE_ACTIVE,
     SECTION_LIFECYCLE_CHOICES,
     SEMESTER_CHOICES,
@@ -342,20 +344,31 @@ class Enrollment(models.Model):
         on_delete=models.PROTECT,
         related_name="enrollments",
     )
+    # Retiring an enrollment preserves the original placement for audit while
+    # removing it from operational capacity and student-conflict calculations.
+    lifecycle_status = models.CharField(
+        max_length=20,
+        choices=ENROLLMENT_LIFECYCLE_CHOICES,
+        default=ENROLLMENT_LIFECYCLE_ACTIVE,
+    )
 
     class Meta:
         ordering = ["student", "section"]
         constraints = [
             models.UniqueConstraint(
                 fields=["student", "section"],
-                name="unique_student_section_enrollment"
+                condition=models.Q(lifecycle_status=ENROLLMENT_LIFECYCLE_ACTIVE),
+                name="unique_active_student_section_enrollment"
             ),
             # Legacy rows may not have an offering, but every new solver write
             # identifies the exact offering a student is taking.
             models.UniqueConstraint(
                 fields=["student", "course_offering"],
-                condition=models.Q(course_offering__isnull=False),
-                name="unique_student_course_offering_enrollment",
+                condition=models.Q(
+                    course_offering__isnull=False,
+                    lifecycle_status=ENROLLMENT_LIFECYCLE_ACTIVE,
+                ),
+                name="unique_active_student_course_offering_enrollment",
             ),
         ]
 

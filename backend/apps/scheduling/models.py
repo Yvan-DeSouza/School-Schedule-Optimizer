@@ -984,6 +984,16 @@ class StudentAssignmentApprovalEnrollment(models.Model):
         on_delete=models.PROTECT,
         related_name="student_assignment_provenance",
     )
+    # A replacement approval points to the historical row it retired. The
+    # nullable value preserves the original first-release approvals, which
+    # created new enrollments without superseding an earlier one.
+    superseded_enrollment = models.OneToOneField(
+        "courses.Enrollment",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="superseded_by_student_assignment_provenance",
+    )
     course_request = models.ForeignKey("courses.CourseRequest", on_delete=models.PROTECT)
     assignment_basis = models.CharField(max_length=30, choices=STUDENT_ASSIGNMENT_BASIS_CHOICES)
     backup_resolution_snapshot = models.JSONField(default=dict, blank=True)

@@ -5,7 +5,10 @@ replace this section?" This module owns that answer so placement, assignment,
 reconciliation, and manual overrides do not drift apart.
 """
 
+from collections import defaultdict
+
 from backend.apps.control.models import ManualOverride, SectionLock
+from backend.apps.courses.constants import ENROLLMENT_LIFECYCLE_ACTIVE
 from backend.apps.courses.models import Enrollment
 from backend.apps.scheduling.constants import SECTION_LIFECYCLE_RETIRED
 
@@ -16,6 +19,7 @@ FIXED_REASON_SECTION_FLAG_LOCKED = "section_flag_locked"
 FIXED_REASON_SECTION_LOCK = "section_lock"
 FIXED_REASON_SECTION_SCHEDULE = "section_schedule"
 FIXED_REASON_ENROLLMENTS = "enrollments"
+FIXED_REASON_ENROLLMENT_HISTORY = "enrollment_history"
 FIXED_REASON_MANUAL_OVERRIDES = "manual_overrides"
 
 
@@ -39,7 +43,10 @@ def section_dependency_sets(section_ids):
             )
         ),
         FIXED_REASON_ENROLLMENTS: set(
-            Enrollment.objects.filter(section_id__in=ids).values_list(
+            Enrollment.objects.filter(
+                section_id__in=ids,
+                lifecycle_status=ENROLLMENT_LIFECYCLE_ACTIVE,
+            ).values_list(
                 "section_id",
                 flat=True,
             )
@@ -51,6 +58,23 @@ def section_dependency_sets(section_ids):
             )
         ),
     }
+
+
+def active_enrollment_students_by_section(section_ids):
+    """Return active enrollment owners for cancellation diagnostics.
+
+    Historical enrollment rows intentionally do not appear here: they explain
+    what happened previously but do not prevent a section lifecycle change.
+    """
+
+    ids = list(section_ids)
+    result = defaultdict(list)
+    for section_id, student_id in Enrollment.objects.filter(
+        section_id__in=ids,
+        lifecycle_status=ENROLLMENT_LIFECYCLE_ACTIVE,
+    ).values_list("section_id", "student_id"):
+        result[section_id].append(student_id)
+    return {section_id: tuple(sorted(student_ids)) for section_id, student_ids in result.items()}
 
 
 def fixed_context_reasons(section, dependencies=None):
@@ -115,4 +139,8 @@ def section_delete_conflicts(section):
         for reason, section_ids in dependencies.items()
         if section.id in section_ids
     )
+    # Historical rows no longer make a section fixed for planning, but they
+    # remain audit evidence and therefore still prevent hard section deletion.
+    if Enrollment.objects.filter(section_id=section.id).exists():
+        conflicts.append(FIXED_REASON_ENROLLMENT_HISTORY)
     return conflicts

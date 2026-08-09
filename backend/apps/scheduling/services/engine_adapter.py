@@ -35,7 +35,8 @@ from scheduling_engine.dto import (
     TeacherCourseAssignmentRuleDTO,
     CourseSequencePreferenceDTO, FixedEnrollmentDTO,
     StudentAssignmentInputDTO, StudentAssignmentRequestDTO,
-    StudentAssignmentSectionDTO,
+    StudentAssignmentSectionDTO, StudentAssignmentLockDTO,
+    StudentAssignmentScopeDTO,
 )
 from scheduling_engine.constraint_compiler import compile_constraints
 from scheduling_engine.section_estimator import estimate_section_counts
@@ -68,6 +69,7 @@ from backend.apps.courses.models import (
     Enrollment,
     Section,
 )
+from backend.apps.courses.constants import ENROLLMENT_LIFECYCLE_ACTIVE
 from backend.apps.courses.selectors import (
     active_delivery_groups_for_year,
     active_sections_for_year,
@@ -78,6 +80,7 @@ from backend.apps.scheduling.models import (
     TeacherPlanningAnnualCapacity,
     TeacherPlanningRoster,
     TeacherAssignmentRun,
+    StudentAssignmentLock,
     TimeSlot,
 )
 
@@ -763,14 +766,64 @@ def _active_assignment_backup_resolutions(*, academic_year_id, sections):
     return by_student
 
 
+def _student_assignment_request_in_scope(*, scope, request, sections_by_offering):
+    """Resolve request scope using the same explicit student/course/section IDs."""
+
+    if scope.scope_type == "full":
+        return True
+    if request.student_id in scope.student_ids or request.course_id in scope.course_ids:
+        return True
+    return any(
+        section.section_id in scope.section_ids
+        for section in sections_by_offering.get(request.course_offering_id, ())
+    )
+
+
+def _student_assignment_enrollment_lock_ids(*, enrollment, locks):
+    """Return active lock IDs that make this enrollment fixed context."""
+
+    lock_ids = []
+    enrollment_course_id = (
+        enrollment.course_offering.course_id
+        if enrollment.course_offering_id
+        else enrollment.section.course_id
+    )
+    for lock in locks:
+        if lock.lock_type == "whole_student_schedule" and lock.student_id == enrollment.student_id:
+            lock_ids.append(lock.id)
+        elif lock.lock_type == "section_roster" and lock.section_id == enrollment.section_id:
+            lock_ids.append(lock.id)
+        elif lock.lock_type == "course_roster" and lock.course_id == enrollment_course_id:
+            lock_ids.append(lock.id)
+        elif (
+            lock.lock_type == "exact_student_section"
+            and lock.student_id == enrollment.student_id
+            and lock.course_id == enrollment_course_id
+            and lock.section_id == enrollment.section_id
+        ):
+            lock_ids.append(lock.id)
+    return tuple(sorted(lock_ids))
+
+
 def load_student_assignment_input(
     *, academic_year_id, staffing_mode, provisional_teacher_assignment_run=None,
-    soft_constraint_importance,
+    soft_constraint_importance, scope=None, priority_request_ids=(),
+    priority_request_limit=100, schedule_preservation_level="none",
 ):
-    """Load immutable student-assignment facts and declared staffing context once."""
+    """Load a fully detached student-assignment snapshot.
+
+    The adapter deliberately loads all active locks and all target-year
+    request facts. Scope flags are resolved into the DTOs so the engine can
+    ignore out-of-scope decisions without losing the audit/fingerprint facts
+    needed when approval revalidates the run.
+    """
 
     academic_year_id = int(academic_year_id)
     AcademicYear.objects.get(pk=academic_year_id)
+    if scope is None:
+        scope = StudentAssignmentScopeDTO()
+    if not isinstance(scope, StudentAssignmentScopeDTO):
+        raise ValueError("Student-assignment scope must be a detached StudentAssignmentScopeDTO.")
     required_importance_keys = {
         "section_utilization_balance",
         "student_semester_balance",
@@ -822,6 +875,10 @@ def load_student_assignment_input(
             timeslot_id=schedule.timeslot_id,
             capacity_max=section.capacity_max,
             target_capacity=target_capacity,
+            # Mode A deliberately excludes teacher identity from the detached
+            # snapshot, so a later staffing edit cannot stale a sections-only
+            # student run. Other modes retain their declared teacher context.
+            teacher_id=section.teacher_id if staffing_mode != "sections_only" else None,
         ))
     staffing_context = _student_assignment_staffing_context(
         academic_year_id=academic_year_id,
@@ -836,10 +893,47 @@ def load_student_assignment_input(
             status=COURSE_OFFERING_STATUS_OFFERED,
         ).select_related("course__priority_profile")
     }
+    active_locks = list(
+        StudentAssignmentLock.objects.filter(
+            academic_year_id=academic_year_id,
+            is_active=True,
+        ).prefetch_related("members").order_by("id")
+    )
+    from backend.apps.scheduling.services.student_assignment_locks import (
+        validate_student_assignment_lock_staffing_mode,
+    )
+    for lock in active_locks:
+        # Existing data must obey the same final-staffing restriction as new
+        # lock creation; otherwise an old teacher lock could silently affect a
+        # run that explicitly says teacher identity is provisional or ignored.
+        validate_student_assignment_lock_staffing_mode(
+            lock_type=lock.lock_type,
+            staffing_mode=staffing_mode,
+        )
+    lock_dtos = tuple(
+        StudentAssignmentLockDTO(
+            lock_id=lock.id,
+            lock_type=lock.lock_type,
+            student_id=lock.student_id,
+            section_id=lock.section_id,
+            course_id=lock.course_id,
+            teacher_id=lock.teacher_id,
+            member_student_ids=tuple(sorted(item.student_id for item in lock.members.all())),
+            is_active=True,
+        )
+        for lock in active_locks
+    )
     fixed_rows = []
     fixed_course_by_student = set()
+    movable_course_by_student = set()
     section_by_id = {item.section_id: item for item in section_dtos}
-    for enrollment in Enrollment.objects.filter(section_id__in=section_by_id).select_related("course_offering", "section__course"):
+    sections_by_offering = defaultdict(list)
+    for section in section_dtos:
+        for offering_id in section.member_course_offering_ids:
+            sections_by_offering[offering_id].append(section)
+    for enrollment in Enrollment.objects.filter(
+        section_id__in=section_by_id,
+    ).select_related("course_offering", "section__course").order_by("id"):
         section = section_by_id[enrollment.section_id]
         offering = enrollment.course_offering
         if offering is None:
@@ -852,12 +946,38 @@ def load_student_assignment_input(
             offering = CourseOffering.objects.get(pk=candidates[0])
         if offering.id not in section.member_course_offering_ids:
             raise ValueError(f"Enrollment {enrollment.id} offering does not belong to its physical section.")
-        fixed_rows.append(FixedEnrollmentDTO(
-            student_id=enrollment.student_id, section_id=enrollment.section_id,
-            course_offering_id=offering.id, course_id=offering.course_id,
-            semester=section.semester, timeslot_id=section.timeslot_id,
-        ))
-        fixed_course_by_student.add((enrollment.student_id, offering.course_id))
+        is_active = enrollment.lifecycle_status == ENROLLMENT_LIFECYCLE_ACTIVE
+        in_scope = is_active and (
+            scope.scope_type == "full"
+            or enrollment.student_id in scope.student_ids
+            or offering.course_id in scope.course_ids
+            or enrollment.section_id in scope.section_ids
+        )
+        lock_ids = _student_assignment_enrollment_lock_ids(
+            enrollment=enrollment,
+            locks=active_locks,
+        )
+        is_locked = bool(lock_ids)
+        row = FixedEnrollmentDTO(
+            enrollment_id=enrollment.id,
+            student_id=enrollment.student_id,
+            section_id=enrollment.section_id,
+            course_offering_id=offering.id,
+            course_id=offering.course_id,
+            semester=section.semester,
+            timeslot_id=section.timeslot_id,
+            is_active=is_active,
+            is_locked=is_locked,
+            is_historical=not is_active,
+            is_in_scope=in_scope,
+            lock_ids=lock_ids,
+        )
+        fixed_rows.append(row)
+        if is_active:
+            if in_scope and not is_locked:
+                movable_course_by_student.add((enrollment.student_id, offering.course_id))
+            else:
+                fixed_course_by_student.add((enrollment.student_id, offering.course_id))
     resolutions_by_student = _active_assignment_backup_resolutions(
         academic_year_id=academic_year_id,
         sections=sections,
@@ -872,11 +992,29 @@ def load_student_assignment_input(
         if request.request_type == COURSE_REQUEST_TYPE_ALTERNATE:
             continue
         if offering:
+            in_scope = _student_assignment_request_in_scope(
+                scope=scope,
+                request=request,
+                sections_by_offering=sections_by_offering,
+            )
+            current_enrollment_id = None
+            if (request.student_id, request.course_id) in movable_course_by_student:
+                current_enrollment_id = next(
+                    row.enrollment_id
+                    for row in fixed_rows
+                    if row.is_active
+                    and row.is_in_scope
+                    and not row.is_locked
+                    and row.student_id == request.student_id
+                    and row.course_id == request.course_id
+                )
             requests.append(StudentAssignmentRequestDTO(
                 request_id=request.id, student_id=request.student_id, course_id=request.course_id,
                 course_offering_id=offering.id, is_primary=True,
                 is_mandatory=request.is_mandatory,
                 priority_tier=request.course.priority_profile.tier,
+                current_enrollment_id=current_enrollment_id,
+                is_in_scope=in_scope,
             ))
             continue
         relevant = [
@@ -896,6 +1034,11 @@ def load_student_assignment_input(
         if backup.student_id != request.student_id or backup_offering is None:
             raise ValueError(f"Approved backup for cancelled request {request.id} is no longer usable.")
         if (backup.student_id, backup.course_id) not in fixed_course_by_student:
+            in_scope = _student_assignment_request_in_scope(
+                scope=scope,
+                request=backup,
+                sections_by_offering=sections_by_offering,
+            )
             requests.append(StudentAssignmentRequestDTO(
                 request_id=backup.id, student_id=backup.student_id, course_id=backup.course_id,
                 course_offering_id=backup_offering.id, is_primary=False,
@@ -906,6 +1049,7 @@ def load_student_assignment_input(
                     "cancelled_course_id": request.course_id,
                     "outcome": outcome,
                 },
+                is_in_scope=in_scope,
             ))
     hard_edges = list(CoursePrerequisite.objects.values_list("prerequisite_id", "course_id"))
     if _has_directed_cycle(hard_edges):
@@ -913,6 +1057,14 @@ def load_student_assignment_input(
     soft_edges = list(CourseSequencePreference.objects.filter(is_active=True).values_list("earlier_course_id", "later_course_id"))
     if _has_directed_cycle(soft_edges):
         raise ValueError("CourseSequencePreference configuration contains a directed cycle.")
+    effective_request_ids = {request.request_id for request in requests}
+    priority_request_ids = tuple(sorted(int(request_id) for request_id in priority_request_ids))
+    if len(priority_request_ids) != len(set(priority_request_ids)):
+        raise ValueError("Priority request IDs must be unique.")
+    if not set(priority_request_ids) <= effective_request_ids:
+        raise ValueError("Priority request IDs must identify effective requests in this snapshot.")
+    if len(priority_request_ids) > int(priority_request_limit):
+        raise ValueError("Priority request IDs exceed the configured run limit.")
     return StudentAssignmentInputDTO(
         academic_year_id=academic_year_id,
         requests=tuple(requests), sections=tuple(section_dtos), fixed_enrollments=tuple(fixed_rows),
@@ -927,6 +1079,11 @@ def load_student_assignment_input(
         section_utilization_balance_importance=soft_constraint_importance["section_utilization_balance"],
         student_semester_balance_importance=soft_constraint_importance["student_semester_balance"],
         course_sequence_preferences_importance=soft_constraint_importance["course_sequence_preferences"],
+        student_assignment_locks=lock_dtos,
+        schedule_preservation_level=schedule_preservation_level,
+        priority_request_ids=priority_request_ids,
+        priority_request_limit=int(priority_request_limit),
+        scope=scope,
     ), staffing_context
 
 
@@ -985,6 +1142,7 @@ def load_section_placement_input(*, academic_year_id, input_mode, budget_approva
     dependency_section_ids = set(Enrollment.objects.filter(
         section__academic_year_id=academic_year_id,
         section__lifecycle_status=SECTION_LIFECYCLE_ACTIVE,
+        lifecycle_status="active",
     ).values_list("section_id", flat=True)) | set(ManualOverride.objects.filter(
         section__academic_year_id=academic_year_id,
         section__lifecycle_status=SECTION_LIFECYCLE_ACTIVE,
