@@ -461,71 +461,66 @@ Components should not contain ad hoc snake_case/camelCase conversions.
 
 ## Current inconsistencies and reviewable fixes
 
-This document records the audit findings without silently changing existing
-names. Each item below requires a separate reviewable change if implemented.
+This section records the audit findings and the disposition of each of the six
+reviewable items. Completed items preserve all existing public string values
+unless explicitly noted otherwise.
 
-### Workflow-code centralization
+### 1. Workflow-code centralization — done
 
-Some public workflow codes are constants while others are literal strings.
-Examples include:
+Domain-owned constants modules now exist at:
 
-- `backend/apps/courses/services/offerings.py`;
-- `backend/apps/scheduling/services/section_planning.py`;
-- `backend/apps/scheduling/services/section_budget_planning.py`;
-- `backend/apps/scheduling/services/section_reconciliation.py`;
-- `backend/apps/scheduling/services/staffing_planning.py`;
-- `backend/apps/scheduling/services/teacher_assignment.py`.
+- `backend/apps/constraints/codes.py`;
+- `backend/apps/control/codes.py`;
+- `backend/apps/courses/codes.py`; and
+- `backend/apps/scheduling/codes.py`.
 
-Proposed fix: add domain-owned code modules, move each literal to one canonical
-constant, and preserve the existing string value. Update callers to import the
-constant. This is preferable to renaming public values.
+The relevant views and service call sites import workflow codes from those
+modules. Scheduling codes shared by section planning and reconciliation have a
+single definition in `backend/apps/scheduling/codes.py`.
 
-### Duplicate diagnostic values
+### 2. Duplicate diagnostic values — done
 
-Values such as `annual_lock_outside_annual_count`,
-`placement_input_changed_since_run`, and
-`teacher_assignment_input_changed_since_run` appear both in
-`scheduling_engine/diagnostics.py` and backend service logic.
+Backend services now import the existing diagnostic constants from
+`scheduling_engine/diagnostics.py`. The stable values, including
+`annual_lock_outside_annual_count`, `placement_input_changed_since_run`, and
+`teacher_assignment_input_changed_since_run`, were not changed.
 
-Proposed fix: import the existing diagnostic constants into backend services;
-do not change their values.
+### 3. README constants documentation — done
 
-### Legacy common constants export
+`README.md` now identifies `backend/apps/common/school_values.py` and the
+domain-owned constants modules as authoritative, and describes
+`backend/apps/common/constants.py` as a compatibility export.
 
-`README.md` describes `backend/apps/common/constants.py` as the authoritative
-source, while the implementation and
-`docs/Architecture_Development_Rules.md` treat it as a compatibility export.
+### 4. Boolean naming exceptions — open, separate decision
 
-Proposed fix: update the stale README wording in a separate documentation
-change. Do not remove the compatibility exports without an import audit.
+The existing names `reduced_load` and `excluded` remain unchanged. This item
+is still under consideration rather than permanently deferred. Because the
+project has no production data and no frontend yet, this is the cheapest point
+to rename these fields if the project decides to do so.
 
-### Boolean naming exceptions
+Any rename has concrete scope: `reduced_load` touches
+`backend/apps/people/models.py` (a database-column rename under the project's
+migrationless `run-syncdb` workflow), `backend/apps/people/serializers.py`,
+`backend/apps/scheduling/services/engine_adapter.py`, and
+`scheduling_engine/dto.py`. `excluded` touches multiple locations in
+`backend/apps/scheduling/serializers.py` and
+`scheduling_engine/planning_core.py`; both renames may also require test
+fixture/factory updates. This remains a deliberate, separate decision. No
+action should be taken on it as part of this cleanup pass.
 
-Existing examples include `reduced_load` in
-`backend/apps/people/models.py`, `uses_current_demand_fallback` in
-`backend/apps/constraints/models/course.py`, and `excluded` in
-`backend/apps/scheduling/serializers.py`.
+### 5. Core app path configuration — done
 
-Proposed fix: leave existing database/API names unchanged. Apply predicate
-prefixes only to new boolean fields and consider any public rename separately,
-because serializer and database names may be affected.
+Repository-wide checks found no dependency on the old app name. The app
+configuration now uses `name = "backend.apps.core"` in
+`backend/apps/core/apps.py`; settings, migrations, imports, content-type
+lookups, permissions, fixtures, and hardcoded app-label references required no
+other changes.
 
-### Core app path configuration
+### 6. Documentation filename split — no action needed
 
-Most app configs use names such as `backend.apps.courses`, while
-`backend/apps/core/apps.py` uses `name = 'core'`.
-
-Proposed fix: verify whether `core` is registered or imported externally
-before changing it to `backend.apps.core`. If changed, update settings and
-imports in a separate reviewable change.
-
-### Documentation filename split
-
-Decision records consistently use kebab-case, while existing top-level files
-use several capitalization styles.
-
-Proposed fix: apply the documented rule only to new files. Do not rename
-existing documents without an explicit documentation migration plan.
+Existing `docs/decisions/*.md` filenames already comply with the kebab-case
+rule. The rule applies to new decision records going forward; no existing file
+requires renaming.
 
 ## Compatibility and changes
 
