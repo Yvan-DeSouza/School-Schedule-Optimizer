@@ -1,10 +1,26 @@
 # Software Design Document
 ## Intelligent School Timetabling System (Ontario Secondary Schools)
 
-**Document Type:** Software Design Document (SDD)
-**Version:** 1.0
-**Status:** Draft for Capstone / Portfolio Submission
-**Target Scale:** ~1,400 students · ~80 teachers · 250–350 course sections per academic year
+**Document type:** Current-state Software Design Document
+**Version:** 2.0
+**Status:** Repository-backed architecture reference
+**Snapshot:** 2026-08-09
+**Target scale:** approximately 1,400 students, 80 teachers, and 250-350
+course sections per academic year
+
+This document describes the system that is actually implemented in this
+repository, together with the boundaries of the next stages. It is not a
+greenfield architecture proposal. The repository and automated tests are the
+source of truth for implementation status. The accepted decision records in
+`docs/decisions/` supersede older wording in this document where they differ.
+
+Status labels used below have precise meanings:
+
+- **Implemented** means working code exists and automated tests cover it.
+- **Partially implemented** means useful foundations exist but the end-to-end
+  counselor capability is not complete.
+- **Not yet implemented** means no working end-to-end capability exists. A
+  model, DTO field, policy name, or planned module alone does not count.
 
 ---
 
@@ -45,854 +61,1167 @@
 
 ## 1. Executive Summary
 
-> **Current implementation supersession (2026-08-08):** Where this older SDD
-> describes queue-first execution or combines rooms with the first placement
-> solver, follow `Implementation_Roadmap.md` and
-> `docs/decisions/semester-placement-and-staffing-feasibility.md` instead. The
-> implemented stage runs synchronously with a bounded review-first workflow,
-> places semester/A-D timing only, and uses anonymous staffing witnesses. It
-> neither assigns rooms nor persists named teacher recommendations. Workers are
-> deferred until representative benchmarks justify them.
+The implemented system is a counselor-controlled decision-support pipeline for
+Ontario secondary-school scheduling. It does not attempt to produce one
+unreviewable timetable. Each implemented solver stage creates an immutable,
+reviewable recommendation, and an authorized approval transaction turns the
+accepted recommendation into operational state.
 
-Ontario secondary school timetabling is, in practice, a multi-week, multi-stakeholder planning exercise rather than a single computational event. Guidance counselors and administrators move through course-selection analysis, section-count planning, staffing evaluation, teacher assignment, constraint gathering, timetable construction, and iterative correction — often revisiting earlier stages as new information surfaces. Existing tools in this space tend to fall into one of two unsatisfying categories: fully manual spreadsheet-based processes that do not scale past a few hundred students, or "black box" optimizers that produce a single output schedule with no support for the iterative, human-in-the-loop process that schools actually follow.
+The current working pipeline is:
 
-This document specifies the software architecture for a decision-support timetabling system that automates the computationally difficult and repetitive parts of this process — demand analysis, section placement, teacher-to-section assignment, and student-to-section assignment — while preserving guidance counselors as the final authority over every consequential decision. The system is explicitly **not** designed to produce a final, unreviewable timetable. It is designed to produce strong candidate schedules quickly, to surface exactly the conflicts and edge cases that require human judgment, and to let counselors lock in decisions that the optimizer must then treat as immovable constraints on every subsequent run.
+```text
+course requests
+  -> demand and year-specific offering decisions
+  -> teacher-independent section budget
+  -> ready teacher roster and staffing-feasible physical counts
+  -> section approval and reconciliation
+  -> semester/A-D placement with anonymous staffing feasibility
+  -> named teacher assignment
+```
 
-Architecturally, the system separates into four major tiers: a React single-page frontend used by counselors, administrators, teachers, and (in a limited capacity) students; a Django REST Framework API tier responsible for authentication, validation, and orchestration; a standalone scheduling engine built on Google OR-Tools CP-SAT that is intentionally decoupled from the web tier so it can be invoked as a background job, tested in isolation, and evolved independently; and a PostgreSQL database whose Version 1 schema (provided as the source of truth for this document) captures courses, sections, people, constraints, and scheduling state.
+Section counting, section lifecycle/reconciliation, semester/A-D placement, and
+named teacher assignment are implemented. Placement writes timeslot-only
+`SectionSchedule` rows. Named teacher approval writes `Section.teacher` only
+after a separate complete run has been reviewed. Room assignment, student
+assignment, post-solve conflict analysis, a general manual-override workflow,
+and the frontend are not yet implemented end-to-end.
 
-The central architectural decision underlying this document is that **scheduling is a pipeline of independently executable, human-checkpointed stages**, not a single monolithic solve. This mirrors the eleven-step process the school actually follows (Section 13) and is the reason the scheduling engine (Section 20) is decomposed into discrete solver modules rather than one large constraint model. This decision directly satisfies two of the project's stated design principles: that manual counselor decisions must always override automatic scheduling, and that every optimization stage should be independently executable.
+The backend is Django and Django REST Framework over PostgreSQL. The
+`scheduling_engine` package is pure Python and independent of Django. Current
+solver calls are synchronous inside the application service request. The
+repository deliberately does not contain Celery, Redis, a task queue, a worker
+tier, or persistent downstream run-status infrastructure. A future worker may
+be added only if representative benchmark evidence shows that synchronous
+execution no longer meets the deployment contract.
+
+---
 
 ## 2. Project Goals
 
-The system exists to assist, not replace, the guidance counselors and administrators who currently run the timetabling process manually. The following goals, drawn directly from the project context, govern every architectural decision in this document:
+The design goals are:
 
-| Goal | Description |
+| Goal | Current interpretation |
 |---|---|
-| Decision support, not automation-only | The counselor remains the final authority; the system proposes, the human disposes. |
-| Automate repetitive work | Section-count estimation, conflict-minimizing placement, teacher/student assignment should not require manual spreadsheet work. |
-| Preserve human control | Every automated decision must be overridable, and overrides must be durable across re-runs. |
-| Scale to a mid-size Ontario high school | ~1,400 students, ~80 teachers, 250–350 sections, two semesters (Fall/Winter). |
-| Serve as a professional portfolio project | The codebase and architecture should reflect industry-grade engineering practice, not a classroom prototype. |
+| Counselor control | Solver output remains a recommendation until a planning-role user explicitly approves it. |
+| Reviewability | Runs store the input snapshot, result, diagnostics, and solver metadata needed for review. |
+| Stable history | Approvals and audit rows are append-only; section reconciliation retires rather than deletes surplus generated sections. |
+| Staged computation | Section counts, placement, and named teacher assignment are independent reviewed stages. Student assignment and conflict analysis remain later stages. |
+| Safe authorization | Resource and action policies fail closed, and policy filtering occurs before client query filtering. |
+| Explainable failure | Stable diagnostic and workflow codes accompany human-readable messages. |
+| Maintainable engine boundary | Django owns persistence and orchestration; the pure engine consumes immutable DTOs and returns plain result data. |
+| Appropriate scale | The current target is a single school at approximately 1,400 students, 80 teachers, and 250-350 sections. Scale claims remain unbenchmarked. |
 
-A secondary, implicit goal is **auditability**: because scheduling decisions affect students' academic trajectories and teachers' workloads, the system must be able to explain what it did and why, and must record who overrode what. This motivates the emphasis on structured logging (Section 23) and the manual override audit trail (Section 21), both of which are already partially reflected in the Version 1 schema via `ManualOverride`.
+The project also preserves a migrationless pre-production schema workflow:
+project apps do not contain migration files, and an authorized local schema
+rebuild uses `migrate --run-syncdb`. Model changes must not silently generate
+migrations.
+
+---
 
 ## 3. Scope
 
-### 3.1 In Scope (Version 1)
+### 3.1 In Scope and Implemented
 
-- Ingesting student course requests (primary and alternate) and teacher preferences.
-- Demand analysis and section-count recommendation, informed by historical enrollment data.
-- Constraint capture: hard constraints (qualifications, capacity, conflicts), soft constraints (preferences, balance), and manual locks (fixed teacher, fixed timeslot, fixed room).
-- Automated section placement into semesters and timeslots, minimizing high-impact scheduling conflicts.
-- Automated teacher-to-section assignment respecting qualifications, availability, workload limits, and preferences.
-- Automated student-to-section assignment respecting prerequisites, capacity, and schedule conflicts.
-- Post-solve conflict and issue analysis (under-enrolled sections, unmet requests, teacher overload, etc.).
-- A manual override and re-run workflow that lets counselors adjust the schedule without discarding prior work.
-- Role-based frontend views for counselors/administrators, teachers, and students.
-- Bilingual (English/French) UI text via the existing `Translation` model.
+- JWT authentication and centralized application-role resolution.
+- Fail-closed resource and named-action authorization.
+- Academic years, rooms, courses, sections, students, teachers, counselors,
+  requests, enrollments, prerequisites, historical demand, constraints,
+  qualifications, availability, preferences, locks, schedules, and audit data.
+- Year-specific course offerings, cancellation/restoration, approved course
+  combinations, physical delivery groups, and backup-request resolution.
+- Demand aggregation and staffing-aware annual and semester section planning.
+- Immutable planning runs, approvals, generated section provenance, and
+  section-plan reconciliation with active/retired lifecycle semantics.
+- Annual placement locks and counselor-reviewed semester/A-D placement.
+- Counselor-reviewed named teacher assignment after accepted placement.
+- API tests for role access, workflow validation, transactional approval, and
+  relevant pure-engine contracts.
 
-### 3.2 Out of Scope (Version 1)
+### 3.2 Partially Implemented
 
-The following are explicitly deferred to later phases (Section 27) and are called out so that the architecture does not implicitly assume them:
+- Conflict management: the yearly `CourseConflictMatrix` and counselor score
+  adjustment workflow exist, while automatic acceptance of engine-generated
+  recommendations is intentionally not present.
+- Manual controls: `SectionLock`, `Section.is_locked`, and `ManualOverride`
+  foundations exist, but there is no general override application service,
+  override-history endpoint, or scoped re-solve workflow.
+- Internationalization: the `Translation` model and admin registration exist,
+  but no translation API or consuming user interface exists.
+- Operational hardening: tests, local setup, immutable run records, and
+  transaction boundaries exist, but there is no CI workflow, production
+  settings split, generated API contract, or target-scale benchmark suite.
 
-- Automatic import of teacher qualifications from external HR/SIS systems (the process document notes this "may potentially" happen; V1 assumes manual or CSV-based entry).
-- Natural-language parsing of free-text teacher preferences (V1 assumes the frontend collects preferences as structured course selections at the point of entry — see Section 3.3).
-- Multi-year or multi-school forecasting/analytics.
-- AI-assisted or explainable scheduling (Section 27).
-- Direct integration with provincial Student Information Systems (SIS).
-- Real-time collaborative editing (two counselors editing the same section simultaneously); V1 uses optimistic concurrency and last-write-wins semantics with audit logging.
+### 3.3 Not Yet Implemented
 
-### 3.3 Assumption — Structured Preference Capture
+- Room assignment.
+- Student-to-section assignment and enrollment approval.
+- A composed timetable or personal schedule endpoints.
+- A read-only post-solve conflict analyzer.
+- General manual override application and genuine scoped re-solving.
+- A React/TypeScript frontend.
+- Background execution infrastructure and persistent status tracking for
+  downstream solver runs.
 
-**Assumption:** Although the current manual process collects teacher preferences as free text (e.g., "Grade 12 Calculus"), the `TeacherCoursePreference` model in the Version 1 schema stores a foreign key to a specific `Course`. This document assumes the frontend replaces free-text collection with a structured, searchable course picker at data-entry time, so that no free-text normalization step is required in V1. This is a reasonable assumption because it requires no schema change, eliminates an entire class of data-quality bugs, and the "future improvement" of NLP-based free-text ingestion is explicitly reserved for Section 27.
+The repository contains models and policy names related to some of these areas,
+but those foundations do not constitute an implemented capability.
+
+---
 
 ## 4. Functional Requirements
 
-| ID | Requirement | Related Process Step |
-|---|---|---|
-| FR-1 | The system shall allow students (or staff on their behalf) to submit primary and alternate course requests per academic year. | Step 1 |
-| FR-2 | The system shall compute aggregate demand per course and flag under-enrolled courses for merge/cancel review. | Step 2 |
-| FR-3 | The system shall recommend a number of sections per course based on requests, historical drop/add trends, and configured min/max capacities. | Step 3 |
-| FR-4 | The system shall produce a staffing summary showing required sections per subject against available qualified teachers. | Step 4 |
-| FR-5 | The system shall allow teachers to submit structured course preferences and current-course history. | Step 5 |
-| FR-6 | The system shall allow counselors to define manual locks (teacher, timeslot, room, capacity) and soft prerequisite relationships prior to automated placement. | Step 6 |
-| FR-7 | The system shall automatically place sections into semesters/timeslots to minimize high-impact conflicts between commonly co-requested courses. | Step 7 |
-| FR-8 | The system shall automatically assign teachers to sections respecting qualifications, availability, workload caps, and preferences. | Step 8 |
-| FR-9 | The system shall automatically assign students to sections respecting prerequisites, capacity, and individual schedule conflicts, maximizing primary-choice fulfillment. | Step 9 |
-| FR-10 | The system shall generate a structured report of unresolved issues (under-enrolled sections, unmet requests, teacher overload, capacity overflows). | Step 10 |
-| FR-11 | The system shall allow counselors to manually reassign students/teachers/sections and selectively re-run only the affected portion of the pipeline. | Step 11 |
-| FR-12 | The system shall persist every manual override with a reason, previous value, and new value for auditability. | Step 6, 11 |
-| FR-13 | The system shall present bilingual (EN/FR) UI text using the existing translation store. | Cross-cutting |
-| FR-14 | The system shall allow authenticated teachers and students to view (read-only) their own finalized schedules. | Cross-cutting |
+| ID | Requirement | Status | Evidence or boundary |
+|---|---|---|---|
+| FR-1 | Submit primary and alternate course requests by academic year. | Implemented | `CourseRequestViewSet`, ownership policies, and `backend/tests/test_course_request_api.py`. |
+| FR-2 | Aggregate demand and support offering cancellation/combination review. | Implemented | `backend/apps/courses/services/demand.py`, `offerings.py`, and upstream workflow tests. |
+| FR-3 | Recommend annual and semester section counts from demand, capacities, priorities, and staffing. | Implemented | `section_planner.py`, `section_budget_planner.py`, `staffing_planner.py`, and planning tests. |
+| FR-4 | Explain whether recommended physical counts fit the confirmed qualified teacher capacity. | Implemented | Anonymous staffing feasibility results and `StaffingPlanRun` review/approval. |
+| FR-5 | Capture teacher preferences, current courses, availability, qualifications, and planning capacities. | Implemented | Nested teacher constraint APIs and scheduling configuration endpoints. |
+| FR-6 | Capture hard/soft constraints, course conflicts, section locks, and annual placement locks. | Partially implemented | CRUD and lock workflows exist; the `Section.is_locked`/`SectionLock` synchronization invariant and general override workflow remain unresolved. |
+| FR-7 | Place active sections in semesters and recurring A-D timeslots while proving anonymous staffing feasibility. | Implemented | `section_placement.py`, placement run/approval services, and placement tests. Rooms are deliberately excluded. |
+| FR-8 | Assign named teachers after accepted placement. | Implemented | `teacher_assignment.py`, named-teacher decision record, and teacher-assignment tests. |
+| FR-9 | Assign students to sections while respecting capacity, prerequisites, and block conflicts. | Not yet implemented | No student-assignment engine module or end-to-end API exists. |
+| FR-10 | Produce a derived report of unresolved timetable conflicts and issues. | Not yet implemented | No conflict-analyzer module or conflict-report endpoint exists. |
+| FR-11 | Apply a manual change and re-solve only the affected scope. | Partially implemented | Locks and action-policy names exist; no general application service or scoped solver contract exists. |
+| FR-12 | Persist manual and automated decisions with reason, actor, and before/after evidence. | Partially implemented | Planning, placement, teacher-assignment, offering, and reconciliation audit models exist; general override history is incomplete. |
+| FR-13 | Serve bilingual user-interface text through translations. | Partially implemented | `Translation` model/admin exist; translation API, frontend, and UI consumption do not. |
+| FR-14 | Let teachers and students view their own finalized schedules. | Not yet implemented | Assigned-section visibility exists for teachers, but no composed timetable or personal schedule endpoint exists; student assignment is absent. |
+
+---
 
 ## 5. Non-Functional Requirements
 
-| Category | Requirement |
+| Category | Current status and design |
 |---|---|
-| Performance | A full section-placement solve for 250–350 sections should complete within a bounded time window (target: under 5 minutes; see Section 25) using a time-boxed CP-SAT solver configuration. |
-| Scalability | The architecture must handle the target school size today and scale horizontally to larger schools (multiple campuses, 2,000+ students) without architectural rework. |
-| Maintainability | The scheduling engine must be a separately versioned, independently testable package with no Django/DRF import dependencies, per the stated design principle. |
-| Extensibility | New constraint types, new solver stages, and new AI-assisted modules must be addable without modifying existing solver stages (open/closed principle applied at the pipeline level). |
-| Auditability | Every automated and manual scheduling decision must be traceable to a cause (a solver run, an override, or a locked constraint). |
-| Availability | The web tier should degrade gracefully if the scheduling engine is unavailable (CRUD operations continue to function; only "run solver" actions are blocked). |
-| Internationalization | All user-facing strings must be resolvable through the `Translation` model rather than hard-coded. |
-| Usability | Counselors, who are not software engineers, must be able to understand *why* the solver made a given placement, at least at a summary level (see Section 27 for future explainability work). |
+| Performance | CP-SAT placement and named-teacher DTOs carry a time-limit field and use bounded solver calls. The repository has no representative 1,400-student benchmark, so target-scale performance is not established. |
+| Scalability | The pure engine and stage boundaries support future isolation, but the current deployment is a single Django/PostgreSQL application with synchronous solver calls. Horizontal worker scaling is not implemented. |
+| Maintainability | The engine is Django-free, the adapter is the ORM-to-DTO boundary, and services own multi-model workflows. These boundaries are covered by import and service tests. |
+| Auditability | Immutable run, approval, placement, teacher-assignment, offering, staffing, and reconciliation records preserve accepted decisions. General override history remains incomplete. |
+| Authorization | Every API resource/action must declare a policy; missing declarations fail closed. Policy scopes are tested at policy and endpoint levels. |
+| Transactional integrity | Approval and reconciliation writes use Django transactions and stale-input revalidation. Rollback behavior is tested for the implemented workflows. |
+| Availability | CRUD does not depend on a worker or queue. A downstream solver call is a synchronous request and can block until its bounded engine call completes. Graceful asynchronous degradation is not implemented. |
+| Internationalization | Translation storage exists, but no runtime translation boundary is implemented. |
+| Usability | Review payloads include recommendations, accepted values, diagnostics, and conflicts for implemented stages. No counselor frontend exists yet. |
+| Schema development | Project apps intentionally use the migrationless `migrate --run-syncdb` workflow. |
+
+---
 
 ## 6. System Overview
 
-The system is a web application composed of a React frontend, a Django REST Framework backend, a PostgreSQL database, and a decoupled scheduling engine built on Google OR-Tools. It is used in three broad modes:
+The current system has three operational patterns rather than a queue-first
+execution model:
 
-1. **Data collection mode** (Steps 1, 5, 6 of the process): counselors, students, and teachers enter course requests, preferences, and constraints through the frontend, which the API persists directly to PostgreSQL. No optimization occurs in this mode.
-2. **Solve mode** (Steps 3–4, 7–9): a counselor triggers one or more scheduling stages. The API enqueues a job; the scheduling engine reads the relevant subset of the database, solves, and writes results back. This mode is asynchronous because solver runtimes can exceed typical HTTP request timeouts.
-3. **Review and adjustment mode** (Steps 10–11): counselors review system-generated conflict reports, make manual overrides, and selectively re-trigger solve mode for the affected scope only (e.g., re-solving student assignment for a single course without disturbing the entire timetable).
+1. **Data and configuration:** authenticated users call DRF endpoints to create
+   requests, manage offerings, configure capacities and qualifications, set
+   conflicts, manage rosters, and create locks. Views validate transport shape
+   and delegate workflow operations to Django services.
+2. **Synchronous recommendation:** a planning-role request invokes a Django
+   service, which loads a detached DTO snapshot through
+   `backend/apps/scheduling/services/engine_adapter.py`, calls a pure engine
+   function, and persists an immutable run/result record. No operational
+   sections, schedules, or teachers are written by run creation.
+3. **Review and approval:** a counselor/director reviews the stored result,
+   optionally adjusts allowed selections, previews approval, and applies an
+   unchanged complete result in a transaction. Approval writes only the
+   stage's operational state.
 
-These three modes are not sequential phases of a project — they are recurring modes that a counselor moves between throughout the scheduling season, which is why the architecture treats "run the solver" as a repeatable, idempotent, scoped operation rather than a one-time migration step.
+The implemented sequence reaches named teacher assignment. Student assignment,
+room assignment, conflict analysis, and frontend presentation remain future
+work. The engine never reads PostgreSQL directly and never performs ORM writes.
 
+---
 
 ## 7. High-Level Architecture
 
-The architecture follows a **decoupled-engine, layered-service** pattern. The scheduling engine is drawn as a distinct tier — not a module inside the Django app — because it has different runtime characteristics (CPU-bound, long-running, potentially horizontally scaled on its own) and different lifecycle needs (must be independently testable without a running web server, per the design principles).
+The current architecture is a layered synchronous application. The frontend
+box is a future client, not a deployed repository component. The dashed worker
+box is a conditional future addition, not part of today's architecture.
 
 ```mermaid
 graph TB
-    subgraph Client Tier
-        FE["React SPA<br/>(Counselors, Teachers, Students)"]
+    subgraph Client [Future client]
+        FE["React/TypeScript frontend\nnot yet implemented"]
     end
 
-    subgraph API Tier
-        DRF["Django REST Framework<br/>API Layer"]
-        AUTH["Auth & RBAC"]
-        SVC["Application Services<br/>(orchestration, validation)"]
+    subgraph API [Django API tier]
+        AUTH["JWT authentication\nrole resolution"]
+        VIEWS["DRF views and viewsets"]
+        SER["Serializers"]
+        POL["Resource and action policies"]
     end
 
-    subgraph Async Tier
-        QUEUE["Task Queue<br/>(Celery + Redis/RabbitMQ broker)"]
-        WORKER["Scheduling Worker Pool"]
+    subgraph Services [Django service tier]
+        WF["Offering, planning, placement,\nassignment, reconciliation services"]
+        ADAPTER["Engine adapter\nORM -> immutable DTOs"]
     end
 
-    subgraph Scheduling Engine Tier
-        ENGINE["Scheduling Engine Package<br/>(pure Python, OR-Tools / NumPy / Pandas)"]
+    subgraph Engine [Pure scheduling_engine package]
+        SOLVE["Demand, budget, staffing,\nplacement, teacher assignment"]
     end
 
-    subgraph Data Tier
-        PG[("PostgreSQL<br/>Version 1 Schema")]
-    end
-
-    FE -- "HTTPS / JSON" --> DRF
-    DRF --> AUTH
-    DRF --> SVC
-    SVC -- "CRUD" --> PG
-    SVC -- "enqueue solve job" --> QUEUE
-    QUEUE --> WORKER
-    WORKER -- "invokes" --> ENGINE
-    ENGINE -- "reads scoped data" --> PG
-    ENGINE -- "writes results" --> PG
-    WORKER -- "job status/result" --> QUEUE
-    DRF -- "poll job status" --> QUEUE
+    DB[(PostgreSQL)]
+    FE -. "future HTTPS/JSON" .-> VIEWS
+    VIEWS --> AUTH
+    VIEWS --> SER
+    VIEWS --> POL
+    VIEWS --> WF
+    WF --> DB
+    WF --> ADAPTER
+    ADAPTER --> DB
+    ADAPTER --> SOLVE
+    SOLVE --> ADAPTER
+    WORKER["Conditional future worker/queue\nonly if benchmarks justify it"] -. "future seam" .-> WF
 ```
 
-**Why an asynchronous worker tier:** CP-SAT solves over 250–350 sections with hundreds of teacher/room/timeslot combinations are not guaranteed to complete within a typical HTTP request timeout (Section 25). Rather than force the frontend to hold open a long-lived connection, the API enqueues a job and returns immediately with a job identifier; the frontend polls (or subscribes via WebSocket in a future iteration) for completion. This is a standard pattern for long-running compute in a request/response web architecture and keeps the API tier stateless and horizontally scalable.
+Current solver requests execute in the same application process as the
+service call. `Architecture_Development_Rules.md` and the roadmap explicitly
+defer Celery, Redis, and other background infrastructure until representative
+solve-time and reliability evidence justifies it.
 
-**Why the scheduling engine has no Django dependency:** the design principles explicitly require that the scheduling engine be separated from the REST API. Beyond that requirement, a plain-Python engine can be unit-tested with in-memory fixtures in milliseconds, can be profiled and optimized without booting a Django app, and could in principle be extracted into its own microservice or even its own repository without touching the web tier.
+---
 
 ## 8. Architectural Principles
 
-| Principle | Rationale |
+| Principle | Current application |
 |---|---|
-| **Separation of orchestration from computation** | The Django API decides *when* and *what scope* to solve; the scheduling engine decides *how*. This keeps solver logic testable in isolation and keeps the API layer thin. |
-| **Pipeline over monolith** | The scheduling problem is decomposed into the discrete stages the school itself already uses (Section 13), rather than one enormous constraint model. This matches the stated principle that every optimization stage must be independently executable, and it makes partial re-runs (Section 21) tractable. |
-| **Manual overrides are first-class, immutable constraints** | Once a counselor locks a decision (`SectionLock`, `ManualOverride`), every downstream solver stage must treat it as a hard constraint, never as a preference to optimize against. |
-| **Idempotent, scoped re-computation** | Re-running a stage for a subset of sections/students must not silently disturb unrelated, already-accepted parts of the schedule. |
-| **Schema stability** | The Version 1 database schema is treated as the source of truth. Architecture is designed around it; the schema is not redesigned except where explicitly flagged as a serious gap (Sections 3.3, 23, 24). |
-| **Progressive enhancement toward AI** | Every stage exposes clean input/output boundaries (Section 20) so that a future ML-based module (e.g., demand forecasting) can replace a heuristic module without touching neighboring stages. |
-| **Explainability over black-box optimization** | Wherever the solver makes a placement or assignment decision, the system should be able to report the constraints and objective terms that drove it, even if only at a summary level in V1 (full explainability is a Section 27 future item). |
+| Django owns operational state | Models, services, transactions, approvals, audit rows, and authorization remain in the backend. |
+| Views stay thin | DRF views parse requests, select serializers/policies, call services, and serialize responses. |
+| Engine purity | `scheduling_engine` imports no Django, DRF, ORM model, or backend module. |
+| Adapter boundary | `engine_adapter.py` loads ORM state into immutable DTO snapshots and is the only integration boundary for current solver stages. |
+| Pipeline over monolith | Section counts, placement, and named teacher assignment are separate runs with separate approvals. |
+| Recommendation before mutation | Run creation writes immutable evidence; approval writes operational state. |
+| Fixed context is shared | `backend/apps/courses/services/section_state.py` defines fixed-section behavior for downstream workflows. |
+| Fail closed | Unknown roles, missing policies, missing senior qualifications, stale approvals, and invalid locks fail rather than guessing. |
+| Stable machine contracts | API and solver behavior keys off stable snake_case codes rather than English message text. |
+| Human review | Conflict/diagnostic data is surfaced for a counselor; the system does not silently merge courses, assign rooms, or replace accepted work. |
+| Measured infrastructure | A queue or worker is a future conditional addition, not an assumed tier. |
+| Migrationless development | Model changes are synchronized through an explicit local rebuild; migration files are not generated incidentally. |
+
+---
 
 ## 9. Major Components
 
 ### 9.1 Frontend
-A React single-page application serving three role-based experiences (counselor/admin, teacher, student) built around a shared component library. Responsible for data entry, visualization of the timetable, conflict/issue review, and triggering (and monitoring) scheduling runs.
+
+No frontend directory or client application exists in this repository. A future
+React/TypeScript client is expected to consume the snake_case API contract,
+use explicit API adapters/mappers, and preserve server-side authorization. It
+must represent recommendation, review, approval, diagnostics, stale state, and
+accepted state separately.
 
 ### 9.2 Backend
-A Django + Django REST Framework application responsible for authentication/authorization, request validation, CRUD persistence, orchestration of scheduling jobs, and generation of reports (staffing summaries, conflict reports). It does **not** contain optimization logic.
+
+The Django/DRF backend owns authentication, role resolution, policy filtering,
+serializer validation, domain services, immutable workflow records, and
+transactional operational writes. The backend contains the current HTTP API and
+the ORM-to-engine adapter.
 
 ### 9.3 Database
-PostgreSQL, using the Version 1 schema provided (Section 16). Organized conceptually into five groups: Core Domain (courses, sections, enrollments, requests, prerequisites), People (students, teachers, counselors), Scheduling Control (timeslots, section schedules, locks, overrides), Constraints (hard/soft constraints, qualifications, conflicts, preferences, availability), and Supporting Data (rooms, academic years, translations, historical demand).
+
+PostgreSQL stores domain entities, configuration, immutable run snapshots and
+results, approvals, section lifecycle history, placement/teacher-assignment
+provenance, constraints, locks, and audit decisions. The actual model groups
+are described in Section 16.
 
 ### 9.4 Scheduling Engine
-A standalone Python package built on Google OR-Tools CP-SAT, NumPy, and Pandas. Implements the multi-stage pipeline described in Sections 13–14 and 20. Invoked exclusively through a narrow, versioned interface (input DTOs in, result DTOs out), never through direct database access from arbitrary callers.
 
-### 9.5 Supporting Services
-Cross-cutting services consumed by both the API and the frontend: authentication/RBAC, the task queue/broker, structured logging and audit trail, the translation/i18n service, and (in later phases) analytics and notification services.
+The `scheduling_engine` package is a pure Python package built around immutable
+dataclasses and OR-Tools CP-SAT where optimization is required. It currently
+implements demand analysis, section-count planning, physical budget planning,
+staffing feasibility, semester/A-D placement, and named teacher assignment.
+Student assignment and conflict analysis do not yet have engine modules.
 
-## 10. Detailed Component Responsibilities
+### 9.5 Supporting Components
 
-| Component | Responsibilities | Explicit Non-Responsibilities |
-|---|---|---|
-| Frontend | Render role-appropriate UI; client-side validation; visualize timetable grids and conflict reports; trigger and poll scheduling jobs; manage transient UI state. | Must not contain scheduling business logic (e.g., must not compute conflicts client-side — it renders what the API returns). |
-| API Layer (DRF) | Authentication, authorization, serialization, request validation, pagination/filtering, enqueueing scheduling jobs, exposing job status. | Must not implement constraint-solving logic. |
-| Application Services | Encapsulate multi-step business operations that span multiple models (e.g., "apply a manual override," "compute a staffing summary") behind a clean service-layer API consumed by DRF views. | Must not talk to OR-Tools directly; delegates to the scheduling engine for anything solver-related. |
-| Scheduling Engine | Demand analysis, section-count estimation, constraint compilation, all CP-SAT solver stages, conflict analysis. | Must not perform authentication, must not know about HTTP, must not directly serve API responses. |
-| Task Queue / Worker Pool | Reliable, at-least-once execution of scheduling jobs; job status tracking; horizontal scaling of solver capacity. | Must not contain business logic beyond invoking the engine and reporting status. |
-| Database | Durable, consistent storage of all domain and scheduling-control data; enforcement of referential integrity and uniqueness constraints already defined in the Version 1 schema. | N/A |
-| Supporting Services | Cross-cutting concerns (auth, i18n, logging) reusable by every other component. | Must not embed feature-specific business rules. |
+The repository also contains:
 
-## 11. User Roles
+- SimpleJWT authentication and `/api/me/` role/profile resolution;
+- policy modules under `backend/apps/access/`;
+- common reference-data services for academic years and rooms;
+- normalized qualification review and compiler support;
+- translation storage under `backend/apps/translations/`; and
+- Django admin registrations for major domain/configuration models.
 
-| Role | Schema Mapping | Primary Capabilities |
-|---|---|---|
-| **Counselor / Administrator** | `Counselor` model, with `is_staff`/`is_superuser` Django auth flags distinguishing elevated "Administrator" privileges (see Assumption below) | Full read/write access to demand analysis, staffing, constraints, manual locks/overrides, and triggering scheduling runs. |
-| **Teacher** | `Teacher` model | Submits course preferences and current-course history; views own qualifications, availability, and finalized assigned sections; cannot modify the schedule directly. |
-| **Student** | `Student` model | Submits primary/alternate course requests; views own finalized timetable; cannot modify assignments directly. |
-
-**Assumption — Administrator as a Privilege Level, Not a New Table:** the Version 1 schema models `Counselor` but has no distinct `Administrator` entity. Rather than add a new domain table, this document assumes "Administrator" is implemented as a Django auth privilege level (`is_staff`/`is_superuser`) layered on top of a `Counselor` (or a plain Django `User` with no `Counselor` profile, for pure system-configuration accounts). This is reasonable because Administrator differs from Counselor only in *system-configuration* scope (managing rooms, academic years, translations, qualifications) rather than in *domain* scope, and it avoids any schema change.
-
-**Assumption — Identity/Auth Linkage:** the schema defines `Student`, `Teacher`, and `Counselor` as domain profile tables, but does not define an authentication/`User` table. This document assumes Django's built-in `User` model is extended with an optional one-to-one relationship to exactly one of `Student`, `Teacher`, or `Counselor`, and that this linkage table is an additive schema change (a new join, not a redesign of existing tables). This is the conventional Django pattern for separating authentication identity from domain profile data and is the minimum change necessary to support login (Section 24).
-
-
-## 12. User Workflows
-
-### 12.1 Workflow: Counselor Reviews Demand and Locks a Constraint
-
-```mermaid
-sequenceDiagram
-    actor C as Counselor
-    participant FE as React Frontend
-    participant API as DRF API
-    participant DB as PostgreSQL
-
-    C->>FE: Open "Course Demand" view
-    FE->>API: GET /api/demand/summary?year=2026
-    API->>DB: Aggregate CourseRequest + HistoricalCourseDemand
-    DB-->>API: Demand rows
-    API-->>FE: Demand summary (per course)
-    FE-->>C: Renders under-enrolled courses flagged for review
-    C->>FE: Decide to lock Section 3 of "Dance 10/11" to Teacher X
-    FE->>API: POST /api/overrides/ {section, action: lock_teacher, reason}
-    API->>DB: Create ManualOverride + upsert SectionLock
-    DB-->>API: Confirmation
-    API-->>FE: 201 Created
-    FE-->>C: Constraint saved, visible on Section detail page
-```
-
-### 12.2 Workflow: Running the Section Placement Stage
-
-```mermaid
-sequenceDiagram
-    actor C as Counselor
-    participant FE as React Frontend
-    participant API as DRF API
-    participant Q as Task Queue
-    participant SE as Scheduling Engine
-
-    C->>FE: Click "Run Section Placement"
-    FE->>API: POST /api/scheduling/runs/ {stage: section_placement, scope: all}
-    API->>Q: Enqueue job (job_id)
-    API-->>FE: 202 Accepted {job_id}
-    FE->>API: GET /api/scheduling/runs/{job_id}/ (poll)
-    Q->>SE: Dispatch job to worker
-    SE->>SE: Load sections, locks, conflicts, timeslots
-    SE->>SE: Solve CP-SAT model (Section 14/20)
-    SE-->>Q: Write SectionSchedule rows, return summary
-    API-->>FE: status=complete, summary={placed: 312, conflicts_reduced: 87%}
-    FE-->>C: Renders updated timetable grid
-```
-
-### 12.3 Workflow Summary Table
-
-| Workflow | Primary Actor | Trigger | Key Output |
-|---|---|---|---|
-| Course selection intake | Student (or staff proxy) | Start of scheduling season | `CourseRequest` rows |
-| Demand & offering review | Counselor | After request deadline | Merge/cancel decisions, updated `Course` records |
-| Section count planning | Counselor (assisted) | After offering finalized | Recommended `Section` counts |
-| Staffing review | Counselor/Admin | After section counts set | Staffing summary report (no schema write) |
-| Teacher preference intake | Teacher | Start of scheduling season | `TeacherCoursePreference`, `TeacherCurrentCourse` |
-| Constraint & lock capture | Counselor | Before automated placement | `HardConstraint`, `SoftConstraint`, `SectionLock`, `CourseConflict` |
-| Section placement run | Counselor | On demand | `SectionSchedule` (timeslot/room) |
-| Teacher assignment run | Counselor | On demand, after placement | `Section.teacher` |
-| Student assignment run | Counselor | On demand, after teacher assignment | `Enrollment` |
-| Conflict/issue review | Counselor | After any solve | Read-only report |
-| Manual override & partial re-run | Counselor | Ongoing, through start of year | `ManualOverride`, scoped re-solve |
-
-## 13. Internal Scheduling Pipeline
-
-This section maps the eleven-step manual process described in the project context directly onto system stages. This mapping is the backbone of the entire scheduling engine design (Section 14, 20) and is intentionally **not** collapsed into fewer stages, because the design principle requires every optimization stage to be independently executable and because counselors need checkpoints matching their existing mental model of the process.
-
-```mermaid
-flowchart TD
-    S1["Stage 1: Course Selection Intake<br/>(CourseRequest ingestion)"] --> S2
-    S2["Stage 2: Demand Analysis<br/>(merge/cancel review — human decision)"] -->|Checkpoint: human decision| S3
-    S3["Stage 3: Section Count Estimation<br/>(HistoricalCourseDemand-informed)"] --> S4
-    S4["Stage 4: Staffing Assessment<br/>(reporting only)"] --> S5
-    S5["Stage 5: Teacher Preference Intake<br/>+ Preliminary Matching"] --> S6
-    S6["Stage 6: Constraint & Lock Capture<br/>(HardConstraint, SoftConstraint, SectionLock)"] -->|Checkpoint: human decision| S7
-    S7["Stage 7: Section Placement Solve<br/>(CP-SAT Model 1)"] --> S8
-    S8["Stage 8: Teacher Assignment Solve<br/>(CP-SAT Model 2)"] --> S9
-    S9["Stage 9: Student Assignment Solve<br/>(CP-SAT Model 3)"] --> S10
-    S10["Stage 10: Conflict & Issue Analysis<br/>(reporting only)"] --> S11
-    S11["Stage 11: Human Review & Adjustment"] -->|Manual override created| S6
-    S11 -->|Scoped re-run| S7
-    S11 -->|Scoped re-run| S8
-    S11 -->|Scoped re-run| S9
-```
-
-**Why the feedback loop from Stage 11 back into Stages 6–9:** the process document is explicit that human review "often continues until the beginning of the school year and sometimes even after classes have started," and that adjustments may require regenerating "only affected portions" of the timetable. The pipeline therefore is not a straight line — Stage 11 can re-enter at Stage 6 (a new lock is added) or re-trigger any of Stages 7–9 with a narrowed scope (e.g., re-solve student assignment only for one course), rather than restarting the entire pipeline. This scoped re-entry is what Section 21 formalizes as the Manual Override Workflow.
-
-Stages 1, 2, 4, 5 (intake and reporting stages) require no optimization and are handled entirely by the API/service layer against the database. Stages 3, 7, 8, 9 are the computationally significant stages and are the ones delegated to the scheduling engine (Section 14). Stage 10 is a read-only aggregation over the results of Stages 7–9 and the constraint tables.
-
-
-## 14. Scheduling Engine Architecture
-
-The scheduling engine is a standalone Python package (conceptually named `scheduling_engine/`) with **zero import dependency on Django**. It communicates with the rest of the system only through plain Python data structures (dataclasses / DTOs) that a thin adapter layer populates from, and writes back to, the Django ORM. This boundary is what makes the engine independently testable and independently deployable, satisfying the stated design principle directly.
-
-```mermaid
-flowchart LR
-    subgraph Adapter Layer
-        LOAD["Data Loader<br/>(ORM → DTOs)"]
-        SAVE["Result Writer<br/>(DTOs → ORM)"]
-    end
-
-    subgraph Scheduling Engine Package
-        DA["Demand Analyzer"]
-        SC["Section Count Estimator"]
-        CC["Constraint Compiler"]
-        SP["Section Placement Solver<br/>(CP-SAT)"]
-        TA["Teacher Assignment Solver<br/>(CP-SAT)"]
-        SA["Student Assignment Solver<br/>(CP-SAT)"]
-        CA["Conflict Analyzer"]
-    end
-
-    LOAD --> DA --> SC --> CC --> SP --> TA --> SA --> CA --> SAVE
-```
-
-### 14.1 Module Responsibilities
-
-| Module | Responsibility | Solver Technology |
-|---|---|---|
-| Demand Analyzer | Aggregates `CourseRequest` by course; joins against `HistoricalCourseDemand` to flag under-enrolled courses and suggest merge candidates. | Pandas aggregation, no solver |
-| Section Count Estimator | Given finalized offerings, estimates section counts using request volume, historical drop-rate ratios, and configured min/max capacities. | NumPy/Pandas heuristic, no CP-SAT |
-| Constraint Compiler | Reads `HardConstraint`, `SoftConstraint`, `SectionLock`, `CourseConflict`, `TeacherQualification`, `TeacherAvailability`, `CourseRoomRequirement`, `CourseQualificationRequirement`, `CoursePrerequisite` and compiles them into an in-memory constraint set consumable by every downstream solver. | Pure Python |
-| Section Placement Solver | Assigns each `Section` a `TimeSlot` (and `Room`), minimizing weighted co-request conflicts and maximizing distribution of multi-section courses across periods. | OR-Tools CP-SAT |
-| Teacher Assignment Solver | Assigns a `Teacher` to each unlocked `Section`, respecting qualifications, availability, workload caps (`max_courses_per_semester`, `max_courses_total`), seniority, and preference weighting. | OR-Tools CP-SAT |
-| Student Assignment Solver | Assigns each `Student`'s `CourseRequest`s to specific `Section`s (creating `Enrollment` rows), respecting prerequisites, capacity, and per-student schedule conflicts; maximizes primary-choice fulfillment. | OR-Tools CP-SAT |
-| Conflict Analyzer | Post-solve read-only pass producing the Stage 10 issue report (Section 13). | Pandas aggregation, no solver |
-
-### 14.2 Why Three Separate CP-SAT Models Instead of One
-
-A single combined model (sections + teachers + students solved jointly) is theoretically capable of a more globally optimal schedule, but was rejected for three concrete reasons:
-
-1. **Independent executability.** The design principle requires each optimization stage to run independently — a counselor may want to re-run only student assignment after manually correcting a few teacher assignments, without re-solving placement.
-2. **Search space tractability.** The combined problem's search space grows multiplicatively (sections × timeslots × teachers × students), which risks solver runtimes that violate the performance targets in Section 25 at this scale (250–350 sections, 1,400 students). Decomposing into three sequential CP-SAT models — each with a search space bounded by only its own variables — keeps each solve well within CP-SAT's practical performance envelope.
-3. **Matches the human process.** Steps 7, 8, and 9 of the actual school process are already sequential and separately reviewable by staff. A decomposed engine lets the system produce and surface intermediate results (e.g., "sections are placed, review before assigning teachers") exactly where the human process already pauses.
-
-The trade-off — a decomposed pipeline can produce a locally-optimal-but-not-globally-optimal schedule compared to a joint solve — is discussed explicitly in Section 28.
-
-## 15. Data Flow
-
-```mermaid
-flowchart TD
-    UI["Frontend Forms<br/>(requests, preferences, locks)"] -->|validated JSON| API["DRF Serializers/Views"]
-    API -->|ORM writes| DB[("PostgreSQL")]
-    API -->|enqueue| Q["Task Queue"]
-    Q --> W["Worker Process"]
-    W -->|Data Loader| ENGINE["Scheduling Engine"]
-    DB -->|scoped read| ENGINE
-    ENGINE -->|Result Writer| DB
-    W -->|job result| Q
-    API -->|poll| Q
-    API -->|serialize results| UI2["Frontend: Timetable Grid / Reports"]
-```
-
-Data moves through the system in two distinct patterns:
-
-- **Synchronous CRUD flow:** used for all Stage 1, 2 (decision only), 4, 5, 6, 10, 11 interactions — a direct request/response cycle between the frontend, the DRF API, and PostgreSQL, with no involvement of the scheduling engine.
-- **Asynchronous solve flow:** used for Stages 3, 7, 8, 9 — the API enqueues a scoped job description (which sections/students/teachers are in scope, which stage to run), a worker invokes the engine, the engine reads only the data within scope, solves, and writes results back inside a single database transaction so that a failed or interrupted solve never leaves partially-applied results (Section 22).
-
-
-## 16. Database Integration
-
-The Version 1 schema is treated as the authoritative source of truth for this document, per the project's stated constraint. This section explains how the architecture integrates with it rather than proposing changes to it. The schema is organized here into five conceptual groups purely for architectural discussion — this grouping does not correspond to Django "apps" necessarily, though it is a reasonable candidate structure (Section 19).
-
-### 16.1 Conceptual Groups
-
-| Group | Models |
-|---|---|
-| Core Domain | `Course`, `Section`, `Enrollment`, `CourseRequest`, `CoursePrerequisite` |
-| People | `Student`, `Teacher`, `Counselor` |
-| Scheduling Control | `TimeSlot`, `SectionSchedule`, `ManualOverride`, `SectionLock` |
-| Constraints | `HardConstraint`, `SoftConstraint`, `CounselorConstraintPreference`, `Qualification`, `CourseRoomRequirement`, `CourseQualificationRequirement`, `CourseConflict`, `TeacherQualification`, `TeacherCoursePreference`, `TeacherAvailability`, `TeacherCurrentCourse` |
-| Supporting Data | `Room`, `AcademicYear`, `Translation`, `HistoricalCourseDemand` |
-
-### 16.2 Entity Relationship Diagram (Key Relationships)
-
-```mermaid
-erDiagram
-    ACADEMIC_YEAR ||--o{ SECTION : "scopes"
-    ACADEMIC_YEAR ||--o{ STUDENT : "scopes"
-    ACADEMIC_YEAR ||--o{ TIMESLOT : "scopes"
-    ACADEMIC_YEAR ||--o{ COURSE_REQUEST : "scopes"
-    ACADEMIC_YEAR ||--o{ HISTORICAL_DEMAND : "scopes"
-
-    COURSE ||--o{ SECTION : "offered as"
-    COURSE ||--o{ COURSE_REQUEST : "requested via"
-    COURSE ||--o{ COURSE_PREREQUISITE : "requires"
-    COURSE ||--o{ COURSE_ROOM_REQ : "needs room type"
-    COURSE ||--o{ COURSE_QUAL_REQ : "needs qualification"
-    COURSE ||--o{ HISTORICAL_DEMAND : "tracked by"
-
-    SECTION ||--o{ ENROLLMENT : "contains"
-    SECTION ||--|| SECTION_SCHEDULE : "placed via"
-    SECTION ||--o| SECTION_LOCK : "may be locked by"
-    SECTION ||--o{ MANUAL_OVERRIDE : "audited by"
-    SECTION }o--|| TEACHER : "taught by"
-
-    TEACHER ||--o{ TEACHER_QUALIFICATION : "holds"
-    TEACHER ||--o{ TEACHER_COURSE_PREF : "prefers"
-    TEACHER ||--o{ TEACHER_AVAILABILITY : "available at"
-    TEACHER ||--o{ TEACHER_CURRENT_COURSE : "currently teaches"
-
-    STUDENT ||--o{ COURSE_REQUEST : "submits"
-    STUDENT ||--o{ ENROLLMENT : "enrolled in"
-
-    TIMESLOT ||--o{ SECTION_SCHEDULE : "hosts"
-    TIMESLOT ||--o{ TEACHER_AVAILABILITY : "referenced by"
-    ROOM ||--o{ SECTION_SCHEDULE : "hosts"
-
-    QUALIFICATION ||--o{ TEACHER_QUALIFICATION : "granted to teachers"
-    QUALIFICATION ||--o{ COURSE_QUAL_REQ : "required by courses"
-
-    COUNSELOR ||--o{ COUNSELOR_CONSTRAINT_PREF : "weights"
-    SOFT_CONSTRAINT ||--o{ COUNSELOR_CONSTRAINT_PREF : "weighted by"
-```
-
-### 16.3 Integration Notes by Group
-
-- **Core Domain:** `Section.is_locked` is a fast, denormalized flag for query filtering; `SectionLock` holds the actual locked values (teacher/timeslot/room). The engine's Constraint Compiler (Section 14) treats any section with `is_locked=True` as fully excluded from the relevant solver's decision variables — it is loaded for context (e.g., counted against room/timeslot capacity) but never reassigned.
-- **`CourseConflict` population strategy (architectural decision, not a schema change):** the schema provides a `CourseConflict(course_a, course_b, weight)` table but does not specify how weights are populated. This document specifies that the Demand Analyzer (Section 14) computes co-request frequency from `CourseRequest` during Stage 2/6 and **upserts** `CourseConflict` rows automatically, while still allowing counselors to manually override specific weights through the same table (the API endpoint in Section 17 exposes both read and manual-write access). This keeps the table schema unchanged while giving it a well-defined population mechanism.
-- **Constraint Compiler reads, never the solver directly:** no CP-SAT solver module queries the ORM. All constraint tables are loaded once by the Constraint Compiler into plain-Python structures before any solver runs, which keeps the solver logic database-agnostic and unit-testable with fixtures instead of a real database.
-- **`HistoricalCourseDemand` as the sole forecasting input in V1:** the Section Count Estimator (Stage 3) is intentionally a simple, explainable heuristic (ratio of historical `final_enrollment` to historical `requests`, applied to current-year `requests`) rather than a machine-learning model, consistent with the "maintainability over premature optimization" design principle. Section 27 discusses replacing this heuristic with an ML forecasting module without changing its input/output contract.
-
-## 17. API Design
-
-The API is organized by feature area, following REST conventions under Django REST Framework. Endpoints are grouped below by the pipeline stage they primarily support (Section 13). Implementation code is intentionally omitted; only responsibilities are described.
-
-### 17.1 Course & Offering Management
-
-| Method | Endpoint | Responsibility |
-|---|---|---|
-| GET/POST | `/api/courses/` | List/create courses (admin-only write). |
-| GET/PATCH | `/api/courses/{id}/` | Retrieve/update a course, including cancel/merge flags. |
-| GET/POST | `/api/courses/{id}/prerequisites/` | Manage `CoursePrerequisite` relationships. |
-
-### 17.2 Course Selection & Demand (Steps 1–2)
-
-| Method | Endpoint | Responsibility |
-|---|---|---|
-| GET/POST | `/api/course-requests/` | Students (or staff proxy) submit primary/alternate requests. |
-| GET | `/api/demand/summary/` | Aggregated demand per course for a given academic year, joined with historical trends; flags merge/cancel candidates. |
-
-### 17.3 Section Planning & Staffing (Steps 3–4)
-
-| Method | Endpoint | Responsibility |
-|---|---|---|
-| POST | `/api/scheduling/runs/` `{stage: "section_count_estimation"}` | Triggers the Section Count Estimator; returns recommendations (not auto-applied). |
-| POST | `/api/sections/` | Counselor finalizes and creates `Section` records from recommendations. |
-| GET | `/api/staffing/summary/` | Read-only report: required sections per subject vs. available qualified teachers. |
-
-### 17.4 Teacher Preferences & Qualifications (Step 5)
-
-| Method | Endpoint | Responsibility |
-|---|---|---|
-| GET/POST | `/api/teachers/{id}/preferences/` | Manage `TeacherCoursePreference`. |
-| GET/POST | `/api/teachers/{id}/current-courses/` | Manage `TeacherCurrentCourse`. |
-| GET/POST | `/api/teachers/{id}/qualifications/` | Manage `TeacherQualification`. |
-| GET/POST | `/api/teachers/{id}/availability/` | Manage `TeacherAvailability`. |
-
-### 17.5 Constraints & Manual Locks (Step 6)
-
-| Method | Endpoint | Responsibility |
-|---|---|---|
-| GET/POST | `/api/constraints/hard/` | Manage `HardConstraint` catalog. |
-| GET/POST | `/api/constraints/soft/` | Manage `SoftConstraint` catalog. |
-| GET/POST | `/api/constraints/preferences/` | Manage `CounselorConstraintPreference` (per-counselor weighting). |
-| GET/PATCH | `/api/sections/{id}/lock/` | Create/update a `SectionLock`. |
-| GET/PATCH | `/api/course-conflicts/` | View/adjust `CourseConflict` weights (see Section 16.3). |
-| GET/POST | `/api/course-room-requirements/` | Manage `CourseRoomRequirement`. |
-| GET/POST | `/api/course-qualification-requirements/` | Manage `CourseQualificationRequirement`. |
-
-### 17.6 Scheduling Runs (Steps 7–9)
-
-| Method | Endpoint | Responsibility |
-|---|---|---|
-| POST | `/api/scheduling/runs/` `{stage, scope}` | Enqueue a scoped solver run for `section_placement`, `teacher_assignment`, or `student_assignment`. |
-| GET | `/api/scheduling/runs/{job_id}/` | Poll job status and retrieve summary results. |
-| GET | `/api/timetable/` | Retrieve the current composed timetable (sections + schedule + teacher). |
-
-### 17.7 Conflict Analysis & Review (Steps 10–11)
-
-| Method | Endpoint | Responsibility |
-|---|---|---|
-| GET | `/api/conflicts/report/` | Structured issue report: under-enrolled sections, unmet requests, teacher overload, capacity overflows. |
-| GET/POST | `/api/overrides/` | Create/list `ManualOverride` records (with reason, previous/new value). |
-| POST | `/api/overrides/{id}/apply/` | Apply an override and mark affected entities for scoped re-solve. |
-
-### 17.8 Supporting Endpoints
-
-| Method | Endpoint | Responsibility |
-|---|---|---|
-| GET/POST | `/api/rooms/`, `/api/timeslots/`, `/api/academic-years/` | Manage supporting reference data. |
-| GET | `/api/translations/{key}/` | Resolve UI text by key/locale. |
-| POST | `/api/auth/login/`, `/api/auth/refresh/` | Token-based authentication (Section 24). |
-| GET | `/api/students/{id}/schedule/`, `/api/teachers/{id}/schedule/` | Read-only finalized schedule for self-service views. |
-
-
-## 18. Frontend Architecture
-
-### 18.1 Pages
-
-| Page | Role(s) | Purpose |
-|---|---|---|
-| Dashboard | All | Role-appropriate summary (open tasks, pending overrides, job status). |
-| Course Catalog & Offerings | Counselor/Admin | Manage `Course` records, prerequisites, merge/cancel decisions. |
-| Course Selection | Student, Counselor (proxy) | Submit/edit `CourseRequest` rows. |
-| Demand Analysis | Counselor/Admin | Aggregated demand view, merge/cancel candidates, historical comparison. |
-| Section Planner | Counselor/Admin | Section count recommendations, finalize `Section` records. |
-| Staffing Overview | Counselor/Admin | Read-only staffing summary report. |
-| Teacher Preferences | Teacher | Submit preferences, current courses, availability. |
-| Constraint & Lock Manager | Counselor/Admin | Manage hard/soft constraints, section locks, course conflicts. |
-| Scheduling Control Center | Counselor/Admin | Trigger and monitor Stage 7–9 solver runs; view job progress. |
-| Timetable Grid | Counselor/Admin, Teacher (own), Student (own) | Visualize placed sections, teacher assignments, student enrollments. |
-| Conflict & Issue Report | Counselor/Admin | Stage 10 structured report with drill-down. |
-| Override History | Counselor/Admin | Audit trail of `ManualOverride` records. |
-| My Schedule | Teacher, Student | Read-only personal timetable. |
-
-### 18.2 Navigation
-
-Navigation is role-gated at the route level (a teacher never receives the routes for Constraint & Lock Manager, for example), implemented as a route configuration table consumed by a single `<AppRouter>` rather than duplicated per-role route trees. This keeps the frontend's route structure extensible — adding a new stage-specific page (e.g., a future analytics dashboard, Section 27) means adding one route/permission entry rather than modifying multiple role-specific routers.
-
-```mermaid
-graph LR
-    Login --> Dashboard
-    Dashboard -->|Counselor/Admin| CourseCatalog
-    Dashboard -->|Counselor/Admin| DemandAnalysis
-    Dashboard -->|Counselor/Admin| SectionPlanner
-    Dashboard -->|Counselor/Admin| StaffingOverview
-    Dashboard -->|Counselor/Admin| ConstraintManager
-    Dashboard -->|Counselor/Admin| SchedulingControlCenter
-    Dashboard -->|Counselor/Admin| ConflictReport
-    Dashboard -->|Counselor/Admin| OverrideHistory
-    Dashboard -->|Teacher| TeacherPreferences
-    Dashboard -->|Teacher/Student| MySchedule
-    Dashboard -->|Student| CourseSelection
-    SchedulingControlCenter --> TimetableGrid
-    ConflictReport --> TimetableGrid
-```
-
-### 18.3 State Management Recommendation
-
-**Recommendation:** separate *server state* from *UI state* using two distinct tools rather than a single global store for everything:
-
-- **Server state — React Query (TanStack Query):** all data that originates from the API (courses, sections, requests, constraints, job status) is cached, invalidated, and refetched through React Query. This is recommended because scheduling-run polling (Section 12.2) fits React Query's built-in polling/refetch-interval support naturally, and because it eliminates a large class of manual cache-invalidation bugs that a hand-rolled Redux data layer would otherwise require.
-- **UI/local state — React Context + `useReducer` (or a lightweight store such as Zustand) for cross-page UI state:** things like "which sections are currently selected for a scoped re-run," or wizard step state in the Section Planner, which do not need to be persisted or synchronized with the server.
-
-**Why not Redux for everything:** most of this application's complexity is server-state synchronization (exactly React Query's specialty), not complex client-only interaction state. Introducing a full Redux store for server data would mean re-implementing caching, invalidation, and loading/error states that React Query provides out of the box — extra code with no corresponding benefit, which conflicts with the "maintainability over premature optimization" principle.
-
-### 18.4 Component Organization
-
-```
-src/
-  api/               # Typed API client modules, one per feature area (Section 17)
-  components/
-    common/           # Buttons, tables, forms — shared design system
-    timetable/         # Grid rendering, conflict highlighting
-    constraints/       # Constraint/lock editors
-    scheduling/        # Run trigger + job status components
-  pages/               # One directory per page in Section 18.1
-  hooks/               # useCourseRequests, useSchedulingRun, useOverrides, etc.
-  state/               # Cross-page UI state (Context/Zustand)
-  i18n/                # Translation resolution against /api/translations/
-  routes/              # Central route/permission configuration (Section 18.2)
-```
-
-This structure groups by feature first, type second (a common alternative to a strict `components/`, `pages/`, `hooks/` top-level split by type only), so that a developer extending the Constraint Manager touches one directory rather than five.
-
-
-## 19. Backend Architecture
-
-The backend follows a layered architecture within a Django project, structured as several Django "apps" that mirror the conceptual groups in Section 16.1, plus a scheduling app that is a thin adapter over the standalone scheduling engine package.
-
-```mermaid
-flowchart TB
-    subgraph API Layer
-        VIEWS["DRF ViewSets / Views"]
-        SER["Serializers"]
-        PERM["Permission Classes (RBAC)"]
-    end
-    subgraph Service Layer
-        SVC1["Demand & Offering Service"]
-        SVC2["Constraint & Lock Service"]
-        SVC3["Scheduling Orchestration Service"]
-        SVC4["Override Service"]
-        SVC5["Reporting Service"]
-    end
-    subgraph Scheduling Layer
-        ADAPTER["Engine Adapter<br/>(DTO mapping)"]
-        ENGINE["Scheduling Engine Package (Section 14)"]
-    end
-    subgraph Data Layer
-        MODELS["Django ORM Models<br/>(Version 1 Schema, unmodified)"]
-    end
-
-    VIEWS --> SER --> PERM --> SVC1 & SVC2 & SVC3 & SVC4 & SVC5
-    SVC3 --> ADAPTER --> ENGINE
-    SVC1 & SVC2 & SVC4 & SVC5 --> MODELS
-    ADAPTER --> MODELS
-```
-
-### 19.1 Services
-
-| Service | Responsibility |
-|---|---|
-| Demand & Offering Service | Course demand aggregation, merge/cancel workflow support. |
-| Constraint & Lock Service | CRUD and validation for all constraint tables and `SectionLock`. |
-| Scheduling Orchestration Service | Validates run requests, determines scope, enqueues jobs, tracks status, invokes the Engine Adapter. |
-| Override Service | Validates and persists `ManualOverride`, determines the resulting re-solve scope, and triggers a scoped run via the Orchestration Service. |
-| Reporting Service | Staffing summary, conflict/issue report, override history — all read-only aggregations. |
-
-### 19.2 Modules (Suggested Django App Structure)
-
-| App | Contains |
-|---|---|
-| `people` | `Student`, `Teacher`, `Counselor` and their auth linkage |
-| `courses` | `Course`, `Section`, `Enrollment`, `CourseRequest`, `CoursePrerequisite`, `HistoricalCourseDemand` |
-| `scheduling_control` | `TimeSlot`, `SectionSchedule`, `ManualOverride`, `SectionLock`, `Room`, `AcademicYear` |
-| `constraints` | `HardConstraint`, `SoftConstraint`, `CounselorConstraintPreference`, `Qualification`, `CourseRoomRequirement`, `CourseQualificationRequirement`, `CourseConflict`, `TeacherQualification`, `TeacherCoursePreference`, `TeacherAvailability`, `TeacherCurrentCourse` |
-| `scheduling_jobs` | Job orchestration, Engine Adapter, task definitions (no domain models beyond a possible additive job-log table, Section 23) |
-| `i18n` | `Translation` |
-
-This mapping is offered as a **recommendation**, not a schema requirement — Django app boundaries are a code-organization decision layered on top of the (unchanged) Version 1 schema, and models can be reassigned to apps without any migration impact as long as `db_table` naming is managed carefully.
-
-### 19.3 API Layer
-
-Thin: DRF ViewSets handle serialization, pagination, filtering, and permission checks, then delegate all non-trivial logic to the Service Layer. This keeps views testable with simple service mocks and keeps business logic out of HTTP-specific code.
-
-### 19.4 Scheduling Layer
-
-The Engine Adapter is the **only** code permitted to import both Django models and the scheduling engine package. It performs three jobs: (1) load the scoped subset of data into engine DTOs, (2) invoke the appropriate engine module, (3) write results back inside a single atomic transaction (Section 22). This narrow boundary is what enforces the "scheduling engine separated from REST API" design principle in practice, not just in intent.
-
-### 19.5 Data Layer
-
-The unmodified Version 1 ORM models. No repository-pattern abstraction is introduced in V1 beyond Django's own ORM, consistent with "maintainability over premature optimization" — an additional repository layer would add indirection without a concrete near-term benefit at this scale.
-
-
-## 20. Optimization Engine Architecture
-
-This section provides the detailed design of each computationally significant stage identified in Sections 13–14, specifying inputs, outputs, dependencies, and database interaction for each.
-
-### 20.1 Section Count Estimator
-
-| Aspect | Detail |
-|---|---|
-| Responsibilities | Estimate the number of sections needed per course from current requests and historical drop/add behavior. |
-| Inputs | `CourseRequest` counts (current year), `HistoricalCourseDemand.requests`/`final_enrollment` (prior years), `Course.capacity_min`/`capacity_max`. |
-| Outputs | Recommended section count per course (not auto-persisted — surfaced to the counselor for confirmation, per FR-3). |
-| Dependencies | Pandas for aggregation; no CP-SAT (this is a heuristic ratio calculation, not a combinatorial optimization). |
-| DB Interaction | Read-only against `courses` and `historical` tables; writes nothing directly (counselor confirmation creates `Section` rows via the standard Section API). |
-
-### 20.2 Section Placement Solver (CP-SAT Model 1)
-
-| Aspect | Detail |
-|---|---|
-| Responsibilities | Assign each unlocked `Section` a `(TimeSlot, Room)` pair. |
-| Inputs | All `Section`s for the academic year (excluding those with `is_locked=True`, which are loaded as fixed context, not decision variables), available `TimeSlot`s, `Room`s (filtered by `CourseRoomRequirement` per course), `CourseConflict` weights, `SectionLock` values. |
-| Decision Variables | For each unlocked section, a variable selecting one `(timeslot, room)` combination from its feasible set. |
-| Hard Constraints | No two sections in the same room+timeslot; no two sections of a course whose combined student overlap makes co-scheduling infeasible are placed identically when alternatives exist; room type must satisfy `CourseRoomRequirement`; locked sections' slots are removed from the feasible pool of all other sections. |
-| Objective | Minimize the sum of `CourseConflict.weight` over course pairs placed in the same timeslot, while rewarding spreading multiple sections of the same course across distinct periods. |
-| Outputs | `SectionSchedule` rows (timeslot + room per section). |
-| Dependencies | OR-Tools CP-SAT; output of the Constraint Compiler. |
-| DB Interaction | Read-scoped per Section 16.3; writes `SectionSchedule` inside a single transaction (Section 22). |
-
-### 20.3 Teacher Assignment Solver (CP-SAT Model 2)
-
-| Aspect | Detail |
-|---|---|
-| Responsibilities | Assign a `Teacher` to each unlocked `Section` (post-placement). |
-| Inputs | Placed `Section`s (from 20.2), `TeacherQualification`, `CourseQualificationRequirement`, `TeacherAvailability` (cross-referenced against each section's assigned `TimeSlot`), `TeacherCoursePreference`, `Teacher.seniority`, `Teacher.max_courses_per_semester`/`max_courses_total`, `Teacher.is_reduced_load`, existing `SectionLock.locked_teacher`. |
-| Hard Constraints | A teacher is qualified for the course (via `CourseQualificationRequirement` ⊆ `TeacherQualification`); a teacher is available at the section's timeslot; a teacher is never assigned two sections at overlapping timeslots; workload caps are respected. |
-| Soft Constraints (Objective Terms) | Maximize satisfied `TeacherCoursePreference`; balance workload distribution; weight by seniority where preferences conflict (using `CounselorConstraintPreference` weights). |
-| Outputs | `Section.teacher` assignment. |
-| Dependencies | OR-Tools CP-SAT; requires Section 20.2 to have completed for the sections in scope. |
-| DB Interaction | Reads placed sections and constraint tables; writes `Section.teacher` inside a transaction. |
-
-### 20.4 Student Assignment Solver (CP-SAT Model 3)
-
-| Aspect | Detail |
-|---|---|
-| Responsibilities | Assign each student's course requests to specific sections, creating `Enrollment` rows. |
-| Inputs | `CourseRequest` (primary/alternate) per student, placed+staffed `Section`s with their `TimeSlot`s, `Section.capacity_min`/`capacity_max`, `CoursePrerequisite`, `Student.grade_level`. |
-| Hard Constraints | No two enrollments for a student at overlapping timeslots; section capacity not exceeded; prerequisites satisfied; mandatory (`CourseRequest.is_mandatory`) requests prioritized over optional ones. |
-| Objective | Maximize the number of primary-choice requests fulfilled; minimize reliance on alternates; secondary objective to balance section fill levels between `capacity_min` and `capacity_max`. |
-| Outputs | `Enrollment` rows. |
-| Dependencies | OR-Tools CP-SAT; requires Section 20.2 and 20.3 to have completed for the sections in scope (student assignment does not strictly require a teacher to already be assigned, per the process document, but does require the section to be time-placed to check for student-level conflicts). |
-| DB Interaction | Reads requests, placed sections, prerequisites; writes `Enrollment` inside a transaction. |
-
-### 20.5 Conflict Analyzer
-
-| Aspect | Detail |
-|---|---|
-| Responsibilities | Produce the Stage 10 issue report. |
-| Inputs | Results of 20.2–20.4, `Section.capacity_min`/`max`, `CourseRequest`, `Teacher.max_courses_*`. |
-| Outputs | Structured report: under/over-enrolled sections, students with incomplete schedules or unmet requests, teachers over their workload cap, unresolved capacity conflicts. |
-| Dependencies | Pandas aggregation only; no solver. |
-| DB Interaction | Read-only; result is not persisted as a new table in V1 (returned directly via `/api/conflicts/report/`), avoiding an unnecessary schema addition for what is fundamentally a derived view. |
-
-### 20.6 Scope Parameter (Cross-Cutting)
-
-Every solver invocation in Sections 20.2–20.4 accepts a **scope** parameter (a set of section IDs, course IDs, or student IDs) rather than always operating on the entire academic year. This is what makes Stage 11's "regenerate only affected portions" requirement (FR-11) architecturally possible: a scoped re-run loads only the sections/students in scope as decision variables while loading everything else as fixed context (identical treatment to how locked sections are handled in Section 20.2). Full-year runs are simply the special case where scope equals "all."
-
-## 21. Manual Override Workflow
-
-```mermaid
-sequenceDiagram
-    actor C as Counselor
-    participant FE as Frontend
-    participant API as Override Service
-    participant DB as PostgreSQL
-    participant ORC as Orchestration Service
-    participant SE as Scheduling Engine
-
-    C->>FE: Edit a section/teacher/student assignment directly
-    FE->>API: POST /api/overrides/ {section, action, previous_value, new_value, reason}
-    API->>DB: INSERT ManualOverride
-    API->>DB: UPSERT SectionLock (if action implies a lock)
-    API-->>FE: 201 Created
-    C->>FE: (Optional) "Re-solve affected scope"
-    FE->>ORC: POST /api/scheduling/runs/ {stage, scope: affected_ids}
-    ORC->>SE: Invoke solver with scope, locks loaded as fixed constraints
-    SE-->>ORC: Updated results (excluding all locked entities)
-    ORC->>DB: Write results (transactional)
-    ORC-->>FE: Job complete
-    FE-->>C: Updated timetable, unaffected locked sections unchanged
-```
-
-Two `ManualOverride.action` values map directly onto the schema's `lock_teacher`, `lock_timeslot`, and `move_section` conventions. Every override write is paired with a `SectionLock` upsert so the same fact is queryable both as a chronological audit event (`ManualOverride`) and as a current-state constraint (`SectionLock`) without duplicating logic across the two. **Design decision:** overrides are additive/append-only (never edited or deleted) so that `ManualOverride` functions as a complete audit trail, while `SectionLock` is mutable "current state" — this matches the existing schema shape (one is a `TextField`-based log, the other a structured current-value table) rather than requiring a change to either.
-
-
-## 22. Error Handling Strategy
-
-| Error Category | Example | Handling Approach |
-|---|---|---|
-| Validation errors (API layer) | Invalid course code, duplicate `CourseRequest` violating the unique constraint | DRF serializer validation returns 400 with field-level errors; no partial writes. |
-| Business rule violations (Service layer) | Locking a section to a teacher who lacks the required qualification | Service layer raises a domain exception caught by a shared DRF exception handler, returned as 422 with a human-readable reason (translatable via `Translation`). |
-| Solver infeasibility | No feasible teacher assignment exists given current locks/availability | The Scheduling Orchestration Service surfaces the specific conflicting hard constraints (e.g., "no available qualified teacher for Section X at its assigned timeslot") rather than a generic solver error, using CP-SAT's constraint-conflict introspection where available; job status is marked `failed_infeasible`, not silently retried. |
-| Solver timeout | A full-year solve exceeds the configured time budget (Section 25) | The solver returns the best feasible solution found within the time budget (CP-SAT supports this natively) rather than failing outright; the job is marked `completed_suboptimal` and the summary flags this explicitly so the counselor knows further manual review is warranted. |
-| Transactional failure mid-write | Worker process crashes after solving but before persisting results | Results are written in a single atomic database transaction (Section 19.4); a crash before commit leaves the database in its pre-run state, and the job is marked `failed` for a clean retry. |
-| Concurrent edits | Two counselors edit the same section around the same time | Optimistic concurrency using a version/updated-at check on write; the losing writer receives a 409 with the current server state, prompting a merge rather than silently discarding one edit. |
-| Downstream service unavailable | Task queue/broker is down | CRUD operations continue to function (per NFR "Availability"); only "trigger a solve" actions are disabled in the UI with a clear status indicator. |
-
-**Guiding principle:** the system never silently produces a partially-applied or ambiguous state. Every solver run either fully commits a coherent result set or commits nothing; every override is either fully recorded (log + lock) or not recorded at all.
-
-## 23. Logging Strategy
-
-| Log Category | Content | Mechanism |
-|---|---|---|
-| Request/Audit logs | Every mutating API call (who, what endpoint, what changed) | Structured JSON logging middleware at the DRF layer, correlated with a request ID. |
-| Domain audit trail | Manual overrides specifically | Already modeled via `ManualOverride` (action, previous/new value, reason, timestamp) — no additional logging infrastructure needed for this category since it is a first-class table. |
-| Scheduling job logs | Job lifecycle (enqueued, started, completed/failed, duration, scope, summary stats) | Structured logs emitted by the worker, correlated by `job_id`; forwarded to a centralized log aggregator (e.g., the organization's existing ELK/CloudWatch stack). |
-| Solver diagnostic logs | CP-SAT solve statistics (branches explored, time to first solution, objective value, infeasibility certificates) | Captured at DEBUG level within the scheduling engine, written to the job log record for troubleshooting without being surfaced to end users. |
-| Error logs | Unhandled exceptions across all tiers | Standard Python/Django logging with severity levels, alerting integration reserved for a future operational maturity phase. |
-
-### 23.1 Assumption — Optional Additive `SchedulingRunLog` Table
-
-**Assumption/Recommendation:** the Version 1 schema has no dedicated table for scheduling job history (as distinct from `ManualOverride`, which logs human edits, not solver runs). This document recommends an **additive, non-breaking** future migration introducing a `SchedulingRunLog` table (job id, stage, scope, status, started_at, completed_at, summary JSON) to make job history queryable directly rather than relying solely on the task queue's transient result backend (e.g., Redis TTL-based result expiry). This is explicitly framed as an *addition*, not a redesign, and is deferred rather than mandated for V1 because the task queue's built-in result backend is sufficient to meet V1's functional requirements; it is flagged here so the development team can plan the migration proactively (Section 29).
-
-## 24. Security Considerations
-
-| Concern | Mitigation |
-|---|---|
-| Authentication | Token-based auth (DRF SimpleJWT or equivalent) against the auth linkage described in Section 11; no session-based auth to keep the API stateless and horizontally scalable. |
-| Authorization / RBAC | Django permission classes enforce role-based access at the view level, using the Counselor/Teacher/Student/Administrator distinction from Section 11; students and teachers can only read their own `Enrollment`/`Section` data, never another individual's. |
-| Data sensitivity | `Student.date_of_birth`, `Student.attendance_rate`, and email/phone fields across `Student`/`Teacher` are personally identifiable information; access to list/export endpoints is restricted to Counselor/Administrator roles, and field-level serialization hides these fields from Teacher/Student-facing responses entirely rather than merely hiding them in the UI. |
-| Input validation | All writes pass through DRF serializers with explicit field validation; free-text fields (`ManualOverride.reason`, etc.) are stored but never interpolated into queries (parameterized ORM queries throughout, no raw SQL). |
-| Transport security | HTTPS enforced end-to-end; the frontend never communicates with the API over plain HTTP even in development parity environments. |
-| Least privilege for the scheduling worker | The worker process's database credentials are scoped to only the tables the engine adapter touches, separate from the general API service account, limiting blast radius if the worker environment is compromised. |
-| Audit trail integrity | `ManualOverride` rows are append-only at the application layer (no update/delete exposed via the API) so the audit trail cannot be silently altered. |
-| Secrets management | Database credentials, JWT signing keys, and broker credentials are supplied via environment variables/secret manager, never committed to source control. |
-
-## 25. Performance Considerations
-
-| Concern | Approach |
-|---|---|
-| Solver runtime bounds | Each CP-SAT solver stage (Section 20.2–20.4) is configured with a bounded time limit (e.g., a target of under 2 minutes for section placement, under 2 minutes for teacher assignment, under 3–4 minutes for the larger student assignment problem at 1,400 students), returning the best feasible solution found if the limit is reached, per the Error Handling Strategy (Section 22). |
-| Scoped solving reduces typical-case runtime | Because most re-runs after the initial full solve are scoped (Section 20.6) to a handful of sections/students, the common case during the review-and-adjustment period (Stage 11) is a small, fast solve rather than a full 350-section solve. |
-| Database indexing | Indexes on foreign keys already implied by Django's ORM defaults, plus targeted composite indexes on `(section, timeslot)` and `(student, section)` lookup paths used heavily by the Conflict Analyzer and Student Assignment Solver. |
-| Read-heavy reporting endpoints | Demand summary, staffing summary, and conflict report endpoints use database-level aggregation (via the ORM's aggregation API) rather than pulling rows into Python and aggregating in application code. |
-| Warm-starting future re-solves | The engine adapter can optionally seed a solver with the previous solution as hints (CP-SAT supports solution hints) when re-solving a narrow scope, reducing time-to-first-solution on incremental re-runs. |
-| Frontend responsiveness during long solves | The asynchronous job pattern (Section 7) ensures the UI remains responsive during a multi-minute solve; polling interval backs off progressively to avoid excessive request volume. |
-
-## 26. Scalability Considerations
-
-| Dimension | Approach |
-|---|---|
-| API tier | Stateless DRF processes behind a load balancer scale horizontally with no code changes, since authentication is token-based rather than session-based. |
-| Worker tier | The task queue/worker pool scales independently of the API tier; additional worker processes can be added to handle multiple concurrent scheduling runs (e.g., several counselors at different schools, if the system is later deployed board-wide). |
-| Database | PostgreSQL read replicas can serve read-heavy reporting endpoints (Section 25) if load grows; the Version 1 schema's normalized structure and existing unique constraints support this without modification. |
-| Problem size growth | At the target scale (1,400 students, 250–350 sections), all three CP-SAT models are well within CP-SAT's demonstrated practical capacity. Should the system be deployed at a significantly larger school or board-wide (multiple schools sharing the same instance), the scoping mechanism (Section 20.6) allows partitioning by school/academic year, and the Student Assignment Solver in particular may require decomposition into per-grade or per-cohort sub-problems solved independently — noted here as a scaling strategy rather than implemented in V1. |
-| Multi-tenancy (future) | The current schema is single-school; extending to multiple schools would require adding a `School` foreign key across the People and Core Domain groups — flagged as a future, additive schema change rather than a V1 concern. |
-
-
-## 27. Future Expansion
-
-The architecture's stage-boundary design (Sections 14, 20) exists specifically so that each of the following can be introduced as a replacement or addition to a single module's implementation, without redesigning neighboring stages or the API contract around them.
-
-| Future Capability | Integration Point | Description |
-|---|---|---|
-| AI-assisted demand forecasting | Replaces the Section Count Estimator (20.1) | An ML model trained on multi-year `HistoricalCourseDemand` could replace the ratio-based heuristic while keeping the same input/output contract (requests in, recommended section count out). |
-| NLP-based teacher preference ingestion | Extends Stage 5 intake | Restores support for genuinely free-text preference entry (deferred in V1 per Section 3.3) by adding an NLP normalization step ahead of `TeacherCoursePreference` writes, with human confirmation of the mapped course. |
-| Explainable scheduling | Extends every CP-SAT solver stage | Surfacing the specific binding constraints and objective-term contributions behind a given placement/assignment decision (CP-SAT exposes solution and constraint metadata that can be translated into counselor-readable explanations), directly addressing the "usability" non-functional requirement (Section 5) beyond V1's summary-level reporting. |
-| Predictive analytics dashboards | New read-only service + pages | Trend analysis across academic years (enrollment shifts, section utilization, teacher workload trends) built on the same `HistoricalCourseDemand`-style data, extended to more entities. |
-| Automated qualification import | Extends Teacher data intake | Integrating with the school's existing HR/administrative systems to auto-populate `TeacherQualification`, as the process document notes may already be feasible. |
-| Multi-school / board-wide deployment | Extends People + Core Domain groups | Adding a `School` scoping dimension (Section 26) to support shared deployment across a district. |
-| Real-time collaborative editing | Extends the Override Service | Moving from optimistic concurrency (Section 22) to operational-transform or CRDT-based conflict resolution if multiple counselors routinely edit concurrently. |
-
-## 28. Risks and Trade-offs
-
-| Risk / Trade-off | Discussion | Mitigation |
-|---|---|---|
-| Decomposed pipeline may miss globally optimal solutions | A single joint solve across placement, teachers, and students could in theory produce a better overall schedule than three sequential solves (Section 14.2). | Accepted trade-off in exchange for independent executability, tractable search spaces, and alignment with the human process; revisit only if solve quality proves insufficient in practice. |
-| CP-SAT infeasibility on over-constrained inputs | Aggressive manual locking (Step 6) can produce a scope with no feasible solution. | Error Handling Strategy (Section 22) surfaces the specific conflicting constraints rather than a generic failure, letting the counselor relax a lock rather than guessing. |
-| Reliance on historical data quality | The Section Count Estimator and conflict-weight computation both depend on `HistoricalCourseDemand` and `CourseRequest` being reasonably complete and accurate. | Flagged explicitly to stakeholders; the system should visibly indicate when historical data is sparse (e.g., a new course with no prior-year row) rather than silently defaulting. |
-| Asynchronous job complexity | Introducing a task queue/broker adds an operational component (and a failure mode) that a purely synchronous system would not have. | Judged necessary given solver runtime bounds (Section 25) that would otherwise violate typical HTTP timeout expectations; kept as simple as possible (no custom job orchestration beyond a standard Celery-style queue). |
-| Schema constraints on auth/administrator modeling | The Version 1 schema has no `User`/`Administrator` entities (Section 11), requiring additive assumptions. | Assumptions are documented explicitly and are additive-only, minimizing risk of schema churn later. |
-| Scope creep toward "black box AI scheduling" | The temptation to over-automate could erode the "counselor stays in control" principle that is central to the project's goals. | Every solver-mutated field remains editable through the same API surface used for manual entry, and every override is a first-class, auditable action — automation augments rather than replaces the human workflow at every layer. |
-
-## 29. Development Roadmap
-
-| Phase | Scope | Rationale |
-|---|---|---|
-| **Phase 1 — Foundation** | Django project scaffolding per Section 19.2; Version 1 schema migrations; auth/RBAC (Section 24); CRUD API for Core Domain, People, and Supporting Data groups; basic React shell with routing (Section 18.2). | Establishes the data-entry backbone (Stages 1, 5, 6) with no optimization yet — the system is immediately useful as a structured replacement for spreadsheets. |
-| **Phase 2 — Demand & Planning** | Demand Analyzer, Section Count Estimator, Staffing Overview reporting; Constraint & Lock Manager UI. | Delivers Stages 2–4 and 6, the analytical groundwork the solver stages depend on. |
-| **Phase 3 — Core Scheduling Engine** | Scheduling engine package (Section 14) with the three CP-SAT solver stages; task queue integration; Scheduling Control Center UI; Conflict Analyzer and issue report. | Delivers the highest-value automation (Stages 7–9) and the Stage 10 review surface. |
-| **Phase 4 — Override & Iteration Loop** | Manual Override Workflow (Section 21), scoped re-solve support (Section 20.6), Override History page. | Closes the loop described in Stage 11, making the system usable through the full, iterative real-world scheduling season rather than only for an initial "first draft" schedule. |
-| **Phase 5 — Hardening & Polish** | Logging/audit completeness (Section 23, including the optional `SchedulingRunLog` addition), performance tuning against target solver time budgets (Section 25), bilingual UI completeness (Section 4, FR-13), security review (Section 24). | Brings the system to a production/portfolio-ready state. |
-| **Phase 6 — Future Expansion (post-V1)** | Selected items from Section 27, prioritized by stakeholder value (forecasting and explainability are natural first candidates given they extend existing, well-bounded module contracts). | Explicitly deferred; V1's architecture is designed so none of these require structural rework. |
-
-## 30. Conclusion
-
-This document has specified an architecture for an intelligent, decision-support school timetabling system built around a central insight: Ontario secondary school scheduling is not a single optimization problem but an eleven-step, human-checkpointed process, and the software architecture should mirror that process rather than flatten it into one large solve. The resulting design — a React frontend, a thin Django REST Framework orchestration layer, a fully decoupled OR-Tools scheduling engine decomposed into independently executable stages, and the unmodified Version 1 PostgreSQL schema as the system of record — satisfies every stated design principle: manual decisions always override automation, every optimization stage runs independently, the scheduling engine is cleanly separated from the API, and the architecture leaves clear, additive extension points for the AI-assisted future work described in Section 27.
-
-Where the provided schema did not fully specify a concern (authentication linkage, job history persistence, `CourseConflict` population), this document has made explicit, minimally invasive assumptions rather than silently redesigning existing tables, so that a development team can proceed directly to implementation with a clear record of every architectural decision and the reasoning behind it. The system, as specified, gives guidance counselors a tool that removes the tedious combinatorial burden of Ontario high school timetabling while leaving every consequential decision exactly where it belongs: in their hands.
+There is no task broker, worker, notification service, frontend, or production
+observability stack in the repository.
 
 ---
 
-## Implementation Supersession Note
+## 10. Detailed Component Responsibilities
 
-The current implementation follows the newer decision records and architecture
-rules where they differ from this original design. In particular, placement and
-named teacher assignment are synchronous, review-first stages; accepted timing
-is completed before named teacher approval; rooms are not part of either stage;
-and student assignment is a later stage that depends on accepted section timing
-rather than named teacher identity. Do not introduce a queue or room-coupled
-solver solely because older sections of this document describe one.
+| Component | Responsibilities | Does not currently do |
+|---|---|---|
+| DRF views/viewsets | Authentication integration, policy declaration, request/response handling, serializer selection, service invocation, pagination, and route actions. | Solve optimization, perform broad domain orchestration, or provide a frontend. |
+| Serializers | Validate transport shape and reusable field/cross-field rules; expose the runtime API field names. | Replace service-level current-state validation or authorize a queryset. |
+| Resource policies | Scope reads and writes by role/ownership/assignment before query parameters are applied. | Act as a substitute for object-level business workflows. |
+| Action policies | Authorize named workflow actions such as starting/approving implemented scheduling stages. | Implement the future manual override workflow merely because action names exist. |
+| Django services | Own offering transitions, run creation, snapshotting, approval, reconciliation, lock changes, roster readiness, and transactional writes. | Put CP-SAT modeling in Django. |
+| Engine adapter | Load current ORM facts, build immutable DTOs, calculate fingerprints, and expose stage-specific input snapshots. | Provide a generic job queue or persist engine state directly from pure code. |
+| Pure engine | Analyze demand, compile constraints, build candidates, solve current budget/staffing/placement/teacher models, and return plain result data. | Import Django, write database rows, assign students, assign rooms, or analyze final conflicts. |
+| Models | Represent current state, immutable approval/run evidence, relationships, and local invariants. | Constitute an end-to-end workflow without its service and policy layer. |
+| Tests | Verify import boundaries, role scope, serializers, service transactions, diagnostics, solver behavior, and API contracts. | Establish target-scale performance; no benchmark suite exists yet. |
+
+---
+
+## 11. User Roles
+
+Role resolution is centralized in `backend/apps/people/roles.py`. The recognized
+roles are `student`, `teacher`, `counselor`, `staff`, `director`, and
+`unknown`, defined by `RoleChoices` in `backend/apps/people/models.py`.
+
+| Role | Resolution source | Current capabilities |
+|---|---|---|
+| `student` | `Student` domain profile | Manage own course requests; no planning or global schedule access. |
+| `teacher` | `Teacher` domain profile | Manage own nested qualifications, preferences, current courses, and availability; read assigned sections where policy permits. |
+| `counselor` | `Counselor` domain profile | Planning resources, configuration, reviews, run creation, and approvals according to resource/action policies. |
+| `staff` | `UserRoleProfile` or `is_staff` fallback | Broad planning/resource access and monitoring; solver approval/run permissions are action-specific. |
+| `director` | `UserRoleProfile` or superuser fallback | Broad planning/resource access, including the narrower run/approval actions. |
+| `unknown` | Missing/ambiguous recognized role | Fails closed; no application-resource access. |
+
+Domain profile roles take precedence over a general role profile, which takes
+precedence over Django privilege fallbacks. Anonymous users resolve to
+`unknown`. `backend/apps/access/permissions.py` and
+`backend/apps/access/viewsets.py` fail closed if a view does not declare the
+required policy.
+
+---
+
+## 12. User Workflows
+
+### 12.1 Upstream Planning and Section Lifecycle
+
+The implemented counselor workflow begins with requests and year-specific
+offering decisions. The counselor can cancel or restore an offering, approve a
+compatible course combination, run a teacher-independent section budget, and
+then run staffing-feasible physical planning against a confirmed roster.
+
+The staffing approval transaction creates unstaffed, unlocked physical sections
+with provenance. A later section-count run can be approved through the normal
+path only for courses without section history. For an existing plan,
+`reconciliation-preview` and `reconcile` provide the explicit replacement
+workflow. Reconciliation preserves IDs where possible and retires surplus
+generated sections rather than deleting them.
+
+### 12.2 Counselor-Reviewed Semester/A-D Placement
+
+Placement is synchronous and review-first:
+
+```mermaid
+sequenceDiagram
+    actor C as Counselor/director
+    participant API as DRF placement endpoint
+    participant S as section_placement service
+    participant E as pure engine
+    participant DB as PostgreSQL
+
+    C->>API: POST /api/planning/section-placement-runs/
+    API->>S: load current facts and create run
+    S->>E: solve fixed-semester or annual-total DTO
+    E-->>S: timing result and anonymous staffing evidence
+    S->>DB: store immutable run/result snapshot
+    API-->>C: reviewable result
+    C->>API: GET review; POST approval-preview
+    C->>API: POST approve with reason
+    API->>S: revalidate fingerprint and roster/matrix state
+    S->>DB: write timeslot-only SectionSchedule rows transactionally
+```
+
+The stage chooses semester and recurring A-D timing. It does not assign rooms,
+named teachers, or students. Annual mode uses stable virtual delivery slots and
+materializes real `Section` rows only on approval. Fixed-semester mode places
+existing active sections.
+
+### 12.3 Counselor-Reviewed Named Teacher Assignment
+
+Named teacher assignment runs only after accepted timeslot context exists. It
+loads ready-roster teachers, verified qualifications, availability, capacity,
+course rules, preferences, locks, and fixed assignments. The engine produces a
+named recommendation. Approval revalidates the snapshot and writes
+`Section.teacher` plus immutable assignment-provenance rows. It does not alter
+the accepted semester/A-D timing, assign rooms, or enroll students.
+
+### 12.4 Workflow Summary
+
+| Workflow | Current status | Primary output |
+|---|---|---|
+| Course request intake | Implemented | `CourseRequest` |
+| Demand and offering review | Implemented | demand summaries, offering decisions, delivery groups |
+| Teacher-independent section budget | Implemented | immutable budget run/approval |
+| Staffing readiness and physical counts | Implemented | ready roster, staffing run/approval, physical sections |
+| Section reconciliation | Implemented | active/retired section changes and immutable actions |
+| Conflict matrix and annual placement locks | Implemented | counselor-managed matrix and pre-section timing locks |
+| Semester/A-D placement | Implemented | accepted timeslot-only `SectionSchedule` |
+| Named teacher assignment | Implemented | approved `Section.teacher` assignments |
+| Room assignment | Not yet implemented | no operational room assignment |
+| Student assignment | Not yet implemented | no enrollment solver/approval |
+| Conflict analysis | Not yet implemented | no derived timetable issue report |
+| General manual overrides/scoped re-solving | Partially implemented | lock/audit foundations only |
+
+---
+
+## 13. Internal Scheduling Pipeline
+
+The current pipeline is staged and reviewed. The following stages are distinct
+because they have different inputs, outputs, approval semantics, and future
+dependencies:
+
+```mermaid
+flowchart TD
+    R["Course requests"] --> O["Demand and offering decisions\nImplemented"]
+    O --> B["Teacher-independent budget\nImplemented"]
+    B --> ROSTER["Roster and capacity readiness\nImplemented"]
+    ROSTER --> STAFF["Staffing-feasible physical counts\nImplemented"]
+    STAFF --> SEC["Section approval and reconciliation\nImplemented"]
+    SEC --> MATRIX["Conflict matrix and annual locks\nImplemented"]
+    MATRIX --> PLACE["Semester/A-D placement\nImplemented"]
+    PLACE --> TEACH["Named teacher assignment\nImplemented"]
+    TEACH --> STUDENT["Student assignment\nNot yet implemented"]
+    STUDENT --> REPORT["Conflict analysis\nNot yet implemented"]
+    REPORT --> OVERRIDE["General override and scoped re-solve\nPartially implemented foundations"]
+    OVERRIDE -. "future reviewed correction" .-> MATRIX
+```
+
+Section reconciliation is not an implicit rerun. It begins from a newer
+completed planning run, presents a concrete keep/move/retire/reactivate/create
+delta, requires a preview token and reason, locks the relevant rows, rechecks
+the current state, and applies the delta in one transaction.
+
+The placement stage has two input modes. `fixed_semester` places active draft
+sections that already have a semester. `annual_total` takes approved annual
+delivery-group counts, solves semester and A-D assignment, and materializes
+sections at approval. A hidden staffing witness is a feasibility proof, not a
+named assignment.
+
+Student assignment and conflict analysis are not merely omitted from the
+diagram for simplicity. No end-to-end implementation exists for them. The
+manual override action-policy names are also not evidence of a completed
+feedback loop.
+
+---
+
+## 14. Scheduling Engine Architecture
+
+The `scheduling_engine` package accepts immutable DTOs and returns dataclasses,
+plain dictionaries, and structured diagnostics. It does not import Django,
+DRF, ORM models, or backend modules. The Django adapter loads data and the
+application services persist accepted results.
+
+```mermaid
+flowchart LR
+    ORM["Django ORM"] --> ADAPTER["engine_adapter.py"]
+    ADAPTER --> DTO["immutable DTO snapshots"]
+    DTO --> DA["demand_analyzer"]
+    DTO --> CC["constraint_compiler"]
+    DTO --> PLAN["planning_core + planners"]
+    DTO --> PLACE["section_placement"]
+    DTO --> TA["teacher_assignment"]
+    DA --> RESULT["plain result data and diagnostics"]
+    CC --> RESULT
+    PLAN --> RESULT
+    PLACE --> RESULT
+    TA --> RESULT
+    RESULT --> ADAPTER
+```
+
+### 14.1 Actual Module Responsibilities
+
+| Module | Current responsibility | Status |
+|---|---|---|
+| `scheduling_engine/dto.py` | Immutable input/output DTOs for demand, constraints, section counts, placement, and named teacher assignment. | Implemented |
+| `scheduling_engine/diagnostics.py` | Stable solver diagnostic values used by engine and backend clients. | Implemented |
+| `scheduling_engine/demand_analyzer.py` | Aggregates current demand, historical conversion evidence, and engine conflict recommendations. | Implemented |
+| `scheduling_engine/section_estimator.py` | Legacy/simple section-count estimator retained beside the newer planners. | Implemented, compatibility path |
+| `scheduling_engine/planning_core.py` | Shared candidates, capacity reductions, planning offerings, and lexicographic solver helpers. | Implemented |
+| `scheduling_engine/section_budget_planner.py` | Teacher-independent exact/ceiling physical budget and backup-resolution planning. | Implemented |
+| `scheduling_engine/section_planner.py` | Demand baseline, annual staffing-feasible counts, semester split, priorities, and diagnostics. | Implemented |
+| `scheduling_engine/staffing_planner.py` | Anonymous qualified teacher-capacity feasibility for physical delivery groups. | Implemented |
+| `scheduling_engine/constraint_compiler.py` | Normalized qualification/index compilation and fail-closed eligibility sets. | Implemented |
+| `scheduling_engine/section_placement.py` | Semester/A-D timing solve with conflict weights, locks, and anonymous staffing witnesses. | Implemented |
+| `scheduling_engine/teacher_assignment.py` | Named teacher candidate solve using compiled eligibility, availability, capacities, locks, rules, and factual soft evidence. | Implemented |
+| `scheduling_engine/student_assignment.py` | Student-to-section enrollment solve. | Not yet implemented; file does not exist. |
+| `scheduling_engine/conflict_analyzer.py` | Post-solve issue report. | Not yet implemented; file does not exist. |
+
+There is no `scheduling_engine/solvers/` directory in the current repository.
+The actual solver modules are top-level package files.
+
+### 14.2 Why the Current Stages Are Separate
+
+The implemented decomposition preserves independent review checkpoints and
+keeps the engine boundary small. Section counts can be approved before timing;
+timing can be accepted before named teacher assignment; and a future student
+stage can consume accepted section timing without requiring room assignment or
+teacher identity.
+
+The trade-off is that the current pipeline is not a single globally optimal
+joint solve. This is intentional and accepted: counselor review, stable
+operational history, and bounded stage-specific diagnostics matter more than
+collapsing all variables into one model. No claim is made that the target-scale
+pipeline has been benchmarked.
+
+---
+
+## 15. Data Flow
+
+Current run creation is synchronous:
+
+```mermaid
+flowchart TD
+    CLIENT["HTTP client\ncurrently API tooling/tests"] --> VIEWS["DRF views"]
+    VIEWS --> SERIAL["serializers + policies"]
+    SERIAL --> SERVICE["Django application service"]
+    SERVICE --> DB[(PostgreSQL)]
+    SERVICE --> ADAPTER["engine_adapter"]
+    ADAPTER --> SNAP["immutable DTO snapshot"]
+    SNAP --> ENGINE["pure engine function"]
+    ENGINE --> RESULT["result + diagnostics"]
+    RESULT --> SERVICE
+    SERVICE --> DB
+    SERVICE --> CLIENT
+```
+
+Run creation stores the exact input snapshot and result. Approval does not
+silently re-solve. It locks relevant rows, reloads current source facts,
+compares the fingerprint and fixed-context state, and either accepts the
+reviewed result or returns a conflict. The placement and teacher-assignment
+services explicitly record that rooms and students are excluded from those
+stages.
+
+The future frontend will use the same JSON endpoints. A future worker can be
+inserted behind the service boundary if measured runtime requires it; no
+current data flow depends on one.
+
+---
+
+## 16. Database Integration
+
+The actual schema has grown beyond the original Version 1 description. It is a
+PostgreSQL schema synchronized from current Django models through the
+migrationless `run-syncdb` workflow. In addition to the original domain rows,
+it contains explicit role profiles, planning configuration, immutable runs and
+approvals, audit decisions, section lifecycle/reconciliation records, annual
+placement locks, placement provenance, and named teacher assignment
+provenance.
+
+### 16.1 Actual Model Groups
+
+| App/group | Models and responsibility |
+|---|---|
+| `common` | `AcademicYear`, `Room`, `HistoricalCourseDemand`, and shared school values/reference-data APIs. |
+| `people` | `UserRoleProfile`, `Student`, `Teacher`, `TeacherStatusDecision`, and `Counselor`. |
+| `courses` | `Course`, capacity/priority references, `CourseCombinationRule` and members, `DeliveryGroup`, `CourseOffering` and decisions, `Section`, `Enrollment`, `CourseRequest`, and `CoursePrerequisite`. |
+| `constraints` | Hard/soft constraints, counselor preferences, normalized `Qualification`, teacher qualifications/preferences/current courses/availability, course room/qualification requirements, `CourseConflictMatrix`, and `CourseConflict`. |
+| `control` | `ManualOverride` audit rows and structured `SectionLock` current-state rows. |
+| `scheduling` | Capacity and priority profiles; teacher semester/annual capacities, rules, preferences, rosters; budget/staffing/planning runs and approvals; backup resolutions; reconciliation/lifecycle audit rows; `TimeSlot`, `SectionSchedule`, annual locks; placement runs/approvals; teacher-assignment runs/approvals. |
+| `translations` | `Translation` key/English/French/context records. |
+
+The `backend/apps/core/` directory is a legacy placeholder app configuration;
+the active installed app list uses the domain apps above. Its `AppConfig.name`
+is `backend.apps.core`, but it is not an additional model group.
+
+### 16.2 Key Relationships and Lifecycle
+
+`AcademicYear` scopes requests, sections, capacities, timeslots, offerings,
+and planning runs. `CourseOffering` belongs to a year and may belong to a
+physical `DeliveryGroup`; a combined delivery group can represent multiple
+course offerings while materializing one physical section. `Section` may have a
+teacher, one `SectionSchedule`, one `SectionLock`, enrollments, and immutable
+planning/placement/assignment provenance.
+
+`Section.lifecycle_status` distinguishes active operational rows from retired
+historical rows. Reconciliation preserves identifiers where possible, reserves
+historical section numbers, reactivates eligible retired generated rows before
+creating new rows, and never silently deletes protected downstream work.
+
+Planning and scheduling records are intentionally append-only at the decision
+boundary. New runs and approvals explain later changes; they do not rewrite old
+run results or approval facts.
+
+### 16.3 Integration Notes
+
+- The pure engine receives DTO snapshots rather than ORM objects.
+- Normalized qualification records and the compiler, not raw Aspen text,
+  determine Grade 11-12 eligibility. Grade 7-10 mappings remain permissive
+  planning evidence.
+- `CourseConflict` is counselor-managed. The engine can calculate conflict
+  recommendations and the matrix refresh workflow can surface them, but the
+  current API does not automatically upsert every recommendation into the
+  conflict table.
+- `SectionSchedule.room` remains nullable and is deliberately untouched by
+  placement and named teacher assignment. Room assignment is a separate future
+  stage.
+- `Section.is_locked`, `SectionLock`, and related fixed-context signals are
+  all treated conservatively by shared section-state logic. Their eventual
+  synchronization invariant remains an open cleanup question.
+- There are no project migration files beyond migration-package initializers.
+  Local rebuilds use `migrate --run-syncdb`; `makemigrations` is not part of the
+  normal development workflow.
+
+---
+
+## 17. API Design
+
+The runtime API contract is defined by DRF serializers, URL modules, views,
+policies, and endpoint tests. The API uses snake_case JSON keys. No frontend or
+published OpenAPI schema exists yet.
+
+### 17.1 Authentication and Reference Data
+
+Implemented routes include:
+
+- `POST /api/auth/login/` and `POST /api/auth/refresh/` from SimpleJWT;
+- `GET /api/me/` from `backend/apps/api/views.py`;
+- router CRUD for `/api/academic-years/` and `/api/rooms/`; and
+- router CRUD for `/api/timeslots/`.
+
+Reference-data deletion is guarded by the common view/service layer and role
+policies.
+
+### 17.2 Courses, Requests, Demand, and Offerings
+
+`backend/apps/courses/urls.py` and `views.py` implement:
+
+- `/api/courses/`;
+- `/api/sections/`;
+- `/api/course-requests/`;
+- `/api/demand/summary/`;
+- `/api/planning/course-offerings/` with cancellation/restoration actions;
+- `/api/planning/combination-rules/`;
+- `/api/planning/delivery-groups/` with separation action;
+- `/api/planning/combination-suggestions/`; and
+- `/api/planning/combine-offerings/`.
+
+The offering and combination routes delegate to
+`backend/apps/courses/services/offerings.py`. They preserve requests while
+recording explicit offering decisions and reasons.
+
+### 17.3 Constraints, Qualifications, Conflicts, and Locks
+
+The constraints URL module implements router CRUD for:
+
+- `/api/qualifications/`;
+- `/api/constraints/hard/`;
+- `/api/constraints/soft/`;
+- `/api/constraints/preferences/`;
+- `/api/course-conflicts/`;
+- `/api/planning/course-conflict-matrices/`;
+- `/api/course-room-requirements/`; and
+- `/api/course-qualification-requirements/`.
+
+Teacher-owned nested routes exist under
+`/api/teachers/{teacher_id}/qualifications/`, `preferences/`,
+`current-courses/`, and `availability/`, with qualification verify/reject
+actions. Section locks use `GET/PATCH /api/sections/{section_id}/lock/`.
+
+The conflict matrix has grid, refresh, and reasoned conflict-adjustment
+actions. Refreshing recommendations does not mean that the API silently
+accepts every engine-generated weight.
+
+### 17.4 Planning Configuration and Readiness
+
+Scheduling routes implement:
+
+- `/api/planning/capacity-profiles/`;
+- `/api/planning/course-priority-profiles/`;
+- `/api/planning/teacher-capacities/`;
+- `/api/planning/teacher-annual-capacities/`;
+- `/api/planning/teacher-course-assignment-rules/`;
+- `/api/planning/teacher-time-preferences/`;
+- `/api/planning/teacher-rosters/`, including `set-members` and `confirm`;
+- `/api/planning/annual-placement-locks/`; and
+- `/api/courses/{course_id}/capacity-policy/`.
+
+Roster confirmation requires every included teacher to have both semester
+capacity rows and an annual capacity row, including explicit zero values where
+appropriate. Mutating relevant staffing configuration invalidates a ready
+roster.
+
+### 17.5 Section Planning, Budget, and Staffing Runs
+
+Implemented run groups are:
+
+- `/api/planning/section-count-recommendations/` for the retained legacy
+  recommendation endpoint;
+- `/api/planning/section-count-runs/` with create/list/retrieve, `review`,
+  `approval-preview`, `approve`, `reconciliation-preview`, and `reconcile`;
+- `/api/planning/section-budget-runs/` with create/list/retrieve,
+  `approval-preview`, `approve`, and `affected-students`; and
+- `/api/planning/staffing-runs/` with create/list/retrieve,
+  `approval-preview`, `approve`, and `affected-students`.
+
+These routes map to `section_planning.py`, `section_reconciliation.py`,
+`section_budget_planning.py`, and `staffing_planning.py`. Run creation is
+synchronous and stores an immutable result. Approval is a separate operation.
+
+### 17.6 Placement and Named Teacher Runs
+
+The current downstream run routes are:
+
+- `/api/planning/section-placement-runs/` with `review`,
+  `approval-preview`, and `approve`; and
+- `/api/planning/teacher-assignment-runs/` with `review`,
+  `approval-preview`, and `approve`.
+
+The corresponding services are `section_placement.py` and
+`teacher_assignment.py`. Placement approval writes timeslot-only schedules;
+teacher-assignment approval writes named teachers. Neither endpoint assigns
+rooms or students.
+
+### 17.7 Planned but Not Implemented Endpoints
+
+The repository does not currently implement endpoints for:
+
+- student-assignment runs or enrollment approval;
+- a composed timetable or personal student/teacher schedules;
+- a post-solve conflict report;
+- general manual override create/apply/history; or
+- a persistent downstream job-status API.
+
+Policy/action names for some future actions exist for fail-closed authorization
+planning, but no endpoint should be inferred from those names.
+
+### 17.8 Contract and Authorization Rules
+
+Every implemented resource/action declares a resource or named-action policy,
+except explicit authentication/self endpoints. Serializers are the runtime
+request/response contract. Stable diagnostic/workflow codes are machine-facing;
+human-readable text is not a client key. Before frontend work, the project
+should generate an OpenAPI contract or maintain a tested API document rather
+than hand-writing an unchecked endpoint catalog.
+
+---
+
+## 18. Frontend Architecture
+
+### 18.1 Current Status and Intended Pages
+
+No frontend directory exists. The planned client will eventually need counselor
+surfaces for demand, offering decisions, section planning, reconciliation,
+placement, teacher assignment, student assignment, conflicts, and overrides;
+teacher surfaces for own planning inputs and accepted schedule; and student
+surfaces for requests and accepted schedule. Those are design intent, not
+implemented pages.
+
+### 18.2 Navigation and Roles
+
+The future client must use a central role/action route configuration, but hidden
+navigation must never substitute for server policy. The API remains the
+authority for student ownership, teacher ownership, planning roles, and action
+approval.
+
+### 18.3 State and API Boundary
+
+The pre-registered frontend convention is TypeScript/React with explicit API
+client modules and mappers. The wire format remains snake_case. Local
+camelCase view models are permitted only behind explicit mapper functions; no
+global key transformation is planned. The server's run snapshots, diagnostics,
+stale-state conflicts, and approval state should remain visible in the UI.
+
+### 18.4 Component Organization
+
+The future client should organize by feature, with API clients, mapper modules,
+review components, diagnostics, and role-gated pages. React components must not
+reimplement demand, authorization, conflict calculations, or solver rules.
+The exact frontend stack and state library remain unimplemented decisions
+within the conventions pre-registered in `docs/NAMING_CONVENTIONS.md`.
+
+---
+
+## 19. Backend Architecture
+
+The backend is a Django project with thin DRF views, policy-first access,
+domain services, and a pure-engine adapter boundary.
+
+```mermaid
+flowchart TB
+    V["DRF views/viewsets"] --> S["serializers"]
+    V --> P["resource/action policies"]
+    V --> W["domain services"]
+    W --> M["Django models and transactions"]
+    W --> A["engine_adapter"]
+    A --> E["scheduling_engine"]
+```
+
+### 19.1 Service Ownership
+
+| Service module | Responsibility |
+|---|---|
+| `courses/services/demand.py` | Raw demand aggregation and historical evidence. |
+| `courses/services/offerings.py` | Year-specific cancellation/restoration, combinations/separations, backup support, and delivery-group rules. |
+| `courses/services/section_state.py` | Shared fixed-context and active-section selectors/rules. |
+| `people/services/teacher_directory.py` | Audited teacher archive/restore transitions. |
+| `constraints/qualification_review.py` and `constraints/services.py` | Qualification verification, rejection, and lock/assignment qualification validation. |
+| `control/services/locks.py` | Structured section-lock creation/update/clear operations. |
+| `scheduling/services/planning_configuration.py` | Default capacity/priority profiles and course capacity policy changes. |
+| `scheduling/services/staffing_configuration.py` | Roster membership, readiness, invalidation, and capacity completeness. |
+| `scheduling/services/section_planning.py` | Immutable section-count run, review, preview, and approval. |
+| `scheduling/services/section_reconciliation.py` | Compare/apply newer plans while preserving lifecycle and audit history. |
+| `scheduling/services/section_budget_planning.py` | Teacher-independent budget and backup-request planning. |
+| `scheduling/services/staffing_planning.py` | Staffing-feasible physical counts and final physical section approval. |
+| `scheduling/services/section_placement.py` | Synchronous placement run, stale checks, and timeslot-only approval writes. |
+| `scheduling/services/teacher_assignment.py` | Synchronous named-teacher run, stale checks, and assignment approval writes. |
+| `scheduling/services/engine_adapter.py` | ORM snapshot loading, DTO construction, fingerprints, and stage input boundaries. |
+
+There is no general `overrides.py`, `orchestration.py`, `scope.py`, or
+`conflict_reporting.py` implementation in these service packages.
+
+### 19.2 Actual App Structure
+
+| App | Current responsibility |
+|---|---|
+| `backend/apps/api` | Top-level URL composition, JWT endpoints, and `/api/me/`. |
+| `backend/apps/access` | Resource policies, action policies, scopes, permission adapters, and policy-filtered viewset base. |
+| `backend/apps/common` | Academic years, rooms, historical demand, school values, reference-data APIs, and compatibility exports. |
+| `backend/apps/constraints` | Constraint models, normalized qualifications, conflict matrix, teacher-owned constraint data, and section locks API. |
+| `backend/apps/control` | Manual override audit model, section-lock model, and lock service. |
+| `backend/apps/courses` | Course catalog, requests, sections, enrollments, prerequisites, offerings, delivery groups, and demand/section-state services. |
+| `backend/apps/people` | Domain profiles, role resolution, teacher directory, permissions, and teacher routes. |
+| `backend/apps/scheduling` | Planning configuration, immutable runs/approvals, lifecycle/reconciliation, placement, named teacher assignment, timeslots, and adapter services. |
+| `backend/apps/translations` | Translation model/admin storage. |
+| `backend/apps/core` | Legacy placeholder directory/configuration; not an active model domain in `INSTALLED_APPS`. |
+
+### 19.3 API Layer
+
+Views and viewsets handle HTTP concerns only. `ResourcePolicyPermission` and
+`ActionPolicyPermission` adapt the policy layer to DRF. `PolicyFilteredModelViewSet`
+filters the authorized queryset before applying whitelisted client filters.
+Nested teacher endpoints derive ownership from the URL parent rather than
+trusting a submitted teacher identity.
+
+### 19.4 Scheduling Layer
+
+`engine_adapter.py` is the only current module intentionally joining Django ORM
+state to engine DTOs. Stage services invoke pure functions, store snapshots and
+results, and perform approval writes in Django transactions. Pure engine code
+does not know whether a run arrived through HTTP, a test, or a future worker.
+
+### 19.5 Data Layer
+
+The Django ORM is the repository's data-access abstraction. Selector modules and
+shared section-state helpers centralize reusable query rules; a separate
+repository pattern is not implemented. The migrationless schema policy is an
+explicit development constraint, not a claim that the schema is frozen forever.
+
+---
+
+## 20. Optimization Engine Architecture
+
+This section describes the actual engine modules rather than the originally
+planned three-model architecture.
+
+### 20.1 Demand and Count Planning
+
+`demand_analyzer.py` aggregates request facts, historical conversion evidence,
+and co-request recommendations. `section_estimator.py` retains a simple
+estimator for compatibility. The newer `section_planner.py` and
+`planning_core.py` provide demand baselines, capacity candidates, explicit
+course priorities, annual staffing-feasible counts, semester splits, and stable
+diagnostics.
+
+### 20.2 Teacher-Independent Budget Planning
+
+`section_budget_planner.py` computes exact or ceiling physical-section budgets,
+supports approved delivery groups and backup policies, and reports unresolved
+request resolutions. It does not consult teacher capacity and does not create
+sections. Its Django service stores the immutable run/approval and later links
+the approved budget to staffing planning when requested.
+
+### 20.3 Staffing Feasibility Planning
+
+`staffing_planner.py` evaluates physical delivery-group counts against the
+confirmed roster, normalized qualification eligibility, semester/annual
+capacity, availability, and shared qualified staffing pools. Its teacher
+identity is an anonymous witness only. The result does not assign
+`Section.teacher` and does not expose a named recommendation.
+
+### 20.4 Semester/A-D Placement
+
+`section_placement.py` consumes placement DTOs and solves timing decisions with
+course semester rules, active timeslots, conflict-matrix weights, annual locks,
+existing fixed context, and anonymous staffing feasibility. It has a bounded
+time-limit field and returns complete, partial, infeasible, or failed result
+states with diagnostics.
+
+The Django placement service stores the result and later writes a timeslot-only
+`SectionSchedule` after approval. `room` remains null by design. Annual virtual
+slots are materialized as real sections only during approved annual placement.
+
+### 20.5 Named Teacher Assignment
+
+`teacher_assignment.py` compiles eligible teacher/section candidates and solves
+named assignment after accepted placement. Hard inputs include normalized
+qualification, availability, exact teacher locks, timetable collision,
+semester/annual capacity, and counselor course rules. Factual soft evidence
+includes requested courses, current-course history, preferred/avoided slots,
+and seniority with deterministic tie-breaking.
+
+The Django service stores the candidate and a detached input fingerprint.
+Approval revalidates the relevant state and writes `Section.teacher` and
+immutable assignment-provenance rows. It never changes timing, assigns rooms,
+or creates enrollments.
+
+### 20.6 Not-Yet-Implemented Engine Modules
+
+There is no working `student_assignment.py`. The repository has student,
+request, prerequisite, section, enrollment, and timing models, but it does not
+have a prerequisite-completion evidence contract, assignment solver, review
+run, enrollment approval service, or student assignment diagnostics.
+
+There is no working `conflict_analyzer.py`. A future read-only analyzer should
+report unmet requests, incomplete schedules, capacity issues, unstaffed
+sections, teacher overload, and unresolved configuration/lock problems without
+mutating accepted state.
+
+There is no general cross-stage scope implementation. Existing placement and
+assignment services load fixed context and protect accepted records, but that
+must not be described as a complete manual scoped re-solve workflow.
+
+---
+
+## 21. Manual Override Workflow
+
+The current manual-control foundation consists of:
+
+- `SectionLock`, a structured current-state row containing optional locked
+  teacher, timeslot, and room values;
+- `Section.is_locked`, a separate boolean fixed-context signal;
+- `ManualOverride`, a section-linked audit model with action, previous value,
+  new value, reason, actor, and timestamp; and
+- `backend/apps/control/services/locks.py`, which creates/updates/clears
+  structured lock values with qualification validation.
+
+The repository does not yet implement a general override API or service. There
+is no `backend/apps/control/services/overrides.py`, no override URL, no typed
+override action serializer/view, no optimistic-concurrency override workflow,
+and no scope calculation or scoped re-solve implementation. The action names in
+`backend/apps/access/action_policies/overrides.py` are future authorization
+scaffolding, not evidence of those endpoints.
+
+The accepted section-lifecycle decision does make fixed-context behavior
+explicit: manually created sections, assigned teachers, locks, schedules,
+enrollments, and manual overrides protect a section during reconciliation.
+Placement and teacher assignment similarly treat accepted state as fixed and
+reject drift. A future override workflow must consolidate or explicitly
+coordinate the `Section.is_locked` and `SectionLock` representations before
+claiming synchronized current state.
+
+---
+
+## 22. Error Handling Strategy
+
+The current error model has three layers:
+
+1. DRF serializers return validation errors for transport shape and field/cross-
+   field rules, normally as HTTP 400 responses.
+2. Domain services raise shared validation or conflict exceptions. Views map
+   these to structured responses with stable workflow codes where the code is a
+   client contract. Stale run input, already-approved runs, fixed sections,
+   illegal locks, and incomplete roster/configuration state are explicit
+   conflicts rather than silent recalculations.
+3. Pure engine functions return structured status and diagnostics. Current
+   status values include `complete`, `partial`, `infeasible`, and `failed` in
+   their stage-specific run models/results. The engine does not raise HTTP
+   exceptions or write database state.
+
+Approval services use `transaction.atomic`, deterministic row locking where
+needed, and fingerprint/current-state revalidation. A failed approval therefore
+does not partially create the operational rows for that stage. There is no
+worker retry, queue failure, persistent job-status, or completed conflict-report
+error contract to document today.
+
+Stable diagnostic values live in `scheduling_engine/diagnostics.py`; domain
+workflow codes live in the domain `codes.py` modules. Human-readable details
+may evolve without changing those machine-readable values.
+
+---
+
+## 23. Logging Strategy
+
+The repository has audit records, run metadata, and normal Django/Python logging,
+but it does not yet have the structured operational logging architecture
+described by the original SDD.
+
+### 23.1 Current and Future Records
+
+Implemented records include:
+
+- immutable planning, budget, staffing, placement, and teacher-assignment runs;
+- approvals and per-course/per-section assignment provenance;
+- offering, roster, qualification, lock, and reconciliation decisions; and
+- `ManualOverride` rows when the existing model is used.
+
+Run records store solver metadata, snapshots, results, status, and timestamps.
+They are the current review/audit source for solver operations. No
+`SchedulingRunLog` model, request-ID logging middleware, centralized log sink,
+or solver-statistics dashboard exists. Adding those belongs to hardening after
+real deployment and benchmark requirements are known.
+
+---
+
+## 24. Security Considerations
+
+| Concern | Current implementation |
+|---|---|
+| Authentication | SimpleJWT login/refresh plus `/api/me/`; credentials and secrets are environment-driven. |
+| Role resolution | Central profile/role resolution returns `unknown` for unrecognized or anonymous users. |
+| Resource authorization | Resource policies scope querysets and object access by role, ownership, or assignment; policies fail closed. |
+| Action authorization | Named action policies separate planning-role monitoring from counselor/director solver run and approval actions. |
+| Student ownership | Student request access is derived from the authenticated user rather than trusting a submitted student identity. |
+| Teacher ownership | Teacher nested qualification/preference/current-course/availability routes derive the parent teacher from the URL and enforce ownership. |
+| Qualification safety | Required Grade 11-12 qualifications use normalized fail-closed matching; raw source text is provenance only. |
+| PII | Student and teacher identity/contact fields are protected by resource policies. A complete frontend/public-export privacy contract is not yet present. |
+| Input safety | DRF serializers validate writes; services enforce current-state and reason requirements; ORM queries are used instead of hand-built SQL. |
+| Audit integrity | Immutable run/approval models and append-only decision records preserve accepted workflow facts. |
+| Transport/deployment | HTTPS, production host/CORS settings, operational secrets management, and deployment hardening remain environment/deployment work rather than implemented repository features. |
+| Worker security | No worker exists. Least-privilege worker credentials are therefore a future conditional design concern. |
+
+---
+
+## 25. Performance Considerations
+
+The engine is designed for independent testing and bounded solver calls, but
+the repository has not established target-scale performance.
+
+- Placement and named-teacher DTOs carry `time_limit_seconds`, and their CP-SAT
+  solvers set `max_time_in_seconds` and one search worker.
+- Shared planning helpers use deterministic lexicographic solving with a fixed
+  seed/search configuration where applicable.
+- The current run services execute synchronously, so request duration is part
+  of the current operational contract.
+- The isolated test suite is synthetic and is not evidence that a
+  1,400-student/80-teacher/250-350-section solve meets a production target.
+- No benchmark fixture, target-scale timing record, queue threshold, warm-start
+  contract, or performance dashboard exists.
+
+The next performance task is representative benchmark evidence for each stage.
+Only after that evidence should the project decide whether to add a worker,
+persistent downstream run status, timeouts at the HTTP boundary, or further
+model decomposition.
+
+---
+
+## 26. Scalability Considerations
+
+The current system is single-school and uses PostgreSQL with a Django process
+calling pure engine functions synchronously. The following properties help
+future growth:
+
+- engine computation is isolated from Django models through DTOs;
+- academic year and delivery-group boundaries constrain most input snapshots;
+- stage-specific runs avoid a monolithic joint search space; and
+- policies and selectors centralize access and query behavior.
+
+The following are not implemented scalability mechanisms:
+
+- horizontally scaled API or worker deployment;
+- queue-based concurrent solve scheduling;
+- multi-school tenancy;
+- read replicas;
+- target-scale benchmark proof; and
+- student-assignment decomposition by cohort.
+
+If the target school or deployment scope grows, benchmarked stage runtime and
+database access should drive the next change. Multi-school support would require
+an explicit school-scoping design rather than an implicit global filter.
+
+---
+
+## 27. Future Expansion
+
+Future work must extend the existing stage boundaries without pretending that
+planned modules already exist:
+
+| Capability | Depends on | Current boundary |
+|---|---|---|
+| Student assignment | Accepted section timing and a prerequisite-evidence decision | Add a pure engine module, DTO/result contract, review run, approval service, and enrollment writes. |
+| Conflict analysis | Accepted timing, staffing, and eventually enrollments | Add a read-only derived report; it must not mutate schedule state. |
+| Room assignment | Accepted semester/A-D timing and room requirements | Separate reviewed stage; do not add rooms to placement or named-teacher assignment implicitly. |
+| Manual overrides | Real downstream stage outputs | Add typed action/history API, stale-write protection, fixed-context synchronization, and genuine scoped re-solving. |
+| Frontend | Stable serializer/policy/run contracts | Build role-gated React/TypeScript features with explicit API mappers. |
+| API publication | Stable serializer and endpoint test surface | Generate OpenAPI or maintain a tested API document before frontend becomes a major consumer. |
+| Historical readiness/reporting | Existing demand and planning models | Add a planning-role API for historical-demand/input completeness. |
+| Background execution | Representative benchmark and deployment requirement | Add only the smallest worker/status system justified by evidence. |
+| Structured operations | Deployment needs and run volume | Add request/run correlation, structured logs, CI, production settings, and acceptance fixtures. |
+| Analytics/AI | Stable stage input/output contracts and more data | Forecasting, explainability, and board-wide analytics remain future expansion, not current dependencies. |
+
+Automatic cross-listing/course merging, external HR/SIS qualification import,
+NLP preference ingestion, multi-school tenancy, real-time collaborative editing,
+and AI decisions that bypass counselor approval remain explicitly deferred.
+
+---
+
+## 28. Risks and Trade-offs
+
+| Risk or trade-off | Current consequence | Mitigation or open decision |
+|---|---|---|
+| Sequential rather than joint optimization | A later stage cannot globally optimize all earlier choices at once. | Preserve stage review and stable fixed context; revisit only with evidence that quality is insufficient. |
+| No student assignment yet | The system stops before enrollments and final student schedules. | Define prerequisite evidence first, then build assignment and conflict analysis as separate stages. |
+| No room assignment yet | Accepted placement is timing-only and cannot be presented as a complete timetable. | Keep `SectionSchedule.room` nullable and build a separate reviewed room stage. |
+| Synchronous execution | A large solve can occupy the request process. | Benchmark representative workloads before choosing a worker/queue. |
+| Section lock representations | `Section.is_locked` and `SectionLock` can diverge because the invariant is not fully consolidated. | Shared fixed-context logic protects both; make synchronization an explicit future decision. |
+| Migrationless schema | A model field change requires a deliberate local database recreation and can invalidate local data. | Use `migrate --run-syncdb`; never generate migrations incidentally. |
+| Sparse historical data | Forecast and conflict recommendations can be weak for new or incomplete data. | Surface evidence and confidence/diagnostic context; keep counselor decisions explicit. |
+| Incomplete general overrides | There is no end-to-end way to record and re-solve arbitrary downstream manual changes. | Implement after real placement/assignment outputs exist. |
+| API drift before frontend | Serializers and routes are authoritative but no published machine contract exists. | Generate or test an API contract before frontend development. |
+| Role/PII complexity | Students and teachers require narrow ownership scopes while planning roles need broader access. | Continue policy-first query filtering and endpoint-level authorization tests. |
+
+---
+
+## 29. Development Roadmap
+
+The authoritative phase status and sequence are maintained in
+`docs/Implementation_Roadmap.md`. This SDD intentionally does not duplicate
+the roadmap table.
+
+At this snapshot, the implementation has completed the core section-planning
+lifecycle/reconciliation workflow, staffing-aware physical planning,
+semester/A-D placement with anonymous staffing feasibility, and named teacher
+assignment. The next end-to-end product gaps are student assignment/conflict
+analysis, separate room assignment, audited general overrides/scoped
+re-solving, frontend work, and final hardening.
+
+The roadmap records the accepted decision divergences that matter here:
+
+- placement is timing-only and excludes rooms;
+- named teacher assignment is a separate reviewed stage after placement;
+- current solver execution is synchronous;
+- course-conflict recommendations are reviewed rather than silently upserted;
+- the schema workflow is migrationless; and
+- models/DTOs/policy names for future phases do not count as implementation.
+
+Future work should update the roadmap's status labels and decision records when
+an end-to-end capability is actually covered by code and tests.
+
+---
+
+## 30. Conclusion
+
+The repository now implements a coherent, synchronous, review-first scheduling
+core rather than the queue-first system described by the original SDD. It can
+collect demand and constraints, make offering and backup decisions, plan
+physical section counts against staffing, preserve and reconcile section
+history, place accepted sections in semesters and recurring A-D blocks, and
+complete a separate reviewed named-teacher assignment.
+
+The system is not yet a final timetable product. Rooms, students, conflict
+analysis, general overrides/scoped re-solving, a frontend, published API
+contract, target-scale benchmarks, and operational hardening remain future
+work. Keeping those boundaries explicit is part of the design: the system must
+not claim a room, teacher, student, or audit capability that the current code
+does not actually provide.
+
+The central architectural contract is therefore:
+
+```text
+Django authorization/persistence/services
+    -> immutable DTO boundary
+        -> pure stage-specific engine recommendation
+            -> explicit review and approval
+                -> transactional operational state
+```
+
+That contract preserves counselor authority, makes accepted decisions
+explainable, and leaves clear seams for the remaining stages without inventing
+infrastructure or domain rules before the repository has evidence to justify
+them.
 
 ---
 
