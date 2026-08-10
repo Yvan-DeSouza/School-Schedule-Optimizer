@@ -84,21 +84,122 @@ def _outcome_name(status):
     }.get(status, "unknown")
 
 
-def _solve_lexicographically(model, objectives, time_limit_seconds):
-    """Optimize each bounded objective without allowing lower-priority tradeoff."""
+def _new_solver(time_limit_seconds, *, fix_hints=False):
+    """Build the deliberately reproducible CP-SAT configuration for this stage."""
 
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = time_limit_seconds
     solver.parameters.num_search_workers = 1
     solver.parameters.random_seed = 0
+    solver.parameters.fix_variables_to_their_hinted_value = fix_hints
+    return solver
+
+
+def _set_solver_hints(model, solver):
+    """Carry a complete validated candidate into the next lexicographic pass.
+
+    CP-SAT does not automatically retain a prior ``CpSolver`` solution after
+    the model gains an equality for that objective. Reapplying all values keeps
+    the next pass focused on improvement rather than rediscovering a candidate
+    that is already known to satisfy every hard scheduling rule.
+    """
+
+    model.ClearHints()
+    for index in range(len(model.Proto().variables)):
+        variable = model.GetIntVarFromProtoIndex(index)
+        model.AddHint(variable, solver.Value(variable))
+
+
+def _set_assignment_hints(model, assignment_hints):
+    """Set a complete enrollment-variable hint without depending on DTOs here."""
+
+    model.ClearHints()
+    for index, proto_variable in enumerate(model.Proto().variables):
+        if not proto_variable.name.startswith("enroll_"):
+            continue
+        _prefix, request_id, section_id = proto_variable.name.split("_", 2)
+        variable = model.GetIntVarFromProtoIndex(index)
+        model.AddHint(
+            variable,
+            int(assignment_hints.get((int(request_id), int(section_id)), False)),
+        )
+
+
+def _validated_initial_hint_solver(model, assignment_hints, time_limit_seconds):
+    """Return a full-model candidate only after CP-SAT validates the hint.
+
+    The deterministic constructor below is search guidance, never a second
+    scheduler. Lock, capacity, timeslot, group, and prerequisite constraints
+    remain authoritative in the CP-SAT model. Fixing the proposed enrollment
+    choices for this bounded preparatory solve lets CP-SAT fill every derived
+    variable and rejects a hint that is incompatible with any hard rule.
+    """
+
+    if not assignment_hints:
+        return None
+    _set_assignment_hints(model, assignment_hints)
+    preparer = _new_solver(min(time_limit_seconds, 5.0), fix_hints=True)
+    status = preparer.Solve(model)
+    if status not in {cp_model.OPTIMAL, cp_model.FEASIBLE}:
+        model.ClearHints()
+        return None
+    return preparer
+
+
+def _solve_lexicographically(model, objectives, time_limit_seconds, *, initial_assignment_hints=None):
+    """Optimize ordered objectives while preserving the last valid candidate.
+
+    Each later pass retains equality constraints for every completed objective.
+    If bounded search cannot find a new candidate, the prior candidate already
+    satisfies those constraints and remains a safe recommendation. Returning
+    it is therefore faithful to the existing lexicographic priorities; only
+    the uncompleted lower-priority improvement is omitted.
+    """
+
+    previous_solver = None
+    initial_assignment_hints = initial_assignment_hints or {}
     for objective in objectives:
+        # Several stages intentionally add an objective slot even when this
+        # input has no rows in that tier. Re-solving a constant objective has
+        # no scheduling value and previously could discard an earlier result.
+        if isinstance(objective, int):
+            continue
         model.Minimize(objective)
+        if previous_solver is not None:
+            _set_solver_hints(model, previous_solver)
+        elif initial_assignment_hints:
+            prepared_solver = _validated_initial_hint_solver(
+                model,
+                initial_assignment_hints,
+                time_limit_seconds,
+            )
+            if prepared_solver is not None:
+                _set_solver_hints(model, prepared_solver)
+                # The preparatory candidate is safe even if the first bounded
+                # optimization pass later reaches UNKNOWN without an incumbent.
+                previous_solver = prepared_solver
+
+        solver = _new_solver(time_limit_seconds)
         status = solver.Solve(model)
         if status not in {cp_model.OPTIMAL, cp_model.FEASIBLE}:
-            return None, status
+            return previous_solver, status
+        previous_solver = solver
         model.Add(objective == solver.Value(objective))
-    status = solver.Solve(model)
-    return (solver if status in {cp_model.OPTIMAL, cp_model.FEASIBLE} else None), status
+
+    if previous_solver is None:
+        # A fully protected rerun can legitimately have no decision variables
+        # and only constant objective slots: the adapter has already removed
+        # requests satisfied by fixed active enrollments. It still needs one
+        # feasibility solve so that this valid zero-decision context remains a
+        # complete, reviewable run rather than being mislabeled as UNKNOWN.
+        solver = _new_solver(time_limit_seconds)
+        status = solver.Solve(model)
+        return (solver if status in {cp_model.OPTIMAL, cp_model.FEASIBLE} else None), status
+
+    # The last successful pass already satisfies its just-added equality and
+    # all higher-priority equalities. A redundant final cold solve can only
+    # lose that candidate under a timeout, so it is intentionally omitted.
+    return previous_solver, cp_model.FEASIBLE
 
 
 def _is_active_enrollment(enrollment):
@@ -199,6 +300,86 @@ def _active_locks(data):
         (lock for lock in data.student_assignment_locks if lock.is_active),
         key=lambda lock: lock.lock_id,
     ))
+
+
+def _build_initial_assignment_hints(
+    *, data, request_candidates, fixed_by_section, fixed_slots, group_locks,
+):
+    """Construct deterministic enrollment guidance for the first CP-SAT pass.
+
+    This is intentionally conservative. It only proposes ordinary independent
+    requests and declines to guide inputs with group or same-year prerequisite
+    relationships, whose coupled decisions deserve the full model's search.
+    The later preparatory CP-SAT solve validates every proposed value, so a
+    construction mistake can never weaken or bypass a hard constraint.
+    """
+
+    if group_locks or data.hard_prerequisites:
+        return {}
+
+    requests_by_student = defaultdict(list)
+    for request in data.requests:
+        if request_candidates[request.request_id]:
+            requests_by_student[request.student_id].append(request)
+
+    remaining_capacity = {
+        section.section_id: section.capacity_max - len(fixed_by_section[section.section_id])
+        for section in data.sections
+    }
+    assigned_section_by_request = {}
+
+    def assign_student(requests, used_timeslots):
+        """Backtrack within one student's small request set, not across students."""
+
+        if not requests:
+            return True
+        request = requests[0]
+        candidates = sorted(
+            request_candidates[request.request_id],
+            key=lambda item: (
+                # Filling the least-used compatible physical section first
+                # creates a balanced, capacity-safe seed for CP-SAT to improve.
+                -remaining_capacity[item[0].section_id],
+                item[0].section_id,
+            ),
+        )
+        for section, _variable in candidates:
+            if (
+                remaining_capacity[section.section_id] <= 0
+                or section.timeslot_id in used_timeslots
+            ):
+                continue
+            remaining_capacity[section.section_id] -= 1
+            assigned_section_by_request[request.request_id] = section.section_id
+            if assign_student(requests[1:], used_timeslots | {section.timeslot_id}):
+                return True
+            assigned_section_by_request.pop(request.request_id)
+            remaining_capacity[section.section_id] += 1
+        return False
+
+    for student_id in sorted(requests_by_student):
+        student_requests = sorted(
+            requests_by_student[student_id],
+            key=lambda request: (
+                not request.is_mandatory,
+                not request.is_primary,
+                len(request_candidates[request.request_id]),
+                request.request_id,
+            ),
+        )
+        before_student = set(assigned_section_by_request)
+        if assign_student(student_requests, set(fixed_slots[student_id])):
+            continue
+        # Do not leave a partial individual schedule in a failed hint. The
+        # model still receives the request unchanged and can solve it normally.
+        for request_id in set(assigned_section_by_request) - before_student:
+            section_id = assigned_section_by_request.pop(request_id)
+            remaining_capacity[section_id] += 1
+
+    return {
+        (request_id, section_id): True
+        for request_id, section_id in assigned_section_by_request.items()
+    }
 
 
 def _diagnostic_for_unmet_request(
@@ -764,7 +945,19 @@ def _solve_student_assignment(data, *, include_lock_costs):
         ) if variables else 0
     )
 
-    solver, outcome = _solve_lexicographically(model, objectives, data.time_limit_seconds)
+    initial_assignment_hints = _build_initial_assignment_hints(
+        data=data,
+        request_candidates=request_candidates,
+        fixed_by_section=fixed_by_section,
+        fixed_slots=fixed_slots,
+        group_locks=group_locks,
+    )
+    solver, outcome = _solve_lexicographically(
+        model,
+        objectives,
+        data.time_limit_seconds,
+        initial_assignment_hints=initial_assignment_hints,
+    )
     if solver is None:
         # CP-SAT ``UNKNOWN`` means the bounded solve ended without a proof or a
         # usable candidate. It is not evidence that the scheduling facts are

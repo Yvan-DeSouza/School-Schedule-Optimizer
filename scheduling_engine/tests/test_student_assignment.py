@@ -374,3 +374,111 @@ def test_unknown_solver_outcome_is_failed_not_reported_as_infeasible(monkeypatch
 
     assert result.status == "failed"
     assert result.solver_outcome == "unknown"
+
+
+class _ControlledSolver:
+    """Small CP-SAT stand-in for deterministic orchestration timeout tests."""
+
+    def __init__(self, status, value=0):
+        self.status = status
+        self.value = value
+        self.solve_calls = 0
+
+    def Solve(self, _model):
+        self.solve_calls += 1
+        return self.status
+
+    def Value(self, _expression):
+        return self.value
+
+
+def test_later_lexicographic_timeout_returns_the_prior_valid_incumbent(monkeypatch):
+    """A lower-priority timeout must not erase a higher-priority candidate."""
+
+    model = cp_model.CpModel()
+    mandatory = model.NewBoolVar("mandatory")
+    primary = model.NewBoolVar("primary")
+    incumbent = _ControlledSolver(cp_model.OPTIMAL, value=0)
+    timed_out = _ControlledSolver(cp_model.UNKNOWN)
+    solvers = iter((incumbent, timed_out))
+    monkeypatch.setattr(
+        student_assignment_module,
+        "_new_solver",
+        lambda *_args, **_kwargs: next(solvers),
+    )
+
+    solver, outcome = student_assignment_module._solve_lexicographically(
+        model,
+        (mandatory, primary),
+        1.0,
+    )
+
+    assert solver is incumbent
+    assert outcome == cp_model.UNKNOWN
+    assert incumbent.solve_calls == 1
+    assert timed_out.solve_calls == 1
+
+
+def test_lexicographic_solver_skips_constant_objective_slots(monkeypatch):
+    """An empty priority tier has no value and must not trigger a cold solve."""
+
+    model = cp_model.CpModel()
+    mandatory = model.NewBoolVar("mandatory")
+    solver = _ControlledSolver(cp_model.OPTIMAL, value=0)
+    monkeypatch.setattr(
+        student_assignment_module,
+        "_new_solver",
+        lambda *_args, **_kwargs: solver,
+    )
+
+    returned_solver, outcome = student_assignment_module._solve_lexicographically(
+        model,
+        (0, mandatory),
+        1.0,
+    )
+
+    assert returned_solver is solver
+    assert outcome == cp_model.FEASIBLE
+    assert solver.solve_calls == 1
+
+
+def test_all_constant_objectives_still_return_a_reviewable_feasibility_result(monkeypatch):
+    """A fully protected rerun has no decisions but is valid fixed context."""
+
+    model = cp_model.CpModel()
+    solver = _ControlledSolver(cp_model.OPTIMAL)
+    monkeypatch.setattr(
+        student_assignment_module,
+        "_new_solver",
+        lambda *_args, **_kwargs: solver,
+    )
+
+    returned_solver, outcome = student_assignment_module._solve_lexicographically(
+        model,
+        (0, 0),
+        1.0,
+    )
+
+    assert returned_solver is solver
+    assert outcome == cp_model.OPTIMAL
+    assert solver.solve_calls == 1
+
+
+def test_lexicographic_infeasibility_without_an_incumbent_remains_infeasible(monkeypatch):
+    model = cp_model.CpModel()
+    mandatory = model.NewBoolVar("mandatory")
+    solver = _ControlledSolver(cp_model.INFEASIBLE)
+    monkeypatch.setattr(
+        student_assignment_module,
+        "_new_solver",
+        lambda *_args, **_kwargs: solver,
+    )
+
+    returned_solver, outcome = student_assignment_module._solve_lexicographically(
+        model,
+        (mandatory,),
+        1.0,
+    )
+
+    assert returned_solver is None
+    assert outcome == cp_model.INFEASIBLE

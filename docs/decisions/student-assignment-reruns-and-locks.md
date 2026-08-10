@@ -164,8 +164,12 @@ publicly returned `infeasible` with 0 assignments and 9,800 unmet requests.
 Step 7 established that the fixture is mathematically feasible: its 9,800
 required requests have 10,500 usable seats, every course has a 14-seat surplus,
 and an independent capacity/timeslot feasibility model assigned all requests.
-The real cause was a bounded one-worker lexicographic pass returning
-`solver_outcome: unknown`, not a proof of infeasibility. The engine now reports
-that state as `failed` and the benchmark prints its demand/capacity audit; it
-remains evidence that target-scale readiness is not established. No speculative
-solver or infrastructure change was made in this hardening pass.
+The original bounded one-worker lexicographic pass returned
+`solver_outcome: unknown` before finding a candidate, rather than proving
+infeasibility. Step 9 then added deterministic CP-SAT-validated initial hints
+for independent-request inputs and retained the last valid lexicographic
+candidate through later lower-priority timeouts. It keeps one worker and the
+fixed seed, skips empty tiers, and does not relax any hard constraint. The same
+fixture now returns 9,800 assignments and no unmet request in 135.126 seconds.
+That result is representative-fixture evidence only; real-school data and
+deployment request limits still require their own measurement.

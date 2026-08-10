@@ -112,7 +112,7 @@ The design goals are:
 | Safe authorization | Resource and action policies fail closed, and policy filtering occurs before client query filtering. |
 | Explainable failure | Stable diagnostic and workflow codes accompany human-readable messages. |
 | Maintainable engine boundary | Django owns persistence and orchestration; the pure engine consumes immutable DTOs and returns plain result data. |
-| Appropriate scale | The current target is a single school at approximately 1,400 students, 80 teachers, and 250-350 sections. Step 7 established that the 1,400-student/300-section fixture is mathematically feasible (9,800 required requests; 10,500 usable seats), but the one-worker lexicographic solve timed out as `unknown`; target-scale readiness is not established. |
+| Appropriate scale | The current target is a single school at approximately 1,400 students, 80 teachers, and 250-350 sections. The 1,400-student/300-section fixture has 9,800 required requests and 10,500 usable seats; Step 9 completed all assignments twice with identical assignment-level output using one worker and seed 0. Real-school and deployment measurements remain required. |
 
 The project also preserves a migrationless pre-production schema workflow:
 project apps do not contain migration files, and an authorized local schema
@@ -564,9 +564,10 @@ teacher identity.
 The trade-off is that the current pipeline is not a single globally optimal
 joint solve. This is intentional and accepted: counselor review, stable
 operational history, and bounded stage-specific diagnostics matter more than
-collapsing all variables into one model. The Step 6 benchmark provides an
-initial target-scale measurement, but its infeasible result means the pipeline
-is not yet target-scale ready.
+collapsing all variables into one model. The Step 6 benchmark first exposed a
+target-scale failure, while Step 9 added validated deterministic guidance and
+incumbent retention that completed the unchanged representative fixture. That
+evidence supports this fixture, not a blanket claim for every future dataset.
 
 ---
 
@@ -1092,9 +1093,10 @@ real deployment and benchmark requirements are known.
 
 ## 25. Performance Considerations
 
-The engine is designed for independent testing and bounded solver calls. Step
-6 now provides a representative student-assignment measurement, but it does
-not establish target-scale readiness.
+The engine is designed for independent testing and bounded solver calls. The
+representative student-assignment fixture now establishes useful one-worker
+solve-quality evidence, but it is not a substitute for real-school or
+deployment measurement.
 
 - Placement and named-teacher DTOs carry `time_limit_seconds`, and their CP-SAT
   solvers set `max_time_in_seconds` and one search worker.
@@ -1104,12 +1106,17 @@ not establish target-scale readiness.
   of the current operational contract.
 - The approximately 1,400-student/300-section fixture has 9,800 required
   requests, 10,500 usable seats, no course-specific seat shortage, and a
-  complete independent capacity/timeslot feasibility assignment. The production
-  one-worker lexicographic solve still reaches `unknown` before finding a
-  candidate; it is correctly reported as `failed`, not `infeasible`.
-- The benchmark is therefore a measured warning about current deterministic
-  search performance, not proof of production quality. No queue threshold,
-  warm-start contract, or performance dashboard exists.
+  complete independent capacity/timeslot feasibility assignment. Step 9 keeps
+  the production one-worker/fixed-seed configuration while using a deterministic
+  CP-SAT-validated initial hint for independent requests, skipping empty
+  objective tiers, and retaining a valid higher-priority candidate through a
+  lower-priority timeout. It returned all 9,800 assignments with no unmet
+  request in 135.126 seconds on the development Windows environment. Two
+  additional unchanged runs produced identical request-to-section assignments,
+  section loads, and objective values in 136.781 and 134.538 seconds.
+- The benchmark is useful representative-fixture evidence, not proof of
+  production quality. No queue threshold, production request limit, or
+  performance dashboard exists.
 
 The next performance task is representative benchmark evidence for each stage.
 Only after that evidence should the project decide whether to add a worker,

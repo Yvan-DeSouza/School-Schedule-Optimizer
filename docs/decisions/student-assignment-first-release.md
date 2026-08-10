@@ -103,10 +103,26 @@ Django migration files.
 
 `scheduling_engine/benchmark_student_assignment.py` provides a deterministic
 approximately 1,400-student/300-section fixture for manual target-scale
-measurement. The Step 6 measurement completed in 36.285 seconds and publicly
-reported `infeasible` with 0 assignments and 9,800 unmet requests. Step 7
-showed that the fixture has 9,800 required requests, 10,500 usable seats, no
-course-specific shortage, and a complete independent capacity/timeslot
-assignment. The actual one-worker lexicographic CP-SAT pass timed out with
-`solver_outcome: unknown`; it was not an infeasibility proof. The benchmark now
-reports that outcome as `failed`, so this stage is not yet target-scale ready.
+measurement. Step 7 showed that its 9,800 required requests have 10,500 usable
+seats, no course-specific shortage, and a complete independent
+capacity/timeslot assignment. The original one-worker lexicographic CP-SAT pass
+timed out with `solver_outcome: unknown` before finding any candidate; it was
+not an infeasibility proof.
+
+Step 9 keeps that one-worker, fixed-seed configuration and adds two solving
+reliability rules: a deterministic, capacity/timeslot-safe initial assignment
+is used only as a CP-SAT-validated hint for independent-request inputs, and a
+valid candidate from a completed lexicographic pass is retained if a later,
+lower-priority pass times out. Empty objective tiers and the redundant final
+cold solve are skipped; a fully protected run with no decision variables still
+receives one feasibility solve so it remains reviewable. If construction is not
+applicable or does not validate, the engine falls back to ordinary CP-SAT
+search. These changes neither weaken a hard rule nor replace CP-SAT as the
+constraint authority. On the fixture, the resulting run returned
+all 9,800 assignments with no unmet request in 135.126 seconds. This is
+representative-fixture evidence, not a claim that real-school data, HTTP
+request limits, or future larger deployments have been performance-qualified.
+Two further unchanged one-worker/seed-0 runs completed in 136.781 and 134.538
+seconds with identical request-to-section assignments, section loads, and
+objective values. That confirms assignment-level repeatability on this fixture,
+not a universal cross-platform determinism guarantee.

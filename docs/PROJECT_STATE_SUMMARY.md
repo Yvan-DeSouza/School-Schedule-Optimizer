@@ -480,12 +480,16 @@ Where the workflow stops today:
 - no composed timetable, personal schedule endpoint, conflict analyzer, or
   general enrollment override workflow yet;
 - no frontend application yet;
-- the target-scale benchmark is not ready: the approximately 1,400-student /
-  300-section fixture has 9,800 required requests and 10,500 usable seats,
-  with no course-specific seat shortage. An independent model found a complete
-  assignment, while the production one-worker lexicographic pass timed out as
-  `unknown`; the benchmark now reports that accurately as `failed` rather than
-  `infeasible`.
+- the approximately 1,400-student / 300-section benchmark has 9,800 required
+  requests and 10,500 usable seats, with no course-specific seat shortage. The
+  original one-worker lexicographic pass timed out as `unknown` before finding
+  a candidate. Step 9 added deterministic CP-SAT-validated initial guidance,
+  empty-tier skipping, and valid-incumbent retention; the unchanged fixture now
+  completes all 9,800 assignments with no unmet request in 135.126 seconds.
+  Two additional one-worker/seed-0 runs produced identical assignment and
+  section-load hashes in 136.781 and 134.538 seconds. This is
+  representative-fixture evidence, not yet a production qualification for
+  real-school data or deployment request limits.
 
 ## 9. Known Divergences Between the SDD/Roadmap and Actual Code
 
