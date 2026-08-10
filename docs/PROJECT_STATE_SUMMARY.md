@@ -15,7 +15,7 @@ actual code, tests, and docs in this checkout, not on prior chat memory.
 | Section budgeting and staffing-feasible physical counts | Implemented | `backend/apps/scheduling/services/section_budget_planning.py`, `backend/apps/scheduling/services/staffing_planning.py`, `backend/tests/test_upstream_planning_workflow.py` |
 | Semester/A-D placement with staffing feasibility | Implemented | `backend/apps/scheduling/services/section_placement.py`, `scheduling_engine/section_placement.py`, `backend/tests/test_section_placement_service.py`, `scheduling_engine/tests/test_section_placement.py` |
 | Named teacher assignment | Implemented | `backend/apps/scheduling/services/teacher_assignment.py`, `scheduling_engine/teacher_assignment.py`, `backend/tests/test_teacher_assignment_service.py`, `scheduling_engine/tests/test_teacher_assignment.py` |
-| Student assignment, first release | Implemented | `backend/apps/scheduling/services/student_assignment.py`, `scheduling_engine/student_assignment.py`, `backend/tests/test_student_assignment_service.py`, `scheduling_engine/tests/test_student_assignment.py` |
+| Student assignment and controlled reruns | Implemented | `backend/apps/scheduling/services/student_assignment.py`, `backend/apps/scheduling/services/student_assignment_locks.py`, `scheduling_engine/student_assignment.py`, `backend/tests/test_student_assignment_hardening.py`, `scheduling_engine/tests/test_student_assignment.py` |
 | Room assignment | Not implemented | Deferred by the placement and teacher-assignment decisions |
 | Frontend | Not started | `docs/Implementation_Roadmap.md` phase 6, no frontend directory in repo |
 
@@ -466,11 +466,23 @@ workflow.
 
 Where the workflow stops today:
 
-- the first student-assignment solver/review/approval stage is implemented;
+- the first student-assignment solver/review/approval stage and the controlled
+  rerun increment are implemented;
+- active/historical enrollment state, six audited student-assignment lock types,
+  full and scoped reruns, priority requests, schedule preservation, review and
+  read-only what-if behavior, drift checks, and transactional replacement
+  provenance are implemented;
+- section cancellation with active enrollments fails closed with the affected
+  student IDs until a reviewed rerun resolves those enrollments; historical
+  enrollments then remain audit evidence while reconciliation may retire the
+  section;
 - no room assignment solver yet;
-- no composed timetable, personal schedule endpoint, conflict analyzer, locks,
-  partial rerun, or general enrollment override workflow yet;
-- no frontend application yet.
+- no composed timetable, personal schedule endpoint, conflict analyzer, or
+  general enrollment override workflow yet;
+- no frontend application yet;
+- the target-scale benchmark is not ready: the approximately 1,400-student /
+  300-section fixture completed in 36.285 seconds with an
+  `infeasible` result, 0 assignments, and 9,800 unmet requests.
 
 ## 9. Known Divergences Between the SDD/Roadmap and Actual Code
 
@@ -549,9 +561,10 @@ sections, teachers, or enrollments.
 
 Before transcript/SIS completion evidence is introduced, the implemented
 student stage deliberately assumes prior prerequisite completion and enforces
-only same-year ordering when both courses are assigned. Locks, partial reruns,
-and overrides should remain a later separate decision rather than being folded
-into the first assignment workflow.
+only same-year ordering when both courses are assigned. Controlled locks and
+partial reruns are implemented as a separate follow-on decision; general
+overrides remain a later separate capability rather than being folded into the
+first assignment workflow.
 
 ## 13. Open Questions / Explicitly Deferred Decisions
 

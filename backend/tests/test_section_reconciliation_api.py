@@ -311,6 +311,12 @@ def test_dependency_bearing_generated_sections_are_fixed_not_retired(
     assert preview.status_code == 200
     assert preview.data["can_reconcile"] is False
     assert preview.data["conflicts"][0]["code"] == "protected_sections_exceed_target"
+    if protection == "enrollments":
+        cancellation_conflict = next(
+            item for item in preview.data["conflicts"]
+            if item["code"] == "student_assignment_section_cancellation_requires_rerun"
+        )
+        assert cancellation_conflict["student_ids"] == [student_user.student_profile.id]
     keep = preview.data["courses"][0]["actions"]["keep"][0]
     assert protection in keep["protection_reasons"]
 

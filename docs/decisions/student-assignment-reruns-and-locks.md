@@ -1,13 +1,14 @@
 # Student Assignment Reruns, Enrollment History, and Locks
 
-**Status:** Accepted for the next release; implementation pending
+**Status:** Accepted and implemented through Step 6
 
 ## Context
 
-The implemented first student-assignment release creates only new
-`Enrollment` rows. Existing enrollments are fixed context and approval never
-moves or deletes them. That behavior remains historically correct for all
-first-release runs and approvals.
+The original first student-assignment release creates only new `Enrollment`
+rows. Existing enrollments are fixed context and approval never moves or
+deletes them. That behavior remains historically correct for all first-release
+runs and approvals. Steps 1-6 now add a separate controlled-rerun path for
+later reviewed changes.
 
 Counselors next need to make carefully scoped changes after enrollment has
 begun, without turning an accepted schedule into an editable draft or erasing
@@ -19,7 +20,7 @@ release one.
 
 ### Enrollment history and controlled changes
 
-The next release will distinguish operationally active enrollments from
+The controlled-rerun release distinguishes operationally active enrollments from
 historical enrollment records. Only active enrollments will consume a section
 seat, occupy a student's timeslot, or participate in future solver input.
 Historical records remain attached to their original student, section, and
@@ -48,31 +49,31 @@ may not silently move the protected assignment.
 ### Section cancellation and reconciliation
 
 The current section-lifecycle decision correctly prevents ordinary
-reconciliation from retiring a section with enrollment history. The next
-release adds a separate, explicit bridge for a cancellation that affects
-enrolled students: its reviewed student-assignment candidate must first
-provide safe replacement outcomes for the affected active enrollments. On
-approval, the workflow will retire or otherwise resolve those active
-enrollments and record the corresponding section-lifecycle retirement in one
-transaction.
+reconciliation from retiring a section with active enrollment dependencies.
+The implemented bridge returns
+`student_assignment_section_cancellation_requires_rerun` and identifies the
+affected students. Their active enrollments must first be resolved through a
+reviewed student-assignment rerun. Once those rows are historical, ordinary
+reconciliation may retire the section; historical rows remain audit evidence
+and do not block operational retirement.
 
-This is not an automatic cascade. A cancellation with unresolved required
-student demand, stale input, or conflicting locks remains non-approvable. The
-section's prior schedules, teachers, placement facts, and historical
-enrollments remain preserved for audit. Active sections, accepted A-D
-timeslots, rooms, and `Section.teacher` continue to be fixed context for
-student assignment; the workflow never moves them.
+This is not an automatic cascade or a single cross-workflow transaction. A
+cancellation with unresolved required student demand, stale input, or
+conflicting locks remains non-approvable. The section's prior schedules,
+teachers, placement facts, and historical enrollments remain preserved for
+audit. Active sections, accepted A-D timeslots, rooms, and `Section.teacher`
+continue to be fixed context for student assignment; the workflow never moves
+them.
 
 The shared section-state helper remains the sole owner of fixed-context rules.
-It will be extended in the implementation release so an active enrollment is
-an operational dependency while a historical enrollment remains an audit
-dependency. Placement and named-teacher assignment are not redesigned by this
-decision.
+It now treats an active enrollment as an operational dependency while a
+historical enrollment remains an audit dependency. Placement and named-teacher
+assignment were not redesigned by this decision.
 
 ### Locks, priorities, and staffing context
 
-Future counselor-created student-assignment locks require a nonblank reason
-and append-only creation/release audit. They will support the accepted
+Counselor-created student-assignment locks require a nonblank reason and
+append-only creation/release audit. They support the accepted
 graduated lock types: exact student-to-section, whole student schedule,
 section-roster freeze, course-roster freeze, same-section student group, and a
 student-to-teacher-for-course lock.
@@ -84,7 +85,9 @@ three staffing modes keep their first-release behavior.
 
 The future global `StudentAssignmentConfiguration` will own
 `max_priority_requests`, defaulting to `100`. It is one school-wide planning
-setting, not an academic-year value. A run snapshots the effective limit and
+setting, not an academic-year value. Until that model exists, the current
+effective cap is the documented 100-request placeholder in
+`backend/apps/scheduling/constants.py`. A run snapshots the effective limit and
 may nominate at most that many specific primary requests. A nominated request
 ranks after mandatory fulfillment and before ordinary primary fulfillment; it
 never displaces a mandatory request.
@@ -96,8 +99,9 @@ numeric solver weights.
 
 ### Stable result and workflow contract
 
-The following codes are reserved now so future solver results and workflow
-errors can be added without clients depending on English wording. Existing
+The following codes are defined and covered by tests so solver results and
+workflow errors can be consumed without clients depending on English wording.
+Existing
 capacity, timeslot-collision, and hard-prerequisite codes remain the canonical
 codes for those already-defined conditions.
 
@@ -125,17 +129,38 @@ New scheduling-workflow codes in `backend.apps.scheduling.codes`:
 
 ## Consequences
 
-This decision deliberately changes the *next-release* student-assignment
-contract from append-only new enrollment creation to controlled active
-enrollment replacement with immutable history. It does not change the meaning
-of existing first-release approval records.
+This decision deliberately extends the student-assignment contract from
+append-only new enrollment creation to controlled active enrollment
+replacement with immutable history. It does not change the meaning of
+existing first-release approval records.
 
-Implementing the decision requires schema changes for enrollment state,
-replacement provenance, student-assignment locks, group membership, and the
-school-wide configuration record. Development remains migrationless: do not
-generate Django migration files; the project owner recreates a local database
-with `migrate --run-syncdb` only when the schema work is approved.
+Steps 1-6 implemented the enrollment lifecycle state, replacement provenance,
+student-assignment locks, group membership, scoped-run fields, adapter/engine
+support, review/what-if behavior, approval drift checks, and the cancellation
+bridge. Development remains migrationless: no Django migration files were
+generated; the project owner recreates a local database with
+`migrate --run-syncdb` after approved schema work.
 
-This decision does not itself implement locks, scoped reruns, cancellation
-execution, a conflict-analysis endpoint, student-facing views, or the global
-configuration model.
+The global `StudentAssignmentConfiguration` model, transcript/CSV/SIS
+completion evidence, general manual overrides, conflict analysis, personal
+timetable endpoints, frontend work, and background jobs remain deferred.
+
+## Step 6 verification record
+
+The hardening pass added policy- and endpoint-level authorization assertions,
+engine regressions for scope, locks, priorities, preservation, staffing, and
+structured explanations, approval rollback/drift tests, cancellation and
+historical-enrollment lifecycle tests, stable-code coverage, and a deterministic
+read-only what-if test.
+
+The approximately 1,400-student/300-section benchmark was run with:
+
+```powershell
+$env:PYTHONPATH='.'; .\.venv\Scripts\python.exe -m scheduling_engine.benchmark_student_assignment
+```
+
+On the development Windows environment, it completed in 36.285
+seconds but returned `infeasible` with 0 assignments and 9,800 unmet requests.
+That is evidence that target-scale quality is not yet established; it is not a
+claim of target-scale readiness. No speculative solver or infrastructure change
+was made in this hardening pass.

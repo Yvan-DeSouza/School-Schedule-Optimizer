@@ -40,9 +40,11 @@ The working system presently reaches this point:
 `Course requests → offering cancellation/combination → backup policy → teacher-independent section budget → confirmed teacher roster → staffing-aware physical counts → counselor approval → active sections → semester/A–D placement → optional named-teacher context → student-assignment review → enrollment approval`
 
 The system now supports first-release student-to-section assignment after
-accepted semester/A–D placement. Room assignment, conflict analysis, composed
-timetables, student locks, scoped reruns, and frontend work remain outside the
-implemented boundary.
+accepted semester/A–D placement and a controlled rerun increment with active
+enrollment history, six audited lock types, full/scoped runs, review-only
+what-if checks, and transactional approval. Room assignment, conflict
+analysis, composed timetables, general manual overrides, and frontend work
+remain outside the implemented boundary.
 
 ### Completed
 
@@ -155,13 +157,13 @@ These areas contain useful foundations but are not complete Version 1 capabiliti
 | Section lifecycle | Draft sections, physical delivery identity, planning provenance, safe refusal to overwrite, and audited reconciliation with retirement/reactivation | A physical-delivery reconciliation path for changing an already-materialized combined group; late combination remains intentionally blocked |
 | Timetable data | `TimeSlot`, permanent A–D rotation, `Room`, `SectionSchedule`, room requirements, course conflicts, and section locks | No solver or review workflow assigns a block or room |
 | Teacher scheduling foundation | Normalized qualifications, compiled eligibility, availability, preferences, current-course history, workload fields, and planning capacity | No named-teacher assignment solver, recommendation run, approval, or assignment diagnostics |
-| Student scheduling, first release | Immutable runs/approval, fixed existing enrollments, prerequisites, course sequence preferences, planning roster API, and four staffing-assumption modes | No transcript/SIS completion evidence, locks, partial reruns, manual overrides, personal timetables, or conflict analyzer |
+| Student assignment and controlled reruns | Immutable first-release and replacement runs/approvals, active/historical enrollments, six audited locks, full/scoped reruns, priorities, schedule preservation, what-if checks, and cancellation/reconciliation bridge | No transcript/SIS completion evidence, general manual overrides, personal timetables, or conflict analyzer; the target-scale benchmark is not yet ready |
 | Manual controls | `SectionLock`, `Section.is_locked`, `ManualOverride` model, admin registration, and future action-policy names | No enforced synchronization invariant between lock row/flag; no override application service/API, typed action workflow, optimistic concurrency, override history endpoint, or scoped re-solve |
 | Timetable visibility | Teachers can read sections already assigned to them | No composed timetable endpoint and no student/teacher personal schedule endpoint |
 | Internationalization | `Translation` model and admin registration | No translation API and no user interface consuming translations |
 | Scheduling orchestration | Section planning runs synchronously and persist immutable results | No run orchestration/status model for placement/assignment stages and no measured decision yet on background workers |
 | Frontend | None | The React role-based application described by the SDD has not been started |
-| Delivery hardening | Pytest configuration, extensive tests, README setup, environment-based secrets | No visible CI workflow, production settings split, generated API contract, structured operational logging, or target-scale benchmark suite |
+| Delivery hardening | Pytest configuration, extensive tests, README setup, environment-based secrets, and a manual target-scale benchmark script | No visible CI workflow, production settings split, generated API contract, structured operational logging, or acceptable target-scale solve-quality evidence |
 
 ### Not Yet Implemented
 
@@ -170,7 +172,6 @@ These areas contain useful foundations but are not complete Version 1 capabiliti
 - Named teacher-to-section assignment.
 - Post-solve conflict and issue analysis across the completed timetable.
 - General manual override application and immutable history APIs.
-- Genuine scoped re-solving with out-of-scope entities held fixed.
 - Persistent status tracking for downstream scheduling runs.
 - Historical-demand management API coverage required by later workflows.
 - A counselor/administrator, teacher, or student frontend.
@@ -501,10 +502,13 @@ backend/tests/
 
 ## Phase 4 — Student Assignment and Conflict Analysis
 
-**Current Status:** **Partially implemented.** The first counselor-reviewed
-student-assignment release is implemented. Conflict analysis, composed
-timetables, locks, manual overrides, scoped reruns, transcript/SIS evidence,
-and personal schedule endpoints remain deferred.
+**Current Status:** **Student assignment and controlled reruns implemented;
+conflict analysis remains deferred.** The first counselor-reviewed
+student-assignment release and the follow-on active-enrollment history, six
+lock types, full/scoped reruns, priorities, schedule preservation, what-if
+checks, drift checks, and cancellation bridge are implemented. Transcript/SIS
+evidence, general manual overrides, composed timetables, and personal schedule
+endpoints remain deferred.
 
 **Implemented first release:**
 
@@ -529,19 +533,26 @@ The accepted scope and deliberate exclusions are recorded in
 
 **Next increment:** Add a read-only conflict analyzer and, separately, decide
 whether to introduce transcript/SIS completion evidence before changing the
-temporary prerequisite assumption. Do not add locks, partial reruns, general
-overrides, room assignment, or personal schedules as incidental extensions of
-this release.
+temporary prerequisite assumption. General manual overrides, room assignment,
+and personal schedules remain separate reviewed capabilities.
 
 ---
 
 ## Phase 5 — Audited Manual Overrides and Genuine Scoped Re-solving
 
-**Current Status:** **Partially complete foundation.** `SectionLock`, a basic `ManualOverride` model, and action policies exist. No general override service or solver scope implementation exists.
+**Current Status:** **Partially complete foundation.** Student-assignment
+locks, scoped student reruns, active/historical enrollment replacement, and
+their action policies are implemented. `SectionLock`, a basic
+`ManualOverride` model, and cross-stage policy foundations also exist, but no
+general override service, cross-stage scope contract, or cross-stage solver
+feedback loop exists.
 
 **Goal:** Let counselors make explicit manual changes to placements, teachers, and student assignments, preserve those decisions as hard context, and re-run only the affected portion without changing accepted out-of-scope work.
 
-**Why It Comes Next:** Scope is meaningful only after the placement, teacher, and student stages exist. Implementing it afterward allows one consistent cross-stage contract instead of speculative scope code with nothing real to constrain.
+**Why It Comes Next:** The student stage now has a deliberately narrower
+scope/lock contract. The remaining phase is the broader, cross-stage manual
+override workflow for placement, teachers, and student assignments, not a
+replacement for the student rerun capability already implemented.
 
 **Dependencies:** Phases 2–4; accepted stage outputs; locks; immutable run histories; conflict analyzer.
 
@@ -551,8 +562,11 @@ this release.
 - An append-only override history API containing actor, reason, timestamp, previous value, new value, and affected scope.
 - Atomic pairing of a human change with the current lock/fixed-context representation where appropriate.
 - Optimistic concurrency or equivalent stale-write detection returning `409 Conflict`.
-- A shared scope DTO/contract for sections, courses, teachers, and students.
-- Placement, teacher, and student solvers that limit decision variables to scope while loading all other accepted state as fixed context.
+- A shared cross-stage scope DTO/contract for sections, courses, teachers, and
+  students beyond the implemented student-assignment scope.
+- Placement and teacher solvers that limit decision variables to scope while
+  loading all other accepted state as fixed context; the student solver's
+  narrower scope behavior is already implemented.
 - A dependency service that computes the smallest safe affected scope and previews it to the counselor.
 - Automated proof that scoped runs do not change locked or out-of-scope records.
 

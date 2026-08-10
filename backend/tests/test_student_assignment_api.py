@@ -56,7 +56,7 @@ def test_prerequisite_and_soft_sequence_configuration_reject_cycles(
 
 @pytest.mark.django_db
 def test_counselor_can_create_and_review_sections_only_student_run(
-    authenticated_client, academic_year, course, counselor_user, student_user,
+    authenticated_client, academic_year, course, counselor_user, student_user, staff_user,
 ):
     offering = ensure_academic_year_offerings(academic_year, actor=counselor_user)[0]
     section = Section.objects.create(
@@ -92,6 +92,18 @@ def test_counselor_can_create_and_review_sections_only_student_run(
     assert "seat_contention" in review.data
     assert "section_balance_facts" in review.data
     assert "soft_priorities" in review.data
+    run_url = f"/api/planning/student-assignment-runs/{response.data['id']}"
+    assert authenticated_client(staff_user).post(
+        "/api/planning/student-assignment-runs/", payload, format="json",
+    ).status_code == 403
+    assert authenticated_client(staff_user).get(f"{run_url}/review/").status_code == 200
+    assert authenticated_client(student_user).get(f"{run_url}/review/").status_code == 403
+    assert authenticated_client(staff_user).post(
+        f"{run_url}/approve/", {"reason": "Staff cannot approve."}, format="json",
+    ).status_code == 403
+    assert authenticated_client(student_user).post(
+        f"{run_url}/what-if-unlock/", {"lock_ids": [999999]}, format="json",
+    ).status_code == 403
     what_if = client.post(
         f"/api/planning/student-assignment-runs/{response.data['id']}/what-if-unlock/",
         {"lock_ids": [999999]}, format="json",
@@ -156,6 +168,9 @@ def test_lock_endpoints_cover_all_types_release_audit_and_role_boundaries(
     assert authenticated_client(staff_user).get(
         f"/api/planning/student-assignment-locks/?academic_year={academic_year.id}"
     ).status_code == 200
+    assert authenticated_client(student_user).get(
+        f"/api/planning/student-assignment-locks/?academic_year={academic_year.id}"
+    ).status_code == 403
     assert authenticated_client(staff_user).post(
         "/api/planning/student-assignment-locks/", {
             "academic_year": academic_year.id,
@@ -166,6 +181,11 @@ def test_lock_endpoints_cover_all_types_release_audit_and_role_boundaries(
     ).status_code == 403
 
     for row in created:
+        assert authenticated_client(staff_user).post(
+            f"/api/planning/student-assignment-locks/{row['id']}/release/",
+            {"release_reason": "Staff cannot release counselor-owned locks."},
+            format="json",
+        ).status_code == 403
         released = client.post(
             f"/api/planning/student-assignment-locks/{row['id']}/release/",
             {"release_reason": "The reviewed lock is no longer needed."},

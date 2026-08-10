@@ -79,12 +79,15 @@ course requests
   -> named teacher assignment
 ```
 
-Section counting, section lifecycle/reconciliation, semester/A-D placement, and
-named teacher assignment are implemented. Placement writes timeslot-only
-`SectionSchedule` rows. Named teacher approval writes `Section.teacher` only
-after a separate complete run has been reviewed. Room assignment, student
-assignment, post-solve conflict analysis, a general manual-override workflow,
-and the frontend are not yet implemented end-to-end.
+Section counting, section lifecycle/reconciliation, semester/A-D placement,
+named teacher assignment, and student assignment are implemented. Placement
+writes timeslot-only `SectionSchedule` rows. Named teacher approval writes
+`Section.teacher` only after a separate complete run has been reviewed.
+Student-assignment controlled reruns add active/historical enrollment history,
+six audited lock types, scoped reruns, review-only what-if checks, and
+transactional replacement provenance. Room assignment, post-solve conflict
+analysis, a general manual-override workflow, and the frontend are not yet
+implemented end-to-end.
 
 The backend is Django and Django REST Framework over PostgreSQL. The
 `scheduling_engine` package is pure Python and independent of Django. Current
@@ -105,11 +108,11 @@ The design goals are:
 | Counselor control | Solver output remains a recommendation until a planning-role user explicitly approves it. |
 | Reviewability | Runs store the input snapshot, result, diagnostics, and solver metadata needed for review. |
 | Stable history | Approvals and audit rows are append-only; section reconciliation retires rather than deletes surplus generated sections. |
-| Staged computation | Section counts, placement, named teacher assignment, and first-release student assignment are independent reviewed stages. Conflict analysis remains a later stage. |
+| Staged computation | Section counts, placement, named teacher assignment, first-release student assignment, and controlled student reruns are independent reviewed stages. Conflict analysis remains a later stage. |
 | Safe authorization | Resource and action policies fail closed, and policy filtering occurs before client query filtering. |
 | Explainable failure | Stable diagnostic and workflow codes accompany human-readable messages. |
 | Maintainable engine boundary | Django owns persistence and orchestration; the pure engine consumes immutable DTOs and returns plain result data. |
-| Appropriate scale | The current target is a single school at approximately 1,400 students, 80 teachers, and 250-350 sections. Scale claims remain unbenchmarked. |
+| Appropriate scale | The current target is a single school at approximately 1,400 students, 80 teachers, and 250-350 sections. The Step 6 benchmark completed in 36.285 seconds but returned infeasible with 0 assignments and 9,800 unmet requests, so target-scale readiness is not established. |
 
 The project also preserves a migrationless pre-production schema workflow:
 project apps do not contain migration files, and an authorized local schema
@@ -134,7 +137,7 @@ migrations.
   section-plan reconciliation with active/retired lifecycle semantics.
 - Annual placement locks and counselor-reviewed semester/A-D placement.
 - Counselor-reviewed named teacher assignment after accepted placement.
-- Counselor-reviewed student-to-section assignment with immutable enrollment approval provenance.
+- Counselor-reviewed student-to-section assignment with immutable enrollment approval provenance, plus controlled reruns with active/historical enrollment state, locks, scoped input, review-only what-if checks, and replacement provenance.
 - API tests for role access, workflow validation, transactional approval, and
   relevant pure-engine contracts.
 
@@ -143,14 +146,16 @@ migrations.
 - Conflict management: the yearly `CourseConflictMatrix` and counselor score
   adjustment workflow exist, while automatic acceptance of engine-generated
   recommendations is intentionally not present.
-- Manual controls: `SectionLock`, `Section.is_locked`, and `ManualOverride`
-  foundations exist, but there is no general override application service,
-  override-history endpoint, or scoped re-solve workflow.
+- Manual controls: `SectionLock`, `Section.is_locked`, `ManualOverride`
+  foundations, and student-assignment locks/scoped reruns exist, but there is
+  no general cross-stage override application service or override-history
+  endpoint.
 - Internationalization: the `Translation` model and admin registration exist,
   but no translation API or consuming user interface exists.
 - Operational hardening: tests, local setup, immutable run records, and
   transaction boundaries exist, but there is no CI workflow, production
-  settings split, generated API contract, or target-scale benchmark suite.
+  settings split, generated API contract, or acceptable target-scale
+  solve-quality evidence.
 
 ### 3.3 Not Yet Implemented
 
@@ -179,9 +184,9 @@ but those foundations do not constitute an implemented capability.
 | FR-6 | Capture hard/soft constraints, course conflicts, section locks, and annual placement locks. | Partially implemented | CRUD and lock workflows exist; the `Section.is_locked`/`SectionLock` synchronization invariant and general override workflow remain unresolved. |
 | FR-7 | Place active sections in semesters and recurring A-D timeslots while proving anonymous staffing feasibility. | Implemented | `section_placement.py`, placement run/approval services, and placement tests. Rooms are deliberately excluded. |
 | FR-8 | Assign named teachers after accepted placement. | Implemented | `teacher_assignment.py`, named-teacher decision record, and teacher-assignment tests. |
-| FR-9 | Assign students to sections while respecting capacity, prerequisites, and block conflicts. | Implemented first release | Immutable student-assignment run/review/approval, fixed enrollment context, and stable diagnostics exist; transcript evidence and locks are deferred. |
+| FR-9 | Assign students to sections while respecting capacity, prerequisites, and block conflicts. | Implemented first release plus controlled reruns | Immutable run/review/approval, active/historical enrollment state, six audited lock types, scope, priorities, preservation, stable diagnostics, and replacement provenance exist; transcript evidence remains deferred. |
 | FR-10 | Produce a derived report of unresolved timetable conflicts and issues. | Not yet implemented | No conflict-analyzer module or conflict-report endpoint exists. |
-| FR-11 | Apply a manual change and re-solve only the affected scope. | Partially implemented | Locks and action-policy names exist; no general application service or scoped solver contract exists. |
+| FR-11 | Apply a manual change and re-solve only the affected scope. | Partially implemented | Student-assignment locks and scoped reruns exist; no general cross-stage override application service or cross-stage scope contract exists. |
 | FR-12 | Persist manual and automated decisions with reason, actor, and before/after evidence. | Partially implemented | Planning, placement, teacher-assignment, offering, and reconciliation audit models exist; general override history is incomplete. |
 | FR-13 | Serve bilingual user-interface text through translations. | Partially implemented | `Translation` model/admin exist; translation API, frontend, and UI consumption do not. |
 | FR-14 | Let teachers and students view their own finalized schedules. | Not yet implemented | Student assignment exists, but no composed timetable or personal schedule endpoint exists. |
@@ -192,7 +197,7 @@ but those foundations do not constitute an implemented capability.
 
 | Category | Current status and design |
 |---|---|
-| Performance | CP-SAT placement and named-teacher DTOs carry a time-limit field and use bounded solver calls. The repository has no representative 1,400-student benchmark, so target-scale performance is not established. |
+| Performance | CP-SAT stages use bounded solver calls. The Step 6 representative student-assignment benchmark completed in approximately 35 seconds but returned infeasible with 0 assignments and 9,800 unmet requests, so target-scale quality/readiness is not established. |
 | Scalability | The pure engine and stage boundaries support future isolation, but the current deployment is a single Django/PostgreSQL application with synchronous solver calls. Horizontal worker scaling is not implemented. |
 | Maintainability | The engine is Django-free, the adapter is the ORM-to-DTO boundary, and services own multi-model workflows. These boundaries are covered by import and service tests. |
 | Auditability | Immutable run, approval, placement, teacher-assignment, offering, staffing, and reconciliation records preserve accepted decisions. General override history remains incomplete. |
@@ -360,7 +365,7 @@ observability stack in the repository.
 | Engine adapter | Load current ORM facts, build immutable DTOs, calculate fingerprints, and expose stage-specific input snapshots. | Provide a generic job queue or persist engine state directly from pure code. |
 | Pure engine | Analyze demand, compile constraints, build candidates, solve current budget/staffing/placement/teacher models, and return plain result data. | Import Django, write database rows, assign students, assign rooms, or analyze final conflicts. |
 | Models | Represent current state, immutable approval/run evidence, relationships, and local invariants. | Constitute an end-to-end workflow without its service and policy layer. |
-| Tests | Verify import boundaries, role scope, serializers, service transactions, diagnostics, solver behavior, and API contracts. | Establish target-scale performance; no benchmark suite exists yet. |
+| Tests | Verify import boundaries, role scope, serializers, service transactions, diagnostics, solver behavior, API contracts, and controlled rerun behavior. | Establish acceptable target-scale solve quality; the benchmark is a manual measurement rather than a benchmark suite. |
 
 ---
 
@@ -493,10 +498,13 @@ delivery-group counts, solves semester and A-D assignment, and materializes
 sections at approval. A hidden staffing witness is a feasibility proof, not a
 named assignment.
 
-Student assignment is implemented as a narrow first release: it consumes fixed
-active placed sections and writes only approved new enrollments. Conflict
-analysis, student locks, partial reruns, and general override action-policy
-names are not evidence of a completed feedback loop.
+Student assignment is implemented as a first release plus a controlled-rerun
+increment. The first release consumes fixed active placed sections and writes
+new enrollments; the rerun increment preserves active/historical enrollment
+history, applies six audited lock types and explicit scope, supports review-only
+what-if checks, and replaces active enrollments only through transactional
+approval. Conflict analysis and general cross-stage overrides remain future
+work.
 
 ---
 
@@ -539,7 +547,7 @@ flowchart LR
 | `scheduling_engine/constraint_compiler.py` | Normalized qualification/index compilation and fail-closed eligibility sets. | Implemented |
 | `scheduling_engine/section_placement.py` | Semester/A-D timing solve with conflict weights, locks, and anonymous staffing witnesses. | Implemented |
 | `scheduling_engine/teacher_assignment.py` | Named teacher candidate solve using compiled eligibility, availability, capacities, locks, rules, and factual soft evidence. | Implemented |
-| `scheduling_engine/student_assignment.py` | Student-to-section enrollment solve. | Implemented first release; consumes fixed accepted sections and existing enrollments. |
+| `scheduling_engine/student_assignment.py` | Student-to-section enrollment solve, including fixed/locked context, scope, priorities, preservation, and structured explanations. | Implemented first release and controlled reruns; consumes fixed accepted sections and immutable DTO input. |
 | `scheduling_engine/conflict_analyzer.py` | Post-solve issue report. | Not yet implemented; file does not exist. |
 
 There is no `scheduling_engine/solvers/` directory in the current repository.
@@ -556,8 +564,9 @@ teacher identity.
 The trade-off is that the current pipeline is not a single globally optimal
 joint solve. This is intentional and accepted: counselor review, stable
 operational history, and bounded stage-specific diagnostics matter more than
-collapsing all variables into one model. No claim is made that the target-scale
-pipeline has been benchmarked.
+collapsing all variables into one model. The Step 6 benchmark provides an
+initial target-scale measurement, but its infeasible result means the pipeline
+is not yet target-scale ready.
 
 ---
 
@@ -1083,8 +1092,9 @@ real deployment and benchmark requirements are known.
 
 ## 25. Performance Considerations
 
-The engine is designed for independent testing and bounded solver calls, but
-the repository has not established target-scale performance.
+The engine is designed for independent testing and bounded solver calls. Step
+6 now provides a representative student-assignment measurement, but it does
+not establish target-scale readiness.
 
 - Placement and named-teacher DTOs carry `time_limit_seconds`, and their CP-SAT
   solvers set `max_time_in_seconds` and one search worker.
@@ -1092,10 +1102,12 @@ the repository has not established target-scale performance.
   seed/search configuration where applicable.
 - The current run services execute synchronously, so request duration is part
   of the current operational contract.
-- The isolated test suite is synthetic and is not evidence that a
-  1,400-student/80-teacher/250-350-section solve meets a production target.
-- No benchmark fixture, target-scale timing record, queue threshold, warm-start
-  contract, or performance dashboard exists.
+- The approximately 1,400-student/300-section benchmark completed in
+  36.285 seconds on the development Windows environment, but
+  returned `infeasible` with 0 assignments and 9,800 unmet requests.
+- The benchmark is therefore a measured warning, not proof of production
+  quality. No queue threshold, warm-start contract, or performance dashboard
+  exists.
 
 The next performance task is representative benchmark evidence for each stage.
 Only after that evidence should the project decide whether to add a worker,
@@ -1121,7 +1133,7 @@ The following are not implemented scalability mechanisms:
 - queue-based concurrent solve scheduling;
 - multi-school tenancy;
 - read replicas;
-- target-scale benchmark proof; and
+- target-scale benchmark proof of acceptable solve quality; and
 - student-assignment decomposition by cohort.
 
 If the target school or deployment scope grows, benchmarked stage runtime and
@@ -1137,7 +1149,7 @@ planned modules already exist:
 
 | Capability | Depends on | Current boundary |
 |---|---|---|
-| Student assignment, next increment | Accepted enrollments and the first-release run contract | Add transcript/SIS evidence only through a new reviewed prerequisite decision; add locks/scoped reruns separately. |
+| Student assignment, next increment | Accepted enrollments and the first-release run contract | Add transcript/SIS evidence only through a new reviewed prerequisite decision; controlled locks/scoped reruns are implemented, while general overrides remain separate. |
 | Conflict analysis | Accepted timing, staffing, and eventually enrollments | Add a read-only derived report; it must not mutate schedule state. |
 | Room assignment | Accepted semester/A-D timing and room requirements | Separate reviewed stage; do not add rooms to placement or named-teacher assignment implicitly. |
 | Manual overrides | Real downstream stage outputs | Add typed action/history API, stale-write protection, fixed-context synchronization, and genuine scoped re-solving. |
@@ -1207,12 +1219,12 @@ physical section counts against staffing, preserve and reconcile section
 history, place accepted sections in semesters and recurring A-D blocks, and
 complete a separate reviewed named-teacher assignment.
 
-The system is not yet a final timetable product. Rooms, students, conflict
-analysis, general overrides/scoped re-solving, a frontend, published API
-contract, target-scale benchmarks, and operational hardening remain future
-work. Keeping those boundaries explicit is part of the design: the system must
-not claim a room, teacher, student, or audit capability that the current code
-does not actually provide.
+The system is not yet a final timetable product. Rooms, post-solve conflict
+analysis, general cross-stage overrides, a frontend, published API contract,
+acceptable target-scale solve quality, and operational hardening remain future
+work. Student assignment and its controlled rerun/lock capability are
+implemented, but the system must not claim capabilities beyond the current
+reviewed contracts.
 
 The central architectural contract is therefore:
 

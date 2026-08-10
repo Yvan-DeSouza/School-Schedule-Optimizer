@@ -8,6 +8,7 @@ from scheduling_engine.dto import (
     StudentAssignmentLockDTO,
     StudentAssignmentRequestDTO,
     StudentAssignmentSectionDTO,
+    StudentAssignmentScopeDTO,
 )
 from scheduling_engine.student_assignment import solve_student_assignment
 
@@ -147,7 +148,7 @@ def test_group_lock_assigns_all_members_to_one_section_or_none():
     result = solve_student_assignment(_input(
         requests=(
             _request(1, student_id=1),
-            _request(2, student_id=2),
+            _request(2, student_id=2, is_in_scope=False),
         ),
         sections=(
             _section(1, capacity_max=1),
@@ -268,3 +269,90 @@ def test_active_lock_cost_and_section_review_facts_are_returned():
     assert result.seat_contention[0].section_id == 2
     assert result.seat_contention[0].competing_request_ids == (2,)
     assert result.section_balance_facts[0].diagnostic_code == "student_assignment_section_below_target_capacity"
+
+
+def test_partial_scope_moves_only_in_scope_requests_and_preserves_out_of_scope_context():
+    result = solve_student_assignment(_input(
+        requests=(
+            _request(1, student_id=1),
+            _request(2, student_id=2),
+        ),
+        sections=(_section(1, capacity_max=1), _section(2, delivery_group_id=2, timeslot_id=202, capacity_max=1)),
+        fixed_enrollments=(FixedEnrollmentDTO(
+            enrollment_id=80, student_id=2, section_id=1, course_offering_id=11,
+            course_id=1, semester=1, timeslot_id=101, is_in_scope=False,
+        ),),
+        scope=StudentAssignmentScopeDTO(
+            scope_type="scoped", student_ids=(1,),
+        ),
+    ))
+
+    assert {item.student_id for item in result.assignments} == {1}
+    assert all(item.student_id != 2 for item in result.assignments)
+
+
+def test_each_lock_type_is_a_hard_candidate_boundary():
+    cases = (
+        ("exact_student_section", {"student_id": 1, "course_id": 1, "section_id": 2}, 2),
+        ("section_roster", {"section_id": 1}, 2),
+        ("course_roster", {"course_id": 1}, None),
+        ("whole_student_schedule", {"student_id": 1}, None),
+        ("student_teacher_course", {"student_id": 1, "course_id": 1, "teacher_id": 7}, 2),
+    )
+    for lock_type, targets, expected_section in cases:
+        result = solve_student_assignment(_input(
+            sections=(_section(1, teacher_id=8), _section(2, delivery_group_id=2, timeslot_id=202, teacher_id=7)),
+            student_assignment_locks=(StudentAssignmentLockDTO(
+                lock_id=100 + len(lock_type), lock_type=lock_type, **targets,
+            ),),
+        ))
+        if expected_section is None:
+            assert result.assignments == ()
+            assert result.unmet_requests[0].diagnostic_code == "student_assignment_locked_enrollment_blocks_request"
+        else:
+            assert result.assignments[0].section_id == expected_section
+
+
+def test_all_schedule_preservation_levels_protect_a_current_movable_enrollment():
+    movable = FixedEnrollmentDTO(
+        enrollment_id=91, student_id=1, section_id=2, course_offering_id=11,
+        course_id=1, semester=1, timeslot_id=202, is_in_scope=True,
+    )
+    for level in ("none", "slight", "moderate", "strong"):
+        result = solve_student_assignment(_input(
+            sections=(_section(1), _section(2, delivery_group_id=2, timeslot_id=202)),
+            fixed_enrollments=(movable,),
+            section_utilization_balance_importance="not_important",
+            student_semester_balance_importance="not_important",
+            course_sequence_preferences_importance="not_important",
+            schedule_preservation_level=level,
+        ))
+        assert result.assignments
+        if level == "none":
+            assert result.assignments[0].section_id == 1
+        else:
+            assert result.assignments[0].section_id == 2
+
+
+def test_teacher_lock_only_accepts_the_section_with_the_named_teacher():
+    result = solve_student_assignment(_input(
+        sections=(_section(1, teacher_id=7), _section(2, delivery_group_id=2, timeslot_id=202, teacher_id=8)),
+        student_assignment_locks=(StudentAssignmentLockDTO(
+            lock_id=201, lock_type="student_teacher_course", student_id=1,
+            course_id=1, teacher_id=8,
+        ),),
+    ))
+
+    assert result.assignments[0].section_id == 2
+
+
+def test_unresolved_capacity_reason_identifies_the_competing_section_and_student():
+    result = solve_student_assignment(_input(
+        requests=(_request(1, student_id=1), _request(2, student_id=2)),
+        sections=(_section(capacity_max=1),),
+    ))
+
+    unmet = next(item for item in result.unmet_requests if item.request_id == 2)
+    assert unmet.diagnostic_code == "student_assignment_section_capacity_exhausted"
+    assert unmet.blocking_section_id == 1
+    assert unmet.blocking_student_id == 1

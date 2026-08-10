@@ -423,6 +423,21 @@ def _build_student_assignment_review(run, *, data):
         if item.get("blocking_lock_id") is not None
         or item.get("diagnostic_code") == STUDENT_ASSIGNMENT_LOCKED_ENROLLMENT_BLOCKS_REQUEST
     ]
+    # A locked active enrollment is intentionally omitted from the engine's
+    # decision variables.  It still belongs in the counselor-facing protected
+    # category so review explains why the existing placement was preserved.
+    protected_assignments.extend(
+        {
+            "student_id": row.student_id,
+            "course_id": row.course_id,
+            "section_id": row.section_id,
+            "enrollment_id": row.enrollment_id,
+            "blocking_lock_ids": list(row.lock_ids),
+            "reason_code": STUDENT_ASSIGNMENT_LOCKED_ENROLLMENT_BLOCKS_REQUEST,
+        }
+        for row in data.fixed_enrollments
+        if row.is_active and row.is_locked and row.lock_ids
+    )
     student_ids_for = lambda rows: len({int(item["student_id"]) for item in rows if item.get("student_id") is not None})
     return {
         "approval_allowed": True,

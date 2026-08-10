@@ -14,11 +14,12 @@ target-year `SectionSchedule.timeslot`; rooms remain out of scope. Existing
 enrollments are fixed capacity and student-timeslot context. Approval neither
 deletes nor moves them.
 
-This describes the implemented first release. The accepted follow-on decision
+This describes the implemented first release. The accepted and now-implemented
+follow-on decision
 [`student-assignment-reruns-and-locks.md`](student-assignment-reruns-and-locks.md)
-defines a future, explicitly approved replacement workflow for scoped,
-unlocked active enrollments. It does not change the behavior or audit meaning
-of existing first-release runs.
+defines the explicitly approved replacement workflow for scoped, unlocked
+active enrollments. It does not change the behavior or audit meaning of
+existing first-release runs.
 
 ## Staffing-assumption modes
 
@@ -38,7 +39,8 @@ The counselor chooses one transparent staffing mode for every immutable run:
 Teacher identity does not change student eligibility or scoring in this first
 release. The modes record what the counselor trusted, rather than authorizing
 the student workflow to modify teacher assignments. Teacher-dependent student
-locks are deferred.
+locks are outside this first-release contract and are available only through
+the follow-on controlled-rerun decision in `final_staffing`.
 
 ## Prerequisites, sequencing, and alternates
 
@@ -78,18 +80,22 @@ provenance in one transaction. Only a complete candidate, meaning every
 mandatory and primary effective request is fulfilled, may be approved. Unmet
 approved alternates may remain in a complete result.
 
-## Deliberately deferred
+## Outside first-release scope
 
 - transcript/CSV/SIS prerequisite-completion evidence;
-- student, course, section-roster, whole-schedule, and teacher-dependent locks;
-- partial/scoped reruns and manual enrollment overrides;
+- student, course, section-roster, whole-schedule, and teacher-dependent locks
+  (implemented in the follow-on controlled-rerun increment, not in this first
+  release);
+- partial/scoped reruns and controlled active-enrollment replacement
+  (implemented in the follow-on increment; general manual overrides remain
+  deferred);
 - conflict-analysis and composed personal-timetable endpoints;
 - room assignment, frontend work, asynchronous workers, and background jobs.
 
-The first two deferred areas now have an accepted implementation-pending
-contract in
+The first two areas have an accepted and implemented follow-on contract in
 [`student-assignment-reruns-and-locks.md`](student-assignment-reruns-and-locks.md).
-They remain deliberately absent from this implemented first release.
+They remain outside this first-release contract, even though the follow-on
+controlled-rerun capability is now present.
 
 Development schema changes follow the repository's migrationless local
 `migrate --run-syncdb` workflow. This decision does not authorize generating
@@ -97,5 +103,6 @@ Django migration files.
 
 `scheduling_engine/benchmark_student_assignment.py` provides a deterministic
 approximately 1,400-student/300-section fixture for manual target-scale
-measurement. Its elapsed time and fulfillment result must be recorded before
-this stage is described as target-scale ready.
+measurement. The Step 6 measurement completed in 36.285 seconds but
+returned `infeasible` with 0 assignments and 9,800 unmet requests, so this stage
+is not yet described as target-scale ready.
