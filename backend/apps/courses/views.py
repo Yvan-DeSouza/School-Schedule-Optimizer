@@ -18,6 +18,7 @@ from backend.apps.common.constants import SECTION_LIFECYCLE_ACTIVE
 from backend.apps.courses.codes import SECTION_STATE_CONFLICT
 from backend.apps.courses.models import (
     Course,
+    CourseCategoryRelationship,
     CourseCombinationRule,
     CourseOffering,
     CoursePrerequisite,
@@ -29,6 +30,7 @@ from backend.apps.courses.models import (
 from backend.apps.courses.serializers import (
     CombineOfferingsRequestSerializer,
     CourseCombinationRuleSerializer,
+    CourseCategoryRelationshipSerializer,
     CourseOfferingSerializer,
     CoursePrerequisiteSerializer,
     CourseSequencePreferenceSerializer,
@@ -62,6 +64,15 @@ class CourseViewSet(PolicyFilteredViewSet):
     serializer_class = CourseSerializer
     resource_policy_class = CoursePolicy
     filter_fields = ("grade_level", "category", "is_online")
+
+
+class CourseCategoryRelationshipViewSet(PolicyFilteredViewSet):
+    """Planning-role CRUD for the school-wide category similarity matrix."""
+
+    queryset = CourseCategoryRelationship.objects.all()
+    serializer_class = CourseCategoryRelationshipSerializer
+    resource_policy_class = PlanningConfigurationPolicy
+    filter_fields = ("category_a", "category_b")
 
 
 class SectionViewSet(PolicyFilteredViewSet):

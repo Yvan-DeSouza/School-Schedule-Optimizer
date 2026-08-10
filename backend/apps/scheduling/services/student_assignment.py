@@ -185,6 +185,10 @@ def _importance_from_snapshot(snapshot):
         "section_utilization_balance": snapshot["section_utilization_balance_importance"],
         "student_semester_balance": snapshot["student_semester_balance_importance"],
         "course_sequence_preferences": snapshot["course_sequence_preferences_importance"],
+        # Older immutable runs predate these optional preferences. Treat them
+        # as disabled rather than making a historical review unreadable.
+        "difficulty_balance": snapshot.get("difficulty_balance_importance", "not_important"),
+        "course_category_diversity": snapshot.get("course_category_diversity_importance", "not_important"),
     }
 
 
@@ -379,6 +383,8 @@ def _soft_priority_effects(data, result):
         ("course_sequence_preferences", "course_sequence_preferences_importance"),
         ("section_utilization_balance", "section_utilization_balance_importance"),
         ("student_semester_balance", "student_semester_balance_importance"),
+        ("difficulty_balance", "difficulty_balance_importance"),
+        ("course_category_diversity", "course_category_diversity_importance"),
     )
     effects = {}
     for name, field_name in controls:

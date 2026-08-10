@@ -77,6 +77,8 @@ def test_counselor_can_create_and_review_sections_only_student_run(
             "section_utilization_balance": "important",
             "student_semester_balance": "important",
             "course_sequence_preferences": "really_important",
+            "difficulty_balance": "important",
+            "course_category_diversity": "important",
         },
     }
 
@@ -230,6 +232,8 @@ def test_run_creation_validates_scoped_source_and_priority_cap(
             "section_utilization_balance": "not_important",
             "student_semester_balance": "not_important",
             "course_sequence_preferences": "not_important",
+            "difficulty_balance": "not_important",
+            "course_category_diversity": "not_important",
         },
     }
     scoped = client.post(

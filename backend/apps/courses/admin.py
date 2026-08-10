@@ -4,6 +4,7 @@ from django.contrib import admin
 
 from backend.apps.courses.models import (
     Course,
+    CourseCategoryRelationship,
     CourseCombinationRule,
     CourseCombinationRuleMember,
     CourseOffering,
@@ -36,6 +37,7 @@ class SectionAdmin(admin.ModelAdmin):
 
 admin.site.register([
     Course,
+    CourseCategoryRelationship,
     Enrollment,
     CourseRequest,
     CoursePrerequisite,

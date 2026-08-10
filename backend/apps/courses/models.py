@@ -1,7 +1,7 @@
 """Course catalog, operational sections, demand requests, and prerequisites."""
 
 from django.core.exceptions import ValidationError
-from django.core.validators import MinValueValidator
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 from backend.apps.common.constants import (
@@ -61,6 +61,14 @@ class Course(models.Model):
         default=COURSE_ALLOWED_SEMESTER_EITHER,
     )
     is_online = models.BooleanField(default=False)
+    # The automatic score is derived from the catalog grade level because the
+    # application has no historical student-result data yet. A counselor can
+    # replace that estimate when local academic knowledge is more reliable.
+    manual_difficulty_override = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+    )
 
     class Meta:
         ordering = ["course_code"]
@@ -481,3 +489,42 @@ class CourseSequencePreference(models.Model):
 
     def __str__(self):
         return f"Prefer {self.earlier_course} before {self.later_course}"
+
+
+class CourseCategoryRelationship(models.Model):
+    """One school-wide similarity value for an unordered pair of categories.
+
+    Equal categories are inherently maximally similar and therefore do not
+    need stored rows. Missing cross-category rows are intentionally neutral:
+    they do not manufacture a relationship the school has not defined.
+    """
+
+    category_a = models.CharField(max_length=50, choices=COURSE_CATEGORY_CHOICES)
+    category_b = models.CharField(max_length=50, choices=COURSE_CATEGORY_CHOICES)
+    similarity_score = models.PositiveSmallIntegerField(
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        default=0,
+    )
+
+    class Meta:
+        ordering = ["category_a", "category_b"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["category_a", "category_b"],
+                name="unique_course_category_relationship",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(category_a__lt=models.F("category_b")),
+                name="course_category_relationship_canonical_pair",
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+        if self.category_a >= self.category_b:
+            raise ValidationError({
+                "category_b": "Category relationships must use two distinct categories in alphabetical order.",
+            })
+
+    def __str__(self):
+        return f"{self.category_a} / {self.category_b}: {self.similarity_score}"

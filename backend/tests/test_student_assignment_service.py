@@ -62,6 +62,8 @@ def test_sections_only_run_creates_only_new_enrollment_and_provenance(
             "section_utilization_balance": "important",
             "student_semester_balance": "important",
             "course_sequence_preferences": "important",
+            "difficulty_balance": "not_important",
+            "course_category_diversity": "not_important",
         },
         created_by=counselor_user,
     )
@@ -105,6 +107,8 @@ def test_sections_only_snapshot_does_not_stale_when_teacher_changes(
             "section_utilization_balance": "not_important",
             "student_semester_balance": "not_important",
             "course_sequence_preferences": "not_important",
+            "difficulty_balance": "not_important",
+            "course_category_diversity": "not_important",
         }, created_by=counselor_user,
     )
     section.teacher = teacher_user.teacher_profile
@@ -152,6 +156,8 @@ def test_exact_locked_target_retires_prior_active_enrollment_with_provenance(
             "section_utilization_balance": "not_important",
             "student_semester_balance": "not_important",
             "course_sequence_preferences": "not_important",
+            "difficulty_balance": "not_important",
+            "course_category_diversity": "not_important",
         },
         created_by=counselor_user,
     )
@@ -182,6 +188,8 @@ def test_exact_locked_target_retires_prior_active_enrollment_with_provenance(
             "section_utilization_balance": "not_important",
             "student_semester_balance": "not_important",
             "course_sequence_preferences": "not_important",
+            "difficulty_balance": "not_important",
+            "course_category_diversity": "not_important",
         },
         created_by=counselor_user,
     )
@@ -217,6 +225,8 @@ def test_scoped_run_without_an_accepted_source_fails_closed():
                 "section_utilization_balance": "not_important",
                 "student_semester_balance": "not_important",
                 "course_sequence_preferences": "not_important",
+                "difficulty_balance": "not_important",
+                "course_category_diversity": "not_important",
             },
             created_by=None,
             scope_type="scoped",

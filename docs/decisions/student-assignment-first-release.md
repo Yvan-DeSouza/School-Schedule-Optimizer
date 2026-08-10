@@ -67,11 +67,31 @@ or unresolved cancellation provenance fails closed.
 
 Counselors select a label from `not_important` through
 `extremely_important` for section-utilization balance, student semester-load
-balance, and soft sequence preferences. Labels are compiled to deterministic
-engine priorities and no numeric weight is exposed through the API. Mandatory
-fulfillment, primary fulfillment by course priority tier, approved backups,
-capacity, timeslot safety, and hard prerequisite sequencing always take
-precedence over these soft controls.
+balance, soft sequence preferences, difficulty balance, and course-category
+diversity. Labels are compiled to deterministic engine priorities and no
+numeric weight is exposed through the API. Mandatory fulfillment, primary
+fulfillment by course priority tier, approved backups, capacity, timeslot
+safety, and hard prerequisite sequencing always take precedence over these
+soft controls.
+
+Course difficulty is a scheduling-oriented 0--100 estimate, not a claim of
+objective academic difficulty. There is no historical mark, transcript, or
+course-result model in this repository, so the automatic `grade_level_baseline_v1`
+calculation maps Grades 7--12 linearly to 20--80. A counselor may set a bounded
+`manual_difficulty_override`; it becomes the effective value for future runs.
+Each immutable input snapshot records the calculated value, override, effective
+value, and calculation version, so later catalog changes stale rather than
+silently reinterpret a reviewed run. A future result-data increment may add a
+recency-weighted evidence calculation, but must not claim that demand history
+is performance history.
+
+Category diversity is also soft. Equal course categories are inherently fully
+similar. `CourseCategoryRelationship` supplies an optional, school-wide,
+unordered 0--100 similarity for distinct categories; an unspecified pair is
+neutral. The engine penalizes similar course pairs concentrated in the same
+semester, without assigning categories artificial scalar positions. Missing
+category data is neutral. Neither new objective can move a fixed enrollment or
+violate a capacity, collision, prerequisite, eligibility, or lock rule.
 
 Runs, approvals, and enrollment-provenance rows are immutable. Review and
 approval reload and fingerprint the current input; approval locks the relevant

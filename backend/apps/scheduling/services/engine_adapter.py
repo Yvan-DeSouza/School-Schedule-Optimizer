@@ -33,7 +33,8 @@ from scheduling_engine.dto import (
     FixedTeacherAssignmentDTO, TeacherAssignmentInputDTO,
     TeacherAssignmentSectionDTO, TeacherAssignmentTeacherDTO,
     TeacherCourseAssignmentRuleDTO,
-    CourseSequencePreferenceDTO, FixedEnrollmentDTO,
+    CourseSequencePreferenceDTO, CourseDifficultyDTO, CourseCategoryRelationshipDTO,
+    FixedEnrollmentDTO,
     StudentAssignmentInputDTO, StudentAssignmentRequestDTO,
     StudentAssignmentSectionDTO, StudentAssignmentLockDTO,
     StudentAssignmentScopeDTO,
@@ -61,6 +62,7 @@ from backend.apps.constraints.models import (
 from backend.apps.control.models import SectionLock
 from backend.apps.courses.models import (
     Course,
+    CourseCategoryRelationship,
     CourseOffering,
     CoursePrerequisite,
     CourseSequencePreference,
@@ -70,6 +72,7 @@ from backend.apps.courses.models import (
     Section,
 )
 from backend.apps.courses.constants import ENROLLMENT_LIFECYCLE_ACTIVE
+from backend.apps.courses.services.difficulty import course_difficulty_facts
 from backend.apps.courses.selectors import (
     active_delivery_groups_for_year,
     active_sections_for_year,
@@ -830,9 +833,11 @@ def load_student_assignment_input(
         "section_utilization_balance",
         "student_semester_balance",
         "course_sequence_preferences",
+        "difficulty_balance",
+        "course_category_diversity",
     }
     if set(soft_constraint_importance) != required_importance_keys:
-        raise ValueError("All three student-assignment soft_constraint_importance values are required.")
+        raise ValueError("All five student-assignment soft_constraint_importance values are required.")
     sections = list(active_sections_for_year(academic_year_id).select_related(
         "course", "delivery_group__capacity_profile", "teacher",
         "staffing_approval_offering__approval__staffing_run",
@@ -1079,6 +1084,24 @@ def load_student_assignment_input(
         raise ValueError("Priority request IDs must identify effective requests in this snapshot.")
     if len(priority_request_ids) > int(priority_request_limit):
         raise ValueError("Priority request IDs exceed the configured run limit.")
+    relevant_course_ids = {
+        item.course_id for item in requests
+    } | {
+        item.course_id for item in fixed_rows
+        if item.is_active and not item.is_historical
+    }
+    course_difficulties = tuple(
+        CourseDifficultyDTO(**course_difficulty_facts(course))
+        for course in Course.objects.filter(id__in=relevant_course_ids).order_by("id")
+    )
+    course_category_relationships = tuple(
+        CourseCategoryRelationshipDTO(
+            category_a=item.category_a,
+            category_b=item.category_b,
+            similarity_score=item.similarity_score,
+        )
+        for item in CourseCategoryRelationship.objects.order_by("category_a", "category_b", "id")
+    )
     return StudentAssignmentInputDTO(
         academic_year_id=academic_year_id,
         requests=tuple(requests), sections=tuple(section_dtos), fixed_enrollments=tuple(fixed_rows),
@@ -1093,6 +1116,10 @@ def load_student_assignment_input(
         section_utilization_balance_importance=soft_constraint_importance["section_utilization_balance"],
         student_semester_balance_importance=soft_constraint_importance["student_semester_balance"],
         course_sequence_preferences_importance=soft_constraint_importance["course_sequence_preferences"],
+        difficulty_balance_importance=soft_constraint_importance["difficulty_balance"],
+        course_category_diversity_importance=soft_constraint_importance["course_category_diversity"],
+        course_difficulties=course_difficulties,
+        course_category_relationships=course_category_relationships,
         student_assignment_locks=lock_dtos,
         schedule_preservation_level=schedule_preservation_level,
         priority_request_ids=priority_request_ids,

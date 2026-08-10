@@ -5,6 +5,7 @@ from collections import Counter, defaultdict
 from scheduling_engine.realistic_student_assignment_validation import (
     build_realistic_scale_fixture,
     build_realistic_scoped_rerun_fixture,
+    build_realistic_quality_tradeoff_fixture,
     build_realistic_validation_fixture,
     summarize_realistic_fixture,
 )
@@ -96,3 +97,19 @@ def test_realistic_scale_fixture_has_uneven_but_sufficient_course_capacity():
     assert {capacity_by_course[course_id] for course_id in range(1, 11)} == {336}
     assert {capacity_by_course[course_id] for course_id in range(11, 31)} == {216}
     assert {capacity_by_course[course_id] for course_id in range(31, 51)} == {141}
+
+
+def test_realistic_quality_fixture_respects_counselor_soft_priority_order():
+    difficulty_first = solve_student_assignment(build_realistic_quality_tradeoff_fixture(
+        difficulty_importance="extremely_important",
+        course_category_diversity_importance="important",
+    ))
+    category_first = solve_student_assignment(build_realistic_quality_tradeoff_fixture(
+        difficulty_importance="important",
+        course_category_diversity_importance="extremely_important",
+    ))
+
+    assert {item.semester for item in difficulty_first.assignments} == {2}
+    assert {item.semester for item in category_first.assignments} == {1, 2}
+    assert difficulty_first.objective_components["difficulty_balance_penalty"] == 0
+    assert category_first.objective_components["course_category_diversity_penalty"] == 0

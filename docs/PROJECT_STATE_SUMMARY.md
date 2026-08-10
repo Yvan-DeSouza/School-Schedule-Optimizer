@@ -15,7 +15,7 @@ actual code, tests, and docs in this checkout, not on prior chat memory.
 | Section budgeting and staffing-feasible physical counts | Implemented | `backend/apps/scheduling/services/section_budget_planning.py`, `backend/apps/scheduling/services/staffing_planning.py`, `backend/tests/test_upstream_planning_workflow.py` |
 | Semester/A-D placement with staffing feasibility | Implemented | `backend/apps/scheduling/services/section_placement.py`, `scheduling_engine/section_placement.py`, `backend/tests/test_section_placement_service.py`, `scheduling_engine/tests/test_section_placement.py` |
 | Named teacher assignment | Implemented | `backend/apps/scheduling/services/teacher_assignment.py`, `scheduling_engine/teacher_assignment.py`, `backend/tests/test_teacher_assignment_service.py`, `scheduling_engine/tests/test_teacher_assignment.py` |
-| Student assignment and controlled reruns | Implemented | `backend/apps/scheduling/services/student_assignment.py`, `backend/apps/scheduling/services/student_assignment_locks.py`, `scheduling_engine/student_assignment.py`, `backend/tests/test_student_assignment_hardening.py`, `scheduling_engine/tests/test_student_assignment.py` |
+| Student assignment and controlled reruns | Implemented | `backend/apps/scheduling/services/student_assignment.py`, `backend/apps/scheduling/services/student_assignment_locks.py`, `backend/apps/courses/services/difficulty.py`, `scheduling_engine/student_assignment.py`, `backend/tests/test_student_assignment_hardening.py`, `scheduling_engine/tests/test_student_assignment.py` |
 | Room assignment | Not implemented | Deferred by the placement and teacher-assignment decisions |
 | Frontend | Not started | `docs/Implementation_Roadmap.md` phase 6, no frontend directory in repo |
 
@@ -120,6 +120,8 @@ truth.
 | Planning run | An immutable solver snapshot and result for a single stage | `backend/apps/scheduling/models.py`, `backend/apps/scheduling/services/*.py` |
 | Approval | The immutable human decision that turns a reviewed recommendation into operational state | same as above |
 | Scope | The set of items the current solver is allowed to change; everything else is fixed context | `backend/apps/scheduling/services/section_placement.py`, `backend/apps/scheduling/services/teacher_assignment.py`, `backend/apps/courses/services/section_state.py` |
+| Effective course difficulty | A frozen 0--100 scheduling estimate: grade-level baseline unless a counselor sets a manual override | `backend/apps/courses/services/difficulty.py`, `backend/apps/courses/models.py`, `backend/apps/scheduling/services/engine_adapter.py` |
+| Course category relationship | An optional school-wide similarity score for one unordered pair of distinct catalog categories | `backend/apps/courses/models.py`, `scheduling_engine/student_assignment.py` |
 
 ## 5. Module Map
 

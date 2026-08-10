@@ -255,6 +255,8 @@ class StudentAssignmentSoftConstraintImportanceSerializer(serializers.Serializer
     section_utilization_balance = serializers.ChoiceField(choices=SOFT_CONSTRAINT_IMPORTANCE_CHOICES)
     student_semester_balance = serializers.ChoiceField(choices=SOFT_CONSTRAINT_IMPORTANCE_CHOICES)
     course_sequence_preferences = serializers.ChoiceField(choices=SOFT_CONSTRAINT_IMPORTANCE_CHOICES)
+    difficulty_balance = serializers.ChoiceField(choices=SOFT_CONSTRAINT_IMPORTANCE_CHOICES)
+    course_category_diversity = serializers.ChoiceField(choices=SOFT_CONSTRAINT_IMPORTANCE_CHOICES)
 
 
 class StudentAssignmentRunCreateSerializer(serializers.Serializer):

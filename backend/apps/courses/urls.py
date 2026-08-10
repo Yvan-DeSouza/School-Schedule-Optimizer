@@ -7,6 +7,7 @@ from backend.apps.courses.views import (
     CombinationSuggestionView,
     CombineOfferingsView,
     CourseCombinationRuleViewSet,
+    CourseCategoryRelationshipViewSet,
     CourseOfferingViewSet,
     CoursePrerequisiteViewSet,
     CourseRequestViewSet,
@@ -20,6 +21,11 @@ from backend.apps.courses.views import (
 router = DefaultRouter()
 # Standard CRUD viewsets share one router; demand summary is a named action view.
 router.register("courses", CourseViewSet, basename="course")
+router.register(
+    "planning/course-category-relationships",
+    CourseCategoryRelationshipViewSet,
+    basename="course-category-relationship",
+)
 router.register("sections", SectionViewSet, basename="section")
 router.register("course-requests", CourseRequestViewSet, basename="course-request")
 router.register("course-prerequisites", CoursePrerequisiteViewSet, basename="course-prerequisite")

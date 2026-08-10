@@ -14,6 +14,7 @@ from backend.apps.constraints.services import (
 )
 from backend.apps.courses.models import (
     Course,
+    CourseCategoryRelationship,
     CourseCombinationRule,
     CourseCombinationRuleMember,
     CourseOffering,
@@ -43,14 +44,50 @@ class CapacityValidationMixin:
 class CourseSerializer(CapacityValidationMixin, serializers.ModelSerializer):
     """Catalog serializer; default capacity profile is assigned by the model."""
 
+    calculated_difficulty = serializers.SerializerMethodField(read_only=True)
+    effective_difficulty = serializers.SerializerMethodField(read_only=True)
+
+    def get_calculated_difficulty(self, instance):
+        from backend.apps.courses.services.difficulty import course_difficulty_facts
+
+        return course_difficulty_facts(instance)["calculated_difficulty"]
+
+    def get_effective_difficulty(self, instance):
+        from backend.apps.courses.services.difficulty import course_difficulty_facts
+
+        return course_difficulty_facts(instance)["effective_difficulty"]
+
     class Meta:
         model = Course
-        fields = ("id", "name", "grade_level", "course_code", "category", "capacity_min", "capacity_max", "capacity_profile", "priority_profile", "allowed_semester", "is_online")
+        fields = (
+            "id", "name", "grade_level", "course_code", "category",
+            "capacity_min", "capacity_max", "capacity_profile", "priority_profile",
+            "allowed_semester", "is_online", "manual_difficulty_override",
+            "calculated_difficulty", "effective_difficulty",
+        )
         extra_kwargs = {
             # Capacity policy changes use the dedicated copy-on-write endpoint.
             "capacity_profile": {"required": False, "read_only": True},
             "priority_profile": {"required": False},
         }
+
+
+class CourseCategoryRelationshipSerializer(serializers.ModelSerializer):
+    """Planning configuration for category diversity without solver coefficients."""
+
+    class Meta:
+        model = CourseCategoryRelationship
+        fields = ("id", "category_a", "category_b", "similarity_score")
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        category_a = attrs.get("category_a", getattr(self.instance, "category_a", None))
+        category_b = attrs.get("category_b", getattr(self.instance, "category_b", None))
+        if category_a and category_b and category_a >= category_b:
+            raise serializers.ValidationError({
+                "category_b": "Use two distinct categories in alphabetical order so each relationship has one stable identity.",
+            })
+        return attrs
 
 
 class SectionSerializer(CapacityValidationMixin, serializers.ModelSerializer):

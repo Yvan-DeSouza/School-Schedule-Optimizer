@@ -12,6 +12,7 @@ from collections import Counter
 from time import perf_counter
 
 from .dto import (
+    CourseDifficultyDTO,
     CoursePrerequisiteDTO,
     FixedEnrollmentDTO,
     StudentAssignmentInputDTO,
@@ -291,6 +292,51 @@ def build_realistic_scoped_rerun_fixture(*, schedule_preservation_level="strong"
         course_sequence_preferences_importance="not_important",
         schedule_preservation_level=schedule_preservation_level,
         scope=StudentAssignmentScopeDTO(scope_type="scoped", student_ids=(1,)),
+        time_limit_seconds=10.0,
+    )
+
+
+def build_realistic_quality_tradeoff_fixture(
+    *, difficulty_importance="important", course_category_diversity_importance="important",
+):
+    """Build an auditable counselor-quality tradeoff without relaxing context.
+
+    A protected high-difficulty science enrollment is already in Semester 1.
+    The two movable mathematics courses can share Semester 2 for a perfect
+    difficulty split, or separate for a better category distribution. This
+    demonstrates that counselor importance changes only a soft preference.
+    """
+
+    return StudentAssignmentInputDTO(
+        academic_year_id=1,
+        requests=(
+            _request(1, 1, 1, is_mandatory=True),
+            _request(2, 1, 2, is_mandatory=True),
+        ),
+        sections=(
+            _section(1, 1, 1, 1, 2),
+            _section(2, 1, 2, 5, 2),
+            _section(3, 2, 1, 2, 2),
+            _section(4, 2, 2, 6, 2),
+            _section(5, 3, 1, 3, 2),
+        ),
+        fixed_enrollments=(FixedEnrollmentDTO(
+            enrollment_id=801, student_id=1, section_id=5,
+            course_offering_id=1003, course_id=3, semester=1, timeslot_id=3,
+            is_locked=True, lock_ids=(950,),
+        ),),
+        hard_prerequisites=(),
+        soft_sequence_preferences=(),
+        section_utilization_balance_importance="not_important",
+        student_semester_balance_importance="not_important",
+        course_sequence_preferences_importance="not_important",
+        difficulty_balance_importance=difficulty_importance,
+        course_category_diversity_importance=course_category_diversity_importance,
+        course_difficulties=(
+            CourseDifficultyDTO(1, "math", 90, None, 90, "validation_v1"),
+            CourseDifficultyDTO(2, "math", 10, None, 10, "validation_v1"),
+            CourseDifficultyDTO(3, "science", 100, None, 100, "validation_v1"),
+        ),
         time_limit_seconds=10.0,
     )
 

@@ -322,6 +322,28 @@ class CourseSequencePreferenceDTO:
 
 
 @dataclass(frozen=True)
+class CourseDifficultyDTO:
+    """Frozen effective course difficulty and its catalog provenance."""
+
+    course_id: int
+    category: str
+    calculated_difficulty: int
+    manual_difficulty_override: Optional[int]
+    effective_difficulty: int
+    calculation_version: str
+    source: str = "grade_level_baseline"
+
+
+@dataclass(frozen=True)
+class CourseCategoryRelationshipDTO:
+    """One unordered cross-category similarity setting from the catalog."""
+
+    category_a: str
+    category_b: str
+    similarity_score: int
+
+
+@dataclass(frozen=True)
 class StudentAssignmentInputDTO:
     """Detached facts consumed by the pure student-to-section engine."""
 
@@ -343,6 +365,12 @@ class StudentAssignmentInputDTO:
     # supplied bound and never reads Django configuration.
     priority_request_limit: Optional[int] = None
     scope: StudentAssignmentScopeDTO = field(default_factory=StudentAssignmentScopeDTO)
+    # These records carry no ORM behavior. They freeze the catalog values that
+    # guided one reviewed run, so later edits cannot change its meaning.
+    course_difficulties: Tuple[CourseDifficultyDTO, ...] = ()
+    course_category_relationships: Tuple[CourseCategoryRelationshipDTO, ...] = ()
+    difficulty_balance_importance: str = "not_important"
+    course_category_diversity_importance: str = "not_important"
 
 
 @dataclass(frozen=True)

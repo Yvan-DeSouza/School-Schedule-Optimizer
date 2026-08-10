@@ -255,9 +255,30 @@ def _validate_input(data):
         data.section_utilization_balance_importance,
         data.student_semester_balance_importance,
         data.course_sequence_preferences_importance,
+        data.difficulty_balance_importance,
+        data.course_category_diversity_importance,
     ):
         if importance not in IMPORTANCE_LEVELS:
             raise ValueError("Student-assignment importance values are invalid.")
+    difficulty_course_ids = set()
+    for difficulty in data.course_difficulties:
+        if difficulty.course_id in difficulty_course_ids:
+            raise ValueError(f"Duplicate course difficulty profile {difficulty.course_id}.")
+        if not 0 <= difficulty.calculated_difficulty <= 100:
+            raise ValueError("Calculated course difficulty must be between 0 and 100.")
+        if difficulty.manual_difficulty_override is not None and not 0 <= difficulty.manual_difficulty_override <= 100:
+            raise ValueError("Manual course difficulty override must be between 0 and 100.")
+        if not 0 <= difficulty.effective_difficulty <= 100:
+            raise ValueError("Effective course difficulty must be between 0 and 100.")
+        difficulty_course_ids.add(difficulty.course_id)
+    category_relationships = set()
+    for relationship in data.course_category_relationships:
+        pair = tuple(sorted((relationship.category_a, relationship.category_b)))
+        if relationship.category_a == relationship.category_b or pair in category_relationships:
+            raise ValueError("Course category relationships must be unique distinct pairs.")
+        if not 0 <= relationship.similarity_score <= 100:
+            raise ValueError("Course category relationship similarity must be between 0 and 100.")
+        category_relationships.add(pair)
     if data.schedule_preservation_level not in SCHEDULE_PRESERVATION_LEVELS:
         raise ValueError("Student-assignment schedule preservation level is invalid.")
     if data.scope.scope_type not in {"full", "scoped"}:
@@ -938,6 +959,120 @@ def _solve_student_assignment(data, *, include_lock_costs):
     if semester_level:
         soft_objectives[semester_level].append(sum(semester_balance_terms or [0]))
 
+    difficulty_balance_terms = []
+    difficulty_level = IMPORTANCE_LEVELS[data.difficulty_balance_importance]
+    if difficulty_level:
+        # Difficulty reflects total annual academic load, not fulfillment or
+        # the absolute amount of challenging coursework. Avoid constructing
+        # these auxiliary variables when counselors explicitly disable it.
+        difficulty_by_course = {
+            item.course_id: item.effective_difficulty for item in data.course_difficulties
+        }
+        for student_id in student_ids:
+            requested_course_ids = {
+                request.course_id for request in data.requests if request.student_id == student_id
+            }
+            semester_1_difficulty = sum(
+                difficulty_by_course.get(course_id, 0) * variable
+                for course_id in requested_course_ids
+                for variable in by_student_course_semester[student_id, course_id, 1]
+            ) + sum(
+                difficulty_by_course.get(row.course_id, 0)
+                for row in fixed_rows if row.student_id == student_id and row.semester == 1
+            )
+            semester_2_difficulty = sum(
+                difficulty_by_course.get(course_id, 0) * variable
+                for course_id in requested_course_ids
+                for variable in by_student_course_semester[student_id, course_id, 2]
+            ) + sum(
+                difficulty_by_course.get(row.course_id, 0)
+                for row in fixed_rows if row.student_id == student_id and row.semester == 2
+            )
+            penalty = model.NewIntVar(
+                0,
+                (len(requested_course_ids) + len(fixed_rows)) * 100,
+                f"difficulty_balance_{student_id}",
+            )
+            model.AddAbsEquality(penalty, semester_1_difficulty - semester_2_difficulty)
+            difficulty_balance_terms.append(penalty)
+        soft_objectives[difficulty_level].append(sum(difficulty_balance_terms or [0]))
+
+    category_diversity_terms = []
+    category_diversity_level = IMPORTANCE_LEVELS[data.course_category_diversity_importance]
+    if category_diversity_level:
+        # A category has no artificial ordinal position. Equal categories are
+        # always fully similar; only explicit catalog relationship rows add a
+        # cross-category affinity. Missing/unknown categories are neutral.
+        category_by_course = {item.course_id: item.category for item in data.course_difficulties}
+        category_similarity = {
+            tuple(sorted((item.category_a, item.category_b))): item.similarity_score
+            for item in data.course_category_relationships
+        }
+
+        def category_pair_similarity(left_course_id, right_course_id):
+            left_category = category_by_course.get(left_course_id, "")
+            right_category = category_by_course.get(right_course_id, "")
+            if not left_category or not right_category:
+                return 0
+            if left_category == right_category:
+                return 100
+            return category_similarity.get(tuple(sorted((left_category, right_category))), 0)
+
+        course_semester_presence = {}
+        fixed_courses_by_student_semester = defaultdict(set)
+        for row in fixed_rows:
+            fixed_courses_by_student_semester[row.student_id, row.semester].add(row.course_id)
+        for student_id in student_ids:
+            course_ids = {
+                request.course_id for request in data.requests if request.student_id == student_id
+            } | {
+                row.course_id for row in fixed_rows if row.student_id == student_id
+            }
+            for course_id in course_ids:
+                for semester in (1, 2):
+                    if course_id in fixed_courses_by_student_semester[student_id, semester]:
+                        course_semester_presence[student_id, course_id, semester] = 1
+                        continue
+                    variables_for_course = list(
+                        by_student_course_semester[student_id, course_id, semester]
+                    )
+                    if not variables_for_course:
+                        course_semester_presence[student_id, course_id, semester] = 0
+                        continue
+                    present = model.NewBoolVar(
+                        f"category_present_{student_id}_{course_id}_{semester}"
+                    )
+                    model.Add(sum(variables_for_course) == present)
+                    course_semester_presence[student_id, course_id, semester] = present
+        for student_id in student_ids:
+            course_ids = sorted({
+                request.course_id for request in data.requests if request.student_id == student_id
+            } | {
+                row.course_id for row in fixed_rows if row.student_id == student_id
+            })
+            for index, left_course_id in enumerate(course_ids):
+                for right_course_id in course_ids[index + 1:]:
+                    similarity = category_pair_similarity(left_course_id, right_course_id)
+                    if not similarity:
+                        continue
+                    for semester in (1, 2):
+                        left = course_semester_presence[student_id, left_course_id, semester]
+                        right = course_semester_presence[student_id, right_course_id, semester]
+                        if (isinstance(left, int) and left == 0) or (isinstance(right, int) and right == 0):
+                            continue
+                        if isinstance(left, int) and left == 1:
+                            shared_term = right
+                        elif isinstance(right, int) and right == 1:
+                            shared_term = left
+                        else:
+                            shared_term = model.NewBoolVar(
+                                f"category_concentration_{student_id}_{left_course_id}_{right_course_id}_{semester}"
+                            )
+                            model.AddBoolAnd((left, right)).OnlyEnforceIf(shared_term)
+                            model.AddBoolOr((left.Not(), right.Not(), shared_term))
+                        category_diversity_terms.append(similarity * shared_term)
+        soft_objectives[category_diversity_level].append(sum(category_diversity_terms or [0]))
+
     preservation_terms = []
     for request_id, enrollment in previous_enrollment_by_request.items():
         preservation_terms.extend(
@@ -1172,6 +1307,8 @@ def _solve_student_assignment(data, *, include_lock_costs):
             )),
             "section_utilization_balance_penalty": float(sum(solver.Value(item) for item in section_balance_terms)),
             "student_semester_balance_penalty": float(sum(solver.Value(item) for item in semester_balance_terms)),
+            "difficulty_balance_penalty": float(sum(solver.Value(item) for item in difficulty_balance_terms)),
+            "course_category_diversity_penalty": float(sum(solver.Value(item) for item in category_diversity_terms)),
             "schedule_preservation_move_penalty": float(sum(solver.Value(item) for item in preservation_terms)),
             "soft_sequence_preferences_satisfied": float(sum(item["satisfied"] for item in sequence_outcomes)),
         },

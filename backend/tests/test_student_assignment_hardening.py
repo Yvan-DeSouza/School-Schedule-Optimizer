@@ -33,6 +33,8 @@ def _importance():
         "section_utilization_balance": "not_important",
         "student_semester_balance": "not_important",
         "course_sequence_preferences": "not_important",
+        "difficulty_balance": "not_important",
+        "course_category_diversity": "not_important",
     }
 
 

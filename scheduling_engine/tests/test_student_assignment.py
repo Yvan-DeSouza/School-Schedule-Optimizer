@@ -4,6 +4,8 @@ from ortools.sat.python import cp_model
 
 import scheduling_engine.student_assignment as student_assignment_module
 from scheduling_engine.dto import (
+    CourseCategoryRelationshipDTO,
+    CourseDifficultyDTO,
     CoursePrerequisiteDTO,
     CourseSequencePreferenceDTO,
     FixedEnrollmentDTO,
@@ -45,6 +47,26 @@ def _input(**overrides):
     )
     values.update(overrides)
     return StudentAssignmentInputDTO(**values)
+
+
+def _difficulty(course_id, score, category="math"):
+    return CourseDifficultyDTO(
+        course_id=course_id,
+        category=category,
+        calculated_difficulty=score,
+        manual_difficulty_override=None,
+        effective_difficulty=score,
+        calculation_version="test_v1",
+    )
+
+
+def _semester_choice_sections():
+    return (
+        _section(1, semester=1, timeslot_id=101),
+        _section(2, semester=2, timeslot_id=201),
+        _section(3, delivery_group_id=2, member_course_offering_ids=(22,), member_course_ids=(2,), semester=1, timeslot_id=102),
+        _section(4, delivery_group_id=2, member_course_offering_ids=(22,), member_course_ids=(2,), semester=2, timeslot_id=202),
+    )
 
 
 def test_assigns_primary_to_accepted_section_deterministically():
@@ -120,6 +142,112 @@ def test_soft_sequence_is_reported_when_both_courses_apply():
     assert result.sequence_outcomes == ({
         "student_id": 1, "earlier_course_id": 1, "later_course_id": 2, "satisfied": True,
     },)
+
+
+def test_difficulty_balance_prefers_a_less_imbalanced_semester_split():
+    """Difficulty changes a soft preference only after request fulfillment."""
+
+    result = solve_student_assignment(_input(
+        requests=(
+            _request(1, course_id=1, course_offering_id=11),
+            _request(2, course_id=2, course_offering_id=22),
+        ),
+        sections=_semester_choice_sections(),
+        section_utilization_balance_importance="not_important",
+        student_semester_balance_importance="not_important",
+        course_sequence_preferences_importance="not_important",
+        difficulty_balance_importance="important",
+        course_difficulties=(_difficulty(1, 80), _difficulty(2, 20, "science")),
+    ))
+
+    by_request = {item.request_id: item for item in result.assignments}
+    assert result.status == "complete"
+    assert by_request[1].semester != by_request[2].semester
+    assert result.objective_components["difficulty_balance_penalty"] == 60
+
+
+def test_category_diversity_splits_repeated_categories_when_feasible():
+    result = solve_student_assignment(_input(
+        requests=(
+            _request(1, course_id=1, course_offering_id=11),
+            _request(2, course_id=2, course_offering_id=22),
+        ),
+        sections=_semester_choice_sections(),
+        section_utilization_balance_importance="not_important",
+        student_semester_balance_importance="not_important",
+        course_sequence_preferences_importance="not_important",
+        course_category_diversity_importance="important",
+        course_difficulties=(_difficulty(1, 50, "math"), _difficulty(2, 50, "math")),
+    ))
+
+    by_request = {item.request_id: item for item in result.assignments}
+    assert by_request[1].semester != by_request[2].semester
+    assert result.objective_components["course_category_diversity_penalty"] == 0
+
+
+def test_difficulty_and_category_importance_resolve_a_real_soft_preference_tradeoff():
+    """Counselor labels, rather than exposed weights, decide the winning tier."""
+
+    fixed = FixedEnrollmentDTO(
+        student_id=1, section_id=5, course_offering_id=33, course_id=3,
+        semester=1, timeslot_id=103,
+    )
+    sections = _semester_choice_sections() + (
+        _section(5, delivery_group_id=3, member_course_offering_ids=(33,), member_course_ids=(3,), semester=1, timeslot_id=103),
+    )
+    common = dict(
+        requests=(
+            _request(1, course_id=1, course_offering_id=11),
+            _request(2, course_id=2, course_offering_id=22),
+        ),
+        sections=sections,
+        fixed_enrollments=(fixed,),
+        section_utilization_balance_importance="not_important",
+        student_semester_balance_importance="not_important",
+        course_sequence_preferences_importance="not_important",
+        course_difficulties=(
+            _difficulty(1, 90, "math"),
+            _difficulty(2, 10, "math"),
+            _difficulty(3, 100, "science"),
+        ),
+    )
+    difficulty_first = solve_student_assignment(_input(
+        **common,
+        difficulty_balance_importance="extremely_important",
+        course_category_diversity_importance="important",
+    ))
+    category_first = solve_student_assignment(_input(
+        **common,
+        difficulty_balance_importance="important",
+        course_category_diversity_importance="extremely_important",
+    ))
+
+    assert {item.semester for item in difficulty_first.assignments} == {2}
+    assert {item.semester for item in category_first.assignments} == {1, 2}
+    assert difficulty_first.objective_components["difficulty_balance_penalty"] == 0
+    assert category_first.objective_components["course_category_diversity_penalty"] == 0
+
+
+def test_category_diversity_never_overrides_a_hard_semester_constraint():
+    result = solve_student_assignment(_input(
+        requests=(
+            _request(1, course_id=1, course_offering_id=11),
+            _request(2, course_id=2, course_offering_id=22),
+        ),
+        sections=(
+            _section(1, semester=1, timeslot_id=101),
+            _section(2, delivery_group_id=2, member_course_offering_ids=(22,), member_course_ids=(2,), semester=1, timeslot_id=102),
+        ),
+        section_utilization_balance_importance="not_important",
+        student_semester_balance_importance="not_important",
+        course_sequence_preferences_importance="not_important",
+        course_category_diversity_importance="extremely_important",
+        course_difficulties=(_difficulty(1, 50, "math"), _difficulty(2, 50, "math")),
+    ))
+
+    assert result.status == "complete"
+    assert {item.semester for item in result.assignments} == {1}
+    assert result.objective_components["course_category_diversity_penalty"] == 100
 
 
 def test_locked_active_enrollment_cannot_be_moved_in_a_rerun():
