@@ -7,7 +7,7 @@ changes section timing, rooms, teachers, or persisted enrollment records.
 
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import replace
 
 from ortools.sat.python import cp_model
@@ -326,6 +326,23 @@ def _build_initial_assignment_hints(
         section.section_id: section.capacity_max - len(fixed_by_section[section.section_id])
         for section in data.sections
     }
+    request_count_by_offering = Counter(
+        request.course_offering_id
+        for request in data.requests
+        if request_candidates[request.request_id]
+    )
+    capacity_by_offering = {}
+    for request in data.requests:
+        if request.course_offering_id in capacity_by_offering:
+            continue
+        capacity_by_offering[request.course_offering_id] = sum(
+            remaining_capacity[section.section_id]
+            for section, _variable in request_candidates[request.request_id]
+        )
+    slack_by_offering = {
+        offering_id: capacity_by_offering[offering_id] - request_count
+        for offering_id, request_count in request_count_by_offering.items()
+    }
     assigned_section_by_request = {}
 
     def assign_student(requests, used_timeslots):
@@ -361,6 +378,11 @@ def _build_initial_assignment_hints(
         student_requests = sorted(
             requests_by_student[student_id],
             key=lambda request: (
+                # The seed should protect a one-seat low-demand offering
+                # before a high-demand course with many spare seats. This is
+                # only search guidance; CP-SAT remains responsible for every
+                # fulfillment tier and hard scheduling rule.
+                slack_by_offering[request.course_offering_id],
                 not request.is_mandatory,
                 not request.is_primary,
                 len(request_candidates[request.request_id]),

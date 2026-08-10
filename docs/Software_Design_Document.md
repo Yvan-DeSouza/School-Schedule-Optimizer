@@ -1114,6 +1114,19 @@ deployment measurement.
   request in 135.126 seconds on the development Windows environment. Two
   additional unchanged runs produced identical request-to-section assignments,
   section loads, and objective values in 136.781 and 134.538 seconds.
+- Step 10 adds separate realistic-condition fixtures. A compact scenario
+  validates uneven capacity, approved backups, missing offerings, prerequisite
+  sequencing, A-D safety, historical/protected enrollments, exact locks,
+  preservation, and scoped reruns. Its uneven 1,400-student/300-section
+  counterpart completed all 9,800 requests in 72.132 and 76.375 seconds with
+  identical assignment-level output. A seed ordering issue for tight
+  low-capacity offerings was corrected as CP-SAT-validated guidance only; no
+  hard constraint or objective priority changed.
+- Student-specific course eligibility and optional request semantics are not
+  currently represented in the student-assignment DTO or adapter. The engine's
+  eligible-section result means an active placed offering is available under
+  existing lock/context rules; it is not a student-program eligibility check.
+  Historical prerequisite completion also remains an explicit assumed fact.
 - The benchmark is useful representative-fixture evidence, not proof of
   production quality. No queue threshold, production request limit, or
   performance dashboard exists.

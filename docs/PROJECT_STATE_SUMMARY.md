@@ -490,6 +490,14 @@ Where the workflow stops today:
   section-load hashes in 136.781 and 134.538 seconds. This is
   representative-fixture evidence, not yet a production qualification for
   real-school data or deployment request limits.
+- a separate realistic-condition validation fixture now covers uneven demand
+  and capacities, approved backups, missing offerings, prerequisites, A-D
+  collision safety, historical/protected enrollments, locks, preservation, and
+  scoped reruns. Its uneven 1,400-student/300-section fixture completed all
+  9,800 requests in 72.132 and 76.375 seconds with identical assignments. The
+  current data model still lacks student-specific course eligibility and an
+  optional-request category; transcript completion remains deliberately
+  assumed.
 
 ## 9. Known Divergences Between the SDD/Roadmap and Actual Code
 

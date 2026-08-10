@@ -126,3 +126,31 @@ Two further unchanged one-worker/seed-0 runs completed in 136.781 and 134.538
 seconds with identical request-to-section assignments, section loads, and
 objective values. That confirms assignment-level repeatability on this fixture,
 not a universal cross-platform determinism guarantee.
+
+## Step 10 realistic-condition validation
+
+`scheduling_engine/realistic_student_assignment_validation.py` adds a separate
+deterministic validation surface. Its compact scenario exercises uneven
+capacities, an approved backup, a missing offering, same-year prerequisite
+sequencing, A-D collision safety, protected and historical enrollments, an
+exact lock, schedule preservation, and a scoped rerun. The intentionally
+unmet requests remain partial results with stable diagnostics; the engine does
+not manufacture seats or relax a collision.
+
+Its separate 1,400-student/300-section fixture has ten high-demand, twenty
+medium-demand, and twenty low-demand courses with capacities of 336, 216, and
+141 seats respectively against demand of 280, 210, and 140. Step 10 found that
+the initial seed previously considered mandatory requests before tight
+low-capacity requests and could leave avoidable demand unseeded. The seed now
+orders each student's guidance by course-offering slack first; CP-SAT still
+validates the completed hint against every hard rule. The unchanged fixture
+then completed all 9,800 requests in 72.132 and 76.375 seconds with identical
+assignment-level and section-load output.
+
+This validation also records current model boundaries rather than inventing
+unsupported rules: student-specific course eligibility and optional
+(non-primary/non-approved-backup) requests are not represented in the DTO or
+adapter. Catalog/offering availability, teacher-specific locks in final
+staffing, and no-placed-section diagnostics are not substitutes for a
+student-program eligibility model. Historical prerequisite completion remains
+assumed under this first-release decision.
