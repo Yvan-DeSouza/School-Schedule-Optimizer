@@ -7,6 +7,7 @@ for the SDD target scale, and record elapsed time plus fulfillment counts.
 
 from __future__ import annotations
 
+from collections import Counter, defaultdict
 from time import perf_counter
 
 from .dto import (
@@ -71,17 +72,75 @@ def build_student_assignment_target_scale_fixture(
     )
 
 
+def summarize_student_assignment_target_scale_fixture(data: StudentAssignmentInputDTO):
+    """Return the benchmark's non-sensitive feasibility facts before solving.
+
+    The target-scale fixture is intentionally synthetic, but a benchmark result
+    is only interpretable alongside its required demand and usable capacity.
+    This summary reports those facts without changing the fixture or relaxing
+    any scheduling rule.
+    """
+
+    required_requests = tuple(
+        request for request in data.requests if request.is_mandatory or request.is_primary
+    )
+    sections_by_offering = defaultdict(list)
+    for section in data.sections:
+        for offering_id in section.member_course_offering_ids:
+            sections_by_offering[offering_id].append(section)
+
+    usable_sections = tuple(
+        section
+        for section in data.sections
+        if section.semester in {1, 2} and section.timeslot_id > 0 and section.capacity_max >= 0
+    )
+    required_by_course = Counter(request.course_id for request in required_requests)
+    capacity_by_course = Counter()
+    for section in usable_sections:
+        # This benchmark deliberately uses one offering/course per physical
+        # section, so its per-course capacity is not double-counted shared
+        # combined-delivery capacity.
+        for course_id in section.member_course_ids:
+            capacity_by_course[course_id] += section.capacity_max
+
+    course_capacity_shortages = {
+        course_id: required_by_course[course_id] - capacity_by_course[course_id]
+        for course_id in sorted(required_by_course)
+        if required_by_course[course_id] > capacity_by_course[course_id]
+    }
+    return {
+        "student_count": len({request.student_id for request in data.requests}),
+        "section_count": len(data.sections),
+        "request_count": len(data.requests),
+        "required_demand": len(required_requests),
+        "mandatory_request_count": sum(request.is_mandatory for request in data.requests),
+        "primary_request_count": sum(request.is_primary for request in data.requests),
+        "alternate_request_count": sum(not request.is_primary for request in data.requests),
+        "nominal_seat_capacity": sum(section.capacity_max for section in data.sections),
+        "usable_seat_capacity": sum(section.capacity_max for section in usable_sections),
+        "seat_surplus_deficit": sum(section.capacity_max for section in usable_sections) - len(required_requests),
+        "requests_without_eligible_section": sum(
+            not sections_by_offering[request.course_offering_id]
+            for request in required_requests
+        ),
+        "course_capacity_shortages": course_capacity_shortages,
+    }
+
+
 def run_target_scale_benchmark():
     """Return elapsed seconds and non-sensitive result-quality measures."""
 
+    data = build_student_assignment_target_scale_fixture()
     started = perf_counter()
-    result = solve_student_assignment(build_student_assignment_target_scale_fixture())
+    result = solve_student_assignment(data)
     return {
         "elapsed_seconds": round(perf_counter() - started, 3),
         "status": result.status,
+        "solver_outcome": result.solver_outcome,
         "assignment_count": len(result.assignments),
         "unmet_request_count": len(result.unmet_requests),
         "objective_components": dict(result.objective_components),
+        **summarize_student_assignment_target_scale_fixture(data),
     }
 
 

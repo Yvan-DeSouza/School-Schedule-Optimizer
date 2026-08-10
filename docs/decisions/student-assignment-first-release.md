@@ -103,6 +103,10 @@ Django migration files.
 
 `scheduling_engine/benchmark_student_assignment.py` provides a deterministic
 approximately 1,400-student/300-section fixture for manual target-scale
-measurement. The Step 6 measurement completed in 36.285 seconds but
-returned `infeasible` with 0 assignments and 9,800 unmet requests, so this stage
-is not yet described as target-scale ready.
+measurement. The Step 6 measurement completed in 36.285 seconds and publicly
+reported `infeasible` with 0 assignments and 9,800 unmet requests. Step 7
+showed that the fixture has 9,800 required requests, 10,500 usable seats, no
+course-specific shortage, and a complete independent capacity/timeslot
+assignment. The actual one-worker lexicographic CP-SAT pass timed out with
+`solver_outcome: unknown`; it was not an infeasibility proof. The benchmark now
+reports that outcome as `failed`, so this stage is not yet target-scale ready.

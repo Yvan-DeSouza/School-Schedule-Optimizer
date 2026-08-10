@@ -481,8 +481,11 @@ Where the workflow stops today:
   general enrollment override workflow yet;
 - no frontend application yet;
 - the target-scale benchmark is not ready: the approximately 1,400-student /
-  300-section fixture completed in 36.285 seconds with an
-  `infeasible` result, 0 assignments, and 9,800 unmet requests.
+  300-section fixture has 9,800 required requests and 10,500 usable seats,
+  with no course-specific seat shortage. An independent model found a complete
+  assignment, while the production one-worker lexicographic pass timed out as
+  `unknown`; the benchmark now reports that accurately as `failed` rather than
+  `infeasible`.
 
 ## 9. Known Divergences Between the SDD/Roadmap and Actual Code
 

@@ -1,5 +1,8 @@
 """Contracts for pure student-to-section assignment; no Django dependency."""
 
+from ortools.sat.python import cp_model
+
+import scheduling_engine.student_assignment as student_assignment_module
 from scheduling_engine.dto import (
     CoursePrerequisiteDTO,
     CourseSequencePreferenceDTO,
@@ -356,3 +359,18 @@ def test_unresolved_capacity_reason_identifies_the_competing_section_and_student
     assert unmet.diagnostic_code == "student_assignment_section_capacity_exhausted"
     assert unmet.blocking_section_id == 1
     assert unmet.blocking_student_id == 1
+
+
+def test_unknown_solver_outcome_is_failed_not_reported_as_infeasible(monkeypatch):
+    """A bounded search timeout cannot be presented as a proof of impossibility."""
+
+    monkeypatch.setattr(
+        student_assignment_module,
+        "_solve_lexicographically",
+        lambda *_args, **_kwargs: (None, cp_model.UNKNOWN),
+    )
+
+    result = solve_student_assignment(_input())
+
+    assert result.status == "failed"
+    assert result.solver_outcome == "unknown"

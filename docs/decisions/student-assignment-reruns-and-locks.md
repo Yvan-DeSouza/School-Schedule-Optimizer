@@ -159,8 +159,13 @@ The approximately 1,400-student/300-section benchmark was run with:
 $env:PYTHONPATH='.'; .\.venv\Scripts\python.exe -m scheduling_engine.benchmark_student_assignment
 ```
 
-On the development Windows environment, it completed in 36.285
-seconds but returned `infeasible` with 0 assignments and 9,800 unmet requests.
-That is evidence that target-scale quality is not yet established; it is not a
-claim of target-scale readiness. No speculative solver or infrastructure change
-was made in this hardening pass.
+On the development Windows environment, it completed in 36.285 seconds and
+publicly returned `infeasible` with 0 assignments and 9,800 unmet requests.
+Step 7 established that the fixture is mathematically feasible: its 9,800
+required requests have 10,500 usable seats, every course has a 14-seat surplus,
+and an independent capacity/timeslot feasibility model assigned all requests.
+The real cause was a bounded one-worker lexicographic pass returning
+`solver_outcome: unknown`, not a proof of infeasibility. The engine now reports
+that state as `failed` and the benchmark prints its demand/capacity audit; it
+remains evidence that target-scale readiness is not established. No speculative
+solver or infrastructure change was made in this hardening pass.

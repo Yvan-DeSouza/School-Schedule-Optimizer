@@ -112,7 +112,7 @@ The design goals are:
 | Safe authorization | Resource and action policies fail closed, and policy filtering occurs before client query filtering. |
 | Explainable failure | Stable diagnostic and workflow codes accompany human-readable messages. |
 | Maintainable engine boundary | Django owns persistence and orchestration; the pure engine consumes immutable DTOs and returns plain result data. |
-| Appropriate scale | The current target is a single school at approximately 1,400 students, 80 teachers, and 250-350 sections. The Step 6 benchmark completed in 36.285 seconds but returned infeasible with 0 assignments and 9,800 unmet requests, so target-scale readiness is not established. |
+| Appropriate scale | The current target is a single school at approximately 1,400 students, 80 teachers, and 250-350 sections. Step 7 established that the 1,400-student/300-section fixture is mathematically feasible (9,800 required requests; 10,500 usable seats), but the one-worker lexicographic solve timed out as `unknown`; target-scale readiness is not established. |
 
 The project also preserves a migrationless pre-production schema workflow:
 project apps do not contain migration files, and an authorized local schema
@@ -197,7 +197,7 @@ but those foundations do not constitute an implemented capability.
 
 | Category | Current status and design |
 |---|---|
-| Performance | CP-SAT stages use bounded solver calls. The Step 6 representative student-assignment benchmark completed in approximately 35 seconds but returned infeasible with 0 assignments and 9,800 unmet requests, so target-scale quality/readiness is not established. |
+| Performance | CP-SAT stages use bounded solver calls. The Step 7 audit proved the representative student-assignment fixture is feasible, but the production one-worker lexicographic solve times out before finding a candidate. It is reported as `failed` with `solver_outcome: unknown`, so target-scale quality/readiness is not established. |
 | Scalability | The pure engine and stage boundaries support future isolation, but the current deployment is a single Django/PostgreSQL application with synchronous solver calls. Horizontal worker scaling is not implemented. |
 | Maintainability | The engine is Django-free, the adapter is the ORM-to-DTO boundary, and services own multi-model workflows. These boundaries are covered by import and service tests. |
 | Auditability | Immutable run, approval, placement, teacher-assignment, offering, staffing, and reconciliation records preserve accepted decisions. General override history remains incomplete. |
@@ -1102,12 +1102,14 @@ not establish target-scale readiness.
   seed/search configuration where applicable.
 - The current run services execute synchronously, so request duration is part
   of the current operational contract.
-- The approximately 1,400-student/300-section benchmark completed in
-  36.285 seconds on the development Windows environment, but
-  returned `infeasible` with 0 assignments and 9,800 unmet requests.
-- The benchmark is therefore a measured warning, not proof of production
-  quality. No queue threshold, warm-start contract, or performance dashboard
-  exists.
+- The approximately 1,400-student/300-section fixture has 9,800 required
+  requests, 10,500 usable seats, no course-specific seat shortage, and a
+  complete independent capacity/timeslot feasibility assignment. The production
+  one-worker lexicographic solve still reaches `unknown` before finding a
+  candidate; it is correctly reported as `failed`, not `infeasible`.
+- The benchmark is therefore a measured warning about current deterministic
+  search performance, not proof of production quality. No queue threshold,
+  warm-start contract, or performance dashboard exists.
 
 The next performance task is representative benchmark evidence for each stage.
 Only after that evidence should the project decide whether to add a worker,

@@ -766,8 +766,13 @@ def _solve_student_assignment(data, *, include_lock_costs):
 
     solver, outcome = _solve_lexicographically(model, objectives, data.time_limit_seconds)
     if solver is None:
+        # CP-SAT ``UNKNOWN`` means the bounded solve ended without a proof or a
+        # usable candidate. It is not evidence that the scheduling facts are
+        # mathematically infeasible, so preserve that distinction for review
+        # and for the target-scale benchmark.
+        result_status = "infeasible" if outcome == cp_model.INFEASIBLE else "failed"
         result = StudentAssignmentResultDTO(
-            status="infeasible",
+            status=result_status,
             solver_outcome=_outcome_name(outcome),
             assignments=(),
             unmet_requests=tuple(
