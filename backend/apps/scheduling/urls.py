@@ -18,6 +18,7 @@ from backend.apps.scheduling.views import (
     TeacherTimePreferenceViewSet,
     TeacherAssignmentRunViewSet,
     StudentAssignmentRunViewSet,
+    StudentAssignmentLockViewSet,
     TeacherPlanningRosterViewSet,
     TimeSlotViewSet,
     AnnualPlacementLockViewSet,
@@ -38,6 +39,7 @@ router.register("planning/section-count-runs", SectionPlanningRunViewSet, basena
 router.register("planning/section-placement-runs", SectionPlacementRunViewSet, basename="section-placement-run")
 router.register("planning/teacher-assignment-runs", TeacherAssignmentRunViewSet, basename="teacher-assignment-run")
 router.register("planning/student-assignment-runs", StudentAssignmentRunViewSet, basename="student-assignment-run")
+router.register("planning/student-assignment-locks", StudentAssignmentLockViewSet, basename="student-assignment-lock")
 router.register("planning/section-budget-runs", SectionBudgetRunViewSet, basename="section-budget-run")
 router.register("planning/staffing-runs", StaffingPlanRunViewSet, basename="staffing-plan-run")
 

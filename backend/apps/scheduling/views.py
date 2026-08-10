@@ -6,6 +6,7 @@ is restricted to the scheduling adapter/snapshot boundary by project convention.
 """
 
 from rest_framework import mixins, status, viewsets
+from rest_framework.permissions import BasePermission
 from rest_framework.decorators import action
 from rest_framework.exceptions import APIException, NotFound, ValidationError
 from rest_framework.response import Response
@@ -14,11 +15,15 @@ from django.db.models import Count
 
 from backend.apps.access.action_policies.demand import DemandPlanningAction, DemandPlanningActionPolicy
 from backend.apps.access.action_policies.scheduling import SchedulingAction, SchedulingActionPolicy
+from backend.apps.access.action_policies.student_assignment import (
+    StudentAssignmentLockAction,
+    StudentAssignmentLockActionPolicy,
+)
 from backend.apps.access.permissions import ActionPolicyPermission
 from backend.apps.access.resource_policies.planning import PlanningConfigurationPolicy
 from backend.apps.access.viewsets import PolicyFilteredModelViewSet
 from backend.apps.common.models import AcademicYear
-from backend.apps.common.exceptions import DomainValidationError
+from backend.apps.common.exceptions import DomainConflictError, DomainValidationError
 from backend.apps.common.views import ReferenceDataViewSet
 from backend.apps.scheduling.codes import (
     SECTION_PLACEMENT_CONFLICT,
@@ -45,6 +50,7 @@ from backend.apps.scheduling.models import (
     TeacherAssignmentApproval,
     StudentAssignmentRun,
     StudentAssignmentApproval,
+    StudentAssignmentLock,
     TeacherPlanningRoster,
     TimeSlot,
     AnnualPlacementLock,
@@ -85,6 +91,10 @@ from backend.apps.scheduling.serializers import (
     StudentAssignmentRunSerializer,
     StudentAssignmentApprovalRequestSerializer,
     StudentAssignmentApprovalSerializer,
+    StudentAssignmentLockCreateSerializer,
+    StudentAssignmentLockReleaseSerializer,
+    StudentAssignmentLockSerializer,
+    StudentAssignmentWhatIfUnlockSerializer,
     TeacherPlanningRosterMembersSerializer,
     TeacherPlanningRosterSerializer,
     TimeSlotSerializer,
@@ -120,6 +130,161 @@ class StudentAssignmentConflict(APIException):
 
     status_code = status.HTTP_409_CONFLICT
     default_code = STUDENT_ASSIGNMENT_CONFLICT
+
+
+_STUDENT_ASSIGNMENT_LOCK_ACTIONS = {
+    "exact_student_section": {
+        "create": StudentAssignmentLockAction.CREATE_EXACT_SECTION_LOCK,
+        "release": StudentAssignmentLockAction.RELEASE_EXACT_SECTION_LOCK,
+        "view": StudentAssignmentLockAction.VIEW_EXACT_SECTION_LOCK,
+    },
+    "whole_student_schedule": {
+        "create": StudentAssignmentLockAction.CREATE_WHOLE_SCHEDULE_LOCK,
+        "release": StudentAssignmentLockAction.RELEASE_WHOLE_SCHEDULE_LOCK,
+        "view": StudentAssignmentLockAction.VIEW_WHOLE_SCHEDULE_LOCK,
+    },
+    "section_roster": {
+        "create": StudentAssignmentLockAction.CREATE_SECTION_ROSTER_FREEZE,
+        "release": StudentAssignmentLockAction.RELEASE_SECTION_ROSTER_FREEZE,
+        "view": StudentAssignmentLockAction.VIEW_SECTION_ROSTER_FREEZE,
+    },
+    "course_roster": {
+        "create": StudentAssignmentLockAction.CREATE_COURSE_ROSTER_FREEZE,
+        "release": StudentAssignmentLockAction.RELEASE_COURSE_ROSTER_FREEZE,
+        "view": StudentAssignmentLockAction.VIEW_COURSE_ROSTER_FREEZE,
+    },
+    "student_group_same_section": {
+        "create": StudentAssignmentLockAction.CREATE_STUDENT_GROUP_LOCK,
+        "release": StudentAssignmentLockAction.RELEASE_STUDENT_GROUP_LOCK,
+        "view": StudentAssignmentLockAction.VIEW_STUDENT_GROUP_LOCK,
+    },
+    "student_teacher_course": {
+        "create": StudentAssignmentLockAction.CREATE_STUDENT_TEACHER_LOCK,
+        "release": StudentAssignmentLockAction.RELEASE_STUDENT_TEACHER_LOCK,
+        "view": StudentAssignmentLockAction.VIEW_STUDENT_TEACHER_LOCK,
+    },
+}
+
+
+class StudentAssignmentLockEndpointPermission(BasePermission):
+    """Route one endpoint through the existing lock-type action matrix.
+
+    The combined list endpoint checks all six existing query actions.  It does
+    not introduce a seventh "view all" permission that could accidentally
+    drift from the audited policy declarations.
+    """
+
+    def has_permission(self, request, view):
+        policy = getattr(view, "action_policy_class", None)
+        if policy is None:
+            return False
+        if view.action == "list":
+            return all(
+                policy.can_execute(request.user, action=actions["view"], context=view)
+                for actions in _STUDENT_ASSIGNMENT_LOCK_ACTIONS.values()
+            )
+        action = getattr(view, "action_name", None)
+        return bool(action) and policy.can_execute(request.user, action=action, context=view)
+
+
+class StudentAssignmentLockViewSet(
+    mixins.CreateModelMixin,
+    mixins.ListModelMixin,
+    viewsets.GenericViewSet,
+):
+    """Create, release, and review the six append-only student lock types."""
+
+    permission_classes = [StudentAssignmentLockEndpointPermission]
+    action_policy_class = StudentAssignmentLockActionPolicy
+    action_name = None
+    queryset = StudentAssignmentLock.objects.select_related(
+        "academic_year", "student", "section", "course", "teacher", "created_by", "released_by",
+    ).prefetch_related("members").order_by("id")
+
+    def get_permissions(self):
+        if self.action == "create":
+            lock_type = self.request.data.get("lock_type")
+            self.action_name = _STUDENT_ASSIGNMENT_LOCK_ACTIONS.get(lock_type, {}).get("create")
+        elif self.action == "release":
+            lock_type = StudentAssignmentLock.objects.filter(
+                pk=self.kwargs.get("pk"),
+            ).values_list("lock_type", flat=True).first()
+            self.action_name = _STUDENT_ASSIGNMENT_LOCK_ACTIONS.get(lock_type, {}).get("release")
+        else:
+            # The permission checks all six existing query actions for a
+            # combined list, rather than inventing a broader action name.
+            self.action_name = None
+        return super().get_permissions()
+
+    def get_serializer_class(self):
+        if self.action == "create":
+            return StudentAssignmentLockCreateSerializer
+        if self.action == "release":
+            return StudentAssignmentLockReleaseSerializer
+        return StudentAssignmentLockSerializer
+
+    def list(self, request, *args, **kwargs):
+        academic_year = request.query_params.get("academic_year")
+        if not academic_year or not str(academic_year).isdigit():
+            raise ValidationError({"academic_year": "A valid academic year id is required."})
+        queryset = self.get_queryset().filter(academic_year_id=int(academic_year), is_active=True)
+        return Response(StudentAssignmentLockSerializer(queryset, many=True).data)
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        from backend.apps.courses.models import Course, Section
+        from backend.apps.people.models import Student, Teacher
+        from backend.apps.scheduling.services.student_assignment_locks import create_student_assignment_lock
+
+        values = serializer.validated_data
+        try:
+            academic_year = AcademicYear.objects.get(pk=values["academic_year"])
+            targets = {
+                "student": Student.objects.get(pk=values["student"]) if values.get("student") else None,
+                "section": Section.objects.get(pk=values["section"]) if values.get("section") else None,
+                "course": Course.objects.get(pk=values["course"]) if values.get("course") else None,
+                "teacher": Teacher.objects.get(pk=values["teacher"]) if values.get("teacher") else None,
+            }
+            group_ids = values.get("group_student_ids", ())
+            group_students = list(Student.objects.filter(pk__in=group_ids).order_by("id"))
+            if len(group_students) != len(set(group_ids)):
+                raise ValidationError({"group_student_ids": "Every group student must exist."})
+            lock = create_student_assignment_lock(
+                academic_year=academic_year,
+                lock_type=values["lock_type"],
+                created_by=request.user,
+                reason=values["reason"],
+                staffing_mode=values.get("staffing_mode"),
+                group_students=group_students,
+                **targets,
+            )
+        except AcademicYear.DoesNotExist as error:
+            raise NotFound("Academic year not found.") from error
+        except (Student.DoesNotExist, Section.DoesNotExist, Course.DoesNotExist, Teacher.DoesNotExist) as error:
+            raise ValidationError({"target": "Every referenced lock target must exist."}) from error
+        except DomainValidationError as error:
+            raise ValidationError(error.detail) from error
+        lock = self.get_queryset().get(pk=lock.pk)
+        return Response(StudentAssignmentLockSerializer(lock).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"])
+    def release(self, request, pk=None):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        from backend.apps.scheduling.services.student_assignment_locks import release_student_assignment_lock
+        try:
+            lock = release_student_assignment_lock(
+                self.get_object(),
+                released_by=request.user,
+                release_reason=serializer.validated_data["release_reason"],
+            )
+        except DomainValidationError as error:
+            raise ValidationError(error.detail) from error
+        except DomainConflictError as error:
+            raise StudentAssignmentConflict(error.detail) from error
+        lock = self.get_queryset().get(pk=lock.pk)
+        return Response(StudentAssignmentLockSerializer(lock).data)
 
 
 class TimeSlotViewSet(ReferenceDataViewSet):
@@ -603,7 +768,8 @@ class StudentAssignmentRunViewSet(
     action_policy_class = SchedulingActionPolicy
     action_name = SchedulingAction.VIEW_SCHEDULING_RUN_STATUS
     queryset = StudentAssignmentRun.objects.select_related(
-        "academic_year", "provisional_teacher_assignment_run", "created_by", "approval__approved_by",
+        "academic_year", "provisional_teacher_assignment_run", "source_approval",
+        "created_by", "approval__approved_by",
     ).prefetch_related("approval__enrollment_provenance__enrollment")
 
     def get_permissions(self):
@@ -642,6 +808,44 @@ class StudentAssignmentRunViewSet(
 
         try:
             preview = preview_student_assignment_approval(self.get_object())
+        except StudentAssignmentValidationError as error:
+            raise ValidationError(error.detail) from error
+        except StudentAssignmentConflictError as error:
+            raise StudentAssignmentConflict(error.detail) from error
+        return Response(preview)
+
+    @action(detail=True, methods=["get"], url_path=r"students/(?P<student_id>[0-9]+)/explanation")
+    def student_explanation(self, request, pk=None, student_id=None):
+        from backend.apps.scheduling.services.student_assignment import (
+            StudentAssignmentConflictError,
+            StudentAssignmentValidationError,
+            student_assignment_student_explanation,
+        )
+
+        try:
+            explanation = student_assignment_student_explanation(
+                self.get_object(), student_id=student_id,
+            )
+        except StudentAssignmentValidationError as error:
+            raise ValidationError(error.detail) from error
+        except StudentAssignmentConflictError as error:
+            raise StudentAssignmentConflict(error.detail) from error
+        return Response(explanation)
+
+    @action(detail=True, methods=["post"], url_path="what-if-unlock")
+    def what_if_unlock(self, request, pk=None):
+        from backend.apps.scheduling.services.student_assignment import (
+            StudentAssignmentConflictError,
+            StudentAssignmentValidationError,
+            preview_student_assignment_unlock,
+        )
+
+        serializer = StudentAssignmentWhatIfUnlockSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            preview = preview_student_assignment_unlock(
+                self.get_object(), lock_ids=serializer.validated_data["lock_ids"],
+            )
         except StudentAssignmentValidationError as error:
             raise ValidationError(error.detail) from error
         except StudentAssignmentConflictError as error:

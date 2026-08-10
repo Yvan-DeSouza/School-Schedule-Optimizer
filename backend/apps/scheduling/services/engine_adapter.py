@@ -809,13 +809,15 @@ def load_student_assignment_input(
     *, academic_year_id, staffing_mode, provisional_teacher_assignment_run=None,
     soft_constraint_importance, scope=None, priority_request_ids=(),
     priority_request_limit=100, schedule_preservation_level="none",
+    selected_lock_ids=None,
 ):
     """Load a fully detached student-assignment snapshot.
 
-    The adapter deliberately loads all active locks and all target-year
-    request facts. Scope flags are resolved into the DTOs so the engine can
-    ignore out-of-scope decisions without losing the audit/fingerprint facts
-    needed when approval revalidates the run.
+    Scope flags are resolved into the DTOs so the engine can ignore
+    out-of-scope decisions without losing the audit/fingerprint facts needed
+    when approval revalidates the run.  A normal run honors every active lock;
+    an explicit lock selection is used only for the audited what-if path or a
+    deliberately narrowed rerun input.
     """
 
     academic_year_id = int(academic_year_id)
@@ -899,6 +901,18 @@ def load_student_assignment_input(
             is_active=True,
         ).prefetch_related("members").order_by("id")
     )
+    if selected_lock_ids is not None:
+        try:
+            selected_lock_ids = tuple(sorted({int(lock_id) for lock_id in selected_lock_ids}))
+        except (TypeError, ValueError) as error:
+            raise ValueError("Selected lock IDs must be positive integer identifiers.") from error
+        if any(lock_id <= 0 for lock_id in selected_lock_ids):
+            raise ValueError("Selected lock IDs must be positive integer identifiers.")
+        active_lock_by_id = {lock.id: lock for lock in active_locks}
+        missing_lock_ids = [lock_id for lock_id in selected_lock_ids if lock_id not in active_lock_by_id]
+        if missing_lock_ids:
+            raise ValueError(f"Selected student-assignment locks are not active: {missing_lock_ids}.")
+        active_locks = [active_lock_by_id[lock_id] for lock_id in selected_lock_ids]
     from backend.apps.scheduling.services.student_assignment_locks import (
         validate_student_assignment_lock_staffing_mode,
     )

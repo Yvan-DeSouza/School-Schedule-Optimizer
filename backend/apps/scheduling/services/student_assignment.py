@@ -1,13 +1,15 @@
-"""Immutable student-assignment runs and transactional enrollment approval."""
+"""Immutable student-assignment runs, review, preview, and approval workflows."""
 
-from dataclasses import asdict
+from dataclasses import asdict, replace
 
 from django.db import transaction
 
 from scheduling_engine.dto import StudentAssignmentScopeDTO
 from scheduling_engine.diagnostics import (
+    STUDENT_ASSIGNMENT_LOCKED_ENROLLMENT_BLOCKS_REQUEST,
     STUDENT_ASSIGNMENT_INPUT_CHANGED_SINCE_RUN,
     STUDENT_ASSIGNMENT_STAFFING_CONTEXT_CHANGED_SINCE_RUN,
+    STUDENT_ASSIGNMENT_UNRESOLVED_REQUIRED_REQUEST,
 )
 from scheduling_engine.student_assignment import solve_student_assignment
 
@@ -26,12 +28,15 @@ from backend.apps.scheduling.constants import (
     STUDENT_ASSIGNMENT_RUN_STATUS_INFEASIBLE,
     STUDENT_ASSIGNMENT_RUN_STATUS_PARTIAL,
     STUDENT_ASSIGNMENT_DEFAULT_MAX_PRIORITY_REQUESTS,
+    STUDENT_ASSIGNMENT_SCHEDULE_PRESERVATION_NONE,
     STUDENT_ASSIGNMENT_RUN_SCOPE_FULL,
     STUDENT_ASSIGNMENT_RUN_SCOPE_SCOPED,
 )
+from backend.apps.scheduling.codes import STUDENT_ASSIGNMENT_WHAT_IF_LOCK_NOT_ACTIVE
 from backend.apps.scheduling.models import (
     StudentAssignmentApproval,
     StudentAssignmentApprovalEnrollment,
+    StudentAssignmentLock,
     StudentAssignmentRun,
 )
 from backend.apps.scheduling.services.engine_adapter import (
@@ -152,12 +157,19 @@ def _relevant_lock_ids(lock, snapshot):
 
 
 def _relevant_lock_context(snapshot):
+    def canonical(value):
+        if isinstance(value, dict):
+            return tuple(sorted((key, canonical(item)) for key, item in value.items()))
+        if isinstance(value, (list, tuple)):
+            return tuple(canonical(item) for item in value)
+        return value
+
     return tuple(sorted(
         (
-            item for item in snapshot.get("student_assignment_locks", ())
+            canonical(item) for item in snapshot.get("student_assignment_locks", ())
             if _relevant_lock_ids(item, snapshot)
         ),
-        key=lambda item: int(item["lock_id"]),
+        key=lambda item: dict(item)["lock_id"],
     ))
 
 
@@ -166,6 +178,24 @@ def _snapshot(data, staffing_context):
     value["staffing_context"] = staffing_context
     value["fingerprint"] = placement_input_fingerprint(value)
     return value
+
+
+def _importance_from_snapshot(snapshot):
+    return {
+        "section_utilization_balance": snapshot["section_utilization_balance_importance"],
+        "student_semester_balance": snapshot["student_semester_balance_importance"],
+        "course_sequence_preferences": snapshot["course_sequence_preferences_importance"],
+    }
+
+
+def _selected_lock_ids_from_snapshot(snapshot):
+    """Return the exact lock selection used by the immutable candidate."""
+
+    return tuple(sorted(
+        int(item.get("lock_id"))
+        for item in snapshot.get("student_assignment_locks", ())
+        if item.get("lock_id") is not None
+    ))
 
 
 def _snapshot_fingerprint_without_locks(snapshot):
@@ -183,7 +213,8 @@ def create_student_assignment_run(
     scope_type=STUDENT_ASSIGNMENT_RUN_SCOPE_FULL, source_approval=None,
     scope_student_ids=(), scope_course_ids=(), scope_section_ids=(),
     priority_request_ids=(), priority_request_limit=STUDENT_ASSIGNMENT_DEFAULT_MAX_PRIORITY_REQUESTS,
-    schedule_preservation_level="none",
+    schedule_preservation_level=STUDENT_ASSIGNMENT_SCHEDULE_PRESERVATION_NONE,
+    selected_lock_ids=None,
 ):
     """Solve once against a detached target-year snapshot without writes."""
 
@@ -205,6 +236,7 @@ def create_student_assignment_run(
         priority_request_ids=priority_request_ids,
         priority_request_limit=priority_request_limit,
         schedule_preservation_level=schedule_preservation_level,
+        selected_lock_ids=selected_lock_ids,
     )
     result = solve_student_assignment(data)
     status = {
@@ -213,6 +245,10 @@ def create_student_assignment_run(
         "infeasible": STUDENT_ASSIGNMENT_RUN_STATUS_INFEASIBLE,
     }.get(result.status, STUDENT_ASSIGNMENT_RUN_STATUS_FAILED)
     snapshot = _snapshot(data, staffing_context)
+    # The DTO's lock list is the resolved, immutable record of what the run
+    # honored.  Keeping this explicit makes a future configurable lock policy
+    # auditable without changing the meaning of old runs.
+    snapshot["selected_lock_ids"] = [item["lock_id"] for item in snapshot["student_assignment_locks"]]
     return StudentAssignmentRun.objects.create(
         academic_year_id=academic_year_id,
         staffing_mode=staffing_mode,
@@ -246,26 +282,32 @@ def _current_input_for_run(run):
     """Reload once and reject data/staffing drift; never re-solve on approval."""
 
     snapshot = run.input_snapshot
-    data, staffing_context = load_student_assignment_input(
-        academic_year_id=run.academic_year_id,
-        staffing_mode=run.staffing_mode,
-        provisional_teacher_assignment_run=run.provisional_teacher_assignment_run,
-        soft_constraint_importance={
-            "section_utilization_balance": snapshot["section_utilization_balance_importance"],
-            "student_semester_balance": snapshot["student_semester_balance_importance"],
-            "course_sequence_preferences": snapshot["course_sequence_preferences_importance"],
-        },
-        scope=_snapshot_scope(snapshot),
-        priority_request_ids=tuple(snapshot.get("priority_request_ids", ())),
-        priority_request_limit=snapshot.get(
-            "priority_request_limit",
-            STUDENT_ASSIGNMENT_DEFAULT_MAX_PRIORITY_REQUESTS,
-        ),
-        schedule_preservation_level=snapshot.get("schedule_preservation_level", "none"),
-    )
+    selected_lock_ids = _selected_lock_ids_from_snapshot(snapshot)
+    try:
+        data, staffing_context = load_student_assignment_input(
+            academic_year_id=run.academic_year_id,
+            staffing_mode=run.staffing_mode,
+            provisional_teacher_assignment_run=run.provisional_teacher_assignment_run,
+            soft_constraint_importance=_importance_from_snapshot(snapshot),
+            scope=_snapshot_scope(snapshot),
+            priority_request_ids=tuple(snapshot.get("priority_request_ids", ())),
+            priority_request_limit=snapshot.get(
+                "priority_request_limit",
+                STUDENT_ASSIGNMENT_DEFAULT_MAX_PRIORITY_REQUESTS,
+            ),
+            schedule_preservation_level=snapshot.get("schedule_preservation_level", "none"),
+            selected_lock_ids=selected_lock_ids,
+        )
+    except ValueError as error:
+        # A selected lock being released is a workflow conflict, not an
+        # unstructured adapter failure; clients need the stable rerun code.
+        if "Selected student-assignment locks are not active" in str(error):
+            raise StudentAssignmentConflictError({
+                "code": STUDENT_ASSIGNMENT_RERUN_CONTEXT_CHANGED,
+                "detail": "A selected student-assignment lock was released; create and review a new run.",
+            }) from error
+        raise
     current = _snapshot(data, staffing_context)
-    if current["fingerprint"] == snapshot.get("fingerprint"):
-        return data, staffing_context
     stored_context = snapshot.get("staffing_context")
     if staffing_context != stored_context:
         raise StudentAssignmentConflictError({
@@ -277,6 +319,32 @@ def _current_input_for_run(run):
             "code": STUDENT_ASSIGNMENT_RERUN_CONTEXT_CHANGED,
             "detail": "A student-assignment lock affecting this run changed; create and review a new run.",
         })
+    # A lock added after a run was created may not be in the run's selected
+    # snapshot.  It still invalidates approval when it affects the resolved
+    # scope; silently ignoring it would let approval bypass a counselor's new
+    # protection decision.
+    current_active_locks = StudentAssignmentLock.objects.filter(
+        academic_year_id=run.academic_year_id,
+        is_active=True,
+    ).prefetch_related("members").order_by("id")
+    selected_ids = set(selected_lock_ids)
+    for lock in current_active_locks:
+        lock_value = {
+            "lock_id": lock.id,
+            "lock_type": lock.lock_type,
+            "student_id": lock.student_id,
+            "section_id": lock.section_id,
+            "course_id": lock.course_id,
+            "teacher_id": lock.teacher_id,
+            "member_student_ids": tuple(lock.members.values_list("student_id", flat=True)),
+        }
+        if int(lock.id) not in selected_ids and _relevant_lock_ids(lock_value, snapshot):
+            raise StudentAssignmentConflictError({
+                "code": STUDENT_ASSIGNMENT_RERUN_CONTEXT_CHANGED,
+                "detail": "A new student-assignment lock affects this run; create and review a new run.",
+            })
+    if current["fingerprint"] == snapshot.get("fingerprint"):
+        return data, staffing_context
     if _snapshot_fingerprint_without_locks(current) == _snapshot_fingerprint_without_locks(snapshot):
         # A lock unrelated to the approved scope may change during a long
         # planning cycle without invalidating this run's candidate.
@@ -292,18 +360,221 @@ def preview_student_assignment_approval(run):
 
     _require_complete_unapproved(run)
     try:
-        _current_input_for_run(run)
+        data, _staffing_context = _current_input_for_run(run)
     except ValueError as error:
         raise StudentAssignmentConflictError({"detail": str(error)}) from error
+    return _build_student_assignment_review(run, data=data)
+
+
+def _assignment_key(item):
+    return int(item["request_id"]), int(item["section_id"])
+
+
+def _soft_priority_effects(data, result):
+    """Use bounded counterfactual solves to report influence, not enablement."""
+
+    result_value = asdict(result) if hasattr(result, "__dataclass_fields__") else result
+    base_assignments = {_assignment_key(item) for item in result_value.get("assignments", ())}
+    controls = (
+        ("course_sequence_preferences", "course_sequence_preferences_importance"),
+        ("section_utilization_balance", "section_utilization_balance_importance"),
+        ("student_semester_balance", "student_semester_balance_importance"),
+    )
+    effects = {}
+    for name, field_name in controls:
+        importance = getattr(data, field_name)
+        # Review should remain responsive even when the original solve used
+        # the full engine budget.  This comparison is explanatory evidence,
+        # not a replacement recommendation; the immutable run result remains
+        # authoritative if the bounded counterfactual cannot finish.
+        disabled = replace(
+            data,
+            time_limit_seconds=min(data.time_limit_seconds, 0.5),
+            **{field_name: "not_important"},
+        )
+        counterfactual = solve_student_assignment(disabled)
+        counterfactual_assignments = {_assignment_key(item) for item in asdict(counterfactual).get("assignments", ())}
+        effects[name] = {
+            "importance": importance,
+            "influenced": importance != "not_important" and counterfactual_assignments != base_assignments,
+        }
+    return effects
+
+
+def _build_student_assignment_review(run, *, data):
+    """Build a stable counselor review shape from the immutable stored result."""
+
+    result = run.result
+    assignments = list(result.get("assignments", ()))
+    unmet = list(result.get("unmet_requests", ()))
+    new_assignments = [item for item in assignments if item.get("previous_enrollment_id") is None]
+    changed_assignments = [
+        item for item in assignments
+        if item.get("previous_enrollment_id") is not None
+        and item.get("previous_section_id") != item.get("section_id")
+    ]
+    unchanged_assignments = [
+        item for item in assignments
+        if item.get("previous_enrollment_id") is not None
+        and item.get("previous_section_id") == item.get("section_id")
+    ]
+    protected_assignments = [
+        item for item in unmet
+        if item.get("blocking_lock_id") is not None
+        or item.get("diagnostic_code") == STUDENT_ASSIGNMENT_LOCKED_ENROLLMENT_BLOCKS_REQUEST
+    ]
+    student_ids_for = lambda rows: len({int(item["student_id"]) for item in rows if item.get("student_id") is not None})
     return {
         "approval_allowed": True,
-        "assignment_count": len(run.result.get("assignments", [])),
-        "assignments": run.result.get("assignments", []),
-        "unmet_requests": run.result.get("unmet_requests", []),
-        "diagnostics": run.result.get("diagnostics", []),
-        "objective_components": run.result.get("objective_components", {}),
-        "sequence_outcomes": run.result.get("sequence_outcomes", []),
+        "assignment_count": len(assignments),
+        "assignments": assignments,
+        "unmet_requests": unmet,
+        "diagnostics": result.get("diagnostics", []),
+        "objective_components": result.get("objective_components", {}),
+        "sequence_outcomes": result.get("sequence_outcomes", []),
+        "lock_costs": result.get("lock_costs", []),
+        "seat_contention": result.get("seat_contention", []),
+        "section_balance_facts": result.get("section_balance_facts", []),
+        "new_assignments": new_assignments,
+        "changed_assignments": changed_assignments,
+        "protected_assignments": protected_assignments,
+        "unchanged_assignment_count": len(unchanged_assignments),
+        "moved_assignment_count": len(changed_assignments),
+        "unchanged_student_count": student_ids_for(unchanged_assignments),
+        "moved_student_count": student_ids_for(changed_assignments),
+        "soft_priorities": _soft_priority_effects(data, result),
         "staffing_context": run.input_snapshot.get("staffing_context", {}),
+    }
+
+
+def student_assignment_student_explanation(run, *, student_id):
+    """Return only planning-safe course outcome facts for one student."""
+
+    data, _staffing_context = _current_input_for_run(run)
+    student_id = int(student_id)
+    snapshot = run.input_snapshot
+    request_rows = [item for item in snapshot.get("requests", ()) if int(item["student_id"]) == student_id]
+    result_assignments = {
+        int(item["request_id"]): item
+        for item in run.result.get("assignments", ())
+        if int(item["student_id"]) == student_id
+    }
+    unmet = {
+        int(item["request_id"]): item
+        for item in run.result.get("unmet_requests", ())
+        if int(item["student_id"]) == student_id
+    }
+    sections = {int(item["section_id"]): item for item in snapshot.get("sections", ())}
+    timeslot_ids = {
+        int(item["timeslot_id"])
+        for item in sections.values()
+        if item.get("timeslot_id") is not None
+    }
+    from backend.apps.courses.models import Course
+    from backend.apps.scheduling.models import TimeSlot
+    courses = {
+        item.id: item
+        for item in Course.objects.filter(id__in={int(row["course_id"]) for row in request_rows})
+    }
+    timeslots = {
+        item.id: item
+        for item in TimeSlot.objects.filter(id__in=timeslot_ids)
+    }
+    fixed_rows = [
+        row for row in snapshot.get("fixed_enrollments", ())
+        if int(row["student_id"]) == student_id and row.get("is_active", True)
+    ]
+    fixed_by_course = {int(row["course_id"]): row for row in fixed_rows}
+    rows = []
+    for request in request_rows:
+        request_id = int(request["request_id"])
+        assignment = result_assignments.get(request_id)
+        course_id = int(request["course_id"])
+        section = sections.get(int(assignment["section_id"])) if assignment else None
+        if section is None and course_id in fixed_by_course:
+            section = sections.get(int(fixed_by_course[course_id]["section_id"]))
+        timeslot = timeslots.get(int(section["timeslot_id"])) if section else None
+        unmet_row = unmet.get(request_id)
+        blocker = unmet_row or fixed_by_course.get(course_id, {})
+        row = {
+            "request_id": request_id,
+            "course_id": course_id,
+            "course_code": courses.get(course_id).course_code if courses.get(course_id) else None,
+            "received": bool(assignment or course_id in fixed_by_course),
+            "section_id": section.get("section_id") if section else None,
+            "semester": section.get("semester") if section else None,
+            "timeslot_id": section.get("timeslot_id") if section else None,
+            "block": timeslot.block if timeslot else None,
+            "reason_code": unmet_row.get("diagnostic_code") if unmet_row else None,
+            "lock_or_freeze_affected": bool(
+                blocker.get("blocking_lock_id") is not None or blocker.get("lock_ids")
+            ),
+            "blocking_lock_id": blocker.get("blocking_lock_id") or (
+                blocker.get("lock_ids") or [None]
+            )[0],
+        }
+        if not row["received"] and row["reason_code"] is None:
+            row["reason_code"] = STUDENT_ASSIGNMENT_UNRESOLVED_REQUIRED_REQUEST
+        rows.append(row)
+    return {"run_id": run.id, "student_id": student_id, "requests": rows}
+
+
+def preview_student_assignment_unlock(run, *, lock_ids):
+    """Solve a hypothetical unlocked input without creating a run or writing state."""
+
+    try:
+        lock_ids = tuple(sorted({int(lock_id) for lock_id in lock_ids}))
+    except (TypeError, ValueError) as error:
+        raise StudentAssignmentValidationError({
+            "code": STUDENT_ASSIGNMENT_WHAT_IF_LOCK_NOT_ACTIVE,
+            "detail": "Lock IDs must be positive integer identifiers.",
+        }) from error
+    if not lock_ids or any(lock_id <= 0 for lock_id in lock_ids):
+        raise StudentAssignmentValidationError({
+            "code": STUDENT_ASSIGNMENT_WHAT_IF_LOCK_NOT_ACTIVE,
+            "detail": "At least one active lock ID is required.",
+        })
+    active_ids = set(StudentAssignmentLock.objects.filter(
+        academic_year_id=run.academic_year_id,
+        is_active=True,
+    ).values_list("id", flat=True))
+    if not set(lock_ids) <= active_ids:
+        raise StudentAssignmentValidationError({
+            "code": STUDENT_ASSIGNMENT_WHAT_IF_LOCK_NOT_ACTIVE,
+            "detail": "Every what-if lock must be active in the run's academic year.",
+        })
+    snapshot = run.input_snapshot
+    selected_ids = set(_selected_lock_ids_from_snapshot(snapshot))
+    data, _staffing_context = _current_input_for_run(run)
+    remaining_ids = tuple(sorted(selected_ids - set(lock_ids)))
+    unlocked_data, _ = load_student_assignment_input(
+        academic_year_id=run.academic_year_id,
+        staffing_mode=run.staffing_mode,
+        provisional_teacher_assignment_run=run.provisional_teacher_assignment_run,
+        soft_constraint_importance=_importance_from_snapshot(snapshot),
+        scope=_snapshot_scope(snapshot),
+        priority_request_ids=tuple(snapshot.get("priority_request_ids", ())),
+        priority_request_limit=snapshot.get("priority_request_limit", STUDENT_ASSIGNMENT_DEFAULT_MAX_PRIORITY_REQUESTS),
+        schedule_preservation_level=snapshot.get("schedule_preservation_level", STUDENT_ASSIGNMENT_SCHEDULE_PRESERVATION_NONE),
+        selected_lock_ids=remaining_ids,
+    )
+    result = solve_student_assignment(unlocked_data)
+    before = list(run.result.get("assignments", ()))
+    after = list(asdict(result).get("assignments", ()))
+    before_by_request = {int(item["request_id"]): item for item in before}
+    after_by_request = {int(item["request_id"]): item for item in after}
+    changed = [
+        {"request_id": request_id, "before": before_by_request.get(request_id), "after": after_by_request.get(request_id)}
+        for request_id in sorted(set(before_by_request) | set(after_by_request))
+        if before_by_request.get(request_id) != after_by_request.get(request_id)
+    ]
+    return {
+        "run_id": run.id,
+        "removed_lock_ids": list(lock_ids),
+        "before": {"assignments": before, "unmet_requests": run.result.get("unmet_requests", ())},
+        "after": {"assignments": after, "unmet_requests": asdict(result).get("unmet_requests", ())},
+        "changed_requests": changed,
+        "diagnostics": asdict(result).get("diagnostics", ()),
     }
 
 

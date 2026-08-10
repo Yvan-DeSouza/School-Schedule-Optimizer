@@ -15,6 +15,10 @@ from backend.apps.common.constants import (
 )
 from backend.apps.scheduling.constants import (
     SOFT_CONSTRAINT_IMPORTANCE_CHOICES,
+    STUDENT_ASSIGNMENT_DEFAULT_MAX_PRIORITY_REQUESTS,
+    STUDENT_ASSIGNMENT_LOCK_TYPE_CHOICES,
+    STUDENT_ASSIGNMENT_RUN_SCOPE_CHOICES,
+    STUDENT_ASSIGNMENT_SCHEDULE_PRESERVATION_CHOICES,
     STUDENT_ASSIGNMENT_STAFFING_MODE_PROVISIONAL_STAFFING,
     STUDENT_ASSIGNMENT_STAFFING_MODE_CHOICES,
 )
@@ -51,6 +55,7 @@ from backend.apps.scheduling.models import (
     StudentAssignmentRun,
     StudentAssignmentApproval,
     StudentAssignmentApprovalEnrollment,
+    StudentAssignmentLock,
 )
 from backend.apps.scheduling.domain.capacity import (
     CAPACITY_FIELDS,
@@ -263,6 +268,28 @@ class StudentAssignmentRunCreateSerializer(serializers.Serializer):
         allow_null=True,
     )
     soft_constraint_importance = StudentAssignmentSoftConstraintImportanceSerializer()
+    scope_type = serializers.ChoiceField(choices=STUDENT_ASSIGNMENT_RUN_SCOPE_CHOICES, default="full")
+    source_approval = serializers.PrimaryKeyRelatedField(
+        queryset=StudentAssignmentApproval.objects.all(), required=False, allow_null=True,
+    )
+    scope_student_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), required=False, default=list,
+    )
+    scope_course_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), required=False, default=list,
+    )
+    scope_section_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), required=False, default=list,
+    )
+    selected_lock_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), required=False, allow_null=True, default=None,
+    )
+    priority_request_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), required=False, default=list,
+    )
+    schedule_preservation_level = serializers.ChoiceField(
+        choices=STUDENT_ASSIGNMENT_SCHEDULE_PRESERVATION_CHOICES, default="none",
+    )
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
@@ -276,7 +303,87 @@ class StudentAssignmentRunCreateSerializer(serializers.Serializer):
             raise serializers.ValidationError({
                 "provisional_teacher_assignment_run": "This field is allowed only for provisional_staffing."
             })
+        priority_ids = attrs.get("priority_request_ids", [])
+        if len(priority_ids) > STUDENT_ASSIGNMENT_DEFAULT_MAX_PRIORITY_REQUESTS:
+            raise serializers.ValidationError({
+                "priority_request_ids": (
+                    f"At most {STUDENT_ASSIGNMENT_DEFAULT_MAX_PRIORITY_REQUESTS} priority requests may be selected."
+                ),
+            })
+        if len(priority_ids) != len(set(priority_ids)):
+            raise serializers.ValidationError({"priority_request_ids": "Priority request IDs must be unique."})
         return attrs
+
+
+class StudentAssignmentLockCreateSerializer(serializers.Serializer):
+    """Transport shape for all six lock types; the service owns target rules."""
+
+    academic_year = serializers.IntegerField(min_value=1)
+    lock_type = serializers.ChoiceField(choices=STUDENT_ASSIGNMENT_LOCK_TYPE_CHOICES)
+    student = serializers.IntegerField(min_value=1, required=False, allow_null=True)
+    section = serializers.IntegerField(min_value=1, required=False, allow_null=True)
+    course = serializers.IntegerField(min_value=1, required=False, allow_null=True)
+    teacher = serializers.IntegerField(min_value=1, required=False, allow_null=True)
+    group_student_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), required=False, default=list,
+    )
+    reason = serializers.CharField(required=True, allow_blank=False, max_length=2000)
+    staffing_mode = serializers.CharField(required=False, allow_blank=False)
+
+    def validate_reason(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("A non-blank lock reason is required.")
+        return value
+
+    def validate(self, attrs):
+        group_ids = attrs.get("group_student_ids", ())
+        if len(group_ids) != len(set(group_ids)):
+            raise serializers.ValidationError({"group_student_ids": "Group student IDs must be unique."})
+        return attrs
+
+
+class StudentAssignmentLockReleaseSerializer(serializers.Serializer):
+    """Every release is an audited one-way transition with a human reason."""
+
+    release_reason = serializers.CharField(required=True, allow_blank=False, max_length=2000)
+
+    def validate_release_reason(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("A non-blank release reason is required.")
+        return value
+
+
+class StudentAssignmentLockSerializer(serializers.ModelSerializer):
+    """Read-only lock history, including group membership as a real relation."""
+
+    group_student_ids = serializers.SerializerMethodField()
+
+    class Meta:
+        model = StudentAssignmentLock
+        fields = (
+            "id", "academic_year", "lock_type", "student", "section", "course", "teacher",
+            "group_student_ids", "reason", "created_by", "created_at", "is_active",
+            "released_at", "released_by", "release_reason",
+        )
+        read_only_fields = fields
+
+    def get_group_student_ids(self, instance):
+        return list(instance.members.values_list("student_id", flat=True))
+
+
+class StudentAssignmentWhatIfUnlockSerializer(serializers.Serializer):
+    """Read-only what-if input; no approval or persistence is possible here."""
+
+    lock_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), min_length=1,
+    )
+
+    def validate_lock_ids(self, value):
+        if len(value) != len(set(value)):
+            raise serializers.ValidationError("Lock IDs must be unique.")
+        return value
 
 
 class StudentAssignmentApprovalRequestSerializer(serializers.Serializer):
@@ -326,7 +433,8 @@ class StudentAssignmentRunSerializer(serializers.ModelSerializer):
         model = StudentAssignmentRun
         fields = (
             "id", "academic_year", "staffing_mode", "provisional_teacher_assignment_run",
-            "created_by", "created_at", "status", "input_snapshot", "result",
+            "source_approval", "scope_type", "created_by", "created_at", "status",
+            "input_snapshot", "result",
             "solver_metadata", "approval",
         )
         read_only_fields = fields

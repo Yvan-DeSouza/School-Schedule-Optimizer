@@ -90,6 +90,20 @@ STUDENT_ASSIGNMENT_RUN_SCOPE_CHOICES = (
 # StudentAssignmentConfiguration model owns the setting.
 STUDENT_ASSIGNMENT_DEFAULT_MAX_PRIORITY_REQUESTS = 100
 
+# Rerun preservation is a counselor-facing label.  The engine receives the
+# label and applies its bounded internal penalty; numeric weights never become
+# part of the API or of an immutable run snapshot.
+STUDENT_ASSIGNMENT_SCHEDULE_PRESERVATION_NONE = "none"
+STUDENT_ASSIGNMENT_SCHEDULE_PRESERVATION_SLIGHT = "slight"
+STUDENT_ASSIGNMENT_SCHEDULE_PRESERVATION_MODERATE = "moderate"
+STUDENT_ASSIGNMENT_SCHEDULE_PRESERVATION_STRONG = "strong"
+STUDENT_ASSIGNMENT_SCHEDULE_PRESERVATION_CHOICES = (
+    (STUDENT_ASSIGNMENT_SCHEDULE_PRESERVATION_NONE, "None"),
+    (STUDENT_ASSIGNMENT_SCHEDULE_PRESERVATION_SLIGHT, "Slight"),
+    (STUDENT_ASSIGNMENT_SCHEDULE_PRESERVATION_MODERATE, "Moderate"),
+    (STUDENT_ASSIGNMENT_SCHEDULE_PRESERVATION_STRONG, "Strong"),
+)
+
 # These values describe counselor decisions, not solver outcomes. Keeping them
 # in the scheduling domain lets models, services, and future serializers share
 # one stable vocabulary without putting workflow values in common/constants.py.
