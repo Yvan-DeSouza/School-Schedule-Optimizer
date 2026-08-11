@@ -46,6 +46,7 @@ class CourseSerializer(CapacityValidationMixin, serializers.ModelSerializer):
 
     calculated_difficulty = serializers.SerializerMethodField(read_only=True)
     effective_difficulty = serializers.SerializerMethodField(read_only=True)
+    difficulty_explanation = serializers.SerializerMethodField(read_only=True)
 
     def get_calculated_difficulty(self, instance):
         from backend.apps.courses.services.difficulty import course_difficulty_facts
@@ -57,6 +58,11 @@ class CourseSerializer(CapacityValidationMixin, serializers.ModelSerializer):
 
         return course_difficulty_facts(instance)["effective_difficulty"]
 
+    def get_difficulty_explanation(self, instance):
+        from backend.apps.courses.services.difficulty import course_difficulty_facts
+
+        return course_difficulty_facts(instance)
+
     class Meta:
         model = Course
         fields = (
@@ -64,6 +70,7 @@ class CourseSerializer(CapacityValidationMixin, serializers.ModelSerializer):
             "capacity_min", "capacity_max", "capacity_profile", "priority_profile",
             "allowed_semester", "is_online", "manual_difficulty_override",
             "calculated_difficulty", "effective_difficulty",
+            "difficulty_explanation",
         )
         extra_kwargs = {
             # Capacity policy changes use the dedicated copy-on-write endpoint.

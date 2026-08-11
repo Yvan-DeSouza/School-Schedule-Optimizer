@@ -75,15 +75,20 @@ safety, and hard prerequisite sequencing always take precedence over these
 soft controls.
 
 Course difficulty is a scheduling-oriented 0--100 estimate, not a claim of
-objective academic difficulty. There is no historical mark, transcript, or
-course-result model in this repository, so the automatic `grade_level_baseline_v1`
-calculation maps Grades 7--12 linearly to 20--80. A counselor may set a bounded
+objective academic difficulty. `StudentCourseHistoricalResult` now stores the
+immutable source fact (student, course, academic year, final mark); enrollment
+and demand history are not treated as achievement evidence. Without usable
+history, `metadata_and_relative_history_v2` combines a bounded Grade 7--12
+baseline with deliberately small category and Ontario course-designation
+signals. With history, it compares each course mark with that student's
+same-year leave-one-course-out average, applies a 0.70-per-year recency decay,
+and blends the historical estimate toward metadata until twelve weighted
+observations establish full confidence. A counselor may set a bounded
 `manual_difficulty_override`; it becomes the effective value for future runs.
-Each immutable input snapshot records the calculated value, override, effective
-value, and calculation version, so later catalog changes stale rather than
-silently reinterpret a reviewed run. A future result-data increment may add a
-recency-weighted evidence calculation, but must not claim that demand history
-is performance history.
+Each immutable input snapshot records calculation, override, effective value,
+source, metadata, designation, historical observation/year counts, confidence,
+and relative-performance evidence, so later data changes stale rather than
+silently reinterpret a reviewed run.
 
 Category diversity is also soft. Equal course categories are inherently fully
 similar. `CourseCategoryRelationship` supplies an optional, school-wide,

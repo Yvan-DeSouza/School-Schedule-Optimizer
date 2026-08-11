@@ -65,7 +65,7 @@ def test_adapter_freezes_effective_difficulty_category_relationships_and_importa
     assert data.course_category_diversity_importance == "really_important"
     difficulty = data.course_difficulties[0]
     assert difficulty.course_id == course.id
-    assert difficulty.calculated_difficulty == 80
+    assert difficulty.calculated_difficulty == 93
     assert difficulty.manual_difficulty_override == 87
     assert difficulty.effective_difficulty == 87
     assert difficulty.source == "manual_override"
@@ -92,6 +92,9 @@ def test_difficulty_change_invalidates_an_unapproved_run_snapshot(
         academic_year=academic_year.id, staffing_mode="sections_only",
         soft_constraint_importance=_importance(), created_by=counselor_user,
     )
+    review = preview_student_assignment_approval(run)
+    assert review["course_difficulty_facts"][0]["effective_difficulty"] == 93
+    assert review["student_difficulty_balance"][0]["difficulty_imbalance"] == 93
 
     course.manual_difficulty_override = 90
     course.save(update_fields=["manual_difficulty_override"])

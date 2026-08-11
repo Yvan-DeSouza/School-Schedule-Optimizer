@@ -63,6 +63,7 @@ from backend.apps.control.models import SectionLock
 from backend.apps.courses.models import (
     Course,
     CourseCategoryRelationship,
+    StudentCourseHistoricalResult,
     CourseOffering,
     CoursePrerequisite,
     CourseSequencePreference,
@@ -1090,9 +1091,29 @@ def load_student_assignment_input(
         item.course_id for item in fixed_rows
         if item.is_active and not item.is_historical
     }
+    relevant_courses = list(Course.objects.filter(id__in=relevant_course_ids).order_by("id"))
+    historical_rows = list(StudentCourseHistoricalResult.objects.filter(
+        course_id__in=relevant_course_ids,
+    ).select_related("academic_year").order_by("academic_year__name", "id"))
+    student_year_keys = {(row.student_id, row.academic_year_id) for row in historical_rows}
+    comparison_rows = StudentCourseHistoricalResult.objects.filter(
+        student_id__in={key[0] for key in student_year_keys},
+        academic_year_id__in={key[1] for key in student_year_keys},
+    ).select_related("academic_year") if student_year_keys else ()
+    student_year_results = defaultdict(list)
+    for row in comparison_rows:
+        if (row.student_id, row.academic_year_id) in student_year_keys:
+            student_year_results[row.student_id, row.academic_year_id].append(row)
+    rows_by_course = defaultdict(list)
+    for row in historical_rows:
+        rows_by_course[row.course_id].append(row)
     course_difficulties = tuple(
-        CourseDifficultyDTO(**course_difficulty_facts(course))
-        for course in Course.objects.filter(id__in=relevant_course_ids).order_by("id")
+        CourseDifficultyDTO(**course_difficulty_facts(
+            course,
+            historical_results=rows_by_course[course.id],
+            student_year_results=student_year_results,
+        ))
+        for course in relevant_courses
     )
     course_category_relationships = tuple(
         CourseCategoryRelationshipDTO(

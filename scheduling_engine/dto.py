@@ -332,6 +332,13 @@ class CourseDifficultyDTO:
     effective_difficulty: int
     calculation_version: str
     source: str = "grade_level_baseline"
+    metadata_difficulty: int = 0
+    designation: str = ""
+    historical_observation_count: int = 0
+    historical_year_count: int = 0
+    historical_confidence: float = 0.0
+    weighted_course_average: Optional[float] = None
+    relative_performance_signal: Optional[float] = None
 
 
 @dataclass(frozen=True)

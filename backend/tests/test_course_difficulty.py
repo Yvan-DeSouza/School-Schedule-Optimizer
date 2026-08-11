@@ -16,15 +16,15 @@ def test_grade_level_difficulty_is_bounded_deterministic_and_overrideable(course
 
     early = course_difficulty_facts(early_course)
     late = course_difficulty_facts(course)
-    assert early["calculated_difficulty"] == 20
-    assert late["calculated_difficulty"] == 80
-    assert late["effective_difficulty"] == 80
+    assert early["calculated_difficulty"] == 23
+    assert late["calculated_difficulty"] == 93
+    assert late["effective_difficulty"] == 93
     assert late == course_difficulty_facts(course)
 
     course.manual_difficulty_override = 93
     course.save(update_fields=["manual_difficulty_override"])
     overridden = course_difficulty_facts(course)
-    assert overridden["calculated_difficulty"] == 80
+    assert overridden["calculated_difficulty"] == 93
     assert overridden["manual_difficulty_override"] == 93
     assert overridden["effective_difficulty"] == 93
     assert overridden["source"] == "manual_override"
@@ -42,7 +42,7 @@ def test_course_api_exposes_explainable_effective_difficulty(
     )
 
     assert updated.status_code == 200
-    assert updated.data["calculated_difficulty"] == 80
+    assert updated.data["calculated_difficulty"] == 93
     assert updated.data["manual_difficulty_override"] == 85
     assert updated.data["effective_difficulty"] == 85
 

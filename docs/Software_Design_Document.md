@@ -301,7 +301,7 @@ solve-time and reliability evidence justifies it.
 | Human review | Conflict/diagnostic data is surfaced for a counselor; the system does not silently merge courses, assign rooms, or replace accepted work. |
 | Measured infrastructure | A queue or worker is a future conditional addition, not an assumed tier. |
 | Migrationless development | Model changes are synchronized through an explicit local rebuild; migration files are not generated incidentally. |
-| Student-schedule quality | Difficulty and category distribution are snapshot soft preferences; they never weaken fulfillment, capacity, collisions, prerequisites, locks, or fixed context. |
+| Student-schedule quality | Difficulty and category distribution are snapshot soft preferences. Difficulty uses metadata or recency-weighted leave-one-course-out historical evidence, then honors a counselor override; neither objective weakens fulfillment, capacity, collisions, prerequisites, locks, or fixed context. |
 
 ---
 

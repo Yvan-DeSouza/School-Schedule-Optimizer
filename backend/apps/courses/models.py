@@ -528,3 +528,30 @@ class CourseCategoryRelationship(models.Model):
 
     def __str__(self):
         return f"{self.category_a} / {self.category_b}: {self.similarity_score}"
+
+
+class StudentCourseHistoricalResult(models.Model):
+    """One immutable historical final mark used as difficulty evidence.
+
+    Enrollment history does not contain achievement data. Keeping the observed
+    mark as its own source fact lets summaries be recomputed transparently
+    instead of treating a cached course average as authoritative evidence.
+    """
+
+    student = models.ForeignKey("people.Student", on_delete=models.PROTECT, related_name="historical_course_results")
+    course = models.ForeignKey(Course, on_delete=models.PROTECT, related_name="historical_results")
+    academic_year = models.ForeignKey("common.AcademicYear", on_delete=models.PROTECT, related_name="historical_course_results")
+    final_mark = models.DecimalField(max_digits=5, decimal_places=2, validators=[MinValueValidator(0), MaxValueValidator(100)])
+    source_record_id = models.CharField(max_length=100, blank=True, default="")
+    recorded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["academic_year__name", "student", "course"]
+        constraints = [
+            models.UniqueConstraint(fields=["student", "course", "academic_year"], name="unique_student_course_historical_result"),
+        ]
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise ValidationError("Historical course results are immutable; correct source data with a new reviewed import record.")
+        return super().save(*args, **kwargs)

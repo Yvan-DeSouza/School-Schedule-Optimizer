@@ -1,6 +1,7 @@
 """Immutable student-assignment runs, review, preview, and approval workflows."""
 
 from dataclasses import asdict, replace
+from collections import defaultdict
 
 from django.db import transaction
 
@@ -444,6 +445,19 @@ def _build_student_assignment_review(run, *, data):
         for row in data.fixed_enrollments
         if row.is_active and row.is_locked and row.lock_ids
     )
+    difficulty_by_course = {item.course_id: item.effective_difficulty for item in data.course_difficulties}
+    difficulty_totals = defaultdict(lambda: {"semester_1_difficulty": 0, "semester_2_difficulty": 0})
+    for assignment in assignments:
+        key = "semester_1_difficulty" if assignment["semester"] == 1 else "semester_2_difficulty"
+        difficulty_totals[int(assignment["student_id"])][key] += difficulty_by_course.get(int(assignment["course_id"]), 0)
+    for row in data.fixed_enrollments:
+        if row.is_active and not row.is_historical:
+            key = "semester_1_difficulty" if row.semester == 1 else "semester_2_difficulty"
+            difficulty_totals[row.student_id][key] += difficulty_by_course.get(row.course_id, 0)
+    difficulty_balance = [
+        {"student_id": student_id, **totals, "difficulty_imbalance": abs(totals["semester_1_difficulty"] - totals["semester_2_difficulty"])}
+        for student_id, totals in sorted(difficulty_totals.items())
+    ]
     student_ids_for = lambda rows: len({int(item["student_id"]) for item in rows if item.get("student_id") is not None})
     return {
         "approval_allowed": True,
@@ -452,6 +466,8 @@ def _build_student_assignment_review(run, *, data):
         "unmet_requests": unmet,
         "diagnostics": result.get("diagnostics", []),
         "objective_components": result.get("objective_components", {}),
+        "course_difficulty_facts": [asdict(item) for item in data.course_difficulties],
+        "student_difficulty_balance": difficulty_balance,
         "sequence_outcomes": result.get("sequence_outcomes", []),
         "lock_costs": result.get("lock_costs", []),
         "seat_contention": result.get("seat_contention", []),

@@ -120,7 +120,7 @@ truth.
 | Planning run | An immutable solver snapshot and result for a single stage | `backend/apps/scheduling/models.py`, `backend/apps/scheduling/services/*.py` |
 | Approval | The immutable human decision that turns a reviewed recommendation into operational state | same as above |
 | Scope | The set of items the current solver is allowed to change; everything else is fixed context | `backend/apps/scheduling/services/section_placement.py`, `backend/apps/scheduling/services/teacher_assignment.py`, `backend/apps/courses/services/section_state.py` |
-| Effective course difficulty | A frozen 0--100 scheduling estimate: grade-level baseline unless a counselor sets a manual override | `backend/apps/courses/services/difficulty.py`, `backend/apps/courses/models.py`, `backend/apps/scheduling/services/engine_adapter.py` |
+| Effective course difficulty | A frozen 0--100 scheduling estimate: metadata fallback or recency-weighted student-relative historical evidence unless a counselor sets a manual override | `backend/apps/courses/services/difficulty.py`, `backend/apps/courses/models.py`, `backend/apps/scheduling/services/engine_adapter.py` |
 | Course category relationship | An optional school-wide similarity score for one unordered pair of distinct catalog categories | `backend/apps/courses/models.py`, `scheduling_engine/student_assignment.py` |
 
 ## 5. Module Map
