@@ -206,13 +206,22 @@ def approve_section_placement_run(run, *, approved_by, reason):
     )
     sections = {
         section.id: section
-        for section in Section.objects.select_for_update().filter(id__in=section_ids).select_related("delivery_group", "course")
+        # A physical section may use either nullable delivery identity.  Lock
+        # only the Section row: PostgreSQL cannot lock the nullable side of the
+        # outer joins needed to read both identities, and neither related row
+        # is mutated by this timing approval.
+        for section in Section.objects.select_for_update(of=("self",)).filter(
+            id__in=section_ids
+        ).select_related("delivery_group", "course")
     }
     if SectionSchedule.objects.select_for_update().filter(section_id__in=section_ids).exists():
         raise SectionPlacementConflictError({"detail": "A section gained timing context since the placement run."})
     online_sessions = {
         session.id: session
-        for session in OnlineSupervisionSession.objects.select_for_update().filter(
+        # ``plan_approval_session`` is nullable for legacy/session lifecycle
+        # context.  Approval changes only the session's accepted time, so do
+        # not ask PostgreSQL to lock that nullable outer-join side.
+        for session in OnlineSupervisionSession.objects.select_for_update(of=("self",)).filter(
             id__in=online_session_ids,
             academic_year_id=run.academic_year_id,
             lifecycle_status="active",

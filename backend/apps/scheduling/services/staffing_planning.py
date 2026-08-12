@@ -16,7 +16,14 @@ from backend.apps.common.constants import (
     SEMESTER_FALL,
     SEMESTER_WINTER,
 )
-from backend.apps.courses.models import CourseOffering, CourseRequest, DeliveryGroup, Section
+from backend.apps.courses.models import (
+    CourseOffering,
+    CourseRequest,
+    DeliveryGroup,
+    HalfSemesterCoursePair,
+    HalfSemesterSectionPair,
+    Section,
+)
 from backend.apps.courses.selectors import active_delivery_groups_for_year
 from backend.apps.courses.services.offerings import (
     combined_allowed_semester,
@@ -415,6 +422,20 @@ def approve_staffing_plan_run(run, *, approved_by, reason, selections=None):
         approved_by=approved_by,
         reason=reason,
     )
+    # The staffing workflow is an authoritative Section materializer, not only
+    # the older section-planning workflow.  Preserve the catalog's narrow
+    # first/second-half identity here so later placement, named staffing, and
+    # student assignment do not mistake sequential trimestre sections for two
+    # simultaneous full-semester classes.
+    half_pairs = list(HalfSemesterCoursePair.objects.filter(is_active=True).order_by("id"))
+    half_course_segment = {
+        pair.first_course_id: "first_half"
+        for pair in half_pairs
+    } | {
+        pair.second_course_id: "second_half"
+        for pair in half_pairs
+    }
+    created_sections_by_course_semester = {}
     for item in preview["offerings"]:
         group = groups[item["offering_id"]]
         line = StaffingPlanApprovalOffering.objects.create(
@@ -432,16 +453,43 @@ def approve_staffing_plan_run(run, *, approved_by, reason, selections=None):
             (SEMESTER_WINTER, item["proposed_semester_2_count"]),
         ):
             for sequence in range(1, count + 1):
-                Section.objects.create(
+                section = Section.objects.create(
                     course=compatibility_course,
                     delivery_group=group,
                     section_number=f"S{semester}-{sequence:02d}",
                     academic_year=run.academic_year,
                     semester=semester,
+                    half_semester_segment=(
+                        half_course_segment.get(compatibility_course.id)
+                        if compatibility_course is not None
+                        else None
+                    ),
                     teacher=None,
                     capacity_min=group.capacity_profile.hard_min,
                     capacity_max=group.capacity_profile.hard_max,
                     is_locked=False,
                     staffing_approval_offering=line,
+                )
+                if compatibility_course is not None:
+                    created_sections_by_course_semester.setdefault(
+                        (compatibility_course.id, semester), []
+                    ).append(section)
+    # Pair matching sections only after the approval has materialized every
+    # selected course.  A mismatch remains an explicit counselor-review case;
+    # the workflow must not invent a companion section or silently reassign a
+    # section across semesters just to make a pair exist.
+    for pair in half_pairs:
+        for semester in (SEMESTER_FALL, SEMESTER_WINTER):
+            first_sections = created_sections_by_course_semester.get(
+                (pair.first_course_id, semester), ()
+            )
+            second_sections = created_sections_by_course_semester.get(
+                (pair.second_course_id, semester), ()
+            )
+            for first, second in zip(first_sections, second_sections):
+                HalfSemesterSectionPair.objects.create(
+                    course_pair=pair,
+                    first_section=first,
+                    second_section=second,
                 )
     return approval
