@@ -1,5 +1,7 @@
 """Course catalog, operational sections, demand requests, and prerequisites."""
 
+from decimal import Decimal
+
 from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
@@ -21,6 +23,17 @@ from backend.apps.common.constants import (
     SECTION_LIFECYCLE_ACTIVE,
     SECTION_LIFECYCLE_CHOICES,
     SEMESTER_CHOICES,
+    COURSE_DELIVERY_KIND_CHOICES,
+    COURSE_DELIVERY_KIND_CO_OP,
+    COURSE_DELIVERY_KIND_NORMAL_INSTRUCTION,
+    COURSE_DELIVERY_KIND_ONLINE,
+    COURSE_DURATION_CHOICES,
+    COURSE_DURATION_FULL_SEMESTER,
+    COURSE_DURATION_HALF_SEMESTER,
+    HALF_SEMESTER_SEGMENT_CHOICES,
+    STUDENT_SCHEDULE_COMMITMENT_REQUEST_TYPE_CHOICES,
+    STUDENT_SCHEDULE_COMMITMENT_REQUEST_TYPE_FOCUS,
+    STUDENT_SCHEDULE_COMMITMENT_REQUEST_TYPE_STUDY,
 )
 
 
@@ -37,6 +50,28 @@ class Course(models.Model):
     category = models.CharField(
         max_length=50,
         choices=COURSE_CATEGORY_CHOICES,
+        blank=True,
+        default="",
+    )
+
+    # Academic facts and delivery facts deliberately remain independent.  A
+    # course's delivery may be online without changing its credit, category, or
+    # difficulty; Co-op is the single category-neutral exception.
+    delivery_kind = models.CharField(
+        max_length=30,
+        choices=COURSE_DELIVERY_KIND_CHOICES,
+        default=COURSE_DELIVERY_KIND_NORMAL_INSTRUCTION,
+    )
+    duration = models.CharField(
+        max_length=20,
+        choices=COURSE_DURATION_CHOICES,
+        default=COURSE_DURATION_FULL_SEMESTER,
+    )
+    credit_value = models.DecimalField(
+        max_digits=3,
+        decimal_places=1,
+        default=Decimal("1.0"),
+        validators=[MinValueValidator(Decimal("0.5"))],
     )
 
     # Deprecated compatibility fields remain for existing section CRUD, imports,
@@ -76,6 +111,29 @@ class Course(models.Model):
     def __str__(self):
         return f"{self.course_code} - {self.name}"
 
+    def clean(self):
+        """Keep the narrow special-course model explicit at its catalog source."""
+
+        super().clean()
+        errors = {}
+        if self.delivery_kind == COURSE_DELIVERY_KIND_CO_OP:
+            if self.duration != COURSE_DURATION_FULL_SEMESTER:
+                errors["duration"] = "Co-op is a full-semester program with a special two-block commitment."
+            if self.credit_value != Decimal("2.0"):
+                errors["credit_value"] = "Co-op must carry exactly 2.0 credits."
+            if self.category:
+                errors["category"] = "Co-op is category-neutral and must not use a subject category."
+        else:
+            if not self.category:
+                errors["category"] = "Normal and online academic courses require a category."
+            expected_credit = Decimal("0.5") if self.duration == COURSE_DURATION_HALF_SEMESTER else Decimal("1.0")
+            if self.credit_value != expected_credit:
+                errors["credit_value"] = (
+                    "Half-semester courses carry 0.5 credits and full-semester academic courses carry 1.0 credit."
+                )
+        if errors:
+            raise ValidationError(errors)
+
     def save(self, *args, **kwargs):
         # Direct ORM creation is common in imports and tests, so guarantee
         # profiles even when callers did not pass the new foreign keys. The local
@@ -88,7 +146,68 @@ class Course(models.Model):
                 self.capacity_profile = capacity_profile
             if not self.priority_profile_id:
                 self.priority_profile = priority_profile
+        # ``is_online`` is an older public field.  Keep it coherent for
+        # existing callers while delivery_kind becomes the unambiguous source
+        # of truth for all new scheduling behavior.
+        if (
+            self._state.adding
+            and self.is_online
+            and self.delivery_kind == COURSE_DELIVERY_KIND_NORMAL_INSTRUCTION
+        ):
+            # Preserve the old create-only convenience while allowing an
+            # existing course to deliberately change delivery kind through the
+            # explicit modern field. Reapplying the legacy flag on every save
+            # would silently undo a counselor's reviewed change from online to
+            # normal instruction.
+            self.delivery_kind = COURSE_DELIVERY_KIND_ONLINE
+        self.is_online = self.delivery_kind == COURSE_DELIVERY_KIND_ONLINE
         return super().save(*args, **kwargs)
+
+
+class HalfSemesterCoursePair(models.Model):
+    """Catalog default ordering for the school's intentionally small trimestre pattern."""
+
+    first_course = models.ForeignKey(
+        Course,
+        on_delete=models.PROTECT,
+        related_name="first_half_semester_pairs",
+    )
+    second_course = models.ForeignKey(
+        Course,
+        on_delete=models.PROTECT,
+        related_name="second_half_semester_pairs",
+    )
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["first_course__course_code", "second_course__course_code"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["first_course", "second_course"],
+                name="unique_half_semester_course_pair",
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+        errors = {}
+        if self.first_course_id == self.second_course_id:
+            errors["second_course"] = "A half-semester course cannot be paired with itself."
+        if self.first_course_id and self.first_course.duration != COURSE_DURATION_HALF_SEMESTER:
+            errors["first_course"] = "The first paired course must be half-semester."
+        if self.second_course_id and self.second_course.duration != COURSE_DURATION_HALF_SEMESTER:
+            errors["second_course"] = "The second paired course must be half-semester."
+        if self.first_course_id and self.second_course_id:
+            if self.first_course.delivery_kind != self.second_course.delivery_kind:
+                errors["second_course"] = "Paired half-semester courses must use the same delivery kind."
+            existing = HalfSemesterCoursePair.objects.exclude(pk=self.pk).filter(
+                models.Q(first_course_id__in=[self.first_course_id, self.second_course_id])
+                | models.Q(second_course_id__in=[self.first_course_id, self.second_course_id])
+            )
+            if existing.exists():
+                errors["first_course"] = "A course may belong to only one half-semester pair."
+        if errors:
+            raise ValidationError(errors)
 
 
 class CourseCombinationRule(models.Model):
@@ -257,6 +376,15 @@ class Section(models.Model):
     section_number = models.CharField(max_length=10)
     academic_year = models.ForeignKey("common.AcademicYear", on_delete=models.CASCADE)
     semester = models.IntegerField(choices=SEMESTER_CHOICES)
+    # A normal half-semester section is still a real instructional section. The
+    # segment tells student assignment which half of its recurring A-D block it
+    # occupies; full-semester sections deliberately leave this null.
+    half_semester_segment = models.CharField(
+        max_length=20,
+        choices=HALF_SEMESTER_SEGMENT_CHOICES,
+        null=True,
+        blank=True,
+    )
     # Teacher is optional because plan approval creates unstaffed drafts; named
     # assignment belongs to a later scheduling stage.
     teacher = models.ForeignKey(
@@ -336,6 +464,55 @@ class Section(models.Model):
             self.delivery_group.name if self.delivery_group_id else "Unlinked"
         )
         return f"{label}-{self.section_number} ({self.academic_year})"
+
+
+class HalfSemesterSectionPair(models.Model):
+    """One shared teaching block formed by sequential normal instructional sections."""
+
+    course_pair = models.ForeignKey(
+        HalfSemesterCoursePair,
+        on_delete=models.PROTECT,
+        related_name="section_pairs",
+    )
+    first_section = models.OneToOneField(
+        Section,
+        on_delete=models.PROTECT,
+        related_name="first_half_pair",
+    )
+    second_section = models.OneToOneField(
+        Section,
+        on_delete=models.PROTECT,
+        related_name="second_half_pair",
+    )
+
+    class Meta:
+        ordering = ["first_section__academic_year", "first_section__section_number"]
+
+    def clean(self):
+        super().clean()
+        errors = {}
+        if self.first_section_id == self.second_section_id:
+            errors["second_section"] = "A half-semester section pair requires two distinct sections."
+        if self.first_section_id and self.second_section_id:
+            first = self.first_section
+            second = self.second_section
+            if first.academic_year_id != second.academic_year_id:
+                errors["second_section"] = "Paired sections must belong to the same academic year."
+            if first.semester != second.semester:
+                errors["second_section"] = "Paired sections must be in the same semester."
+            if first.half_semester_segment != "first_half":
+                errors["first_section"] = "The first pair section must occupy the first half."
+            if second.half_semester_segment != "second_half":
+                errors["second_section"] = "The second pair section must occupy the second half."
+            if first.course_id != self.course_pair.first_course_id:
+                errors["first_section"] = "The first section must deliver the pair's first course."
+            if second.course_id != self.course_pair.second_course_id:
+                errors["second_section"] = "The second section must deliver the pair's second course."
+            # SectionSchedule and teacher equality are enforced by the workflow
+            # once those later-stage facts exist; direct model validation must
+            # still allow the legitimate pre-placement/pre-staffing draft state.
+        if errors:
+            raise ValidationError(errors)
 
 
 class Enrollment(models.Model):
@@ -435,6 +612,47 @@ class CourseRequest(models.Model):
 
     def __str__(self):
         return f"{self.student} requests {self.course} ({self.request_type})"
+
+
+class StudentScheduleCommitmentRequest(models.Model):
+    """A requested Study or Focus commitment that is not a catalog course."""
+
+    student = models.ForeignKey(
+        "people.Student",
+        on_delete=models.CASCADE,
+        related_name="schedule_commitment_requests",
+    )
+    academic_year = models.ForeignKey("common.AcademicYear", on_delete=models.CASCADE)
+    commitment_type = models.CharField(
+        max_length=20,
+        choices=STUDENT_SCHEDULE_COMMITMENT_REQUEST_TYPE_CHOICES,
+    )
+    # Study has two independently placeable annual requests. Focus is a single
+    # semester-wide request and therefore always uses index one.
+    request_index = models.PositiveSmallIntegerField(default=1)
+
+    class Meta:
+        ordering = ["academic_year", "student", "commitment_type", "request_index"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["student", "academic_year", "commitment_type", "request_index"],
+                name="unique_student_schedule_commitment_request",
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+        errors = {}
+        if self.commitment_type == STUDENT_SCHEDULE_COMMITMENT_REQUEST_TYPE_STUDY:
+            if self.request_index not in {1, 2}:
+                errors["request_index"] = "A student may request at most two Study sessions per year."
+        elif self.commitment_type == STUDENT_SCHEDULE_COMMITMENT_REQUEST_TYPE_FOCUS:
+            if self.request_index != 1:
+                errors["request_index"] = "Focus has one semester-wide request per year."
+        if self.student_id and self.academic_year_id and self.student.academic_year_id != self.academic_year_id:
+            errors["student"] = "The student must belong to the request academic year."
+        if errors:
+            raise ValidationError(errors)
 
 
 class CoursePrerequisite(models.Model):

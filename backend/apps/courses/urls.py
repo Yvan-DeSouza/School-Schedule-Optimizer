@@ -15,7 +15,9 @@ from backend.apps.courses.views import (
     CourseViewSet,
     DeliveryGroupViewSet,
     DemandSummaryView,
+    HalfSemesterCoursePairViewSet,
     SectionViewSet,
+    StudentScheduleCommitmentRequestViewSet,
 )
 
 router = DefaultRouter()
@@ -28,11 +30,21 @@ router.register(
 )
 router.register("sections", SectionViewSet, basename="section")
 router.register("course-requests", CourseRequestViewSet, basename="course-request")
+router.register(
+    "student-schedule-commitment-requests",
+    StudentScheduleCommitmentRequestViewSet,
+    basename="student-schedule-commitment-request",
+)
 router.register("course-prerequisites", CoursePrerequisiteViewSet, basename="course-prerequisite")
 router.register("course-sequence-preferences", CourseSequencePreferenceViewSet, basename="course-sequence-preference")
 router.register("planning/course-offerings", CourseOfferingViewSet, basename="course-offering")
 router.register("planning/combination-rules", CourseCombinationRuleViewSet, basename="combination-rule")
 router.register("planning/delivery-groups", DeliveryGroupViewSet, basename="delivery-group")
+router.register(
+    "planning/half-semester-course-pairs",
+    HalfSemesterCoursePairViewSet,
+    basename="half-semester-course-pair",
+)
 
 urlpatterns = [
     path("demand/summary/", DemandSummaryView.as_view(), name="demand-summary"),

@@ -1,6 +1,6 @@
 # Project State Summary
 
-Snapshot date: 2026-08-09
+Snapshot date: 2026-08-11
 
 This document is a repository-backed orientation snapshot. It is based on the
 actual code, tests, and docs in this checkout, not on prior chat memory.
@@ -13,9 +13,9 @@ actual code, tests, and docs in this checkout, not on prior chat memory.
 | Course offering, backup, combination, and demand workflows | Implemented | `backend/apps/courses/services/offerings.py`, `backend/apps/courses/services/demand.py`, `backend/tests/test_upstream_planning_workflow.py` |
 | Section-count planning, approval, and reconciliation | Implemented | `backend/apps/scheduling/services/section_planning.py`, `backend/apps/scheduling/services/section_reconciliation.py`, `backend/tests/test_section_planning_api.py`, `backend/tests/test_section_reconciliation_api.py` |
 | Section budgeting and staffing-feasible physical counts | Implemented | `backend/apps/scheduling/services/section_budget_planning.py`, `backend/apps/scheduling/services/staffing_planning.py`, `backend/tests/test_upstream_planning_workflow.py` |
-| Semester/A-D placement with staffing feasibility | Implemented | `backend/apps/scheduling/services/section_placement.py`, `scheduling_engine/section_placement.py`, `backend/tests/test_section_placement_service.py`, `scheduling_engine/tests/test_section_placement.py` |
-| Named teacher assignment | Implemented | `backend/apps/scheduling/services/teacher_assignment.py`, `scheduling_engine/teacher_assignment.py`, `backend/tests/test_teacher_assignment_service.py`, `scheduling_engine/tests/test_teacher_assignment.py` |
-| Student assignment and controlled reruns | Implemented | `backend/apps/scheduling/services/student_assignment.py`, `backend/apps/scheduling/services/student_assignment_locks.py`, `backend/apps/courses/services/difficulty.py`, `scheduling_engine/student_assignment.py`, `backend/tests/test_student_assignment_hardening.py`, `scheduling_engine/tests/test_student_assignment.py` |
+| Semester/A-D placement with staffing feasibility | Implemented | `backend/apps/scheduling/services/section_placement.py`, `scheduling_engine/section_placement.py`, including shared online-supervision placement and sequential paired half-semester sections |
+| Named teacher assignment | Implemented | `backend/apps/scheduling/services/teacher_assignment.py`, `scheduling_engine/teacher_assignment.py`, including workload-safe online supervision without subject qualification |
+| Student assignment, special commitments, and controlled reruns | Implemented | `backend/apps/scheduling/services/student_assignment.py`, `backend/apps/scheduling/services/student_special_commitment_locks.py`, `backend/apps/scheduling/services/online_supervision.py`, `scheduling_engine/student_assignment.py`, `backend/tests/test_special_student_schedule_commitments.py`, `scheduling_engine/tests/test_student_assignment.py` |
 | Room assignment | Not implemented | Deferred by the placement and teacher-assignment decisions |
 | Frontend | Not started | `docs/Implementation_Roadmap.md` phase 6, no frontend directory in repo |
 
@@ -29,7 +29,7 @@ This is a school scheduling system for counselors, staff, and directors. The
 product does not try to fully automate scheduling in one step. Instead, it
 breaks the work into reviewed stages:
 
-`demand -> offering changes -> section counts -> staffing feasibility -> semester/A-D placement -> optional named-teacher context -> student assignment -> later room/conflict work`
+`demand -> offering changes -> normal-section and online-supervision capacity planning -> staffing feasibility -> semester/A-D placement -> named teacher/supervisor assignment -> student enrollment and commitment assignment -> later room/conflict work`
 
 That staged shape is visible in `README.md`, `docs/Implementation_Roadmap.md`,
 `docs/decisions/semester-placement-and-staffing-feasibility.md`, and
@@ -449,6 +449,7 @@ workflow.
      `GET /{id}/review/`, `POST /{id}/approval-preview/`, `POST /{id}/approve/`
 
    This is where the system chooses Semester 1 or 2 and recurring A-D blocks
+   for normal instructional sections and approved online-supervision resources,
    and proves that staffing is feasible later.
 
 7. Run named teacher assignment.
@@ -459,7 +460,8 @@ workflow.
    - Review/preview/approve:
      `GET /{id}/review/`, `POST /{id}/approval-preview/`, `POST /{id}/approve/`
 
-   This is the stage that writes named teachers onto accepted sections.
+   This is the stage that writes named teachers onto accepted sections and
+   workload-safe supervisors onto accepted online-supervision sessions.
 
 8. Use section locks for exact counselor decisions.
 
@@ -474,6 +476,14 @@ Where the workflow stops today:
   full and scoped reruns, priority requests, schedule preservation, review and
   read-only what-if behavior, drift checks, and transactional replacement
   provenance are implemented;
+- Study and Focus requests are explicit student-time commitments, never
+  inferred empty blocks. Co-op is one two-credit A+B/C+D external commitment;
+  online courses use a separately planned shared supervision seat; and the
+  two configured half-semester courses are sequentially paired where possible.
+  Exact/exclusion locks and stable review codes cover each special choice;
+- online supervision capacity has its own immutable plan/review/approval,
+  then joins the existing placement and named-teacher stages without becoming a
+  fake normal instructional section;
 - section cancellation with active enrollments fails closed with the affected
   student IDs until a reviewed rerun resolves those enrollments; historical
   enrollments then remain audit evidence while reconciliation may retire the

@@ -21,6 +21,9 @@ from backend.apps.scheduling.constants import (
     STUDENT_ASSIGNMENT_SCHEDULE_PRESERVATION_CHOICES,
     STUDENT_ASSIGNMENT_STAFFING_MODE_PROVISIONAL_STAFFING,
     STUDENT_ASSIGNMENT_STAFFING_MODE_CHOICES,
+    CO_OP_BLOCK_PAIR_CHOICES,
+    STUDENT_SPECIAL_COMMITMENT_LOCK_MODE_CHOICES,
+    STUDENT_SPECIAL_COMMITMENT_LOCK_TYPE_CHOICES,
 )
 from backend.apps.scheduling.models import (
     CapacityProfile,
@@ -52,10 +55,19 @@ from backend.apps.scheduling.models import (
     TeacherAssignmentRun,
     TeacherAssignmentApproval,
     TeacherAssignmentApprovalAssignment,
+    TeacherAssignmentApprovalOnlineSupervision,
     StudentAssignmentRun,
     StudentAssignmentApproval,
     StudentAssignmentApprovalEnrollment,
+    StudentAssignmentApprovalOnlineEnrollment,
+    StudentAssignmentApprovalCommitment,
     StudentAssignmentLock,
+    StudentSpecialCommitmentLock,
+    OnlineSupervisionConfiguration,
+    OnlineSupervisionPlanRun,
+    OnlineSupervisionPlanApproval,
+    OnlineSupervisionPlanApprovalSession,
+    OnlineSupervisionSession,
 )
 from backend.apps.scheduling.domain.capacity import (
     CAPACITY_FIELDS,
@@ -104,6 +116,80 @@ class TimeSlotSerializer(serializers.ModelSerializer):
                     "A timeslot for this academic year, semester, and block already exists."
                 )
         return attrs
+
+
+class OnlineSupervisionConfigurationSerializer(serializers.ModelSerializer):
+    """Year-specific capacity policy for shared, non-instructional supervision."""
+
+    class Meta:
+        model = OnlineSupervisionConfiguration
+        fields = ("id", "academic_year", "capacity_profile", "updated_by", "updated_at")
+        read_only_fields = ("updated_by", "updated_at")
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        profile = attrs.get("capacity_profile", getattr(self.instance, "capacity_profile", None))
+        if profile and profile.target > profile.hard_max:
+            raise serializers.ValidationError({
+                "capacity_profile": "The supervision target cannot exceed the hard maximum."
+            })
+        return attrs
+
+
+class OnlineSupervisionPlanRunCreateSerializer(serializers.Serializer):
+    """Only the target year is configurable; the service derives demand facts."""
+
+    academic_year = serializers.IntegerField(min_value=1)
+
+
+class OnlineSupervisionPlanApprovalRequestSerializer(serializers.Serializer):
+    reason = serializers.CharField(required=True, allow_blank=False, max_length=2000)
+
+    def validate_reason(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("An approval reason is required.")
+        return value
+
+
+class OnlineSupervisionPlanApprovalSessionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = OnlineSupervisionPlanApprovalSession
+        fields = ("id", "annual_index", "allowed_semesters", "capacity_max", "target_capacity")
+        read_only_fields = fields
+
+
+class OnlineSupervisionPlanApprovalSerializer(serializers.ModelSerializer):
+    session_approvals = OnlineSupervisionPlanApprovalSessionSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = OnlineSupervisionPlanApproval
+        fields = ("id", "plan_run", "approved_by", "approved_at", "reason", "session_approvals")
+        read_only_fields = fields
+
+
+class OnlineSupervisionPlanRunSerializer(serializers.ModelSerializer):
+    approval = OnlineSupervisionPlanApprovalSerializer(read_only=True)
+
+    class Meta:
+        model = OnlineSupervisionPlanRun
+        fields = (
+            "id", "academic_year", "configuration", "created_by", "created_at", "status",
+            "input_snapshot", "result", "solver_metadata", "approval",
+        )
+        read_only_fields = fields
+
+
+class OnlineSupervisionSessionSerializer(serializers.ModelSerializer):
+    """Read-only operational resource shown separately from instructional sections."""
+
+    class Meta:
+        model = OnlineSupervisionSession
+        fields = (
+            "id", "academic_year", "session_number", "timeslot", "capacity_max", "target_capacity",
+            "supervisor", "lifecycle_status", "plan_approval_session", "placement_approval",
+        )
+        read_only_fields = fields
 
 
 class AnnualPlacementLockSerializer(serializers.ModelSerializer):
@@ -224,14 +310,30 @@ class TeacherAssignmentApprovalAssignmentSerializer(serializers.ModelSerializer)
         read_only_fields = fields
 
 
+class TeacherAssignmentApprovalOnlineSupervisionSerializer(serializers.ModelSerializer):
+    """Read-only supervisor provenance kept distinct from section assignments."""
+
+    class Meta:
+        model = TeacherAssignmentApprovalOnlineSupervision
+        fields = ("id", "online_supervision_session", "teacher")
+        read_only_fields = fields
+
+
 class TeacherAssignmentApprovalSerializer(serializers.ModelSerializer):
     """Append-only counselor approval and its exact named assignments."""
 
     assignments = TeacherAssignmentApprovalAssignmentSerializer(many=True, read_only=True)
+    online_supervision_assignments = TeacherAssignmentApprovalOnlineSupervisionSerializer(
+        many=True,
+        read_only=True,
+    )
 
     class Meta:
         model = TeacherAssignmentApproval
-        fields = ("id", "teacher_assignment_run", "approved_by", "approved_at", "reason", "assignments")
+        fields = (
+            "id", "teacher_assignment_run", "approved_by", "approved_at", "reason",
+            "assignments", "online_supervision_assignments",
+        )
         read_only_fields = fields
 
 
@@ -375,6 +477,44 @@ class StudentAssignmentLockSerializer(serializers.ModelSerializer):
         return list(instance.members.values_list("student_id", flat=True))
 
 
+class StudentSpecialCommitmentLockCreateSerializer(serializers.Serializer):
+    """Transport shape for one exact or excluded special-program choice."""
+
+    academic_year = serializers.IntegerField(min_value=1)
+    lock_type = serializers.ChoiceField(choices=STUDENT_SPECIAL_COMMITMENT_LOCK_TYPE_CHOICES)
+    lock_mode = serializers.ChoiceField(choices=STUDENT_SPECIAL_COMMITMENT_LOCK_MODE_CHOICES)
+    schedule_commitment_request = serializers.IntegerField(min_value=1, required=False, allow_null=True)
+    course_request = serializers.IntegerField(min_value=1, required=False, allow_null=True)
+    timeslot = serializers.IntegerField(min_value=1, required=False, allow_null=True)
+    semester = serializers.ChoiceField(choices=(1, 2), required=False, allow_null=True)
+    co_op_block_pair = serializers.ChoiceField(choices=CO_OP_BLOCK_PAIR_CHOICES, required=False, allow_null=True)
+    reason = serializers.CharField(required=True, allow_blank=False, max_length=2000)
+
+    def validate_reason(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("A non-blank lock reason is required.")
+        return value
+
+
+class StudentSpecialCommitmentLockReleaseSerializer(StudentAssignmentLockReleaseSerializer):
+    """Reuse the standard release-reason contract for this append-only lock."""
+
+
+class StudentSpecialCommitmentLockSerializer(serializers.ModelSerializer):
+    """Read-only audit record for a special student scheduling restriction."""
+
+    class Meta:
+        model = StudentSpecialCommitmentLock
+        fields = (
+            "id", "academic_year", "lock_type", "lock_mode",
+            "schedule_commitment_request", "course_request", "timeslot",
+            "semester", "co_op_block_pair", "reason", "created_by", "created_at",
+            "is_active", "released_at", "released_by", "release_reason",
+        )
+        read_only_fields = fields
+
+
 class StudentAssignmentWhatIfUnlockSerializer(serializers.Serializer):
     """Read-only what-if input; no approval or persistence is possible here."""
 
@@ -412,16 +552,48 @@ class StudentAssignmentApprovalEnrollmentSerializer(serializers.ModelSerializer)
         read_only_fields = fields
 
 
+class StudentAssignmentApprovalOnlineEnrollmentSerializer(serializers.ModelSerializer):
+    """Read-only provenance for one academic online enrollment and its seat."""
+
+    class Meta:
+        model = StudentAssignmentApprovalOnlineEnrollment
+        fields = (
+            "id", "online_enrollment", "course_request", "superseded_online_enrollment",
+        )
+        read_only_fields = fields
+
+
+class StudentAssignmentApprovalCommitmentSerializer(serializers.ModelSerializer):
+    """Read-only provenance for an approved Study, Co-op, or Focus commitment."""
+
+    class Meta:
+        model = StudentAssignmentApprovalCommitment
+        fields = (
+            "id", "commitment", "schedule_commitment_request", "course_request",
+            "superseded_commitment",
+        )
+        read_only_fields = fields
+
+
 class StudentAssignmentApprovalSerializer(serializers.ModelSerializer):
     """Immutable approval plus each enrollment fact it created."""
 
     enrollment_provenance = StudentAssignmentApprovalEnrollmentSerializer(many=True, read_only=True)
+    online_enrollment_provenance = StudentAssignmentApprovalOnlineEnrollmentSerializer(
+        many=True,
+        read_only=True,
+    )
+    commitment_provenance = StudentAssignmentApprovalCommitmentSerializer(
+        many=True,
+        read_only=True,
+    )
 
     class Meta:
         model = StudentAssignmentApproval
         fields = (
             "id", "student_assignment_run", "approved_by", "approved_at", "reason",
-            "enrollment_provenance",
+            "enrollment_provenance", "online_enrollment_provenance",
+            "commitment_provenance",
         )
         read_only_fields = fields
 

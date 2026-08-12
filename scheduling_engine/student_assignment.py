@@ -15,9 +15,11 @@ from ortools.sat.python import cp_model
 from .diagnostics import (
     NO_COMPLETE_STUDENT_ASSIGNMENT,
     STUDENT_ASSIGNMENT_HARD_PREREQUISITE_SEQUENCE_UNAVAILABLE,
+    STUDENT_ASSIGNMENT_HALF_SEMESTER_UNALLOCATED_OPPOSITE_HALF,
     STUDENT_ASSIGNMENT_LIMITED_SEAT_CONTENTION,
     STUDENT_ASSIGNMENT_LOCKED_ENROLLMENT_BLOCKS_REQUEST,
     STUDENT_ASSIGNMENT_NO_ACTIVE_PLACED_SECTION,
+    STUDENT_ASSIGNMENT_ONLINE_HALF_SEMESTER_UNUSED_SUPERVISION_HALF,
     STUDENT_ASSIGNMENT_NO_ELIGIBLE_SECTION,
     STUDENT_ASSIGNMENT_REQUIRES_ADDITIONAL_CAPACITY,
     STUDENT_ASSIGNMENT_REQUIRES_LOCK_RELEASE,
@@ -29,6 +31,10 @@ from .diagnostics import (
     STUDENT_ASSIGNMENT_SECTION_OVER_TARGET_CONCENTRATION,
     STUDENT_ASSIGNMENT_TIMESLOT_COLLISION,
     STUDENT_ASSIGNMENT_UNRESOLVED_REQUIRED_REQUEST,
+    STUDENT_ASSIGNMENT_UNALLOCATED_SCHOOL_TIME,
+    STUDENT_ASSIGNMENT_NO_VALID_CO_OP_BLOCK_PAIR,
+    STUDENT_ASSIGNMENT_NO_VALID_FOCUS_SEMESTER,
+    STUDENT_ASSIGNMENT_SPECIAL_COMMITMENT_LOCK_BLOCKS_REQUEST,
 )
 from .dto import (
     StudentAssignmentDTO,
@@ -38,6 +44,8 @@ from .dto import (
     StudentAssignmentSeatContentionDTO,
     StudentAssignmentSectionBalanceDTO,
     StudentAssignmentUnmetRequestDTO,
+    StudentScheduleCommitmentAssignmentDTO,
+    StudentAssignmentReviewItemDTO,
 )
 
 
@@ -72,6 +80,39 @@ LOCK_TYPES = {
     LOCK_TYPE_STUDENT_GROUP,
     LOCK_TYPE_STUDENT_TEACHER,
 }
+
+HALF_SEMESTER_SEGMENTS = ("first_half", "second_half")
+
+
+def _occupied_half_segments(half_semester_segment):
+    """Return the physical halves occupied by one recurring schedule choice.
+
+    Full-semester teaching and online supervision reserve both halves. A
+    trimestre section reserves only its declared half, which is why two paired
+    half courses can lawfully share one A-D block without becoming a collision.
+    """
+
+    return (
+        (half_semester_segment,)
+        if half_semester_segment in HALF_SEMESTER_SEGMENTS
+        else HALF_SEMESTER_SEGMENTS
+    )
+
+
+def _request_occupied_half_segments(request, section):
+    """Return the student-time halves occupied by one proposed assignment.
+
+    Online supervision is a full-semester physical placement, but a
+    half-semester online *course* is academic only in its catalog-paired half.
+    The solver therefore reserves the whole supervision block for the student
+    while the request's segment is retained separately for academic balance
+    and review.  Normal course occupancy always comes from its instructional
+    section, whose paired first/second-half identity is operational fact.
+    """
+
+    if request.delivery_kind == "online":
+        return HALF_SEMESTER_SEGMENTS
+    return _occupied_half_segments(section.half_semester_segment)
 
 
 def _outcome_name(status):
@@ -323,6 +364,43 @@ def _active_locks(data):
     ))
 
 
+def _special_lock_candidates(locks, *, lock_type, request_id=None):
+    """Return active special locks for one source request and commitment kind."""
+
+    return tuple(
+        lock
+        for lock in locks
+        if lock.is_active
+        and lock.lock_type == lock_type
+        and (
+            lock.schedule_commitment_request_id == request_id
+            or lock.course_request_id == request_id
+        )
+    )
+
+
+def _special_lock_allows_candidate(locks, *, timeslot_id=None, semester=None, co_op_block_pair=None):
+    """Apply exact and exclusion choices without silently favoring either one."""
+
+    exact = [lock for lock in locks if lock.lock_mode == "exact"]
+    excluded = [lock for lock in locks if lock.lock_mode == "exclude"]
+    if any(
+        (lock.timeslot_id is not None and lock.timeslot_id != timeslot_id)
+        or (lock.semester is not None and lock.semester != semester)
+        or (lock.co_op_block_pair is not None and lock.co_op_block_pair != co_op_block_pair)
+        for lock in exact
+    ):
+        return False
+    if any(
+        (lock.timeslot_id is None or lock.timeslot_id == timeslot_id)
+        and (lock.semester is None or lock.semester == semester)
+        and (lock.co_op_block_pair is None or lock.co_op_block_pair == co_op_block_pair)
+        for lock in excluded
+    ):
+        return False
+    return True
+
+
 def _build_initial_assignment_hints(
     *, data, request_candidates, fixed_by_section, fixed_slots, group_locks,
 ):
@@ -384,12 +462,21 @@ def _build_initial_assignment_hints(
         for section, _variable in candidates:
             if (
                 remaining_capacity[section.section_id] <= 0
-                or section.timeslot_id in used_timeslots
+                or any(
+                    (section.timeslot_id, segment) in used_timeslots
+                    for segment in _occupied_half_segments(section.half_semester_segment)
+                )
             ):
                 continue
             remaining_capacity[section.section_id] -= 1
             assigned_section_by_request[request.request_id] = section.section_id
-            if assign_student(requests[1:], used_timeslots | {section.timeslot_id}):
+            if assign_student(
+                requests[1:],
+                used_timeslots | {
+                    (section.timeslot_id, segment)
+                    for segment in _occupied_half_segments(section.half_semester_segment)
+                },
+            ):
                 return True
             assigned_section_by_request.pop(request.request_id)
             remaining_capacity[section.section_id] += 1
@@ -467,8 +554,9 @@ def _diagnostic_for_unmet_request(
     collided_rows = [
         row
         for section in potential_sections
-        if section.timeslot_id in fixed_slots[request.student_id]
-        for row in fixed_slot_rows[request.student_id, section.timeslot_id]
+        for segment in _occupied_half_segments(section.half_semester_segment)
+        if (section.timeslot_id, segment) in fixed_slots[request.student_id]
+        for row in fixed_slot_rows[request.student_id, section.timeslot_id, segment]
     ]
     if collided_rows and not candidates:
         lock_id = next((lock_id for row in collided_rows for lock_id in row.lock_ids), None)
@@ -631,19 +719,60 @@ def _solve_student_assignment(data, *, include_lock_costs):
     fixed_courses = defaultdict(list)
     for enrollment in fixed_rows:
         fixed_by_section[enrollment.section_id].append(enrollment)
-        fixed_slots[enrollment.student_id].add(enrollment.timeslot_id)
-        fixed_slot_rows[enrollment.student_id, enrollment.timeslot_id].append(enrollment)
+        for segment in _occupied_half_segments(enrollment.half_semester_segment):
+            fixed_slots[enrollment.student_id].add((enrollment.timeslot_id, segment))
+            fixed_slot_rows[
+                enrollment.student_id, enrollment.timeslot_id, segment
+            ].append(enrollment)
         fixed_courses[enrollment.student_id, enrollment.course_id].append(enrollment)
     for section_id, rows in fixed_by_section.items():
         if len(rows) > sections[section_id].capacity_max:
             raise ValueError(f"Fixed enrollments exceed capacity for section {section_id}.")
+
+    # Existing Study, Co-op, and Focus commitments follow the same scoped-rerun
+    # rule as enrollments: outside scope or locked means fixed occupied student
+    # time; only in-scope unlocked commitments may be reconsidered.
+    fixed_commitment_sources = set()
+    movable_commitments_by_source = {}
+    for commitment in data.fixed_schedule_commitments:
+        if not commitment.is_active or commitment.is_historical:
+            continue
+        source_key = (
+            "course", commitment.course_request_id
+        ) if commitment.course_request_id is not None else (
+            "commitment", commitment.schedule_commitment_request_id
+        )
+        if source_key[1] is None:
+            raise ValueError("Active special commitment lacks immutable source-request provenance.")
+        is_fixed = (
+            not commitment.is_in_scope
+            or commitment.is_locked
+            or commitment.student_id in whole_schedule_lock_ids
+        )
+        if is_fixed:
+            fixed_commitment_sources.add(source_key)
+            for timeslot_id, segment in commitment.occupancy:
+                fixed_slots[commitment.student_id].add((timeslot_id, segment))
+                fixed_slot_rows[commitment.student_id, timeslot_id, segment].append(commitment)
+        else:
+            movable_commitments_by_source[source_key] = commitment
 
     variables = {}
     request_candidates = {}
     request_lock_blockers = defaultdict(set)
     direct_protected_requests = {}
     previous_enrollment_by_request = {}
+    special_locks_by_course_request = defaultdict(list)
+    for lock in data.special_commitment_locks:
+        if lock.is_active and lock.course_request_id is not None:
+            special_locks_by_course_request[lock.course_request_id].append(lock)
     for request in sorted(data.requests, key=lambda item: item.request_id):
+        if request.delivery_kind == "co_op":
+            # Co-op is fulfilled by its paired external commitment below. It
+            # must not be forced through a normal instructional section merely
+            # because it is still an academic two-credit course request.
+            request_candidates[request.request_id] = []
+            continue
         student_course_key = request.student_id, request.course_id
         existing_fixed = fixed_courses[student_course_key]
         if existing_fixed:
@@ -693,9 +822,27 @@ def _solve_student_assignment(data, *, include_lock_costs):
             if len({lock.teacher_id for lock in teacher_locks}) == 1
             else set()
         )
+        special_locks = special_locks_by_course_request[request.request_id]
+        exact_special_timeslot_ids = {
+            lock.timeslot_id for lock in special_locks
+            if lock.lock_mode == "exact" and lock.timeslot_id is not None
+        }
+        excluded_special_timeslot_ids = {
+            lock.timeslot_id for lock in special_locks
+            if lock.lock_mode == "exclude" and lock.timeslot_id is not None
+        }
+        if len(exact_special_timeslot_ids) > 1:
+            request_lock_blockers[request.request_id].update(
+                lock.lock_id for lock in special_locks if lock.lock_mode == "exact"
+            )
+            request_candidates[request.request_id] = []
+            continue
         candidates = []
         for section in offering_sections.get(request.course_offering_id, ()):
-            if section.timeslot_id in fixed_slots[request.student_id]:
+            if any(
+                (section.timeslot_id, segment) in fixed_slots[request.student_id]
+                for segment in _occupied_half_segments(section.half_semester_segment)
+            ):
                 continue
             if section.section_id in frozen_section_lock_ids:
                 request_lock_blockers[request.request_id].update(
@@ -708,10 +855,52 @@ def _solve_student_assignment(data, *, include_lock_costs):
             if teacher_locks and section.teacher_id not in allowed_teacher_ids:
                 request_lock_blockers[request.request_id].update(lock.lock_id for lock in teacher_locks)
                 continue
+            if request.delivery_kind == "online":
+                # A counselor restriction names the student's supervision
+                # block, never an academic section or supervisor identity.
+                if exact_special_timeslot_ids and section.timeslot_id not in exact_special_timeslot_ids:
+                    request_lock_blockers[request.request_id].update(
+                        lock.lock_id for lock in special_locks if lock.lock_mode == "exact"
+                    )
+                    continue
+                if section.timeslot_id in excluded_special_timeslot_ids:
+                    request_lock_blockers[request.request_id].update(
+                        lock.lock_id for lock in special_locks if lock.lock_mode == "exclude"
+                    )
+                    continue
             variable = model.NewBoolVar(f"enroll_{request.request_id}_{section.section_id}")
             variables[request.request_id, section.section_id] = variable
             candidates.append((section, variable))
         request_candidates[request.request_id] = candidates
+
+    # The catalog pair is intentionally narrow: it models the school's two
+    # known trimestre courses, not arbitrary partial-duration combinations.
+    # When a student requests both, a normal instructional placement may only
+    # select the corresponding first/second-half section pair.  Either request
+    # can remain unresolved for counselor review; the engine never invents its
+    # missing partner or permits two unrelated half-course placements.
+    requests_by_half_pair = defaultdict(list)
+    for request in data.requests:
+        if request.duration == "half_semester" and request.paired_half_course_id:
+            pair_key = tuple(sorted((request.course_id, request.paired_half_course_id)))
+            requests_by_half_pair[request.student_id, pair_key].append(request)
+    for _pair_key, pair_requests in requests_by_half_pair.items():
+        if len(pair_requests) != 2:
+            continue
+        left, right = sorted(pair_requests, key=lambda item: item.request_id)
+        for left_section, left_variable in request_candidates[left.request_id]:
+            for right_section, right_variable in request_candidates[right.request_id]:
+                compatible_normal_pair = (
+                    left_section.half_semester_pair_key
+                    and left_section.half_semester_pair_key == right_section.half_semester_pair_key
+                )
+                compatible_online_pair = (
+                    left.delivery_kind == "online"
+                    and right.delivery_kind == "online"
+                    and left_section.section_id == right_section.section_id
+                )
+                if not compatible_normal_pair and not compatible_online_pair:
+                    model.Add(left_variable + right_variable <= 1)
 
     # Group locks express one indivisible counselor decision. Restricting every
     # member to the same candidate section before capacity constraints prevents
@@ -786,7 +975,8 @@ def _solve_student_assignment(data, *, include_lock_costs):
         request = requests_by_id[request_id]
         for section, variable in candidates:
             by_section[section.section_id].append(variable)
-            by_student_timeslot[request.student_id, section.timeslot_id].append(variable)
+            for segment in _occupied_half_segments(section.half_semester_segment):
+                by_student_timeslot[request.student_id, section.timeslot_id, segment].append(variable)
             by_student_section[request.student_id, section.section_id].append(variable)
             by_student_course_semester[
                 request.student_id, request.course_id, section.semester
@@ -801,10 +991,128 @@ def _solve_student_assignment(data, *, include_lock_costs):
         # twice on one student's roster.
         model.Add(sum(rows) <= 1)
 
+    # Study and Focus are requested commitments, never gaps that the engine is
+    # permitted to fill automatically. Co-op is an academic request but has no
+    # normal section; its two-credit program is represented by one paired-time
+    # commitment so it cannot be split into unrelated one-block classes.
+    commitment_variables = {}
+    commitment_candidates = {}
+    commitment_metadata = {}
+    available_timeslots = tuple(
+        slot for slot in data.timeslots
+        if slot.is_available and slot.academic_year_id == data.academic_year_id
+    )
+    slots_by_semester_block = {
+        (slot.semester, slot.block): slot for slot in available_timeslots
+    }
+
+    def can_occupy(student_id, occupancy):
+        return not any((timeslot_id, segment) in fixed_slots[student_id] for timeslot_id, segment in occupancy)
+
+    for request in data.schedule_commitment_requests:
+        source_key = ("commitment", request.request_id)
+        if not request.is_in_scope or source_key in fixed_commitment_sources:
+            continue
+        kind = request.commitment_type
+        if kind == "study":
+            locks = _special_lock_candidates(
+                data.special_commitment_locks,
+                lock_type="study_time",
+                request_id=request.request_id,
+            )
+            choices = []
+            for slot in available_timeslots:
+                occupancy = tuple((slot.id, segment) for segment in HALF_SEMESTER_SEGMENTS)
+                if can_occupy(request.student_id, occupancy) and _special_lock_allows_candidate(
+                    locks, timeslot_id=slot.id, semester=slot.semester,
+                ):
+                    choices.append((slot.id, occupancy, None))
+            commitment_candidates[source_key] = choices
+            commitment_metadata[source_key] = (request.student_id, "study", None, None, None)
+        elif kind == "focus":
+            locks = _special_lock_candidates(
+                data.special_commitment_locks,
+                lock_type="focus_semester",
+                request_id=request.request_id,
+            )
+            choices = []
+            for semester in (1, 2):
+                semester_slots = [slot for slot in available_timeslots if slot.semester == semester]
+                if len(semester_slots) != 4:
+                    continue
+                occupancy = tuple(
+                    (slot.id, segment)
+                    for slot in semester_slots
+                    for segment in HALF_SEMESTER_SEGMENTS
+                )
+                if can_occupy(request.student_id, occupancy) and _special_lock_allows_candidate(
+                    locks, semester=semester,
+                ):
+                    choices.append((semester, occupancy, None))
+            commitment_candidates[source_key] = choices
+            commitment_metadata[source_key] = (request.student_id, "focus", None, None, None)
+
+    for request in data.requests:
+        if request.delivery_kind != "co_op":
+            continue
+        source_key = ("course", request.request_id)
+        if not request.is_in_scope or source_key in fixed_commitment_sources:
+            continue
+        locks = _special_lock_candidates(
+            data.special_commitment_locks,
+            lock_type="co_op_time",
+            request_id=request.request_id,
+        )
+        choices = []
+        for semester in (1, 2):
+            for pair, blocks in (("a_b", ("A", "B")), ("c_d", ("C", "D"))):
+                slots = [slots_by_semester_block.get((semester, block)) for block in blocks]
+                if any(slot is None for slot in slots):
+                    continue
+                occupancy = tuple(
+                    (slot.id, segment)
+                    for slot in slots
+                    for segment in HALF_SEMESTER_SEGMENTS
+                )
+                if can_occupy(request.student_id, occupancy) and _special_lock_allows_candidate(
+                    locks, semester=semester, co_op_block_pair=pair,
+                ):
+                    choices.append((semester, occupancy, pair))
+        commitment_candidates[source_key] = choices
+        commitment_metadata[source_key] = (
+            request.student_id, "co_op", request.request_id,
+            request.course_offering_id, request.course_id,
+        )
+
+    for source_key, choices in commitment_candidates.items():
+        student_id, _kind, _request_id, _offering_id, _course_id = commitment_metadata[source_key]
+        rows = []
+        for index, (placement_value, occupancy, pair) in enumerate(choices):
+            variable = model.NewBoolVar(f"commitment_{source_key[0]}_{source_key[1]}_{index}")
+            commitment_variables[source_key, index] = variable
+            rows.append(variable)
+            for timeslot_id, segment in occupancy:
+                by_student_timeslot[student_id, timeslot_id, segment].append(variable)
+        if rows:
+            # Each special request has at most one recommendation. It remains
+            # optional in the diagnostic model so a conflict becomes a truthful
+            # review item rather than an opaque whole-model infeasibility.
+            model.Add(sum(rows) <= 1)
+
+    # The time collision index receives both course and commitment variables;
+    # add or strengthen its constraints after all candidate families exist.
+    for rows in by_student_timeslot.values():
+        model.Add(sum(rows) <= 1)
+
     # Same-year hard prerequisites apply only when both courses are actually
     # assigned in this target year. Prior completion remains deliberately
     # assumed by the accepted first-release decision.
-    student_ids = {request.student_id for request in data.requests} | set(fixed_slots)
+    student_ids = (
+        {request.student_id for request in data.requests}
+        | {request.student_id for request in data.schedule_commitment_requests}
+        | {commitment.student_id for commitment in data.fixed_schedule_commitments}
+        | set(fixed_slots)
+    )
     fixed_semesters = {
         (student_id, course_id): {row.semester for row in rows}
         for (student_id, course_id), rows in fixed_courses.items()
@@ -851,6 +1159,10 @@ def _solve_student_assignment(data, *, include_lock_costs):
         for request in data.requests if request.is_mandatory
         for _section, variable in request_candidates[request.request_id]
     ]
+    # Study/Focus requests and Co-op's paired outside-school commitment are
+    # counselor-recognized requirements. Their optional CP-SAT variables allow
+    # useful diagnostics, while this top tier makes fulfillment authoritative.
+    mandatory.extend(commitment_variables.values())
     objectives.append(-sum(mandatory or [0]))
     priority_request_ids = set(data.priority_request_ids)
     priority_rows = [
@@ -933,24 +1245,81 @@ def _solve_student_assignment(data, *, include_lock_costs):
     if utilization_level:
         soft_objectives[utilization_level].append(sum(section_balance_terms or [0]))
 
+    # Focus is an intentional absence from this school for a full term. It
+    # must remove a student from local term-balance objectives rather than
+    # making their ordinary-school semester look artificially overloaded.
+    focus_student_ids = {
+        request.student_id
+        for request in data.schedule_commitment_requests
+        if request.commitment_type == "focus"
+    } | {
+        commitment.student_id
+        for commitment in data.fixed_schedule_commitments
+        if commitment.is_active
+        and not commitment.is_historical
+        and commitment.commitment_kind == "focus"
+    }
+
     semester_balance_terms = []
+    semester_by_timeslot = {slot.id: slot.semester for slot in data.timeslots}
     for student_id in student_ids:
-        requested_course_ids = {request.course_id for request in data.requests if request.student_id == student_id}
+        if student_id in focus_student_ids:
+            continue
+        requests_for_student = [
+            request for request in data.requests if request.student_id == student_id
+        ]
+        requested_course_ids = {request.course_id for request in requests_for_student}
+        credit_by_course = {
+            request.course_id: request.credit_value for request in requests_for_student
+        }
         semester_1 = sum(
-            variable
+            round(credit_by_course.get(course_id, 1.0) * 2) * variable
             for course_id in requested_course_ids
             for variable in by_student_course_semester[student_id, course_id, 1]
         )
         semester_2 = sum(
-            variable
+            round(credit_by_course.get(course_id, 1.0) * 2) * variable
             for course_id in requested_course_ids
             for variable in by_student_course_semester[student_id, course_id, 2]
         )
-        semester_1 += sum(1 for row in fixed_rows if row.student_id == student_id and row.semester == 1)
-        semester_2 += sum(1 for row in fixed_rows if row.student_id == student_id and row.semester == 2)
+        semester_1 += sum(
+            round(row.credit_value * 2)
+            for row in fixed_rows if row.student_id == student_id and row.semester == 1
+        )
+        semester_2 += sum(
+            round(row.credit_value * 2)
+            for row in fixed_rows if row.student_id == student_id and row.semester == 2
+        )
+        for commitment in data.fixed_schedule_commitments:
+            if (
+                not commitment.is_active
+                or commitment.is_historical
+                or commitment.student_id != student_id
+                or commitment.commitment_kind != "co_op"
+            ):
+                continue
+            commitment_semesters = {
+                semester_by_timeslot.get(timeslot_id)
+                for timeslot_id, _segment in commitment.occupancy
+            }
+            if 1 in commitment_semesters:
+                semester_1 += round(commitment.credit_value * 2)
+            if 2 in commitment_semesters:
+                semester_2 += round(commitment.credit_value * 2)
+        # Co-op carries two credits as one linked academic experience. Study
+        # and Focus still reserve time, but they are not academic course load.
+        for (source_key, index), variable in commitment_variables.items():
+            candidate_semester, _occupancy, _pair = commitment_candidates[source_key][index]
+            metadata = commitment_metadata[source_key]
+            if metadata[0] != student_id or metadata[1] != "co_op":
+                continue
+            if candidate_semester == 1:
+                semester_1 += 4 * variable
+            else:
+                semester_2 += 4 * variable
         penalty = model.NewIntVar(
             0,
-            len(data.requests) + len(fixed_rows),
+            2 * (len(data.requests) + len(fixed_rows) + 2),
             f"semester_balance_{student_id}",
         )
         model.AddAbsEquality(penalty, semester_1 - semester_2)
@@ -968,26 +1337,82 @@ def _solve_student_assignment(data, *, include_lock_costs):
         difficulty_by_course = {
             item.course_id: item.effective_difficulty for item in data.course_difficulties
         }
+        credit_by_student_course = {
+            (request.student_id, request.course_id): request.credit_value
+            for request in data.requests
+        }
+        semester_by_timeslot = {slot.id: slot.semester for slot in data.timeslots}
         for student_id in student_ids:
+            if student_id in focus_student_ids:
+                continue
             requested_course_ids = {
                 request.course_id for request in data.requests if request.student_id == student_id
             }
             semester_1_difficulty = sum(
-                difficulty_by_course.get(course_id, 0) * variable
+                round(difficulty_by_course.get(course_id, 0) * credit_by_student_course.get((student_id, course_id), 1.0)) * variable
                 for course_id in requested_course_ids
                 for variable in by_student_course_semester[student_id, course_id, 1]
             ) + sum(
-                difficulty_by_course.get(row.course_id, 0)
+                round(difficulty_by_course.get(row.course_id, 0) * row.credit_value)
                 for row in fixed_rows if row.student_id == student_id and row.semester == 1
             )
             semester_2_difficulty = sum(
-                difficulty_by_course.get(course_id, 0) * variable
+                round(difficulty_by_course.get(course_id, 0) * credit_by_student_course.get((student_id, course_id), 1.0)) * variable
                 for course_id in requested_course_ids
                 for variable in by_student_course_semester[student_id, course_id, 2]
             ) + sum(
-                difficulty_by_course.get(row.course_id, 0)
+                round(difficulty_by_course.get(row.course_id, 0) * row.credit_value)
                 for row in fixed_rows if row.student_id == student_id and row.semester == 2
             )
+            for commitment in data.fixed_schedule_commitments:
+                if (
+                    not commitment.is_active
+                    or commitment.is_historical
+                    or commitment.student_id != student_id
+                ):
+                    continue
+                semesters = {
+                    semester_by_timeslot.get(timeslot_id)
+                    for timeslot_id, _segment in commitment.occupancy
+                }
+                if commitment.commitment_kind == "study":
+                    contribution = 1
+                elif commitment.commitment_kind == "co_op":
+                    contribution = round(
+                        difficulty_by_course.get(commitment.course_id, 0)
+                        * commitment.credit_value
+                    )
+                else:
+                    continue
+                if 1 in semesters:
+                    semester_1_difficulty += contribution
+                if 2 in semesters:
+                    semester_2_difficulty += contribution
+            for (source_key, index), variable in commitment_variables.items():
+                candidate_semester, _occupancy, _pair = commitment_candidates[source_key][index]
+                metadata = commitment_metadata[source_key]
+                if metadata[0] != student_id:
+                    continue
+                if metadata[1] == "co_op":
+                    contribution = round(
+                        difficulty_by_course.get(metadata[4], 0)
+                        * next(
+                            request.credit_value
+                            for request in data.requests
+                            if request.request_id == metadata[2]
+                        )
+                    )
+                elif metadata[1] == "study":
+                    # Study is not an academic course, but a requested study
+                    # block should make its term slightly lighter in this
+                    # counselor-facing balance signal rather than neutral.
+                    contribution = 1
+                else:
+                    continue
+                if candidate_semester == 1:
+                    semester_1_difficulty += contribution * variable
+                else:
+                    semester_2_difficulty += contribution * variable
             penalty = model.NewIntVar(
                 0,
                 (len(requested_course_ids) + len(fixed_rows)) * 100,
@@ -1018,11 +1443,16 @@ def _solve_student_assignment(data, *, include_lock_costs):
                 return 100
             return category_similarity.get(tuple(sorted((left_category, right_category))), 0)
 
-        course_semester_presence = {}
-        fixed_courses_by_student_semester = defaultdict(set)
+        course_segment_presence = {}
+        fixed_courses_by_student_segment = defaultdict(set)
         for row in fixed_rows:
-            fixed_courses_by_student_semester[row.student_id, row.semester].add(row.course_id)
+            for segment in _occupied_half_segments(row.half_semester_segment):
+                fixed_courses_by_student_segment[
+                    row.student_id, row.semester, segment
+                ].add(row.course_id)
         for student_id in student_ids:
+            if student_id in focus_student_ids:
+                continue
             course_ids = {
                 request.course_id for request in data.requests if request.student_id == student_id
             } | {
@@ -1030,21 +1460,35 @@ def _solve_student_assignment(data, *, include_lock_costs):
             }
             for course_id in course_ids:
                 for semester in (1, 2):
-                    if course_id in fixed_courses_by_student_semester[student_id, semester]:
-                        course_semester_presence[student_id, course_id, semester] = 1
-                        continue
-                    variables_for_course = list(
-                        by_student_course_semester[student_id, course_id, semester]
-                    )
-                    if not variables_for_course:
-                        course_semester_presence[student_id, course_id, semester] = 0
-                        continue
-                    present = model.NewBoolVar(
-                        f"category_present_{student_id}_{course_id}_{semester}"
-                    )
-                    model.Add(sum(variables_for_course) == present)
-                    course_semester_presence[student_id, course_id, semester] = present
+                    for segment in HALF_SEMESTER_SEGMENTS:
+                        key = student_id, course_id, semester, segment
+                        if course_id in fixed_courses_by_student_segment[
+                            student_id, semester, segment
+                        ]:
+                            course_segment_presence[key] = 1
+                            continue
+                        variables_for_course = [
+                            variable
+                            for request_id, candidates in request_candidates.items()
+                            for section, variable in candidates
+                            if requests_by_id[request_id].student_id == student_id
+                            and requests_by_id[request_id].course_id == course_id
+                            and section.semester == semester
+                            and segment in _request_occupied_half_segments(
+                                requests_by_id[request_id], section
+                            )
+                        ]
+                        if not variables_for_course:
+                            course_segment_presence[key] = 0
+                            continue
+                        present = model.NewBoolVar(
+                            f"category_present_{student_id}_{course_id}_{semester}_{segment}"
+                        )
+                        model.Add(sum(variables_for_course) == present)
+                        course_segment_presence[key] = present
         for student_id in student_ids:
+            if student_id in focus_student_ids:
+                continue
             course_ids = sorted({
                 request.course_id for request in data.requests if request.student_id == student_id
             } | {
@@ -1056,21 +1500,42 @@ def _solve_student_assignment(data, *, include_lock_costs):
                     if not similarity:
                         continue
                     for semester in (1, 2):
-                        left = course_semester_presence[student_id, left_course_id, semester]
-                        right = course_semester_presence[student_id, right_course_id, semester]
-                        if (isinstance(left, int) and left == 0) or (isinstance(right, int) and right == 0):
-                            continue
-                        if isinstance(left, int) and left == 1:
-                            shared_term = right
-                        elif isinstance(right, int) and right == 1:
-                            shared_term = left
-                        else:
-                            shared_term = model.NewBoolVar(
-                                f"category_concentration_{student_id}_{left_course_id}_{right_course_id}_{semester}"
+                        shared_halves = []
+                        for segment in HALF_SEMESTER_SEGMENTS:
+                            left = course_segment_presence[
+                                student_id, left_course_id, semester, segment
+                            ]
+                            right = course_segment_presence[
+                                student_id, right_course_id, semester, segment
+                            ]
+                            if (isinstance(left, int) and left == 0) or (
+                                isinstance(right, int) and right == 0
+                            ):
+                                continue
+                            if isinstance(left, int) and left == 1:
+                                shared_halves.append(right)
+                            elif isinstance(right, int) and right == 1:
+                                shared_halves.append(left)
+                            else:
+                                shared = model.NewBoolVar(
+                                    f"category_concentration_{student_id}_{left_course_id}_{right_course_id}_{semester}_{segment}"
+                                )
+                                model.AddBoolAnd((left, right)).OnlyEnforceIf(shared)
+                                model.AddBoolOr((left.Not(), right.Not(), shared))
+                                shared_halves.append(shared)
+                        if shared_halves:
+                            # A full/full overlap remains the legacy penalty of
+                            # ``similarity``. A full/half overlap costs half;
+                            # sequential first/second-half courses cost zero.
+                            penalty = model.NewIntVar(
+                                0,
+                                similarity,
+                                f"category_penalty_{student_id}_{left_course_id}_{right_course_id}_{semester}",
                             )
-                            model.AddBoolAnd((left, right)).OnlyEnforceIf(shared_term)
-                            model.AddBoolOr((left.Not(), right.Not(), shared_term))
-                        category_diversity_terms.append(similarity * shared_term)
+                            model.AddDivisionEquality(
+                                penalty, similarity * sum(shared_halves), 2
+                            )
+                            category_diversity_terms.append(penalty)
         soft_objectives[category_diversity_level].append(sum(category_diversity_terms or [0]))
 
     preservation_terms = []
@@ -1153,7 +1618,10 @@ def _solve_student_assignment(data, *, include_lock_costs):
                 assignment = StudentAssignmentDTO(
                     request_id=request.request_id,
                     student_id=request.student_id,
-                    section_id=section.section_id,
+                    section_id=(
+                        None if request.delivery_kind == "online" and section.section_id < 0
+                        else section.section_id
+                    ),
                     course_offering_id=request.course_offering_id,
                     course_id=request.course_id,
                     semester=section.semester,
@@ -1161,12 +1629,120 @@ def _solve_student_assignment(data, *, include_lock_costs):
                     assignment_basis=request.assignment_basis,
                     backup_resolution_snapshot=request.backup_resolution_snapshot,
                     previous_enrollment_id=previous.enrollment_id if previous else None,
-                    previous_section_id=previous.section_id if previous else None,
+                    previous_section_id=(
+                        previous.section_id
+                        if previous and previous.section_id > 0
+                        else None
+                    ),
+                    previous_online_supervision_session_id=(
+                        -previous.section_id
+                        if previous and previous.section_id < 0
+                        else None
+                    ),
+                    online_supervision_session_id=(
+                        -section.section_id
+                        if request.delivery_kind == "online" and section.section_id < 0
+                        else None
+                    ),
+                    half_semester_segment=(
+                        request.half_semester_segment
+                        if request.delivery_kind == "online"
+                        else section.half_semester_segment
+                    ),
                 )
                 assignments.append(assignment)
                 selected_by_section[section.section_id].append(assignment)
                 assigned_request_ids.add(request.request_id)
                 break
+
+    commitment_assignments = []
+    review_items = []
+    assigned_commitment_sources = set()
+    for (source_key, index), variable in sorted(commitment_variables.items()):
+        if not solver.Value(variable):
+            continue
+        placement_value, occupancy, pair = commitment_candidates[source_key][index]
+        student_id, kind, course_request_id, course_offering_id, course_id = commitment_metadata[source_key]
+        commitment_assignments.append(StudentScheduleCommitmentAssignmentDTO(
+            request_id=source_key[1],
+            student_id=student_id,
+            commitment_kind=kind,
+            course_request_id=course_request_id,
+            course_offering_id=course_offering_id,
+            occupancy=occupancy,
+        ))
+        assigned_commitment_sources.add(source_key)
+        if course_request_id is not None:
+            assigned_request_ids.add(course_request_id)
+
+    # A half-semester course can be a legitimate unpaired request. The engine
+    # schedules it if possible, then tells the counselor that its other half is
+    # intentionally unallocated rather than silently inventing Study time.
+    assignments_by_student_course = {
+        (item.student_id, item.course_id): item for item in assignments
+    }
+    for request in data.requests:
+        if request.duration != "half_semester":
+            continue
+        assignment = assignments_by_student_course.get((request.student_id, request.course_id))
+        if assignment is None:
+            continue
+        partner = assignments_by_student_course.get(
+            (request.student_id, request.paired_half_course_id)
+        )
+        paired = (
+            partner is not None
+            and partner.semester == assignment.semester
+            and partner.timeslot_id == assignment.timeslot_id
+            and partner.half_semester_segment != assignment.half_semester_segment
+        )
+        if not paired:
+            review_items.append(StudentAssignmentReviewItemDTO(
+                code=STUDENT_ASSIGNMENT_HALF_SEMESTER_UNALLOCATED_OPPOSITE_HALF,
+                student_id=request.student_id,
+                request_id=request.request_id,
+                course_id=request.course_id,
+                detail={
+                    "semester": assignment.semester,
+                    "timeslot_id": assignment.timeslot_id,
+                    "allocated_half": assignment.half_semester_segment,
+                },
+            ))
+        if request.delivery_kind == "online" and not paired:
+            review_items.append(StudentAssignmentReviewItemDTO(
+                code=STUDENT_ASSIGNMENT_ONLINE_HALF_SEMESTER_UNUSED_SUPERVISION_HALF,
+                student_id=request.student_id,
+                request_id=request.request_id,
+                course_id=request.course_id,
+                detail={
+                    "supervision_session_id": assignment.online_supervision_session_id,
+                    "unused_half": (
+                        "second_half"
+                        if assignment.half_semester_segment == "first_half"
+                        else "first_half"
+                    ),
+                },
+            ))
+
+    for source_key, choices in commitment_candidates.items():
+        if source_key in assigned_commitment_sources or source_key in fixed_commitment_sources:
+            continue
+        student_id, kind, course_request_id, _offering_id, course_id = commitment_metadata[source_key]
+        if kind == "study":
+            code = STUDENT_ASSIGNMENT_SPECIAL_COMMITMENT_LOCK_BLOCKS_REQUEST if any(
+                _special_lock_candidates(data.special_commitment_locks, lock_type="study_time", request_id=source_key[1])
+            ) else STUDENT_ASSIGNMENT_UNALLOCATED_SCHOOL_TIME
+        elif kind == "focus":
+            code = STUDENT_ASSIGNMENT_NO_VALID_FOCUS_SEMESTER
+        else:
+            code = STUDENT_ASSIGNMENT_NO_VALID_CO_OP_BLOCK_PAIR
+        review_items.append(StudentAssignmentReviewItemDTO(
+            code=code,
+            student_id=student_id,
+            request_id=source_key[1],
+            course_id=course_id,
+            detail={"commitment_kind": kind, "candidate_count": len(choices)},
+        ))
 
     unmet = []
     diagnostics = []
@@ -1213,6 +1789,11 @@ def _solve_student_assignment(data, *, include_lock_costs):
         })
 
     required_unmet = [item for item in unmet if item.is_mandatory or item.is_primary]
+    unsatisfied_commitments = [
+        source_key
+        for source_key in commitment_candidates
+        if source_key not in assigned_commitment_sources and source_key not in fixed_commitment_sources
+    ]
     if required_unmet:
         diagnostics.append({
             "code": STUDENT_ASSIGNMENT_UNRESOLVED_REQUIRED_REQUEST,
@@ -1287,23 +1868,28 @@ def _solve_student_assignment(data, *, include_lock_costs):
         ))
 
     result = StudentAssignmentResultDTO(
-        status="complete" if not required_unmet and not hard_sequence_impossible else "partial",
+        status=(
+            "complete"
+            if not required_unmet and not hard_sequence_impossible and not unsatisfied_commitments
+            else "partial"
+        ),
         solver_outcome=_outcome_name(outcome),
         assignments=tuple(assignments),
         unmet_requests=tuple(unmet),
         diagnostics=tuple(diagnostics),
         objective_components={
             "mandatory_fulfilled": float(sum(
-                1 for row in assignments if requests_by_id[row.request_id].is_mandatory
+                1 for request in data.requests
+                if request.request_id in assigned_request_ids and request.is_mandatory
             )),
             "priority_primary_fulfilled": float(sum(
-                1 for row in assignments if row.request_id in priority_request_ids
+                1 for request_id in assigned_request_ids if request_id in priority_request_ids
             )),
             "primary_fulfilled": float(sum(
-                1 for row in assignments if requests_by_id[row.request_id].is_primary
+                1 for request_id in assigned_request_ids if requests_by_id[request_id].is_primary
             )),
             "approved_backup_fulfilled": float(sum(
-                1 for row in assignments if not requests_by_id[row.request_id].is_primary
+                1 for request_id in assigned_request_ids if not requests_by_id[request_id].is_primary
             )),
             "section_utilization_balance_penalty": float(sum(solver.Value(item) for item in section_balance_terms)),
             "student_semester_balance_penalty": float(sum(solver.Value(item) for item in semester_balance_terms)),
@@ -1315,5 +1901,7 @@ def _solve_student_assignment(data, *, include_lock_costs):
         sequence_outcomes=tuple(sequence_outcomes),
         seat_contention=tuple(seat_contention),
         section_balance_facts=tuple(section_balance_facts),
+        commitment_assignments=tuple(commitment_assignments),
+        review_items=tuple(review_items),
     )
     return replace(result, lock_costs=_build_lock_costs(data, result)) if include_lock_costs else result

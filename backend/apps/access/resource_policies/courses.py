@@ -60,3 +60,19 @@ class CourseRequestPolicy(BaseResourcePolicy):
     @classmethod
     def is_own_object(cls, user, obj):
         return getattr(getattr(obj, "student", None), "user_id", None) == user.id
+
+
+class StudentScheduleCommitmentRequestPolicy(BaseResourcePolicy):
+    """Special-program requests are planning records, not self-service demand.
+
+    The current release treats every stored Study or Focus request as already
+    counselor-authorized.  Restricting writes to planning roles makes that
+    temporary policy enforceable rather than merely a convention in the UI.
+    """
+
+    rules = {
+        RoleChoices.COUNSELOR: AccessRule(read=ReadScope.ALL, write=WriteScope.ALL),
+        RoleChoices.STAFF: AccessRule(read=ReadScope.ALL, write=WriteScope.ALL),
+        RoleChoices.DIRECTOR: AccessRule(read=ReadScope.ALL, write=WriteScope.ALL),
+        RoleChoices.UNKNOWN: AccessRule(),
+    }

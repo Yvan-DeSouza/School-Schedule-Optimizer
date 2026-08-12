@@ -16,6 +16,8 @@ class SchedulingAction:
     APPROVE_TEACHER_ASSIGNMENT = "approve_teacher_assignment"
     RUN_STUDENT_ASSIGNMENT = "run_student_assignment"
     APPROVE_STUDENT_ASSIGNMENT = "approve_student_assignment"
+    RUN_ONLINE_SUPERVISION_PLANNING = "run_online_supervision_planning"
+    APPROVE_ONLINE_SUPERVISION_PLANNING = "approve_online_supervision_planning"
     VIEW_SCHEDULING_RUN_STATUS = "view_scheduling_run_status"
 
 
@@ -26,11 +28,13 @@ class SchedulingActionPolicy(BaseActionPolicy):
         SchedulingAction.RUN_SECTION_PLACEMENT,
         SchedulingAction.RUN_TEACHER_ASSIGNMENT,
         SchedulingAction.RUN_STUDENT_ASSIGNMENT,
+        SchedulingAction.RUN_ONLINE_SUPERVISION_PLANNING,
     }
     approval_actions = {
         SchedulingAction.APPROVE_SECTION_PLACEMENT,
         SchedulingAction.APPROVE_TEACHER_ASSIGNMENT,
         SchedulingAction.APPROVE_STUDENT_ASSIGNMENT,
+        SchedulingAction.APPROVE_ONLINE_SUPERVISION_PLANNING,
     }
     status_actions = {SchedulingAction.VIEW_SCHEDULING_RUN_STATUS}
     rules = {

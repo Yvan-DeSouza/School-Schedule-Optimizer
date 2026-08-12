@@ -19,9 +19,13 @@ from backend.apps.scheduling.views import (
     TeacherAssignmentRunViewSet,
     StudentAssignmentRunViewSet,
     StudentAssignmentLockViewSet,
+    StudentSpecialCommitmentLockViewSet,
     TeacherPlanningRosterViewSet,
     TimeSlotViewSet,
     AnnualPlacementLockViewSet,
+    OnlineSupervisionConfigurationViewSet,
+    OnlineSupervisionPlanRunViewSet,
+    OnlineSupervisionSessionViewSet,
 )
 
 router = DefaultRouter()
@@ -35,11 +39,19 @@ router.register("planning/teacher-course-assignment-rules", TeacherCourseAssignm
 router.register("planning/teacher-time-preferences", TeacherTimePreferenceViewSet, basename="teacher-time-preference")
 router.register("planning/teacher-rosters", TeacherPlanningRosterViewSet, basename="teacher-planning-roster")
 router.register("planning/annual-placement-locks", AnnualPlacementLockViewSet, basename="annual-placement-lock")
+router.register("planning/online-supervision-configurations", OnlineSupervisionConfigurationViewSet, basename="online-supervision-configuration")
+router.register("planning/online-supervision-plan-runs", OnlineSupervisionPlanRunViewSet, basename="online-supervision-plan-run")
+router.register("planning/online-supervision-sessions", OnlineSupervisionSessionViewSet, basename="online-supervision-session")
 router.register("planning/section-count-runs", SectionPlanningRunViewSet, basename="section-planning-run")
 router.register("planning/section-placement-runs", SectionPlacementRunViewSet, basename="section-placement-run")
 router.register("planning/teacher-assignment-runs", TeacherAssignmentRunViewSet, basename="teacher-assignment-run")
 router.register("planning/student-assignment-runs", StudentAssignmentRunViewSet, basename="student-assignment-run")
 router.register("planning/student-assignment-locks", StudentAssignmentLockViewSet, basename="student-assignment-lock")
+router.register(
+    "planning/student-special-commitment-locks",
+    StudentSpecialCommitmentLockViewSet,
+    basename="student-special-commitment-lock",
+)
 router.register("planning/section-budget-runs", SectionBudgetRunViewSet, basename="section-budget-run")
 router.register("planning/staffing-runs", StaffingPlanRunViewSet, basename="staffing-plan-run")
 

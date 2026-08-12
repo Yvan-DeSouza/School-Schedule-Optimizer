@@ -21,6 +21,11 @@ from backend.apps.common.constants import (
     DELIVERY_GROUP_STATUS_ACTIVE,
     DELIVERY_GROUP_STATUS_RETIRED,
 )
+from backend.apps.courses.constants import (
+    COURSE_DELIVERY_KIND_CO_OP,
+    COURSE_DELIVERY_KIND_NORMAL_INSTRUCTION,
+    COURSE_DELIVERY_KIND_ONLINE,
+)
 from backend.apps.courses.codes import (
     ACTIVE_SECTIONS_BLOCK_OFFERING_CHANGE,
     COMBINED_OFFERING_MUST_BE_SEPARATED_FIRST,
@@ -54,6 +59,10 @@ def _clean_reason(reason):
 
 
 def _standalone_group(course, academic_year, *, actor=None, reason=""):
+    if course.delivery_kind != COURSE_DELIVERY_KIND_NORMAL_INSTRUCTION:
+        raise OfferingValidationError(
+            "Only normal instructional courses receive a physical delivery group."
+        )
     return DeliveryGroup.objects.create(
         academic_year=academic_year,
         name=course.course_code,
@@ -65,7 +74,12 @@ def _standalone_group(course, academic_year, *, actor=None, reason=""):
 
 @transaction.atomic
 def ensure_academic_year_offerings(academic_year, *, actor=None):
-    """Create the default one-course delivery group for missing catalog rows."""
+    """Create offered rows, reserving physical groups for normal instruction.
+
+    Online and Co-op remain real academic offerings, but neither is a normal
+    Course -> DeliveryGroup -> Section delivery.  Keeping their delivery group
+    null is intentional domain information, not the cancelled-offering shape.
+    """
 
     existing_course_ids = set(
         CourseOffering.objects.filter(academic_year=academic_year).values_list(
@@ -77,7 +91,11 @@ def ensure_academic_year_offerings(academic_year, *, actor=None):
     for course in Course.objects.select_related("capacity_profile").exclude(
         id__in=existing_course_ids
     ).order_by("course_code", "id"):
-        group = _standalone_group(course, academic_year, actor=actor)
+        group = (
+            _standalone_group(course, academic_year, actor=actor)
+            if course.delivery_kind == COURSE_DELIVERY_KIND_NORMAL_INSTRUCTION
+            else None
+        )
         created.append(
             CourseOffering.objects.create(
                 course=course,
@@ -191,7 +209,7 @@ def cancel_course_offering(offering, *, actor, reason):
 
 @transaction.atomic
 def restore_course_offering(offering, *, actor, reason):
-    """Restore a cancelled course into a new standalone delivery group."""
+    """Restore a cancelled offering without inventing a physical delivery."""
 
     reason = _clean_reason(reason)
     offering = CourseOffering.objects.select_for_update().select_related(
@@ -202,11 +220,15 @@ def restore_course_offering(offering, *, actor, reason):
             "detail": "Only a cancelled offering can be restored.",
             "conflicts": [{"code": OFFERING_NOT_CANCELLED}],
         })
-    group = _standalone_group(
-        offering.course,
-        offering.academic_year,
-        actor=actor,
-        reason=reason,
+    group = (
+        _standalone_group(
+            offering.course,
+            offering.academic_year,
+            actor=actor,
+            reason=reason,
+        )
+        if offering.course.delivery_kind == COURSE_DELIVERY_KIND_NORMAL_INSTRUCTION
+        else None
     )
     previous_status = offering.status
     offering.status = COURSE_OFFERING_STATUS_OFFERED
@@ -271,6 +293,10 @@ def combine_course_offerings(rule, academic_year, *, actor, reason):
         })
     _active_section_conflict(old_groups)
     courses = [item.course for item in offerings]
+    if any(course.delivery_kind != COURSE_DELIVERY_KIND_NORMAL_INSTRUCTION for course in courses):
+        raise OfferingValidationError({
+            "detail": "Only normal instructional courses may be combined into one physical delivery group."
+        })
     if combined_allowed_semester(courses) is None:
         raise OfferingValidationError({
             "detail": "The selected courses have no common legal semester."

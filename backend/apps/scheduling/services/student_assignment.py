@@ -24,7 +24,6 @@ from backend.apps.scheduling.codes import (
 )
 from backend.apps.scheduling.constants import (
     STUDENT_ASSIGNMENT_RUN_STATUS_COMPLETE,
-    STUDENT_ASSIGNMENT_RUN_STATUS_COMPLETE,
     STUDENT_ASSIGNMENT_RUN_STATUS_FAILED,
     STUDENT_ASSIGNMENT_RUN_STATUS_INFEASIBLE,
     STUDENT_ASSIGNMENT_RUN_STATUS_PARTIAL,
@@ -372,7 +371,15 @@ def preview_student_assignment_approval(run):
 
 
 def _assignment_key(item):
-    return int(item["request_id"]), int(item["section_id"])
+    """Return one physical destination identity without faking an online Section."""
+
+    section_id = item.get("section_id")
+    if section_id is not None:
+        return int(item["request_id"]), ("section", int(section_id))
+    return int(item["request_id"]), (
+        "online_supervision",
+        int(item["online_supervision_session_id"]),
+    )
 
 
 def _soft_priority_effects(data, result):
@@ -413,17 +420,24 @@ def _build_student_assignment_review(run, *, data):
 
     result = run.result
     assignments = list(result.get("assignments", ()))
+    commitment_assignments = list(result.get("commitment_assignments", ()))
     unmet = list(result.get("unmet_requests", ()))
     new_assignments = [item for item in assignments if item.get("previous_enrollment_id") is None]
     changed_assignments = [
         item for item in assignments
         if item.get("previous_enrollment_id") is not None
-        and item.get("previous_section_id") != item.get("section_id")
+        and (
+            item.get("previous_section_id") != item.get("section_id")
+            or item.get("previous_online_supervision_session_id")
+            != item.get("online_supervision_session_id")
+        )
     ]
     unchanged_assignments = [
         item for item in assignments
         if item.get("previous_enrollment_id") is not None
         and item.get("previous_section_id") == item.get("section_id")
+        and item.get("previous_online_supervision_session_id")
+        == item.get("online_supervision_session_id")
     ]
     protected_assignments = [
         item for item in unmet
@@ -446,14 +460,37 @@ def _build_student_assignment_review(run, *, data):
         if row.is_active and row.is_locked and row.lock_ids
     )
     difficulty_by_course = {item.course_id: item.effective_difficulty for item in data.course_difficulties}
+    credit_by_course_request = {
+        item.request_id: item.credit_value for item in data.requests
+    }
+    focus_student_ids = {
+        item.student_id
+        for item in data.schedule_commitment_requests
+        if item.commitment_type == "focus"
+    } | {
+        item.student_id
+        for item in data.fixed_schedule_commitments
+        if item.is_active and not item.is_historical and item.commitment_kind == "focus"
+    }
     difficulty_totals = defaultdict(lambda: {"semester_1_difficulty": 0, "semester_2_difficulty": 0})
     for assignment in assignments:
+        if int(assignment["student_id"]) in focus_student_ids:
+            continue
         key = "semester_1_difficulty" if assignment["semester"] == 1 else "semester_2_difficulty"
-        difficulty_totals[int(assignment["student_id"])][key] += difficulty_by_course.get(int(assignment["course_id"]), 0)
+        difficulty_totals[int(assignment["student_id"])][key] += round(
+            difficulty_by_course.get(int(assignment["course_id"]), 0)
+            * credit_by_course_request.get(int(assignment["request_id"]), 1.0)
+        )
     for row in data.fixed_enrollments:
-        if row.is_active and not row.is_historical:
+        if (
+            row.is_active
+            and not row.is_historical
+            and row.student_id not in focus_student_ids
+        ):
             key = "semester_1_difficulty" if row.semester == 1 else "semester_2_difficulty"
-            difficulty_totals[row.student_id][key] += difficulty_by_course.get(row.course_id, 0)
+            difficulty_totals[row.student_id][key] += round(
+                difficulty_by_course.get(row.course_id, 0) * row.credit_value
+            )
     difficulty_balance = [
         {"student_id": student_id, **totals, "difficulty_imbalance": abs(totals["semester_1_difficulty"] - totals["semester_2_difficulty"])}
         for student_id, totals in sorted(difficulty_totals.items())
@@ -463,6 +500,8 @@ def _build_student_assignment_review(run, *, data):
         "approval_allowed": True,
         "assignment_count": len(assignments),
         "assignments": assignments,
+        "commitment_assignments": commitment_assignments,
+        "special_commitment_review_items": result.get("review_items", []),
         "unmet_requests": unmet,
         "diagnostics": result.get("diagnostics", []),
         "objective_components": result.get("objective_components", {}),
@@ -506,6 +545,11 @@ def student_assignment_student_explanation(run, *, student_id):
         int(item["timeslot_id"])
         for item in sections.values()
         if item.get("timeslot_id") is not None
+    } | {
+        int(timeslot_id)
+        for item in run.result.get("commitment_assignments", ())
+        if int(item["student_id"]) == student_id
+        for timeslot_id, _segment in item.get("occupancy", ())
     }
     from backend.apps.courses.models import Course
     from backend.apps.scheduling.models import TimeSlot
@@ -527,7 +571,16 @@ def student_assignment_student_explanation(run, *, student_id):
         request_id = int(request["request_id"])
         assignment = result_assignments.get(request_id)
         course_id = int(request["course_id"])
-        section = sections.get(int(assignment["section_id"])) if assignment else None
+        engine_section_id = None
+        if assignment:
+            if assignment.get("section_id") is not None:
+                engine_section_id = int(assignment["section_id"])
+            elif assignment.get("online_supervision_session_id") is not None:
+                # The immutable input uses a negative, engine-only identity to
+                # model shared online capacity without claiming it is a normal
+                # instructional Section. Translate it only for lookup here.
+                engine_section_id = -int(assignment["online_supervision_session_id"])
+        section = sections.get(engine_section_id) if engine_section_id is not None else None
         if section is None and course_id in fixed_by_course:
             section = sections.get(int(fixed_by_course[course_id]["section_id"]))
         timeslot = timeslots.get(int(section["timeslot_id"])) if section else None
@@ -538,7 +591,14 @@ def student_assignment_student_explanation(run, *, student_id):
             "course_id": course_id,
             "course_code": courses.get(course_id).course_code if courses.get(course_id) else None,
             "received": bool(assignment or course_id in fixed_by_course),
-            "section_id": section.get("section_id") if section else None,
+            "section_id": (
+                assignment.get("section_id")
+                if assignment
+                else section.get("section_id") if section else None
+            ),
+            "online_supervision_session_id": (
+                assignment.get("online_supervision_session_id") if assignment else None
+            ),
             "semester": section.get("semester") if section else None,
             "timeslot_id": section.get("timeslot_id") if section else None,
             "block": timeslot.block if timeslot else None,
@@ -553,7 +613,36 @@ def student_assignment_student_explanation(run, *, student_id):
         if not row["received"] and row["reason_code"] is None:
             row["reason_code"] = STUDENT_ASSIGNMENT_UNRESOLVED_REQUIRED_REQUEST
         rows.append(row)
-    return {"run_id": run.id, "student_id": student_id, "requests": rows}
+    commitments = []
+    for commitment in run.result.get("commitment_assignments", ()):
+        if int(commitment["student_id"]) != student_id:
+            continue
+        occupancy = [
+            {
+                "timeslot_id": int(timeslot_id),
+                "block": timeslots.get(int(timeslot_id)).block if timeslots.get(int(timeslot_id)) else None,
+                "semester": timeslots.get(int(timeslot_id)).semester if timeslots.get(int(timeslot_id)) else None,
+                "half_semester_segment": segment,
+            }
+            for timeslot_id, segment in commitment.get("occupancy", ())
+        ]
+        commitments.append({
+            "request_id": int(commitment["request_id"]),
+            "commitment_kind": commitment["commitment_kind"],
+            "course_request_id": commitment.get("course_request_id"),
+            "course_offering_id": commitment.get("course_offering_id"),
+            "occupancy": occupancy,
+        })
+    return {
+        "run_id": run.id,
+        "student_id": student_id,
+        "requests": rows,
+        "commitments": commitments,
+        "special_commitment_review_items": [
+            item for item in run.result.get("review_items", ())
+            if int(item["student_id"]) == student_id
+        ],
+    }
 
 
 def preview_student_assignment_unlock(run, *, lock_ids):
@@ -627,10 +716,36 @@ def approve_student_assignment_run(run, *, approved_by, reason):
     run = StudentAssignmentRun.objects.select_for_update().get(pk=run.pk)
     _require_complete_unapproved(run)
     assignments = list(run.result.get("assignments", []))
-    student_ids = sorted({int(item["student_id"]) for item in assignments})
-    request_ids = sorted({int(item["request_id"]) for item in assignments})
-    section_ids = sorted({int(item["section_id"]) for item in assignments})
-    offering_ids = sorted({int(item["course_offering_id"]) for item in assignments})
+    commitment_assignments = list(run.result.get("commitment_assignments", []))
+    student_ids = sorted({
+        int(item["student_id"])
+        for item in assignments + commitment_assignments
+    })
+    request_ids = sorted({int(item["request_id"]) for item in assignments} | {
+        int(item["course_request_id"])
+        for item in commitment_assignments
+        if item.get("course_request_id") is not None
+    })
+    schedule_commitment_request_ids = sorted({
+        int(item["request_id"])
+        for item in commitment_assignments
+        if item.get("course_request_id") is None
+    })
+    section_ids = sorted({
+        int(item["section_id"])
+        for item in assignments
+        if item.get("section_id") is not None
+    })
+    online_session_ids = sorted({
+        int(item["online_supervision_session_id"])
+        for item in assignments
+        if item.get("online_supervision_session_id") is not None
+    })
+    offering_ids = sorted({int(item["course_offering_id"]) for item in assignments} | {
+        int(item["course_offering_id"])
+        for item in commitment_assignments
+        if item.get("course_offering_id") is not None
+    })
 
     # The deterministic lock order protects the exact state the immutable
     # candidate relied on.  None of these locks authorizes a re-solve.
@@ -639,8 +754,13 @@ def approve_student_assignment_run(run, *, approved_by, reason):
         Enrollment, Section,
     )
     from backend.apps.people.models import Student
-    from backend.apps.scheduling.models import SectionSchedule, TeacherAssignmentRun
-    from backend.apps.scheduling.models import StudentAssignmentLock
+    from backend.apps.scheduling.models import (
+        SectionSchedule, TeacherAssignmentRun, StudentAssignmentLock,
+        OnlineEnrollment, OnlineSupervisionSession,
+        StudentAssignmentApprovalOnlineEnrollment,
+        StudentScheduleCommitment, StudentScheduleCommitmentOccupancy,
+        StudentAssignmentApprovalCommitment, StudentSpecialCommitmentLock,
+    )
 
     active_section_ids = list(Section.objects.filter(
         academic_year_id=run.academic_year_id,
@@ -661,6 +781,14 @@ def approve_student_assignment_run(run, *, approved_by, reason):
         for item in CourseRequest.objects.select_for_update().filter(id__in=active_request_ids).order_by("id")
     }
     requests = {request_id: all_requests[request_id] for request_id in request_ids if request_id in all_requests}
+    from backend.apps.courses.models import StudentScheduleCommitmentRequest
+
+    schedule_commitment_requests = {
+        item.id: item
+        for item in StudentScheduleCommitmentRequest.objects.select_for_update().filter(
+            id__in=schedule_commitment_request_ids,
+        ).order_by("id")
+    }
     sections = {
         item.id: item
         for item in Section.objects.select_for_update().filter(id__in=active_section_ids).order_by("id")
@@ -677,10 +805,33 @@ def approve_student_assignment_run(run, *, approved_by, reason):
         section_id__in=active_section_ids,
         lifecycle_status=ENROLLMENT_LIFECYCLE_ACTIVE,
     ).order_by("section_id", "id"))
+    online_sessions = {
+        item.id: item
+        for item in OnlineSupervisionSession.objects.select_for_update().filter(
+            id__in=online_session_ids,
+            academic_year_id=run.academic_year_id,
+            lifecycle_status="active",
+        ).order_by("id")
+    }
+    list(OnlineEnrollment.objects.select_for_update().filter(
+        supervision_session_id__in=online_session_ids,
+        lifecycle_status="active",
+    ).order_by("supervision_session_id", "id"))
     list(StudentAssignmentLock.objects.select_for_update().filter(
         academic_year_id=run.academic_year_id,
         is_active=True,
     ).order_by("id"))
+    list(StudentSpecialCommitmentLock.objects.select_for_update().filter(
+        academic_year_id=run.academic_year_id,
+        is_active=True,
+    ).order_by("id"))
+    existing_commitments = list(StudentScheduleCommitment.objects.select_for_update().filter(
+        academic_year_id=run.academic_year_id,
+        lifecycle_status="active",
+    ).prefetch_related("occupancies").order_by("id"))
+    list(StudentScheduleCommitmentOccupancy.objects.select_for_update().filter(
+        commitment__in=existing_commitments,
+    ).order_by("commitment_id", "timeslot_id", "half_semester_segment"))
     list(CoursePrerequisite.objects.select_for_update().order_by("id"))
     list(CourseSequencePreference.objects.select_for_update().order_by("id"))
     if run.provisional_teacher_assignment_run_id:
@@ -689,7 +840,14 @@ def approve_student_assignment_run(run, *, approved_by, reason):
         _current_input_for_run(run)
     except ValueError as error:
         raise StudentAssignmentConflictError({"detail": str(error)}) from error
-    if set(student_ids) != set(students) or set(request_ids) != set(requests) or not set(section_ids) <= set(sections) or set(offering_ids) != set(offerings):
+    if (
+        set(student_ids) != set(students)
+        or set(request_ids) != set(requests)
+        or not set(section_ids) <= set(sections)
+        or set(online_session_ids) != set(online_sessions)
+        or set(offering_ids) != set(offerings)
+        or set(schedule_commitment_request_ids) != set(schedule_commitment_requests)
+    ):
         raise StudentAssignmentConflictError({"detail": "A student-assignment fact from the reviewed run no longer exists."})
 
     approval = StudentAssignmentApproval.objects.create(
@@ -699,8 +857,57 @@ def approve_student_assignment_run(run, *, approved_by, reason):
     )
     for item in assignments:
         request = requests[int(item["request_id"])]
-        section = sections[int(item["section_id"])]
         offering = offerings[int(item["course_offering_id"])]
+        if item.get("online_supervision_session_id") is not None:
+            session = online_sessions[int(item["online_supervision_session_id"])]
+            if request.student_id != int(item["student_id"]) or request.course_id != offering.course_id:
+                raise StudentAssignmentConflictError({"detail": "Reviewed online enrollment provenance no longer matches its request."})
+            if offering.course.delivery_kind != "online" or session.timeslot_id is None:
+                raise StudentAssignmentConflictError({"detail": "The reviewed online course or supervision session is no longer usable."})
+            previous = None
+            previous_enrollment_id = item.get("previous_enrollment_id")
+            if previous_enrollment_id is not None:
+                previous = OnlineEnrollment.objects.filter(
+                    pk=int(previous_enrollment_id),
+                    lifecycle_status="active",
+                ).first()
+                if previous is None or (
+                    previous.student_id != request.student_id
+                    or previous.course_offering_id != offering.id
+                    or previous.supervision_session_id != item.get("previous_online_supervision_session_id")
+                ):
+                    raise StudentAssignmentConflictError({
+                        "code": STUDENT_ASSIGNMENT_RERUN_CONTEXT_CHANGED,
+                        "detail": "The reviewed online enrollment replacement no longer matches its prior active row.",
+                    })
+                if previous.supervision_session_id == session.id:
+                    continue
+                previous.lifecycle_status = "historical"
+                previous.save(update_fields=["lifecycle_status"])
+            if OnlineEnrollment.objects.filter(
+                student_id=request.student_id,
+                course_offering_id=offering.id,
+                lifecycle_status="active",
+            ).exists():
+                raise StudentAssignmentConflictError({
+                    "code": STUDENT_ASSIGNMENT_RERUN_CONTEXT_CHANGED,
+                    "detail": "The student already has an active online enrollment for the reviewed offering.",
+                })
+            online_enrollment = OnlineEnrollment(
+                student_id=request.student_id,
+                course_offering=offering,
+                supervision_session=session,
+            )
+            online_enrollment.full_clean()
+            online_enrollment.save()
+            StudentAssignmentApprovalOnlineEnrollment.objects.create(
+                approval=approval,
+                online_enrollment=online_enrollment,
+                course_request=request,
+                superseded_online_enrollment=previous,
+            )
+            continue
+        section = sections[int(item["section_id"])]
         if request.student_id != int(item["student_id"]) or request.course_id != offering.course_id:
             raise StudentAssignmentConflictError({"detail": "Reviewed enrollment provenance no longer matches its request."})
         if section.delivery_group_id:
@@ -763,5 +970,70 @@ def approve_student_assignment_run(run, *, approved_by, reason):
             course_request=request,
             assignment_basis=item["assignment_basis"],
             backup_resolution_snapshot=item.get("backup_resolution_snapshot") or {},
+        )
+    for item in commitment_assignments:
+        kind = item["commitment_kind"]
+        student_id = int(item["student_id"])
+        course_request_id = item.get("course_request_id")
+        source_schedule_request = (
+            schedule_commitment_requests[int(item["request_id"])]
+            if course_request_id is None else None
+        )
+        source_course_request = (
+            requests[int(course_request_id)] if course_request_id is not None else None
+        )
+        offering = (
+            offerings[int(item["course_offering_id"])]
+            if item.get("course_offering_id") is not None else None
+        )
+        existing = next((
+            commitment for commitment in existing_commitments
+            if commitment.student_id == student_id
+            and commitment.lifecycle_status == "active"
+            and (
+                commitment.schedule_commitment_request_id == getattr(source_schedule_request, "id", None)
+                or commitment.course_request_id == getattr(source_course_request, "id", None)
+            )
+        ), None)
+        normalized_occupancy = tuple(sorted(
+            (int(timeslot_id), segment)
+            for timeslot_id, segment in item["occupancy"]
+        ))
+        if existing is not None:
+            existing_occupancy = tuple(sorted(
+                (row.timeslot_id, row.half_semester_segment)
+                for row in existing.occupancies.all()
+            ))
+            if existing_occupancy == normalized_occupancy:
+                # A scoped rerun can retain an in-scope commitment without
+                # duplicating a valid existing operational record.
+                continue
+            existing.lifecycle_status = "historical"
+            existing.save(update_fields=["lifecycle_status"])
+        commitment = StudentScheduleCommitment(
+            student_id=student_id,
+            academic_year_id=run.academic_year_id,
+            commitment_kind=kind,
+            schedule_commitment_request=source_schedule_request,
+            course_request=source_course_request,
+            course_offering=offering,
+            credit_value=2 if kind == "co_op" else 0,
+        )
+        commitment.full_clean()
+        commitment.save()
+        for timeslot_id, segment in normalized_occupancy:
+            occupancy = StudentScheduleCommitmentOccupancy(
+                commitment=commitment,
+                timeslot_id=timeslot_id,
+                half_semester_segment=segment,
+            )
+            occupancy.full_clean()
+            occupancy.save()
+        StudentAssignmentApprovalCommitment.objects.create(
+            approval=approval,
+            commitment=commitment,
+            schedule_commitment_request=source_schedule_request,
+            course_request=source_course_request,
+            superseded_commitment=existing,
         )
     return approval

@@ -19,6 +19,7 @@ from backend.apps.scheduling.constants import (
 )
 from backend.apps.scheduling.models import (
     TeacherAssignmentApproval, TeacherAssignmentApprovalAssignment,
+    TeacherAssignmentApprovalOnlineSupervision,
     TeacherAssignmentRun,
 )
 from backend.apps.scheduling.services.engine_adapter import (
@@ -121,11 +122,23 @@ def approve_teacher_assignment_run(run, *, approved_by, reason):
     run = TeacherAssignmentRun.objects.select_for_update().get(pk=run.pk)
     _require_complete_unapproved(run)
     assignments = list(run.result.get("assignments", []))
-    section_ids = sorted(int(item["section_id"]) for item in assignments)
+    section_ids = sorted(
+        int(item["section_id"])
+        for item in assignments
+        if item.get("section_id") is not None
+    )
+    online_session_ids = sorted(
+        int(item["online_supervision_session_id"])
+        for item in assignments
+        if item.get("online_supervision_session_id") is not None
+    )
 
     from backend.apps.control.models import SectionLock
     from backend.apps.courses.models import Section
-    from backend.apps.scheduling.models import SectionSchedule, TeacherPlanningAnnualCapacity, TeacherPlanningCapacity
+    from backend.apps.scheduling.models import (
+        SectionSchedule, TeacherPlanningAnnualCapacity, TeacherPlanningCapacity,
+        OnlineSupervisionSession,
+    )
 
     # Deterministic lock order reduces concurrent approval races.  Absence of a
     # teacher is checked after locking so an external/manual assignment cannot
@@ -136,6 +149,14 @@ def approve_teacher_assignment_run(run, *, approved_by, reason):
     }
     list(SectionSchedule.objects.select_for_update().filter(section_id__in=section_ids).order_by("section_id"))
     list(SectionLock.objects.select_for_update().filter(section_id__in=section_ids).order_by("section_id"))
+    online_sessions = {
+        item.id: item
+        for item in OnlineSupervisionSession.objects.select_for_update().filter(
+            id__in=online_session_ids,
+            academic_year_id=run.academic_year_id,
+            lifecycle_status="active",
+        ).order_by("id")
+    }
     teacher_ids = sorted(int(item["teacher_id"]) for item in assignments)
     list(TeacherPlanningCapacity.objects.select_for_update().filter(
         academic_year_id=run.academic_year_id, teacher_id__in=teacher_ids,
@@ -147,17 +168,29 @@ def approve_teacher_assignment_run(run, *, approved_by, reason):
         _current_input_for_run(run)
     except ValueError as error:
         raise TeacherAssignmentConflictError({"detail": str(error)}) from error
-    if set(section_ids) != set(sections):
-        raise TeacherAssignmentConflictError({"detail": "A section from the teacher assignment run no longer exists."})
-    if any(section.teacher_id is not None for section in sections.values()):
-        raise TeacherAssignmentConflictError({"detail": "A section gained a named teacher since the run."})
+    if set(section_ids) != set(sections) or set(online_session_ids) != set(online_sessions):
+        raise TeacherAssignmentConflictError({"detail": "A staffing unit from the teacher assignment run no longer exists."})
+    if any(section.teacher_id is not None for section in sections.values()) or any(
+        session.supervisor_id is not None for session in online_sessions.values()
+    ):
+        raise TeacherAssignmentConflictError({"detail": "A staffing unit gained a named teacher since the run."})
 
     approval = TeacherAssignmentApproval.objects.create(
         teacher_assignment_run=run, approved_by=approved_by, reason=reason.strip(),
     )
     for item in assignments:
-        section = sections[int(item["section_id"])]
         teacher_id = int(item["teacher_id"])
+        if item.get("online_supervision_session_id") is not None:
+            session = online_sessions[int(item["online_supervision_session_id"])]
+            TeacherAssignmentApprovalOnlineSupervision.objects.create(
+                approval=approval,
+                online_supervision_session=session,
+                teacher_id=teacher_id,
+            )
+            session.supervisor_id = teacher_id
+            session.save(update_fields=["supervisor"])
+            continue
+        section = sections[int(item["section_id"])]
         TeacherAssignmentApprovalAssignment.objects.create(
             approval=approval, section=section, teacher_id=teacher_id,
         )

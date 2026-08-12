@@ -972,15 +972,40 @@ Approval revalidates the relevant state and writes `Section.teacher` and
 immutable assignment-provenance rows. It never changes timing, assigns rooms,
 or creates enrollments.
 
-### 20.6 Student Assignment and Remaining Engine Modules
+### 20.6 Student Assignment and Special Student-Time Commitments
 
-`student_assignment.py` is a pure first-release enrollment solver. It consumes
-active sections with accepted A-D placement, offered delivery-group membership,
-fixed existing enrollments, effective requests, hard prerequisite edges, and
-soft sequence preferences. It returns an immutable review candidate and never
-changes teachers, sections, timing, or rooms. The Django service writes only
-new enrollment rows after complete-candidate approval. Prior prerequisite
-completion is intentionally assumed until transcript/SIS evidence is added.
+`student_assignment.py` remains a pure enrollment solver over immutable DTOs.
+Normal instructional courses consume active sections with accepted A-D
+placement, delivery-group membership, and fixed existing enrollments. Study,
+Focus, Co-op, and online supervision are deliberately separate student-time
+concepts rather than fake instructional sections. The engine combines their
+occupancy facts with normal enrollment candidates without mutating teachers,
+sections, timing, or rooms.
+
+- Study and Focus use counselor-requested schedule commitments. Study occupies
+  one A-D block; Focus occupies all blocks in one selected semester. Neither
+  is an academic course or an automatically created gap filler.
+- Co-op is one category-neutral, two-credit academic request occupying A+B or
+  C+D in one semester. It creates no local instructional section or teacher
+  load.
+- An online academic course retains its ordinary category, difficulty, credit,
+  and prerequisite behavior, while its `OnlineEnrollment` reserves a seat in a
+  separately planned, placed, and staffed `OnlineSupervisionSession`. The
+  supervisor consumes normal teacher workload and availability but does not
+  require subject qualification.
+- A normal half-semester course remains an instructional section with a
+  first/second-half segment. The configured pair shares a time and qualified
+  teacher sequentially, so it uses one teacher workload slot and is not treated
+  as two simultaneous student courses. A half-semester online course keeps a
+  full-semester supervision seat and reports its unused half for counselor
+  review.
+
+The Django service writes active `Enrollment`, `OnlineEnrollment`, and
+`StudentScheduleCommitment` records with immutable approval provenance after a
+complete reviewed candidate passes current-state validation. Prior prerequisite
+completion remains intentionally assumed until transcript/SIS evidence is
+added. The accepted detailed contract is
+[`special-student-schedule-commitments.md`](decisions/special-student-schedule-commitments.md).
 
 There is no working `conflict_analyzer.py`. A future read-only analyzer should
 report unmet requests, incomplete schedules, capacity issues, unstaffed

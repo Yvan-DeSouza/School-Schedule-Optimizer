@@ -43,11 +43,33 @@ from backend.apps.scheduling.constants import (
     STUDENT_ASSIGNMENT_STAFFING_MODE_CHOICES,
     TEACHER_ASSIGNMENT_RUN_STATUS_CHOICES,
     TEACHER_TIME_PREFERENCE_CHOICES,
+    CO_OP_BLOCK_PAIR_CHOICES,
+    ONLINE_SUPERVISION_SESSION_LIFECYCLE_ACTIVE,
+    ONLINE_SUPERVISION_SESSION_LIFECYCLE_CHOICES,
+    STUDENT_SCHEDULE_COMMITMENT_KIND_CHOICES,
+    STUDENT_SCHEDULE_COMMITMENT_KIND_CO_OP,
+    STUDENT_SCHEDULE_COMMITMENT_KIND_FOCUS,
+    STUDENT_SCHEDULE_COMMITMENT_KIND_STUDY,
+    STUDENT_SCHEDULE_COMMITMENT_LIFECYCLE_ACTIVE,
+    STUDENT_SCHEDULE_COMMITMENT_LIFECYCLE_CHOICES,
+    STUDENT_SPECIAL_COMMITMENT_LOCK_MODE_CHOICES,
+    STUDENT_SPECIAL_COMMITMENT_LOCK_MODE_EXACT,
+    STUDENT_SPECIAL_COMMITMENT_LOCK_TYPE_CHOICES,
+    STUDENT_SPECIAL_COMMITMENT_LOCK_TYPE_CO_OP_TIME,
+    STUDENT_SPECIAL_COMMITMENT_LOCK_TYPE_FOCUS_SEMESTER,
+    STUDENT_SPECIAL_COMMITMENT_LOCK_TYPE_ONLINE_SUPERVISION_TIME,
+    STUDENT_SPECIAL_COMMITMENT_LOCK_TYPE_STUDY_TIME,
 )
 from backend.apps.scheduling.domain.capacity import (
     CAPACITY_ORDER_MESSAGE,
     capacity_values,
     validate_capacity_order,
+)
+from backend.apps.courses.constants import (
+    COURSE_DELIVERY_KIND_CO_OP,
+    COURSE_DELIVERY_KIND_ONLINE,
+    STUDENT_SCHEDULE_COMMITMENT_REQUEST_TYPE_FOCUS,
+    STUDENT_SCHEDULE_COMMITMENT_REQUEST_TYPE_STUDY,
 )
 
 
@@ -735,6 +757,325 @@ class SectionSchedule(models.Model):
         return f"Schedule for {self.section}"
 
 
+class OnlineSupervisionConfiguration(models.Model):
+    """One year-specific capacity policy for shared online supervision sessions."""
+
+    academic_year = models.OneToOneField(
+        "common.AcademicYear",
+        on_delete=models.CASCADE,
+        related_name="online_supervision_configuration",
+    )
+    capacity_profile = models.ForeignKey(
+        CapacityProfile,
+        on_delete=models.PROTECT,
+        related_name="online_supervision_configurations",
+    )
+    updated_by = models.ForeignKey("auth.User", null=True, on_delete=models.SET_NULL)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["academic_year"]
+
+
+class OnlineSupervisionPlanRun(models.Model):
+    """Immutable recommendation for annual online-supervision session capacity."""
+
+    academic_year = models.ForeignKey("common.AcademicYear", on_delete=models.PROTECT)
+    configuration = models.ForeignKey(OnlineSupervisionConfiguration, on_delete=models.PROTECT)
+    created_by = models.ForeignKey("auth.User", null=True, on_delete=models.SET_NULL)
+    created_at = models.DateTimeField(auto_now_add=True)
+    status = models.CharField(max_length=20, choices=SECTION_PLANNING_RUN_STATUS_CHOICES)
+    input_snapshot = models.JSONField(default=dict)
+    result = models.JSONField(default=dict)
+    solver_metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise ValidationError("Online supervision plan runs are immutable.")
+        return super().save(*args, **kwargs)
+
+
+class OnlineSupervisionPlanApproval(models.Model):
+    """Immutable approval of virtual supervision capacity before placement."""
+
+    plan_run = models.OneToOneField(
+        OnlineSupervisionPlanRun,
+        on_delete=models.PROTECT,
+        related_name="approval",
+    )
+    approved_by = models.ForeignKey("auth.User", null=True, on_delete=models.SET_NULL)
+    approved_at = models.DateTimeField(auto_now_add=True)
+    reason = models.TextField()
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise ValidationError("Online supervision plan approvals are immutable.")
+        return super().save(*args, **kwargs)
+
+
+class OnlineSupervisionPlanApprovalSession(models.Model):
+    """One stable annual supervision slot consumed by the placement workflow."""
+
+    approval = models.ForeignKey(
+        OnlineSupervisionPlanApproval,
+        on_delete=models.PROTECT,
+        related_name="session_approvals",
+    )
+    annual_index = models.PositiveIntegerField()
+    allowed_semesters = models.JSONField(default=list)
+    capacity_max = models.PositiveIntegerField(validators=[MinValueValidator(1)])
+    target_capacity = models.PositiveIntegerField(validators=[MinValueValidator(1)])
+
+    class Meta:
+        ordering = ["approval", "annual_index"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["approval", "annual_index"],
+                name="unique_online_supervision_annual_slot",
+            ),
+        ]
+
+    def clean(self):
+        if not set(self.allowed_semesters).issubset({1, 2}) or not self.allowed_semesters:
+            raise ValidationError({"allowed_semesters": "Choose one or both valid semesters."})
+        if self.target_capacity > self.capacity_max:
+            raise ValidationError({"target_capacity": "Cannot exceed capacity_max."})
+
+
+class OnlineSupervisionSession(models.Model):
+    """Accepted physical supervision resource, intentionally distinct from Section."""
+
+    academic_year = models.ForeignKey("common.AcademicYear", on_delete=models.PROTECT)
+    session_number = models.CharField(max_length=20)
+    # Planning deliberately creates an unplaced resource first.  Its timeslot
+    # is set only by the reviewed semester/A-D placement approval, so a
+    # supervisor session cannot be mistaken for a manually timed class.
+    timeslot = models.ForeignKey(
+        "scheduling.TimeSlot",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+    )
+    capacity_max = models.PositiveIntegerField(validators=[MinValueValidator(1)])
+    target_capacity = models.PositiveIntegerField(validators=[MinValueValidator(1)])
+    # A supervisor occupies ordinary teacher capacity but is not the academic
+    # instructor for any online course, so this must never reuse Section.teacher.
+    supervisor = models.ForeignKey(
+        "people.Teacher",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="online_supervision_sessions",
+    )
+    lifecycle_status = models.CharField(
+        max_length=20,
+        choices=ONLINE_SUPERVISION_SESSION_LIFECYCLE_CHOICES,
+        default=ONLINE_SUPERVISION_SESSION_LIFECYCLE_ACTIVE,
+    )
+    plan_approval_session = models.OneToOneField(
+        OnlineSupervisionPlanApprovalSession,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="materialized_session",
+    )
+    placement_approval = models.ForeignKey(
+        "scheduling.SectionPlacementApproval",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="materialized_online_supervision_sessions",
+    )
+
+    class Meta:
+        ordering = ["academic_year", "session_number"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["academic_year", "session_number"],
+                name="unique_online_supervision_session_number",
+            ),
+        ]
+
+    def clean(self):
+        errors = {}
+        if self.timeslot_id and self.timeslot.academic_year_id != self.academic_year_id:
+            errors["timeslot"] = "Timeslot must belong to the same academic year."
+        if self.target_capacity > self.capacity_max:
+            errors["target_capacity"] = "Cannot exceed capacity_max."
+        if errors:
+            raise ValidationError(errors)
+
+
+class OnlineEnrollment(models.Model):
+    """Academic online-course enrollment plus its shared physical supervision seat."""
+
+    student = models.ForeignKey("people.Student", on_delete=models.CASCADE)
+    course_offering = models.ForeignKey(
+        "courses.CourseOffering",
+        on_delete=models.PROTECT,
+        related_name="online_enrollments",
+    )
+    supervision_session = models.ForeignKey(
+        OnlineSupervisionSession,
+        on_delete=models.PROTECT,
+        related_name="online_enrollments",
+    )
+    lifecycle_status = models.CharField(
+        max_length=20,
+        choices=STUDENT_SCHEDULE_COMMITMENT_LIFECYCLE_CHOICES,
+        default=STUDENT_SCHEDULE_COMMITMENT_LIFECYCLE_ACTIVE,
+    )
+
+    class Meta:
+        ordering = ["student", "course_offering"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["student", "course_offering"],
+                condition=models.Q(lifecycle_status=STUDENT_SCHEDULE_COMMITMENT_LIFECYCLE_ACTIVE),
+                name="unique_active_student_online_course_offering",
+            ),
+            # One recurring A-D block cannot supervise two online academic
+            # courses for the same student.  The solver enforces this earlier;
+            # the database constraint is the concurrent-write backstop.
+            models.UniqueConstraint(
+                fields=["student", "supervision_session"],
+                condition=models.Q(lifecycle_status=STUDENT_SCHEDULE_COMMITMENT_LIFECYCLE_ACTIVE),
+                name="unique_active_student_online_supervision_session",
+            ),
+        ]
+
+    def clean(self):
+        errors = {}
+        if self.course_offering_id and self.supervision_session_id:
+            if self.course_offering.academic_year_id != self.supervision_session.academic_year_id:
+                errors["supervision_session"] = "The session must belong to the online offering academic year."
+            if self.course_offering.course.delivery_kind != COURSE_DELIVERY_KIND_ONLINE:
+                errors["course_offering"] = "OnlineEnrollment requires an online course offering."
+        if errors:
+            raise ValidationError(errors)
+
+
+class StudentScheduleCommitment(models.Model):
+    """Accepted Study, Co-op, or Focus time commitment outside normal sections."""
+
+    student = models.ForeignKey("people.Student", on_delete=models.CASCADE)
+    academic_year = models.ForeignKey("common.AcademicYear", on_delete=models.PROTECT)
+    commitment_kind = models.CharField(
+        max_length=20,
+        choices=STUDENT_SCHEDULE_COMMITMENT_KIND_CHOICES,
+    )
+    schedule_commitment_request = models.ForeignKey(
+        "courses.StudentScheduleCommitmentRequest",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="commitments",
+    )
+    course_request = models.ForeignKey(
+        "courses.CourseRequest",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="schedule_commitments",
+    )
+    course_offering = models.ForeignKey(
+        "courses.CourseOffering",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="schedule_commitments",
+    )
+    credit_value = models.DecimalField(max_digits=3, decimal_places=1, default=0)
+    lifecycle_status = models.CharField(
+        max_length=20,
+        choices=STUDENT_SCHEDULE_COMMITMENT_LIFECYCLE_CHOICES,
+        default=STUDENT_SCHEDULE_COMMITMENT_LIFECYCLE_ACTIVE,
+    )
+
+    class Meta:
+        ordering = ["student", "commitment_kind", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["schedule_commitment_request"],
+                condition=models.Q(
+                    schedule_commitment_request__isnull=False,
+                    lifecycle_status=STUDENT_SCHEDULE_COMMITMENT_LIFECYCLE_ACTIVE,
+                ),
+                name="unique_active_schedule_commitment_request",
+            ),
+            models.UniqueConstraint(
+                fields=["course_request"],
+                condition=models.Q(
+                    course_request__isnull=False,
+                    lifecycle_status=STUDENT_SCHEDULE_COMMITMENT_LIFECYCLE_ACTIVE,
+                ),
+                name="unique_active_course_schedule_commitment",
+            ),
+        ]
+
+    def clean(self):
+        errors = {}
+        if self.student_id and self.student.academic_year_id != self.academic_year_id:
+            errors["student"] = "The student must belong to the commitment academic year."
+        if self.commitment_kind == STUDENT_SCHEDULE_COMMITMENT_KIND_CO_OP:
+            if not self.course_request_id or not self.course_offering_id:
+                errors["course_request"] = "Co-op requires its academic course request and offering."
+            elif self.course_offering.course.delivery_kind != COURSE_DELIVERY_KIND_CO_OP:
+                errors["course_offering"] = "Co-op commitments require a Co-op offering."
+            if self.credit_value != 2:
+                errors["credit_value"] = "Co-op commitments carry the catalog course's two credits."
+        elif self.commitment_kind == STUDENT_SCHEDULE_COMMITMENT_KIND_STUDY:
+            if not self.schedule_commitment_request_id:
+                errors["schedule_commitment_request"] = "Study requires its source request."
+            elif self.schedule_commitment_request.commitment_type != STUDENT_SCHEDULE_COMMITMENT_REQUEST_TYPE_STUDY:
+                errors["schedule_commitment_request"] = "Study commitments require a Study request."
+            if self.credit_value != 0:
+                errors["credit_value"] = "Study is not an academic credit."
+        elif self.commitment_kind == STUDENT_SCHEDULE_COMMITMENT_KIND_FOCUS:
+            if not self.schedule_commitment_request_id:
+                errors["schedule_commitment_request"] = "Focus requires its source request."
+            elif self.schedule_commitment_request.commitment_type != STUDENT_SCHEDULE_COMMITMENT_REQUEST_TYPE_FOCUS:
+                errors["schedule_commitment_request"] = "Focus commitments require a Focus request."
+            if self.credit_value != 0:
+                errors["credit_value"] = "Focus is external to this school's credit schedule."
+        if errors:
+            raise ValidationError(errors)
+
+
+class StudentScheduleCommitmentOccupancy(models.Model):
+    """One occupied half of a student commitment's recurring timetable space."""
+
+    commitment = models.ForeignKey(
+        StudentScheduleCommitment,
+        on_delete=models.PROTECT,
+        related_name="occupancies",
+    )
+    timeslot = models.ForeignKey("scheduling.TimeSlot", on_delete=models.PROTECT)
+    half_semester_segment = models.CharField(
+        max_length=20,
+        choices=(
+            ("first_half", "First half"),
+            ("second_half", "Second half"),
+        ),
+    )
+
+    class Meta:
+        ordering = ["commitment", "timeslot", "half_semester_segment"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["commitment", "timeslot", "half_semester_segment"],
+                name="unique_commitment_occupancy_segment",
+            ),
+        ]
+
+    def clean(self):
+        if self.timeslot_id and self.timeslot.academic_year_id != self.commitment.academic_year_id:
+            raise ValidationError({"timeslot": "The occupied timeslot must belong to the commitment academic year."})
+
+
 class AnnualPlacementLock(models.Model):
     """A pre-section timeslot lock for one annual physical delivery slot."""
 
@@ -896,6 +1237,27 @@ class TeacherAssignmentApprovalAssignment(models.Model):
         return super().save(*args, **kwargs)
 
 
+class TeacherAssignmentApprovalOnlineSupervision(models.Model):
+    """Immutable provenance for a supervisor assignment, outside Section.teacher."""
+
+    approval = models.ForeignKey(
+        TeacherAssignmentApproval,
+        on_delete=models.PROTECT,
+        related_name="online_supervision_assignments",
+    )
+    online_supervision_session = models.OneToOneField(
+        OnlineSupervisionSession,
+        on_delete=models.PROTECT,
+        related_name="teacher_assignment_provenance",
+    )
+    teacher = models.ForeignKey("people.Teacher", on_delete=models.PROTECT)
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise ValidationError("Teacher-assignment online supervision provenance is immutable.")
+        return super().save(*args, **kwargs)
+
+
 class StudentAssignmentRun(models.Model):
     """Immutable student-to-section recommendation over accepted section context."""
 
@@ -1004,6 +1366,68 @@ class StudentAssignmentApprovalEnrollment(models.Model):
     def save(self, *args, **kwargs):
         if self.pk:
             raise ValidationError("Student assignment enrollment provenance is immutable.")
+        return super().save(*args, **kwargs)
+
+
+class StudentAssignmentApprovalOnlineEnrollment(models.Model):
+    """Immutable provenance for one approved academic online enrollment."""
+
+    approval = models.ForeignKey(
+        StudentAssignmentApproval,
+        on_delete=models.PROTECT,
+        related_name="online_enrollment_provenance",
+    )
+    online_enrollment = models.OneToOneField(
+        OnlineEnrollment,
+        on_delete=models.PROTECT,
+        related_name="student_assignment_provenance",
+    )
+    course_request = models.ForeignKey("courses.CourseRequest", on_delete=models.PROTECT)
+    superseded_online_enrollment = models.OneToOneField(
+        OnlineEnrollment,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="superseded_by_student_assignment_provenance",
+    )
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise ValidationError("Student assignment online enrollment provenance is immutable.")
+        return super().save(*args, **kwargs)
+
+
+class StudentAssignmentApprovalCommitment(models.Model):
+    """Immutable provenance for one approved Study, Co-op, or Focus commitment."""
+
+    approval = models.ForeignKey(
+        StudentAssignmentApproval,
+        on_delete=models.PROTECT,
+        related_name="commitment_provenance",
+    )
+    commitment = models.OneToOneField(
+        StudentScheduleCommitment,
+        on_delete=models.PROTECT,
+        related_name="student_assignment_provenance",
+    )
+    schedule_commitment_request = models.ForeignKey(
+        "courses.StudentScheduleCommitmentRequest",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+    )
+    course_request = models.ForeignKey("courses.CourseRequest", null=True, blank=True, on_delete=models.PROTECT)
+    superseded_commitment = models.OneToOneField(
+        StudentScheduleCommitment,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="superseded_by_student_assignment_provenance",
+    )
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise ValidationError("Student assignment commitment provenance is immutable.")
         return super().save(*args, **kwargs)
 
 
@@ -1205,3 +1629,147 @@ class StudentAssignmentLockMember(models.Model):
         if self.pk:
             raise ValidationError("Student-assignment lock membership is immutable.")
         return super().save(*args, **kwargs)
+
+
+class StudentSpecialCommitmentLock(models.Model):
+    """Append-only counselor restriction for a non-section student commitment."""
+
+    academic_year = models.ForeignKey("common.AcademicYear", on_delete=models.PROTECT)
+    lock_type = models.CharField(max_length=40, choices=STUDENT_SPECIAL_COMMITMENT_LOCK_TYPE_CHOICES)
+    lock_mode = models.CharField(max_length=20, choices=STUDENT_SPECIAL_COMMITMENT_LOCK_MODE_CHOICES)
+    schedule_commitment_request = models.ForeignKey(
+        "courses.StudentScheduleCommitmentRequest",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="special_commitment_locks",
+    )
+    course_request = models.ForeignKey(
+        "courses.CourseRequest",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="special_commitment_locks",
+    )
+    timeslot = models.ForeignKey("scheduling.TimeSlot", null=True, blank=True, on_delete=models.PROTECT)
+    semester = models.IntegerField(choices=SEMESTER_CHOICES, null=True, blank=True)
+    co_op_block_pair = models.CharField(max_length=10, choices=CO_OP_BLOCK_PAIR_CHOICES, null=True, blank=True)
+    reason = models.TextField()
+    created_by = models.ForeignKey("auth.User", on_delete=models.PROTECT, related_name="created_special_commitment_locks")
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_active = models.BooleanField(default=True)
+    released_at = models.DateTimeField(null=True, blank=True)
+    released_by = models.ForeignKey(
+        "auth.User",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="released_special_commitment_locks",
+    )
+    release_reason = models.TextField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["academic_year", "created_at", "id"]
+        indexes = [models.Index(fields=["academic_year", "is_active", "lock_type"])]
+
+    def clean(self):
+        """Validate the narrow target shapes without turning locks into schedules."""
+
+        errors = {}
+        if not isinstance(self.reason, str) or not self.reason.strip():
+            errors["reason"] = "A non-blank reason is required for a special commitment lock."
+        is_study_or_focus = self.lock_type in {
+            STUDENT_SPECIAL_COMMITMENT_LOCK_TYPE_STUDY_TIME,
+            STUDENT_SPECIAL_COMMITMENT_LOCK_TYPE_FOCUS_SEMESTER,
+        }
+        if is_study_or_focus:
+            if not self.schedule_commitment_request_id or self.course_request_id:
+                errors["schedule_commitment_request"] = "This lock type requires one Study or Focus request only."
+        elif self.lock_type in {
+            STUDENT_SPECIAL_COMMITMENT_LOCK_TYPE_ONLINE_SUPERVISION_TIME,
+            STUDENT_SPECIAL_COMMITMENT_LOCK_TYPE_CO_OP_TIME,
+        }:
+            if not self.course_request_id or self.schedule_commitment_request_id:
+                errors["course_request"] = "This lock type requires one academic course request only."
+        else:
+            errors["lock_type"] = "Choose a recognized special commitment lock type."
+        if self.schedule_commitment_request_id:
+            request_type = self.schedule_commitment_request.commitment_type
+            if (
+                self.lock_type == STUDENT_SPECIAL_COMMITMENT_LOCK_TYPE_STUDY_TIME
+                and request_type != STUDENT_SCHEDULE_COMMITMENT_REQUEST_TYPE_STUDY
+            ) or (
+                self.lock_type == STUDENT_SPECIAL_COMMITMENT_LOCK_TYPE_FOCUS_SEMESTER
+                and request_type != STUDENT_SCHEDULE_COMMITMENT_REQUEST_TYPE_FOCUS
+            ):
+                errors["schedule_commitment_request"] = "The lock type must match the requested commitment kind."
+        if self.course_request_id:
+            delivery_kind = self.course_request.course.delivery_kind
+            if (
+                self.lock_type == STUDENT_SPECIAL_COMMITMENT_LOCK_TYPE_ONLINE_SUPERVISION_TIME
+                and delivery_kind != COURSE_DELIVERY_KIND_ONLINE
+            ) or (
+                self.lock_type == STUDENT_SPECIAL_COMMITMENT_LOCK_TYPE_CO_OP_TIME
+                and delivery_kind != COURSE_DELIVERY_KIND_CO_OP
+            ):
+                errors["course_request"] = "The lock type must match the requested course delivery kind."
+        if self.lock_type in {
+            STUDENT_SPECIAL_COMMITMENT_LOCK_TYPE_STUDY_TIME,
+            STUDENT_SPECIAL_COMMITMENT_LOCK_TYPE_ONLINE_SUPERVISION_TIME,
+        } and not self.timeslot_id:
+            errors["timeslot"] = "Study and online supervision locks require a timeslot."
+        if self.lock_type == STUDENT_SPECIAL_COMMITMENT_LOCK_TYPE_FOCUS_SEMESTER and self.semester is None:
+            errors["semester"] = "A Focus lock requires a semester."
+        if self.lock_type == STUDENT_SPECIAL_COMMITMENT_LOCK_TYPE_CO_OP_TIME:
+            if self.semester is None or not self.co_op_block_pair:
+                errors["co_op_block_pair"] = "A Co-op lock requires both semester and A+B or C+D."
+        # Extra targeting fields make a counselor's intended restriction
+        # ambiguous.  Reject them rather than silently treating one as ignored.
+        if self.lock_type == STUDENT_SPECIAL_COMMITMENT_LOCK_TYPE_STUDY_TIME and (
+            self.semester is not None or self.co_op_block_pair
+        ):
+            errors["semester"] = "Study locks specify one timeslot only."
+        if self.lock_type == STUDENT_SPECIAL_COMMITMENT_LOCK_TYPE_ONLINE_SUPERVISION_TIME and (
+            self.semester is not None or self.co_op_block_pair
+        ):
+            errors["semester"] = "Online supervision locks specify one timeslot only."
+        if self.lock_type == STUDENT_SPECIAL_COMMITMENT_LOCK_TYPE_FOCUS_SEMESTER and (
+            self.timeslot_id or self.co_op_block_pair
+        ):
+            errors["semester"] = "Focus locks specify one semester only."
+        if self.lock_type == STUDENT_SPECIAL_COMMITMENT_LOCK_TYPE_CO_OP_TIME and self.timeslot_id:
+            errors["timeslot"] = "Co-op locks specify a semester and valid block pair, not one timeslot."
+        if self.timeslot_id and self.timeslot.academic_year_id != self.academic_year_id:
+            errors["timeslot"] = "The timeslot must belong to the lock academic year."
+        for target_name, target in (
+            ("schedule_commitment_request", self.schedule_commitment_request),
+            ("course_request", self.course_request),
+        ):
+            if target is not None and target.academic_year_id != self.academic_year_id:
+                errors[target_name] = "The request must belong to the lock academic year."
+        if self.is_active:
+            if self.released_at is not None or self.released_by_id or self.release_reason:
+                errors["is_active"] = "An active lock cannot contain release facts."
+        elif self.released_at is None or not self.released_by_id or not isinstance(self.release_reason, str) or not self.release_reason.strip():
+            errors["release_reason"] = "A released lock requires complete release facts."
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            previous = type(self).objects.get(pk=self.pk)
+            immutable_fields = (
+                "academic_year_id", "lock_type", "lock_mode", "schedule_commitment_request_id",
+                "course_request_id", "timeslot_id", "semester", "co_op_block_pair", "reason",
+                "created_by_id", "created_at",
+            )
+            if not previous.is_active:
+                raise ValidationError("Released special commitment locks are immutable.")
+            if any(getattr(previous, field) != getattr(self, field) for field in immutable_fields):
+                raise ValidationError("Special commitment locks are append-only; release instead.")
+            if self.is_active:
+                raise ValidationError("An active special commitment lock can only be released.")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Special commitment locks are append-only; release instead of deleting.")

@@ -27,7 +27,10 @@ from backend.apps.common.constants import (
     SEMESTER_WINTER,
 )
 from backend.apps.common.constants import COURSE_OFFERING_STATUS_OFFERED
-from backend.apps.courses.models import Course, CourseOffering, Section
+from backend.apps.courses.models import (
+    Course, CourseOffering, HalfSemesterCoursePair, HalfSemesterSectionPair,
+    Section,
+)
 from backend.apps.courses.services.offerings import ensure_academic_year_offerings
 from backend.apps.scheduling.codes import (
     COMBINED_OFFERING_REQUIRES_PHYSICAL_STAFFING_WORKFLOW,
@@ -203,6 +206,15 @@ def preview_section_planning_approval(run, *, selections=None):
             course_id__in=selected_course_ids,
         )
     }
+    half_course_segment = {}
+    for pair in HalfSemesterCoursePair.objects.filter(is_active=True).select_related(
+        "first_course", "second_course"
+    ):
+        # Catalog pairs supply the practical default sequence. An unpaired
+        # half-semester request remains schedulable in the first half and is
+        # surfaced later for counselor review rather than rejected here.
+        half_course_segment[pair.first_course_id] = "first_half"
+        half_course_segment[pair.second_course_id] = "second_half"
     existing_by_course = {}
     # Any existing section is a hard conflict.  The approval feature has no
     # implicit replace/delete semantics; reconciliation is a separate workflow.
@@ -460,6 +472,7 @@ def approve_section_planning_run(run, *, approved_by, selections=None, reason=""
         approved_by=approved_by,
         reason=reason,
     )
+    created_sections_by_course_semester = {}
     for item in preview["courses"]:
         course = courses[item["course_id"]]
         # Preserve both values even when they match.  Future readers can prove
@@ -479,12 +492,17 @@ def approve_section_planning_run(run, *, approved_by, selections=None, reason=""
             for sequence in range(1, count + 1):
                 # Semester-prefixed numbering is deterministic and unique across
                 # both terms under the existing course/year uniqueness rule.
-                Section.objects.create(
+                section = Section.objects.create(
                     course=course,
                     delivery_group=offerings[course.id].delivery_group,
                     section_number=f"S{semester}-{sequence:02d}",
                     academic_year_id=run.academic_year_id,
                     semester=semester,
+                    half_semester_segment=(
+                        half_course_segment.get(course.id, "first_half")
+                        if course.duration == "half_semester"
+                        else None
+                    ),
                     teacher=None,
                     capacity_min=course.capacity_profile.hard_min,
                     capacity_max=course.capacity_profile.hard_max,
@@ -492,5 +510,22 @@ def approve_section_planning_run(run, *, approved_by, selections=None, reason=""
                     # This link makes every generated draft traceable through the
                     # approval header to the immutable source planning run/user.
                     planning_approval_course=approved_course,
+                )
+                created_sections_by_course_semester.setdefault(
+                    (course.id, semester), []
+                ).append(section)
+    # Pair matching generated sections only after every selected course has
+    # materialized. Equal ordinal sections share their semester/A-D placement
+    # and later named teacher; unmatched rows remain valid but reviewable
+    # half-semester exceptions rather than disappearing from the plan.
+    for pair in HalfSemesterCoursePair.objects.filter(is_active=True).order_by("id"):
+        for semester in (SEMESTER_FALL, SEMESTER_WINTER):
+            first_sections = created_sections_by_course_semester.get((pair.first_course_id, semester), ())
+            second_sections = created_sections_by_course_semester.get((pair.second_course_id, semester), ())
+            for first, second in zip(first_sections, second_sections):
+                HalfSemesterSectionPair.objects.create(
+                    course_pair=pair,
+                    first_section=first,
+                    second_section=second,
                 )
     return approval

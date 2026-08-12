@@ -22,17 +22,42 @@ from .diagnostics import (
 from .dto import TeacherAssignmentDTO, TeacherAssignmentInputDTO, TeacherAssignmentResultDTO
 
 
+def _decision_key(item):
+    """Keep online supervision identities distinct from ordinary section IDs."""
+
+    return (
+        ("online_supervision", item.online_supervision_session_id)
+        if item.is_online_supervision
+        else ("section", item.section_id)
+    )
+
+
+def _diagnostic_identity(item):
+    """Expose the correct counselor-review target without a fabricated section."""
+
+    return (
+        {"online_supervision_session_id": item.online_supervision_session_id}
+        if item.is_online_supervision
+        else {"section_id": item.section_id}
+    )
+
+
 def compile_teacher_assignment_constraints(data: TeacherAssignmentInputDTO) -> dict:
     """Validate the narrow, ORM-free contract consumed by this stage."""
 
     teachers = {teacher.id: teacher for teacher in data.teachers}
-    section_ids = set()
+    decision_keys = set()
     for section in data.sections:
-        if section.section_id in section_ids:
-            raise ValueError(f"Duplicate teacher-assignment section {section.section_id}.")
-        section_ids.add(section.section_id)
-        if section.semester not in {1, 2} or not section.member_course_ids:
-            raise ValueError(f"Section {section.section_id} lacks valid accepted timing/course context.")
+        key = _decision_key(section)
+        if key in decision_keys:
+            raise ValueError(f"Duplicate teacher-assignment decision unit {key}.")
+        decision_keys.add(key)
+        if section.semester not in {1, 2} or (
+            not section.is_online_supervision and not section.member_course_ids
+        ):
+            raise ValueError(f"Teacher-assignment unit {key} lacks valid accepted timing/course context.")
+        if section.is_online_supervision and section.online_supervision_session_id is None:
+            raise ValueError("Online supervision staffing input requires its session identity.")
         if section.locked_teacher_id is not None and section.locked_teacher_id not in teachers:
             raise ValueError(f"Section {section.section_id} locks a teacher outside the ready roster.")
     for rule in data.rules:
@@ -54,7 +79,10 @@ def _candidates(section, teachers):
         # denial rows, preventing a sparse import from becoming a closed list.
         if section.timeslot_id in teacher.unavailable_timeslot_ids:
             continue
-        if not set(section.member_course_ids).issubset(teacher.eligible_course_ids):
+        if (
+            not section.is_online_supervision
+            and not set(section.member_course_ids).issubset(teacher.eligible_course_ids)
+        ):
             continue
         if teacher.remaining_annual <= 0:
             continue
@@ -77,30 +105,72 @@ def solve_teacher_assignment(data: TeacherAssignmentInputDTO) -> TeacherAssignme
     section_candidates = {}
     decision_sections = [section for section in data.sections if not section.is_fixed]
 
-    for section in sorted(decision_sections, key=lambda item: item.section_id):
+    for section in sorted(decision_sections, key=_decision_key):
+        key = _decision_key(section)
         candidates = _candidates(section, teachers)
-        section_candidates[section.section_id] = candidates
+        section_candidates[key] = candidates
         if not candidates:
             locked = teachers.get(section.locked_teacher_id) if section.locked_teacher_id else None
             if locked and section.timeslot_id in locked.unavailable_timeslot_ids:
-                diagnostics.append({"code": LOCKED_TEACHER_UNAVAILABLE, "section_id": section.section_id})
-            elif locked and not set(section.member_course_ids).issubset(locked.eligible_course_ids):
-                diagnostics.append({"code": LOCKED_TEACHER_INELIGIBLE, "section_id": section.section_id})
+                diagnostics.append({"code": LOCKED_TEACHER_UNAVAILABLE, **_diagnostic_identity(section)})
+            elif locked and not section.is_online_supervision and not set(section.member_course_ids).issubset(locked.eligible_course_ids):
+                diagnostics.append({"code": LOCKED_TEACHER_INELIGIBLE, **_diagnostic_identity(section)})
             else:
-                diagnostics.append({"code": NO_ELIGIBLE_TEACHER_FOR_SECTION, "section_id": section.section_id})
+                diagnostics.append({"code": NO_ELIGIBLE_TEACHER_FOR_SECTION, **_diagnostic_identity(section)})
         for teacher in candidates:
-            variables[section.section_id, teacher.id] = model.NewBoolVar(
-                f"teacher_{section.section_id}_{teacher.id}"
+            variables[key, teacher.id] = model.NewBoolVar(
+                f"teacher_{key[0]}_{key[1]}_{teacher.id}"
             )
-        section_vars = [variables[section.section_id, teacher.id] for teacher in candidates]
+        section_vars = [variables[key, teacher.id] for teacher in candidates]
         if section_vars:
             model.Add(sum(section_vars) <= 1)
+
+    # Sequential trimestre sections are one shared teaching block. The pair
+    # still has two academic-course identities for qualification/rule checks,
+    # but equal teacher variables and a single workload representative ensure
+    # it consumes one teacher load rather than two concurrent sections.
+    workload_representative = {}
+    paired_sections = defaultdict(list)
+    for section in decision_sections:
+        if section.shared_staffing_key:
+            paired_sections[section.shared_staffing_key].append(section)
+    for pair_key, pair_sections in paired_sections.items():
+        if len(pair_sections) != 2:
+            raise ValueError(f"Shared half-semester staffing key {pair_key} must identify exactly two sections.")
+        first, second = sorted(pair_sections, key=_decision_key)
+        first_key, second_key = _decision_key(first), _decision_key(second)
+        first_vars = {
+            teacher_id: variable
+            for (section_key, teacher_id), variable in variables.items()
+            if section_key == first_key
+        }
+        second_vars = {
+            teacher_id: variable
+            for (section_key, teacher_id), variable in variables.items()
+            if section_key == second_key
+        }
+        for teacher_id in set(first_vars) | set(second_vars):
+            left, right = first_vars.get(teacher_id), second_vars.get(teacher_id)
+            if left is None:
+                model.Add(right == 0)
+            elif right is None:
+                model.Add(left == 0)
+            else:
+                model.Add(left == right)
+                workload_representative[right.Index()] = left
 
     by_teacher_slot = defaultdict(list)
     by_teacher_semester = defaultdict(list)
     by_teacher_annual = defaultdict(list)
-    for (section_id, teacher_id), variable in variables.items():
-        section = next(item for item in decision_sections if item.section_id == section_id)
+    decision_by_key = {_decision_key(item): item for item in decision_sections}
+    seen_workload_rows = set()
+    for (section_key, teacher_id), variable in variables.items():
+        section = decision_by_key[section_key]
+        variable = workload_representative.get(variable.Index(), variable)
+        workload_key = (teacher_id, section.timeslot_id, variable.Index())
+        if workload_key in seen_workload_rows:
+            continue
+        seen_workload_rows.add(workload_key)
         by_teacher_slot[teacher_id, section.timeslot_id].append(variable)
         by_teacher_semester[teacher_id, section.semester].append(variable)
         by_teacher_annual[teacher_id].append(variable)
@@ -122,9 +192,9 @@ def solve_teacher_assignment(data: TeacherAssignmentInputDTO) -> TeacherAssignme
     for rule in data.rules:
         rows = [
             variable
-            for (section_id, teacher_id), variable in variables.items()
+            for (section_key, teacher_id), variable in variables.items()
             if teacher_id == rule.teacher_id
-            and rule.course_id in next(item for item in decision_sections if item.section_id == section_id).member_course_ids
+            and rule.course_id in decision_by_key[section_key].member_course_ids
         ]
         fixed_count = fixed_course_counts[rule.teacher_id, rule.course_id]
         if rule.maximum_sections is not None:
@@ -137,8 +207,8 @@ def solve_teacher_assignment(data: TeacherAssignmentInputDTO) -> TeacherAssignme
     # user preference ratings.
     objective = [-1_000_000_000 * sum(assigned or [0])]
     requested, continuity, time_preference, seniority = [], [], [], []
-    for (section_id, teacher_id), variable in variables.items():
-        section = next(item for item in decision_sections if item.section_id == section_id)
+    for (section_key, teacher_id), variable in variables.items():
+        section = decision_by_key[section_key]
         teacher = teachers[teacher_id]
         if set(section.member_course_ids) & set(teacher.preferred_course_ids):
             requested.append(variable)
@@ -155,7 +225,7 @@ def solve_teacher_assignment(data: TeacherAssignmentInputDTO) -> TeacherAssignme
     # a course request, continuity, time preference, seniority, or hard rule.
     balance_terms = []
     for teacher_id in teachers:
-        teacher_vars = [variable for (_section_id, candidate_teacher_id), variable in variables.items() if candidate_teacher_id == teacher_id]
+        teacher_vars = [variable for (_section_key, candidate_teacher_id), variable in variables.items() if candidate_teacher_id == teacher_id]
         for index, (left, right) in enumerate(combinations(teacher_vars, 2)):
             together = model.NewBoolVar(f"teacher_load_pair_{teacher_id}_{index}")
             model.AddBoolAnd([left, right]).OnlyEnforceIf(together)
@@ -182,14 +252,20 @@ def solve_teacher_assignment(data: TeacherAssignmentInputDTO) -> TeacherAssignme
         diagnostics.append({"code": TEACHER_COURSE_RULE_INFEASIBLE if data.rules else NO_COMPLETE_TEACHER_ASSIGNMENT})
         return TeacherAssignmentResultDTO(
             status="infeasible", solver_outcome=outcome_name, assignments=(),
-            unassigned_section_ids=tuple(item.section_id for item in decision_sections),
+            unassigned_section_ids=tuple(item.section_id for item in decision_sections if item.section_id is not None),
             diagnostics=tuple(diagnostics), objective_components={},
+            unassigned_online_supervision_session_ids=tuple(
+                item.online_supervision_session_id
+                for item in decision_sections
+                if item.is_online_supervision and item.online_supervision_session_id is not None
+            ),
         )
 
     assignments = []
-    for section in sorted(decision_sections, key=lambda item: item.section_id):
-        for teacher in section_candidates[section.section_id]:
-            variable = variables[section.section_id, teacher.id]
+    for section in sorted(decision_sections, key=_decision_key):
+        key = _decision_key(section)
+        for teacher in section_candidates[key]:
+            variable = variables[key, teacher.id]
             if solver.Value(variable):
                 assignments.append(TeacherAssignmentDTO(
                     section_id=section.section_id, teacher_id=teacher.id,
@@ -200,13 +276,35 @@ def solve_teacher_assignment(data: TeacherAssignmentInputDTO) -> TeacherAssignme
                         "timeslot_preference": "preferred" if section.timeslot_id in teacher.preferred_timeslot_ids else ("avoid" if section.timeslot_id in teacher.avoided_timeslot_ids else "neutral"),
                         "seniority": teacher.seniority,
                     },
+                    online_supervision_session_id=section.online_supervision_session_id,
                 ))
                 break
-    unassigned = tuple(section.section_id for section in decision_sections if section.section_id not in {row.section_id for row in assignments})
-    if unassigned:
-        diagnostics.append({"code": NO_COMPLETE_TEACHER_ASSIGNMENT, "unassigned_section_ids": list(unassigned)})
+    assigned_keys = {
+        ("online_supervision", row.online_supervision_session_id)
+        if row.online_supervision_session_id is not None
+        else ("section", row.section_id)
+        for row in assignments
+    }
+    unassigned = tuple(
+        section.section_id
+        for section in decision_sections
+        if section.section_id is not None and _decision_key(section) not in assigned_keys
+    )
+    unassigned_online = tuple(
+        section.online_supervision_session_id
+        for section in decision_sections
+        if section.is_online_supervision
+        and section.online_supervision_session_id is not None
+        and _decision_key(section) not in assigned_keys
+    )
+    if unassigned or unassigned_online:
+        diagnostics.append({
+            "code": NO_COMPLETE_TEACHER_ASSIGNMENT,
+            "unassigned_section_ids": list(unassigned),
+            "unassigned_online_supervision_session_ids": list(unassigned_online),
+        })
     return TeacherAssignmentResultDTO(
-        status="complete" if not unassigned else "partial", solver_outcome=outcome_name,
+        status="complete" if not unassigned and not unassigned_online else "partial", solver_outcome=outcome_name,
         assignments=tuple(assignments), unassigned_section_ids=unassigned,
         diagnostics=tuple(diagnostics),
         objective_components={
@@ -215,4 +313,5 @@ def solve_teacher_assignment(data: TeacherAssignmentInputDTO) -> TeacherAssignme
             "prior_year_course_matches": float(sum(item.explanation["prior_year_course_match"] for item in assignments)),
             "teacher_load_balance_penalty": float(sum(solver.Value(item) for item in balance_terms)),
         },
+        unassigned_online_supervision_session_ids=unassigned_online,
     )

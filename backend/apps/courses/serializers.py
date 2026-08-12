@@ -5,6 +5,10 @@ from rest_framework import serializers
 from backend.apps.common.exceptions import DomainValidationError
 from backend.apps.common.constants import (
     COURSE_REQUEST_TYPE_ALTERNATE,
+    COURSE_DELIVERY_KIND_NORMAL_INSTRUCTION,
+    COURSE_DELIVERY_KIND_ONLINE,
+    COURSE_DURATION_FULL_SEMESTER,
+    COURSE_DURATION_HALF_SEMESTER,
     DELIVERY_GROUP_STATUS_ACTIVE,
     SECTION_LIFECYCLE_RETIRED,
 )
@@ -22,7 +26,9 @@ from backend.apps.courses.models import (
     CourseSequencePreference,
     DeliveryGroup,
     CourseRequest,
+    HalfSemesterCoursePair,
     Section,
+    StudentScheduleCommitmentRequest,
 )
 from backend.apps.people.models import RoleChoices
 from backend.apps.people.roles import get_user_role
@@ -68,7 +74,8 @@ class CourseSerializer(CapacityValidationMixin, serializers.ModelSerializer):
         fields = (
             "id", "name", "grade_level", "course_code", "category",
             "capacity_min", "capacity_max", "capacity_profile", "priority_profile",
-            "allowed_semester", "is_online", "manual_difficulty_override",
+            "allowed_semester", "is_online", "delivery_kind", "duration", "credit_value",
+            "manual_difficulty_override",
             "calculated_difficulty", "effective_difficulty",
             "difficulty_explanation",
         )
@@ -77,6 +84,35 @@ class CourseSerializer(CapacityValidationMixin, serializers.ModelSerializer):
             "capacity_profile": {"required": False, "read_only": True},
             "priority_profile": {"required": False},
         }
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        # Older clients may still submit ``is_online``.  Translate that one
+        # compatibility signal before validating the new explicit delivery
+        # vocabulary so the catalog has one source of truth going forward.
+        if "delivery_kind" not in attrs and attrs.get("is_online") is True:
+            attrs["delivery_kind"] = COURSE_DELIVERY_KIND_ONLINE
+        if "delivery_kind" not in attrs and self.instance and self.instance.is_online and attrs.get("is_online") is False:
+            attrs["delivery_kind"] = COURSE_DELIVERY_KIND_NORMAL_INSTRUCTION
+        if "delivery_kind" in attrs and "is_online" in attrs:
+            expected_legacy_value = attrs["delivery_kind"] == COURSE_DELIVERY_KIND_ONLINE
+            if attrs["is_online"] != expected_legacy_value:
+                raise serializers.ValidationError({
+                    "is_online": "is_online must agree with the explicit delivery_kind."
+                })
+        values = {
+            field: attrs.get(field, getattr(self.instance, field, None))
+            for field in ("delivery_kind", "duration", "credit_value", "category")
+        }
+        # On creation, omit unspecified values so Django applies the catalog
+        # defaults (normal instruction, full semester, one credit) before the
+        # domain model validates them. Passing ``None`` here would incorrectly
+        # turn a legacy course-create payload into an invalid half-course.
+        candidate = Course(**{
+            field: value for field, value in values.items() if value is not None
+        })
+        candidate.clean()
+        return attrs
 
 
 class CourseCategoryRelationshipSerializer(serializers.ModelSerializer):
@@ -132,6 +168,7 @@ class SectionSerializer(CapacityValidationMixin, serializers.ModelSerializer):
             "section_number",
             "academic_year",
             "semester",
+            "half_semester_segment",
             "teacher",
             "capacity_min",
             "capacity_max",
@@ -217,6 +254,18 @@ class SectionSerializer(CapacityValidationMixin, serializers.ModelSerializer):
                 "delivery_group": "The delivery group belongs to a different academic year."
             })
         teacher = attrs.get("teacher", getattr(self.instance, "teacher", None))
+        half_semester_segment = attrs.get(
+            "half_semester_segment", getattr(self.instance, "half_semester_segment", None)
+        )
+        if course:
+            if course.duration == COURSE_DURATION_HALF_SEMESTER and not half_semester_segment:
+                raise serializers.ValidationError({
+                    "half_semester_segment": "A half-semester course section requires its first or second-half segment."
+                })
+            if course.duration == COURSE_DURATION_FULL_SEMESTER and half_semester_segment:
+                raise serializers.ValidationError({
+                    "half_semester_segment": "Only a half-semester course section may use a half segment."
+                })
         try:
             if delivery_group and teacher:
                 validate_teacher_delivery_group_assignment(delivery_group, teacher)
@@ -307,6 +356,57 @@ class CourseRequestSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError({
                         "request_type": "A student may have only one backup course per academic year."
                     })
+        return attrs
+
+
+class HalfSemesterCoursePairSerializer(serializers.ModelSerializer):
+    """Planning configuration for the school's small, ordered trimestre pattern."""
+
+    class Meta:
+        model = HalfSemesterCoursePair
+        fields = ("id", "first_course", "second_course", "is_active")
+        validators = []
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        candidate = HalfSemesterCoursePair(
+            first_course=attrs.get("first_course", getattr(self.instance, "first_course", None)),
+            second_course=attrs.get("second_course", getattr(self.instance, "second_course", None)),
+            is_active=attrs.get("is_active", getattr(self.instance, "is_active", True)),
+        )
+        if self.instance:
+            candidate.pk = self.instance.pk
+        candidate.clean()
+        return attrs
+
+
+class StudentScheduleCommitmentRequestSerializer(serializers.ModelSerializer):
+    """Planning-only Study and Focus request configuration for one student/year."""
+
+    class Meta:
+        model = StudentScheduleCommitmentRequest
+        fields = ("id", "student", "academic_year", "commitment_type", "request_index")
+        validators = []
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        candidate = StudentScheduleCommitmentRequest(
+            student=attrs.get("student", getattr(self.instance, "student", None)),
+            academic_year=attrs.get("academic_year", getattr(self.instance, "academic_year", None)),
+            commitment_type=attrs.get("commitment_type", getattr(self.instance, "commitment_type", None)),
+            request_index=attrs.get("request_index", getattr(self.instance, "request_index", 1)),
+        )
+        candidate.clean()
+        duplicate = StudentScheduleCommitmentRequest.objects.filter(
+            student=candidate.student,
+            academic_year=candidate.academic_year,
+            commitment_type=candidate.commitment_type,
+            request_index=candidate.request_index,
+        )
+        if self.instance:
+            duplicate = duplicate.exclude(pk=self.instance.pk)
+        if duplicate.exists():
+            raise serializers.ValidationError("This student already has this special-program request for the academic year.")
         return attrs
 
 

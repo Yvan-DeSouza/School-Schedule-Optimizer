@@ -38,6 +38,11 @@ class CourseDTO:
     allowed_semester: str = "either_semester"
     priority_tier: int = 4
     priority_profile_id: int = 0
+    # Kept after the established constructor fields so existing fixtures using
+    # positional CourseDTO arguments retain their original meaning.
+    delivery_kind: str = "normal_instruction"
+    duration: str = "full_semester"
+    credit_value: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -247,6 +252,15 @@ class StudentAssignmentRequestDTO:
     # Scoped reruns retain out-of-scope request facts in the snapshot for
     # drift detection, while the pure solver ignores requests marked false.
     is_in_scope: bool = True
+    delivery_kind: str = "normal_instruction"
+    duration: str = "full_semester"
+    credit_value: float = 1.0
+    # A catalog half-course pair supplies this value for online delivery,
+    # which has no instructional Section from which to infer the segment.
+    # Normal course requests still derive their occupied half from the chosen
+    # Section so separately staffed first/second-half sections stay explicit.
+    half_semester_segment: Optional[str] = None
+    paired_half_course_id: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -264,6 +278,13 @@ class StudentAssignmentSectionDTO:
     # Teacher identity remains fixed context. It is only needed by the
     # next-release student-to-teacher lock; the engine never assigns teachers.
     teacher_id: Optional[int] = None
+    # Half-semester normal sections use one half of a recurring slot.  Null
+    # preserves the existing full-semester behavior without special sentinels.
+    half_semester_segment: Optional[str] = None
+    # The pair identity is a physical-teaching fact, not a catalog relation.
+    # It lets student assignment keep the two known trimestre courses in their
+    # intended sequential section pair when a student requests both.
+    half_semester_pair_key: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -287,6 +308,65 @@ class FixedEnrollmentDTO:
     is_historical: bool = False
     is_in_scope: bool = False
     lock_ids: Tuple[int, ...] = ()
+    half_semester_segment: Optional[str] = None
+    credit_value: float = 1.0
+
+
+@dataclass(frozen=True)
+class OnlineSupervisionSessionDTO:
+    """Accepted shared supervision resource for academic online enrollments."""
+
+    session_id: int
+    semester: int
+    timeslot_id: int
+    capacity_max: int
+    target_capacity: int
+    supervisor_id: Optional[int] = None
+    is_in_scope: bool = True
+
+
+@dataclass(frozen=True)
+class StudentScheduleCommitmentRequestDTO:
+    """A non-course Study or Focus request the solver must place explicitly."""
+
+    request_id: int
+    student_id: int
+    commitment_type: str
+    is_in_scope: bool = True
+
+
+@dataclass(frozen=True)
+class FixedStudentScheduleCommitmentDTO:
+    """Active/historical non-section commitment state for an audited rerun."""
+
+    commitment_id: int
+    student_id: int
+    commitment_kind: str
+    schedule_commitment_request_id: Optional[int] = None
+    course_request_id: Optional[int] = None
+    course_offering_id: Optional[int] = None
+    course_id: Optional[int] = None
+    credit_value: float = 0.0
+    occupancy: Tuple[Tuple[int, str], ...] = ()
+    is_active: bool = True
+    is_locked: bool = False
+    is_historical: bool = False
+    is_in_scope: bool = False
+
+
+@dataclass(frozen=True)
+class StudentSpecialCommitmentLockDTO:
+    """One exact or excluded time choice for a special student commitment."""
+
+    lock_id: int
+    lock_type: str
+    lock_mode: str
+    schedule_commitment_request_id: Optional[int] = None
+    course_request_id: Optional[int] = None
+    timeslot_id: Optional[int] = None
+    semester: Optional[int] = None
+    co_op_block_pair: Optional[str] = None
+    is_active: bool = True
 
 
 @dataclass(frozen=True)
@@ -378,6 +458,14 @@ class StudentAssignmentInputDTO:
     course_category_relationships: Tuple[CourseCategoryRelationshipDTO, ...] = ()
     difficulty_balance_importance: str = "not_important"
     course_category_diversity_importance: str = "not_important"
+    online_supervision_sessions: Tuple[OnlineSupervisionSessionDTO, ...] = ()
+    schedule_commitment_requests: Tuple[StudentScheduleCommitmentRequestDTO, ...] = ()
+    special_commitment_locks: Tuple[StudentSpecialCommitmentLockDTO, ...] = ()
+    fixed_schedule_commitments: Tuple[FixedStudentScheduleCommitmentDTO, ...] = ()
+    # Special commitments can occupy any accepted A-D slot even when no normal
+    # section meets there, so their candidates require the complete target-year
+    # time identity list rather than inferring it from course sections.
+    timeslots: Tuple[TimeSlotDTO, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -386,7 +474,7 @@ class StudentAssignmentDTO:
 
     request_id: int
     student_id: int
-    section_id: int
+    section_id: Optional[int]
     course_offering_id: int
     course_id: int
     semester: int
@@ -395,6 +483,32 @@ class StudentAssignmentDTO:
     backup_resolution_snapshot: Mapping[str, object] | None = None
     previous_enrollment_id: Optional[int] = None
     previous_section_id: Optional[int] = None
+    previous_online_supervision_session_id: Optional[int] = None
+    online_supervision_session_id: Optional[int] = None
+    half_semester_segment: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class StudentScheduleCommitmentAssignmentDTO:
+    """A recommended Study, Co-op, or Focus student-time commitment."""
+
+    request_id: int
+    student_id: int
+    commitment_kind: str
+    course_request_id: Optional[int]
+    course_offering_id: Optional[int]
+    occupancy: Tuple[Tuple[int, str], ...]
+
+
+@dataclass(frozen=True)
+class StudentAssignmentReviewItemDTO:
+    """A truthful counselor review item that does not fabricate a placement."""
+
+    code: str
+    student_id: int
+    request_id: Optional[int] = None
+    course_id: Optional[int] = None
+    detail: Mapping[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -457,6 +571,8 @@ class StudentAssignmentResultDTO:
     lock_costs: Tuple[StudentAssignmentLockCostDTO, ...] = ()
     seat_contention: Tuple[StudentAssignmentSeatContentionDTO, ...] = ()
     section_balance_facts: Tuple[StudentAssignmentSectionBalanceDTO, ...] = ()
+    commitment_assignments: Tuple[StudentScheduleCommitmentAssignmentDTO, ...] = ()
+    review_items: Tuple[StudentAssignmentReviewItemDTO, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -545,7 +661,7 @@ class SchedulingInputDTO:
 
 @dataclass(frozen=True)
 class PlacementUnitDTO:
-    """One real section or stable pre-materialization annual delivery slot.
+    """One normal delivery unit or an unplaced online-supervision resource.
 
     Annual keys exist so a counselor can lock "Physics slot 3" before a
     semester-specific Section row exists.  They are deliberately not fake
@@ -562,15 +678,22 @@ class PlacementUnitDTO:
     locked_teacher_id: Optional[int] = None
     annual_index: Optional[int] = None
     source_mode: str = "fixed_semester"
+    # Online supervisors still consume an ordinary teacher workload slot, but
+    # they need not be qualified in every academic course being supervised.
+    # Keeping that distinction on the unit avoids a fake generic course.
+    requires_course_qualification: bool = True
+    online_supervision_session_id: Optional[int] = None
+    shared_staffing_key: Optional[str] = None
 
 
 @dataclass(frozen=True)
 class FixedPlacementDTO:
     """Accepted timing context outside this placement run's decision scope."""
 
-    section_id: int
+    section_id: Optional[int]
     timeslot_id: int
     teacher_id: Optional[int] = None
+    online_supervision_session_id: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -620,6 +743,7 @@ class PlacementAssignmentDTO:
     timeslot_id: int
     block: str
     annual_index: Optional[int] = None
+    online_supervision_session_id: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -639,7 +763,7 @@ class PlacementResultDTO:
 class TeacherAssignmentSectionDTO:
     """One accepted-timing section considered by named teacher assignment."""
 
-    section_id: int
+    section_id: Optional[int]
     delivery_group_id: int
     member_course_ids: Tuple[int, ...]
     semester: int
@@ -647,6 +771,14 @@ class TeacherAssignmentSectionDTO:
     locked_teacher_id: Optional[int] = None
     is_fixed: bool = False
     assigned_teacher_id: Optional[int] = None
+    # Online supervision uses the same named-staffing stage and workload rules
+    # as a section, but deliberately bypasses academic-course qualification.
+    is_online_supervision: bool = False
+    online_supervision_session_id: Optional[int] = None
+    # Two sequential half-semester instructional sections may share one
+    # qualified teacher and one workload slot, while retaining distinct course
+    # identities. The adapter emits the same key for that approved pair.
+    shared_staffing_key: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -680,11 +812,12 @@ class TeacherCourseAssignmentRuleDTO:
 class FixedTeacherAssignmentDTO:
     """Named assignment outside the current write set that occupies teacher capacity."""
 
-    section_id: int
+    section_id: Optional[int]
     teacher_id: int
     semester: int
     timeslot_id: int
     member_course_ids: Tuple[int, ...] = ()
+    online_supervision_session_id: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -703,11 +836,12 @@ class TeacherAssignmentInputDTO:
 class TeacherAssignmentDTO:
     """Reviewable named result for one section; timing is input, never a decision."""
 
-    section_id: int
+    section_id: Optional[int]
     teacher_id: int
     semester: int
     timeslot_id: int
     explanation: Mapping[str, object]
+    online_supervision_session_id: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -720,6 +854,7 @@ class TeacherAssignmentResultDTO:
     unassigned_section_ids: Tuple[int, ...]
     diagnostics: Tuple[dict, ...]
     objective_components: Mapping[str, float]
+    unassigned_online_supervision_session_ids: Tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)

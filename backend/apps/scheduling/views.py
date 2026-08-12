@@ -19,6 +19,10 @@ from backend.apps.access.action_policies.student_assignment import (
     StudentAssignmentLockAction,
     StudentAssignmentLockActionPolicy,
 )
+from backend.apps.access.action_policies.student_schedule_commitments import (
+    StudentSpecialCommitmentLockAction,
+    StudentSpecialCommitmentLockActionPolicy,
+)
 from backend.apps.access.permissions import ActionPolicyPermission
 from backend.apps.access.resource_policies.planning import PlanningConfigurationPolicy
 from backend.apps.access.viewsets import PolicyFilteredModelViewSet
@@ -51,6 +55,10 @@ from backend.apps.scheduling.models import (
     StudentAssignmentRun,
     StudentAssignmentApproval,
     StudentAssignmentLock,
+    StudentSpecialCommitmentLock,
+    OnlineSupervisionConfiguration,
+    OnlineSupervisionPlanRun,
+    OnlineSupervisionSession,
     TeacherPlanningRoster,
     TimeSlot,
     AnnualPlacementLock,
@@ -94,11 +102,19 @@ from backend.apps.scheduling.serializers import (
     StudentAssignmentLockCreateSerializer,
     StudentAssignmentLockReleaseSerializer,
     StudentAssignmentLockSerializer,
+    StudentSpecialCommitmentLockCreateSerializer,
+    StudentSpecialCommitmentLockReleaseSerializer,
+    StudentSpecialCommitmentLockSerializer,
     StudentAssignmentWhatIfUnlockSerializer,
     TeacherPlanningRosterMembersSerializer,
     TeacherPlanningRosterSerializer,
     TimeSlotSerializer,
     AnnualPlacementLockSerializer,
+    OnlineSupervisionConfigurationSerializer,
+    OnlineSupervisionPlanRunCreateSerializer,
+    OnlineSupervisionPlanRunSerializer,
+    OnlineSupervisionPlanApprovalRequestSerializer,
+    OnlineSupervisionSessionSerializer,
 )
 from backend.apps.scheduling.services.engine_adapter import get_section_count_recommendations
 from backend.apps.scheduling.services.planning_configuration import apply_course_capacity_policy
@@ -285,6 +301,203 @@ class StudentAssignmentLockViewSet(
             raise StudentAssignmentConflict(error.detail) from error
         lock = self.get_queryset().get(pk=lock.pk)
         return Response(StudentAssignmentLockSerializer(lock).data)
+
+
+class StudentSpecialCommitmentLockViewSet(
+    mixins.CreateModelMixin,
+    mixins.ListModelMixin,
+    viewsets.GenericViewSet,
+):
+    """Create/release exact or excluded decisions for non-section commitments."""
+
+    permission_classes = [ActionPolicyPermission]
+    action_policy_class = StudentSpecialCommitmentLockActionPolicy
+    action_name = StudentSpecialCommitmentLockAction.VIEW
+    queryset = StudentSpecialCommitmentLock.objects.select_related(
+        "academic_year", "schedule_commitment_request", "course_request__course",
+        "timeslot", "created_by", "released_by",
+    ).order_by("id")
+
+    def get_permissions(self):
+        if self.action == "create":
+            self.action_name = StudentSpecialCommitmentLockAction.CREATE
+        elif self.action == "release":
+            self.action_name = StudentSpecialCommitmentLockAction.RELEASE
+        else:
+            self.action_name = StudentSpecialCommitmentLockAction.VIEW
+        return super().get_permissions()
+
+    def get_serializer_class(self):
+        if self.action == "create":
+            return StudentSpecialCommitmentLockCreateSerializer
+        if self.action == "release":
+            return StudentSpecialCommitmentLockReleaseSerializer
+        return StudentSpecialCommitmentLockSerializer
+
+    def list(self, request, *args, **kwargs):
+        academic_year = request.query_params.get("academic_year")
+        if not academic_year or not str(academic_year).isdigit():
+            raise ValidationError({"academic_year": "A valid academic year id is required."})
+        queryset = self.get_queryset().filter(academic_year_id=int(academic_year), is_active=True)
+        return Response(StudentSpecialCommitmentLockSerializer(queryset, many=True).data)
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        from backend.apps.courses.models import CourseRequest, StudentScheduleCommitmentRequest
+        from backend.apps.scheduling.models import TimeSlot
+        from backend.apps.scheduling.services.student_special_commitment_locks import (
+            create_student_special_commitment_lock,
+        )
+
+        values = serializer.validated_data
+        try:
+            lock = create_student_special_commitment_lock(
+                academic_year=AcademicYear.objects.get(pk=values["academic_year"]),
+                created_by=request.user,
+                reason=values["reason"],
+                lock_type=values["lock_type"],
+                lock_mode=values["lock_mode"],
+                schedule_commitment_request=(
+                    StudentScheduleCommitmentRequest.objects.get(pk=values["schedule_commitment_request"])
+                    if values.get("schedule_commitment_request") else None
+                ),
+                course_request=(
+                    CourseRequest.objects.select_related("course").get(pk=values["course_request"])
+                    if values.get("course_request") else None
+                ),
+                timeslot=TimeSlot.objects.get(pk=values["timeslot"]) if values.get("timeslot") else None,
+                semester=values.get("semester"),
+                co_op_block_pair=values.get("co_op_block_pair"),
+            )
+        except AcademicYear.DoesNotExist as error:
+            raise NotFound("Academic year not found.") from error
+        except (CourseRequest.DoesNotExist, StudentScheduleCommitmentRequest.DoesNotExist, TimeSlot.DoesNotExist) as error:
+            raise ValidationError({"target": "Every referenced lock target must exist."}) from error
+        except DomainValidationError as error:
+            raise ValidationError(error.detail) from error
+        except DomainConflictError as error:
+            raise StudentAssignmentConflict(error.detail) from error
+        return Response(StudentSpecialCommitmentLockSerializer(self.get_queryset().get(pk=lock.pk)).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"])
+    def release(self, request, pk=None):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        from backend.apps.scheduling.services.student_special_commitment_locks import (
+            release_student_special_commitment_lock,
+        )
+
+        try:
+            lock = release_student_special_commitment_lock(
+                self.get_object(),
+                released_by=request.user,
+                release_reason=serializer.validated_data["release_reason"],
+            )
+        except DomainValidationError as error:
+            raise ValidationError(error.detail) from error
+        except DomainConflictError as error:
+            raise StudentAssignmentConflict(error.detail) from error
+        return Response(StudentSpecialCommitmentLockSerializer(self.get_queryset().get(pk=lock.pk)).data)
+
+
+class OnlineSupervisionConfigurationViewSet(PolicyFilteredModelViewSet):
+    """Maintain the one school/year capacity policy used to derive sessions."""
+
+    queryset = OnlineSupervisionConfiguration.objects.select_related("academic_year", "capacity_profile", "updated_by")
+    serializer_class = OnlineSupervisionConfigurationSerializer
+    resource_policy_class = PlanningConfigurationPolicy
+    filter_fields = ("academic_year", "capacity_profile")
+
+    def perform_create(self, serializer):
+        serializer.save(updated_by=self.request.user)
+
+    def perform_update(self, serializer):
+        serializer.save(updated_by=self.request.user)
+
+
+class OnlineSupervisionPlanRunViewSet(
+    mixins.CreateModelMixin,
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    viewsets.GenericViewSet,
+):
+    """Reviewed annual capacity planning before placement or staffing occurs."""
+
+    queryset = OnlineSupervisionPlanRun.objects.select_related("academic_year", "configuration", "created_by")
+    serializer_class = OnlineSupervisionPlanRunSerializer
+    permission_classes = [ActionPolicyPermission]
+    action_policy_class = SchedulingActionPolicy
+    action_name = SchedulingAction.VIEW_SCHEDULING_RUN_STATUS
+    filter_fields = ("academic_year", "status")
+
+    def get_permissions(self):
+        self.action_name = (
+            SchedulingAction.RUN_ONLINE_SUPERVISION_PLANNING
+            if self.action == "create"
+            else SchedulingAction.APPROVE_ONLINE_SUPERVISION_PLANNING
+            if self.action == "approve"
+            else SchedulingAction.VIEW_SCHEDULING_RUN_STATUS
+        )
+        return super().get_permissions()
+
+    def create(self, request, *args, **kwargs):
+        serializer = OnlineSupervisionPlanRunCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        from backend.apps.scheduling.services.online_supervision import create_online_supervision_plan_run
+
+        try:
+            run = create_online_supervision_plan_run(
+                academic_year=AcademicYear.objects.get(pk=serializer.validated_data["academic_year"]),
+                created_by=request.user,
+            )
+        except AcademicYear.DoesNotExist as error:
+            raise NotFound("Academic year not found.") from error
+        except DomainValidationError as error:
+            raise ValidationError(error.detail) from error
+        except DomainConflictError as error:
+            raise StudentAssignmentConflict(error.detail) from error
+        return Response(OnlineSupervisionPlanRunSerializer(run).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["get"])
+    def review(self, request, pk=None):
+        run = self.get_object()
+        return Response({
+            "run_id": run.id,
+            "status": run.status,
+            "configuration": run.input_snapshot.get("configuration", {}),
+            "online_courses": run.input_snapshot.get("online_courses", []),
+            "recommended_sessions": run.result.get("sessions", []),
+            "can_approve": run.status == "complete" and not hasattr(run, "approval"),
+        })
+
+    @action(detail=True, methods=["post"])
+    def approve(self, request, pk=None):
+        serializer = OnlineSupervisionPlanApprovalRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        from backend.apps.scheduling.services.online_supervision import approve_online_supervision_plan_run
+
+        try:
+            approval = approve_online_supervision_plan_run(
+                self.get_object(), approved_by=request.user, reason=serializer.validated_data["reason"],
+            )
+        except DomainValidationError as error:
+            raise ValidationError(error.detail) from error
+        except DomainConflictError as error:
+            raise StudentAssignmentConflict(error.detail) from error
+        return Response(OnlineSupervisionPlanRunSerializer(approval.plan_run).data)
+
+
+class OnlineSupervisionSessionViewSet(PolicyFilteredModelViewSet):
+    """Expose sessions for review; their lifecycle changes stay in reviewed services."""
+
+    queryset = OnlineSupervisionSession.objects.select_related(
+        "academic_year", "timeslot", "supervisor", "plan_approval_session", "placement_approval"
+    )
+    serializer_class = OnlineSupervisionSessionSerializer
+    resource_policy_class = PlanningConfigurationPolicy
+    filter_fields = ("academic_year", "timeslot", "supervisor", "lifecycle_status")
+    http_method_names = ("get", "head", "options")
 
 
 class TimeSlotViewSet(ReferenceDataViewSet):

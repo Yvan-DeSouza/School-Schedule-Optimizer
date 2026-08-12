@@ -18,6 +18,44 @@ COURSE_CATEGORY_CHOICES = (
     (COURSE_CATEGORY_HUMANITIES, "Humanities"),
 )
 
+# Delivery describes how a course consumes local school resources.  It is kept
+# separate from academic category, credits, and duration: online Math is still
+# Math, while Co-op has academic credit without becoming a subject category.
+COURSE_DELIVERY_KIND_NORMAL_INSTRUCTION = "normal_instruction"
+COURSE_DELIVERY_KIND_ONLINE = "online"
+COURSE_DELIVERY_KIND_CO_OP = "co_op"
+COURSE_DELIVERY_KIND_CHOICES = (
+    (COURSE_DELIVERY_KIND_NORMAL_INSTRUCTION, "Normal instruction"),
+    (COURSE_DELIVERY_KIND_ONLINE, "Online course"),
+    (COURSE_DELIVERY_KIND_CO_OP, "Co-op program"),
+)
+
+# The school has a bounded, practical duration model.  This is intentionally
+# not a generic calendar framework for arbitrary partial-duration courses.
+COURSE_DURATION_FULL_SEMESTER = "full_semester"
+COURSE_DURATION_HALF_SEMESTER = "half_semester"
+COURSE_DURATION_CHOICES = (
+    (COURSE_DURATION_FULL_SEMESTER, "Full semester"),
+    (COURSE_DURATION_HALF_SEMESTER, "Half semester"),
+)
+
+HALF_SEMESTER_SEGMENT_FIRST = "first_half"
+HALF_SEMESTER_SEGMENT_SECOND = "second_half"
+HALF_SEMESTER_SEGMENT_CHOICES = (
+    (HALF_SEMESTER_SEGMENT_FIRST, "First half"),
+    (HALF_SEMESTER_SEGMENT_SECOND, "Second half"),
+)
+
+# Study and Focus are counselor-recognized schedule commitments, not catalog
+# courses.  Their request vocabulary therefore belongs beside CourseRequest
+# rather than in the scheduling solver's normal enrollment terminology.
+STUDENT_SCHEDULE_COMMITMENT_REQUEST_TYPE_STUDY = "study"
+STUDENT_SCHEDULE_COMMITMENT_REQUEST_TYPE_FOCUS = "focus"
+STUDENT_SCHEDULE_COMMITMENT_REQUEST_TYPE_CHOICES = (
+    (STUDENT_SCHEDULE_COMMITMENT_REQUEST_TYPE_STUDY, "Study"),
+    (STUDENT_SCHEDULE_COMMITMENT_REQUEST_TYPE_FOCUS, "Focus"),
+)
+
 # A catalogue course may be offered in either term or restricted to one term.
 # These are deliberately separate from numeric semester values: a course can be
 # available in both terms without becoming two separate catalog courses.

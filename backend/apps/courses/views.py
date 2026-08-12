@@ -10,7 +10,10 @@ from rest_framework.views import APIView
 
 from backend.apps.access.action_policies.demand import DemandPlanningAction, DemandPlanningActionPolicy
 from backend.apps.access.permissions import ActionPolicyPermission, ResourcePolicyPermission
-from backend.apps.access.resource_policies.courses import CoursePolicy, CourseRequestPolicy, SectionPolicy
+from backend.apps.access.resource_policies.courses import (
+    CoursePolicy, CourseRequestPolicy, SectionPolicy,
+    StudentScheduleCommitmentRequestPolicy,
+)
 from backend.apps.access.resource_policies.planning import PlanningConfigurationPolicy
 from backend.apps.access.viewsets import PolicyFilteredModelViewSet
 from backend.apps.common.models import AcademicYear
@@ -24,8 +27,10 @@ from backend.apps.courses.models import (
     CoursePrerequisite,
     CourseSequencePreference,
     CourseRequest,
+    HalfSemesterCoursePair,
     DeliveryGroup,
     Section,
+    StudentScheduleCommitmentRequest,
 )
 from backend.apps.courses.serializers import (
     CombineOfferingsRequestSerializer,
@@ -37,8 +42,10 @@ from backend.apps.courses.serializers import (
     CourseRequestSerializer,
     CourseSerializer,
     DeliveryGroupSerializer,
+    HalfSemesterCoursePairSerializer,
     OfferingDecisionRequestSerializer,
     SectionSerializer,
+    StudentScheduleCommitmentRequestSerializer,
 )
 from backend.apps.courses.services.section_state import section_delete_conflicts
 from backend.apps.courses.services.demand import get_course_demand_summary
@@ -138,6 +145,26 @@ class CourseRequestViewSet(PolicyFilteredViewSet):
             serializer.save(student=self.request.user.student_profile)
         else:
             serializer.save()
+
+
+class StudentScheduleCommitmentRequestViewSet(PolicyFilteredViewSet):
+    """Counselor-approved Study and Focus requests; never inferred from gaps."""
+
+    queryset = StudentScheduleCommitmentRequest.objects.select_related(
+        "student__user", "academic_year"
+    )
+    serializer_class = StudentScheduleCommitmentRequestSerializer
+    resource_policy_class = StudentScheduleCommitmentRequestPolicy
+    filter_fields = ("academic_year", "student", "commitment_type")
+
+
+class HalfSemesterCoursePairViewSet(PolicyFilteredViewSet):
+    """Planning-owned default order for paired half-semester catalog courses."""
+
+    queryset = HalfSemesterCoursePair.objects.select_related("first_course", "second_course")
+    serializer_class = HalfSemesterCoursePairSerializer
+    resource_policy_class = PlanningConfigurationPolicy
+    filter_fields = ("is_active", "first_course", "second_course")
 
 
 class CourseOfferingViewSet(PolicyFilteredViewSet):

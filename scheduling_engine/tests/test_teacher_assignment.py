@@ -100,3 +100,60 @@ def test_combined_section_requires_intersection_of_eligibility():
 
     assert result.status == "complete"
     assert result.assignments[0].teacher_id == 2
+
+
+def test_online_supervision_uses_normal_workload_but_no_subject_qualification():
+    result = solve_teacher_assignment(TeacherAssignmentInputDTO(
+        academic_year_id=1,
+        sections=(TeacherAssignmentSectionDTO(
+            section_id=None, delivery_group_id=-9, member_course_ids=(), semester=1,
+            timeslot_id=10, is_online_supervision=True,
+            online_supervision_session_id=9,
+        ),),
+        teachers=(_teacher(eligible_course_ids=()),),
+    ))
+
+    assert result.status == "complete"
+    assert result.assignments[0].online_supervision_session_id == 9
+    assert result.assignments[0].teacher_id == 1
+
+
+def test_online_supervision_cannot_share_a_teacher_with_a_normal_section_at_one_time():
+    result = solve_teacher_assignment(TeacherAssignmentInputDTO(
+        academic_year_id=1,
+        sections=(
+            _section(1, timeslot_id=10),
+            TeacherAssignmentSectionDTO(
+                section_id=None, delivery_group_id=-9, member_course_ids=(), semester=1,
+                timeslot_id=10, is_online_supervision=True,
+                online_supervision_session_id=9,
+            ),
+        ),
+        teachers=(_teacher(),),
+    ))
+
+    assert result.status == "partial"
+    assert len(result.assignments) == 1
+
+
+def test_paired_half_semester_sections_share_one_teacher_workload_slot():
+    """Sequential trimestre teaching is one load, despite two course identities."""
+
+    result = solve_teacher_assignment(TeacherAssignmentInputDTO(
+        academic_year_id=1,
+        sections=(
+            _section(1, timeslot_id=10, shared_staffing_key="half:1"),
+            _section(
+                2, delivery_group_id=2, member_course_ids=(2,), timeslot_id=10,
+                shared_staffing_key="half:1",
+            ),
+        ),
+        teachers=(_teacher(
+            eligible_course_ids=(1, 2), remaining_semester_1=1,
+            remaining_semester_2=0, remaining_annual=1,
+        ),),
+    ))
+
+    assert result.status == "complete"
+    assert {item.section_id for item in result.assignments} == {1, 2}
+    assert {item.teacher_id for item in result.assignments} == {1}

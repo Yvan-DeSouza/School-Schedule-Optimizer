@@ -15,6 +15,15 @@ STUDENT_ASSIGNMENT_RERUN_CONTEXT_CHANGED = "student_assignment_rerun_context_cha
 STUDENT_ASSIGNMENT_WHAT_IF_LOCK_NOT_ACTIVE = "student_assignment_what_if_lock_not_active"
 STUDENT_ASSIGNMENT_SECTION_CANCELLATION_REQUIRES_RERUN = "student_assignment_section_cancellation_requires_rerun"
 
+# Special-program workflow codes belong to services rather than the pure
+# engine: they describe persisted configuration and lifecycle facts that a
+# counselor can correct before a planning run is created.
+ONLINE_SUPERVISION_CONFIGURATION_INVALID = "online_supervision_configuration_invalid"
+ONLINE_SUPERVISION_PLAN_CONTEXT_CHANGED = "online_supervision_plan_context_changed"
+ONLINE_SUPERVISION_SESSION_CANCELLATION_REQUIRES_RERUN = "online_supervision_session_cancellation_requires_rerun"
+HALF_SEMESTER_PAIR_INVALID_CONFIGURATION = "half_semester_pair_invalid_configuration"
+STUDENT_SPECIAL_COMMITMENT_LOCK_INVALID_TARGET = "student_special_commitment_lock_invalid_target"
+
 ACTIVE_DELIVERY_GROUPS_CHANGED_SINCE_RUN = "active_delivery_groups_changed_since_run"
 EXACT_BUDGET_TOTAL_MISMATCH = "exact_budget_total_mismatch"
 SECTION_BUDGET_EXCEEDED = "section_budget_exceeded"

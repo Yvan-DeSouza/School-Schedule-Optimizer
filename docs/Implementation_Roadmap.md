@@ -37,14 +37,17 @@ Every future solver phase must preserve a review checkpoint. Solver output is a 
 
 The working system presently reaches this point:
 
-`Course requests → offering cancellation/combination → backup policy → teacher-independent section budget → confirmed teacher roster → staffing-aware physical counts → counselor approval → active sections → semester/A–D placement → optional named-teacher context → student-assignment review → enrollment approval`
+`Course requests and requested Study/Focus commitments → offering cancellation/combination → normal-course section planning plus online-supervision capacity planning → confirmed teacher roster → staffing-aware physical counts → counselor approval → active instructional sections and online-supervision resources → semester/A–D placement → named teachers/supervisors → student-assignment review → enrollment and commitment approval`
 
-The system now supports first-release student-to-section assignment after
-accepted semester/A–D placement and a controlled rerun increment with active
-enrollment history, six audited lock types, full/scoped runs, review-only
-what-if checks, and transactional approval. Room assignment, conflict
-analysis, composed timetables, general manual overrides, and frontend work
-remain outside the implemented boundary.
+The system now supports first-release student assignment after accepted
+semester/A–D placement and a controlled rerun increment with active enrollment
+history, six audited normal-enrollment lock types, special Study/online/Co-op/
+Focus locks, full/scoped runs, review-only what-if checks, and transactional
+approval. The current special-program increment also supports online-supervision
+capacity planning, placement, and named supervision; Study, Co-op, Focus, and
+half-semester student-time occupancy. Room assignment, conflict analysis,
+composed timetables, general manual overrides, and frontend work remain outside
+the implemented boundary.
 
 ### Completed
 
@@ -157,7 +160,8 @@ These areas contain useful foundations but are not complete Version 1 capabiliti
 | Section lifecycle | Draft sections, physical delivery identity, planning provenance, safe refusal to overwrite, and audited reconciliation with retirement/reactivation | A physical-delivery reconciliation path for changing an already-materialized combined group; late combination remains intentionally blocked |
 | Timetable data | `TimeSlot`, permanent A–D rotation, `Room`, `SectionSchedule`, room requirements, course conflicts, and section locks | No solver or review workflow assigns a block or room |
 | Teacher scheduling foundation | Normalized qualifications, compiled eligibility, availability, preferences, current-course history, workload fields, and planning capacity | No named-teacher assignment solver, recommendation run, approval, or assignment diagnostics |
-| Student assignment and controlled reruns | Immutable first-release and replacement runs/approvals, active/historical enrollments, six audited locks, full/scoped reruns, priorities, schedule preservation, what-if checks, cancellation/reconciliation bridge, deterministic initial-solution/incumbent-retention solving, realistic validation, metadata and historical difficulty balancing, and category-diversity preferences | No transcript/SIS completion workflow or import API, student-specific eligibility or optional-request model, general manual overrides, personal timetables, or conflict analyzer; representative real-school data and deployment request limits still need measurement |
+| Student assignment and controlled reruns | Immutable first-release and replacement runs/approvals; active/historical normal and special commitments; six audited normal-enrollment locks; Study/online/Co-op/Focus exact/exclusion locks; full/scoped runs, priorities, preservation, what-if checks, cancellation/reconciliation bridge, deterministic initial-solution/incumbent-retention solving, normal/online/Co-op/Study/Focus occupancy, and paired half-semester behavior | No transcript/SIS completion workflow or import API, student-specific eligibility or optional-request model, same-online-course grouping preference, general manual overrides, personal timetables, or conflict analyzer; representative real-school data and deployment request limits still need measurement |
+| Special-course scheduling | Explicit delivery kind, duration, credits, online-supervision capacity runs, Study/Focus requests, Co-op commitments, and narrowly paired half-semester normal courses | No generalized partial-duration framework, automatic unused-half resolution, online grouping soft preference, or external-program detail beyond student availability |
 | Manual controls | `SectionLock`, `Section.is_locked`, `ManualOverride` model, admin registration, and future action-policy names | No enforced synchronization invariant between lock row/flag; no override application service/API, typed action workflow, optimistic concurrency, override history endpoint, or scoped re-solve |
 | Timetable visibility | Teachers can read sections already assigned to them | No composed timetable endpoint and no student/teacher personal schedule endpoint |
 | Internationalization | `Translation` model and admin registration | No translation API and no user interface consuming translations |
@@ -505,10 +509,11 @@ backend/tests/
 **Current Status:** **Student assignment and controlled reruns implemented;
 conflict analysis remains deferred.** The first counselor-reviewed
 student-assignment release and the follow-on active-enrollment history, six
-lock types, full/scoped reruns, priorities, schedule preservation, what-if
-checks, drift checks, and cancellation bridge are implemented. Transcript/SIS
-evidence, general manual overrides, composed timetables, and personal schedule
-endpoints remain deferred.
+normal-enrollment lock types, Study/online/Co-op/Focus exact/exclusion locks,
+full/scoped reruns, priorities, schedule preservation, what-if checks, drift
+checks, cancellation bridge, online supervision, and paired half-semester
+occupancy are implemented. Transcript/SIS evidence, general manual overrides,
+composed timetables, and personal schedule endpoints remain deferred.
 
 **Implemented first release:**
 

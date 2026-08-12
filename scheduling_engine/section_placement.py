@@ -44,8 +44,10 @@ def compile_section_placement_constraints(data: PlacementInputDTO) -> dict:
         if unit.key in unit_keys:
             raise ValueError(f"Duplicate placement unit key: {unit.key}.")
         unit_keys.add(unit.key)
-        if not unit.member_course_ids:
+        if unit.requires_course_qualification and not unit.member_course_ids:
             raise ValueError(f"Placement unit {unit.key} has no member courses.")
+        if unit.online_supervision_session_id is not None and unit.requires_course_qualification:
+            raise ValueError("Online supervision placement must not require course qualification.")
         legal = set(unit.allowed_semesters)
         if unit.fixed_semester is not None:
             legal &= {unit.fixed_semester}
@@ -85,7 +87,10 @@ def _eligible_candidates(data: PlacementInputDTO, unit, timeslots):
             # reaches this DTO as a denied slot.
             if slot.id in teacher.unavailable_timeslot_ids:
                 continue
-            if not set(unit.member_course_ids).issubset(teacher.eligible_course_ids):
+            if (
+                unit.requires_course_qualification
+                and not set(unit.member_course_ids).issubset(teacher.eligible_course_ids)
+            ):
                 continue
             if teacher.remaining_annual <= 0:
                 continue
@@ -153,13 +158,53 @@ def solve_section_placement(data: PlacementInputDTO) -> PlacementResultDTO:
         if vars_for_unit:
             model.Add(sum(vars_for_unit) <= 1)
 
+    # A configured trimestre pair is sequential delivery by one qualified
+    # teacher in one recurring block. Equalizing the hidden (slot, teacher)
+    # witnesses proves both timing and shared staffing without leaking a named
+    # teacher into the placement result.
+    workload_representative = {}
+    paired_units = defaultdict(list)
+    for unit in data.units:
+        if unit.shared_staffing_key:
+            paired_units[unit.shared_staffing_key].append(unit)
+    for pair_key, pair_units in paired_units.items():
+        if len(pair_units) != 2:
+            raise ValueError(f"Shared half-semester staffing key {pair_key} must identify exactly two units.")
+        first, second = sorted(pair_units, key=lambda item: item.key)
+        first_vars = {
+            (slot_id, teacher_id): variable
+            for (unit_key, slot_id, teacher_id), variable in candidate_vars.items()
+            if unit_key == first.key
+        }
+        second_vars = {
+            (slot_id, teacher_id): variable
+            for (unit_key, slot_id, teacher_id), variable in candidate_vars.items()
+            if unit_key == second.key
+        }
+        for candidate_key in set(first_vars) | set(second_vars):
+            left = first_vars.get(candidate_key)
+            right = second_vars.get(candidate_key)
+            if left is None:
+                model.Add(right == 0)
+            elif right is None:
+                model.Add(left == 0)
+            else:
+                model.Add(left == right)
+                workload_representative[right.Index()] = left
+
     # A witness teacher may never cover concurrent candidate sections. Accepted
     # assignments outside this run reserve their teacher/time pair first.
     fixed_teacher_times = {(item.teacher_id, item.timeslot_id) for item in data.fixed_placements if item.teacher_id is not None}
     by_teacher_slot = defaultdict(list)
     by_teacher_semester = defaultdict(list)
     by_teacher_annual = defaultdict(list)
+    seen_workload_rows = set()
     for (unit_key, slot_id, teacher_id), variable in candidate_vars.items():
+        variable = workload_representative.get(variable.Index(), variable)
+        workload_key = (teacher_id, slot_id, variable.Index())
+        if workload_key in seen_workload_rows:
+            continue
+        seen_workload_rows.add(workload_key)
         by_teacher_slot[teacher_id, slot_id].append(variable)
         by_teacher_semester[teacher_id, timeslots[slot_id].semester].append(variable)
         by_teacher_annual[teacher_id].append(variable)
@@ -273,6 +318,7 @@ def solve_section_placement(data: PlacementInputDTO) -> PlacementResultDTO:
                         unit_key=unit.key, section_id=unit.section_id,
                         delivery_group_id=unit.delivery_group_id, semester=slot.semester,
                         timeslot_id=slot.id, block=slot.block, annual_index=unit.annual_index,
+                        online_supervision_session_id=unit.online_supervision_session_id,
                     ))
                     break
     assigned_keys = {item.unit_key for item in assignments}

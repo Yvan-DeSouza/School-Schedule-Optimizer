@@ -12,7 +12,7 @@ results.  Planning-run persistence belongs to ``section_planning.py``; later
 solver write-back should likewise remain an explicit transactional service.
 """
 
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from collections import defaultdict
 from hashlib import sha256
 import json
@@ -38,6 +38,8 @@ from scheduling_engine.dto import (
     StudentAssignmentInputDTO, StudentAssignmentRequestDTO,
     StudentAssignmentSectionDTO, StudentAssignmentLockDTO,
     StudentAssignmentScopeDTO,
+    OnlineSupervisionSessionDTO, StudentScheduleCommitmentRequestDTO,
+    StudentSpecialCommitmentLockDTO, FixedStudentScheduleCommitmentDTO,
 )
 from scheduling_engine.constraint_compiler import compile_constraints
 from scheduling_engine.section_estimator import estimate_section_counts
@@ -70,6 +72,8 @@ from backend.apps.courses.models import (
     CourseRequest,
     DeliveryGroup,
     Enrollment,
+    HalfSemesterCoursePair,
+    HalfSemesterSectionPair,
     Section,
 )
 from backend.apps.courses.constants import ENROLLMENT_LIFECYCLE_ACTIVE
@@ -86,7 +90,12 @@ from backend.apps.scheduling.models import (
     TeacherAssignmentRun,
     StudentAssignmentLock,
     TimeSlot,
+    OnlineSupervisionSession,
+    OnlineEnrollment,
+    StudentScheduleCommitment,
+    StudentSpecialCommitmentLock,
 )
+from backend.apps.courses.models import StudentScheduleCommitmentRequest
 
 
 def _delivery_group_allowed_semester(group):
@@ -158,6 +167,20 @@ def load_scheduling_input(academic_year_id, *, require_ready_roster=False):
             # context, not newly planned work.
             key = (teacher_id, section.semester)
             committed_by_teacher_semester[key] = committed_by_teacher_semester.get(key, 0) + 1
+    # An online supervisor is not course-qualified instruction, but it is an
+    # ordinary teacher workload and availability commitment. Include accepted
+    # supervisors in every upstream capacity view so no later planner can use
+    # the same person for a simultaneous normal section.
+    from backend.apps.scheduling.models import OnlineSupervisionSession
+
+    for session in OnlineSupervisionSession.objects.filter(
+        academic_year_id=academic_year_id,
+        lifecycle_status="active",
+        supervisor__isnull=False,
+        timeslot__isnull=False,
+    ).select_related("timeslot"):
+        key = (session.supervisor_id, session.timeslot.semester)
+        committed_by_teacher_semester[key] = committed_by_teacher_semester.get(key, 0) + 1
     # Explicit planning capacities override the teacher profile defaults for one
     # teacher/year/semester only.
     configured_capacities = {
@@ -237,6 +260,9 @@ def load_scheduling_input(academic_year_id, *, require_ready_roster=False):
                 course.allowed_semester,
                 course.priority_profile.tier,
                 course.priority_profile_id,
+                delivery_kind=course.delivery_kind,
+                duration=course.duration,
+                credit_value=float(course.credit_value),
             )
             for course in Course.objects.select_related("capacity_profile", "priority_profile")
         ),
@@ -427,6 +453,39 @@ def get_section_count_plan_with_snapshot(academic_year_id, *, course_constraints
     # Load exactly once: a second load after solving could observe edits and make
     # the audit snapshot disagree with the result it claims to explain.
     data = load_scheduling_input(academic_year_id)
+    normal_course_ids = {
+        course.id for course in data.courses
+        if course.delivery_kind == "normal_instruction"
+    }
+    # Section count deliberately owns normal instructional capacity only.
+    # Online sessions have their distinct capacity-planning run and Co-op has
+    # no local instructional section, so including either here would fabricate
+    # a teacher/room demand that the policy explicitly excludes.
+    data = replace(
+        data,
+        courses=tuple(course for course in data.courses if course.id in normal_course_ids),
+        course_requests=tuple(
+            request for request in data.course_requests if request.course_id in normal_course_ids
+        ),
+        course_prerequisites=tuple(
+            edge for edge in data.course_prerequisites
+            if edge.course_id in normal_course_ids and edge.prerequisite_id in normal_course_ids
+        ),
+        course_conflicts=tuple(
+            conflict for conflict in data.course_conflicts
+            if conflict.course_a_id in normal_course_ids and conflict.course_b_id in normal_course_ids
+        ),
+        course_qualification_requirements=tuple(
+            item for item in data.course_qualification_requirements
+            if item.course_id in normal_course_ids
+        ),
+        teacher_preferences=tuple(
+            item for item in data.teacher_preferences if item.course_id in normal_course_ids
+        ),
+        teacher_current_courses=tuple(
+            item for item in data.teacher_current_courses if item.course_id in normal_course_ids
+        ),
+    )
     return plan_section_counts(
         data,
         course_constraints=course_constraints,
@@ -477,10 +536,10 @@ def load_teacher_assignment_input(*, academic_year_id):
     """
 
     from backend.apps.control.models import SectionLock
-    from backend.apps.courses.models import Section
+    from backend.apps.courses.models import HalfSemesterSectionPair, Section
     from backend.apps.scheduling.models import (
         SectionSchedule, TeacherCourseAssignmentRule, TeacherPlanningAnnualCapacity,
-        TeacherPlanningRoster, TeacherTimePreference,
+        TeacherPlanningRoster, TeacherTimePreference, OnlineSupervisionSession,
     )
 
     academic_year_id = int(academic_year_id)
@@ -509,6 +568,13 @@ def load_teacher_assignment_input(*, academic_year_id):
         .prefetch_related("delivery_group__offerings__course")
         .order_by("id")
     )
+    paired_section_key = {}
+    for pair in HalfSemesterSectionPair.objects.filter(
+        first_section__academic_year_id=academic_year_id,
+    ).order_by("id"):
+        key = f"half_semester_pair:{pair.id}"
+        paired_section_key[pair.first_section_id] = key
+        paired_section_key[pair.second_section_id] = key
     section_dtos, fixed = [], []
     for section in sections:
         schedule = schedules.get(section.id)
@@ -540,6 +606,7 @@ def load_teacher_assignment_input(*, academic_year_id):
             locked_teacher_id=lock.locked_teacher_id if lock else None,
             is_fixed=is_fixed,
             assigned_teacher_id=section.teacher_id,
+            shared_staffing_key=paired_section_key.get(section.id),
         ))
         if is_fixed:
             fixed.append(FixedTeacherAssignmentDTO(
@@ -548,12 +615,71 @@ def load_teacher_assignment_input(*, academic_year_id):
                 member_course_ids=member_course_ids,
             ))
 
+    online_sessions = list(OnlineSupervisionSession.objects.filter(
+        academic_year_id=academic_year_id,
+        lifecycle_status="active",
+    ).select_related("timeslot", "supervisor").order_by("id"))
+    for session in online_sessions:
+        if session.timeslot_id is None or session.timeslot_id not in timeslots:
+            raise ValueError(
+                f"Online supervision session {session.id} has no accepted semester/A-D placement."
+            )
+        is_fixed = session.supervisor_id is not None
+        section_dtos.append(TeacherAssignmentSectionDTO(
+            section_id=None,
+            delivery_group_id=-session.id,
+            member_course_ids=(),
+            semester=session.timeslot.semester,
+            timeslot_id=session.timeslot_id,
+            is_fixed=is_fixed,
+            assigned_teacher_id=session.supervisor_id,
+            is_online_supervision=True,
+            online_supervision_session_id=session.id,
+        ))
+        if is_fixed:
+            fixed.append(FixedTeacherAssignmentDTO(
+                section_id=None,
+                teacher_id=session.supervisor_id,
+                semester=session.timeslot.semester,
+                timeslot_id=session.timeslot_id,
+                member_course_ids=(),
+                online_supervision_session_id=session.id,
+            ))
+
     configured_semester = {
         (item.teacher_id, item.semester): item
         for item in TeacherPlanningCapacity.objects.filter(
             academic_year_id=academic_year_id, teacher_id__in=roster_teacher_ids,
         )
     }
+    # Accepted paired trimester sections retain two Section.teacher values in
+    # the database but represent one recurring teaching workload. Collapse the
+    # fixed-context witness here so a later staffing rerun does not subtract the
+    # same teacher load twice; member courses remain unioned for course rules.
+    fixed_by_shared_key = {}
+    unpaired_fixed = []
+    for item in fixed:
+        pair_key = paired_section_key.get(item.section_id) if item.section_id is not None else None
+        if pair_key is None:
+            unpaired_fixed.append(item)
+            continue
+        previous = fixed_by_shared_key.get(pair_key)
+        if previous is None:
+            fixed_by_shared_key[pair_key] = item
+        elif (
+            previous.teacher_id != item.teacher_id
+            or previous.timeslot_id != item.timeslot_id
+            or previous.semester != item.semester
+        ):
+            raise ValueError(
+                f"Accepted half-semester pair {pair_key} has inconsistent teacher or timing context."
+            )
+        else:
+            fixed_by_shared_key[pair_key] = replace(
+                previous,
+                member_course_ids=tuple(sorted(set(previous.member_course_ids) | set(item.member_course_ids))),
+            )
+    fixed = unpaired_fixed + list(fixed_by_shared_key.values())
     configured_annual = {
         item.teacher_id: item
         for item in TeacherPlanningAnnualCapacity.objects.filter(
@@ -657,7 +783,9 @@ def _has_directed_cycle(edges):
     return any(visit(node) for node in list(adjacency))
 
 
-def _student_assignment_staffing_context(*, academic_year_id, sections, staffing_mode, provisional_teacher_assignment_run):
+def _student_assignment_staffing_context(
+    *, academic_year_id, sections, online_sessions, staffing_mode, provisional_teacher_assignment_run
+):
     """Validate and snapshot the selected counselor staffing-assumption mode."""
 
     from backend.apps.scheduling.constants import (
@@ -681,18 +809,30 @@ def _student_assignment_staffing_context(*, academic_year_id, sections, staffing
                 {"section_id": section.id, "teacher_id": section.teacher_id}
                 for section in sorted(sections, key=lambda item: item.id)
             ],
+            "online_supervision_teacher_ids": [
+                {"online_supervision_session_id": session.id, "teacher_id": session.supervisor_id}
+                for session in sorted(online_sessions, key=lambda item: item.id)
+            ],
         }
     if staffing_mode == STUDENT_ASSIGNMENT_STAFFING_MODE_FINAL_STAFFING:
         if provisional_teacher_assignment_run is not None:
             raise ValueError("final_staffing does not accept a provisional teacher-assignment run.")
         missing = [section.id for section in sections if section.teacher_id is None]
-        if missing:
-            raise ValueError(f"final_staffing requires a final teacher on every active section: {missing}.")
+        missing_online = [session.id for session in online_sessions if session.supervisor_id is None]
+        if missing or missing_online:
+            raise ValueError(
+                "final_staffing requires a final teacher on every active section and online supervision session: "
+                f"sections={missing}, online_supervision_sessions={missing_online}."
+            )
         return {
             "staffing_mode": staffing_mode,
             "section_teacher_ids": [
                 {"section_id": section.id, "teacher_id": section.teacher_id}
                 for section in sorted(sections, key=lambda item: item.id)
+            ],
+            "online_supervision_teacher_ids": [
+                {"online_supervision_session_id": session.id, "teacher_id": session.supervisor_id}
+                for session in sorted(online_sessions, key=lambda item: item.id)
             ],
         }
     if staffing_mode != STUDENT_ASSIGNMENT_STAFFING_MODE_PROVISIONAL_STAFFING:
@@ -706,16 +846,25 @@ def _student_assignment_staffing_context(*, academic_year_id, sections, staffing
     if hasattr(provisional_teacher_assignment_run, "approval"):
         raise ValueError("A provisional teacher-assignment run cannot already be approved.")
     final_teacher_sections = [section.id for section in sections if section.teacher_id is not None]
-    if final_teacher_sections:
+    final_online_sessions = [session.id for session in online_sessions if session.supervisor_id is not None]
+    if final_teacher_sections or final_online_sessions:
         raise ValueError(
-            "provisional_staffing requires every active section to remain without a final Section.teacher: "
-            f"{final_teacher_sections}."
+            "provisional_staffing requires every active section and online supervision session to remain unstaffed: "
+            f"sections={final_teacher_sections}, online_supervision_sessions={final_online_sessions}."
         )
     assignments = provisional_teacher_assignment_run.result.get("assignments", [])
-    assignment_by_section = {int(item["section_id"]): int(item["teacher_id"]) for item in assignments}
+    assignment_by_section = {
+        int(item["section_id"]): int(item["teacher_id"])
+        for item in assignments if item.get("section_id") is not None
+    }
+    assignment_by_online_session = {
+        int(item["online_supervision_session_id"]): int(item["teacher_id"])
+        for item in assignments if item.get("online_supervision_session_id") is not None
+    }
     section_ids = {section.id for section in sections}
-    if set(assignment_by_section) != section_ids:
-        raise ValueError("The provisional teacher-assignment run does not cover exactly the active sections.")
+    online_session_ids = {session.id for session in online_sessions}
+    if set(assignment_by_section) != section_ids or set(assignment_by_online_session) != online_session_ids:
+        raise ValueError("The provisional teacher-assignment run does not cover exactly the active staffing units.")
     # Staleness of the unapproved source is determined from the same current
     # detached staffing input that created it, without treating it as final.
     teacher_data, _roster = load_teacher_assignment_input(academic_year_id=academic_year_id)
@@ -728,6 +877,10 @@ def _student_assignment_staffing_context(*, academic_year_id, sections, staffing
         "provisional_teacher_assignments": [
             {"section_id": section_id, "teacher_id": assignment_by_section[section_id]}
             for section_id in sorted(assignment_by_section)
+        ],
+        "provisional_online_supervision_assignments": [
+            {"online_supervision_session_id": session_id, "teacher_id": assignment_by_online_session[session_id]}
+            for session_id in sorted(assignment_by_online_session)
         ],
         "provisional_teacher_input_fingerprint": provisional_teacher_assignment_run.input_snapshot.get("fingerprint"),
     }
@@ -849,6 +1002,27 @@ def load_student_assignment_input(
         for item in SectionSchedule.objects.filter(section_id__in=[section.id for section in sections]).select_related("timeslot")
     }
     section_dtos = []
+    # Catalog pairs identify the academic first/second-half relationship;
+    # section pairs identify the concrete two teaching sections sharing one
+    # semester/block/teacher. Keeping both maps detached makes the pure engine
+    # enforce the school-specific trimestre pattern without ORM knowledge.
+    half_pair_by_course = {}
+    for pair in HalfSemesterCoursePair.objects.filter(is_active=True).order_by("id"):
+        half_pair_by_course[pair.first_course_id] = (
+            pair.second_course_id,
+            "first_half",
+        )
+        half_pair_by_course[pair.second_course_id] = (
+            pair.first_course_id,
+            "second_half",
+        )
+    half_section_pair_key = {}
+    for pair in HalfSemesterSectionPair.objects.filter(
+        first_section__academic_year_id=academic_year_id,
+    ).order_by("id"):
+        key = f"half_semester_section_pair:{pair.id}"
+        half_section_pair_key[pair.first_section_id] = key
+        half_section_pair_key[pair.second_section_id] = key
     for section in sections:
         schedule = schedules.get(section.id)
         if schedule is None or schedule.timeslot_id is None or schedule.timeslot.academic_year_id != academic_year_id:
@@ -887,10 +1061,51 @@ def load_student_assignment_input(
             # snapshot, so a later staffing edit cannot stale a sections-only
             # student run. Other modes retain their declared teacher context.
             teacher_id=section.teacher_id if staffing_mode != "sections_only" else None,
+            half_semester_segment=section.half_semester_segment,
+            half_semester_pair_key=half_section_pair_key.get(section.id),
+        ))
+    online_sessions = list(OnlineSupervisionSession.objects.filter(
+        academic_year_id=academic_year_id,
+        lifecycle_status="active",
+    ).select_related("timeslot", "supervisor", "plan_approval_session").order_by("id"))
+    online_offerings = list(CourseOffering.objects.filter(
+        academic_year_id=academic_year_id,
+        status=COURSE_OFFERING_STATUS_OFFERED,
+        course__delivery_kind="online",
+    ).select_related("course__priority_profile", "course__capacity_profile").order_by("id"))
+    online_session_dtos = []
+    for session in online_sessions:
+        if session.timeslot_id is None or session.timeslot.academic_year_id != academic_year_id:
+            raise ValueError(
+                f"Online supervision session {session.id} has no accepted target-year timeslot."
+            )
+        # A negative engine-only section identity keeps shared online capacity
+        # inside the existing detached candidate model without misrepresenting
+        # the resource as a persisted instructional Section.
+        engine_section_id = -session.id
+        online_session_dtos.append(OnlineSupervisionSessionDTO(
+            session_id=session.id,
+            semester=session.timeslot.semester,
+            timeslot_id=session.timeslot_id,
+            capacity_max=session.capacity_max,
+            target_capacity=session.target_capacity,
+            supervisor_id=session.supervisor_id if staffing_mode != "sections_only" else None,
+        ))
+        section_dtos.append(StudentAssignmentSectionDTO(
+            section_id=engine_section_id,
+            delivery_group_id=engine_section_id,
+            member_course_offering_ids=tuple(item.id for item in online_offerings),
+            member_course_ids=tuple(item.course_id for item in online_offerings),
+            semester=session.timeslot.semester,
+            timeslot_id=session.timeslot_id,
+            capacity_max=session.capacity_max,
+            target_capacity=session.target_capacity,
+            teacher_id=session.supervisor_id if staffing_mode != "sections_only" else None,
         ))
     staffing_context = _student_assignment_staffing_context(
         academic_year_id=academic_year_id,
         sections=sections,
+        online_sessions=online_sessions,
         staffing_mode=staffing_mode,
         provisional_teacher_assignment_run=provisional_teacher_assignment_run,
     )
@@ -943,6 +1158,23 @@ def load_student_assignment_input(
         )
         for lock in active_locks
     )
+    special_locks = list(StudentSpecialCommitmentLock.objects.filter(
+        academic_year_id=academic_year_id,
+        is_active=True,
+    ).select_related("schedule_commitment_request", "course_request__course", "timeslot").order_by("id"))
+    special_lock_dtos = tuple(
+        StudentSpecialCommitmentLockDTO(
+            lock_id=lock.id,
+            lock_type=lock.lock_type,
+            lock_mode=lock.lock_mode,
+            schedule_commitment_request_id=lock.schedule_commitment_request_id,
+            course_request_id=lock.course_request_id,
+            timeslot_id=lock.timeslot_id,
+            semester=lock.semester,
+            co_op_block_pair=lock.co_op_block_pair,
+        )
+        for lock in special_locks
+    )
     fixed_rows = []
     fixed_course_by_student = set()
     movable_course_by_student = set()
@@ -991,6 +1223,8 @@ def load_student_assignment_input(
             is_historical=not is_active,
             is_in_scope=in_scope,
             lock_ids=lock_ids,
+            half_semester_segment=section.half_semester_segment,
+            credit_value=float(offering.course.credit_value),
         )
         fixed_rows.append(row)
         if is_active:
@@ -998,6 +1232,111 @@ def load_student_assignment_input(
                 movable_course_by_student.add((enrollment.student_id, offering.course_id))
             else:
                 fixed_course_by_student.add((enrollment.student_id, offering.course_id))
+    online_session_by_id = {item.session_id: item for item in online_session_dtos}
+    for enrollment in OnlineEnrollment.objects.filter(
+        supervision_session__academic_year_id=academic_year_id,
+    ).select_related("course_offering__course", "supervision_session__timeslot").order_by("id"):
+        session = online_session_by_id.get(enrollment.supervision_session_id)
+        if session is None:
+            if enrollment.lifecycle_status == "active":
+                raise ValueError(
+                    f"Active online enrollment {enrollment.id} references an inactive or unplaced supervision session."
+                )
+            continue
+        offering = enrollment.course_offering
+        is_active = enrollment.lifecycle_status == "active"
+        in_scope = is_active and (
+            scope.scope_type == "full"
+            or enrollment.student_id in scope.student_ids
+            or offering.course_id in scope.course_ids
+        )
+        special_lock_ids = tuple(sorted(
+            lock.id for lock in special_locks
+            if lock.course_request_id
+            and lock.course_request.student_id == enrollment.student_id
+            and lock.course_request.course_id == offering.course_id
+        ))
+        row = FixedEnrollmentDTO(
+            enrollment_id=enrollment.id,
+            student_id=enrollment.student_id,
+            section_id=-enrollment.supervision_session_id,
+            course_offering_id=offering.id,
+            course_id=offering.course_id,
+            semester=session.semester,
+            timeslot_id=session.timeslot_id,
+            is_active=is_active,
+            is_locked=bool(special_lock_ids),
+            is_historical=not is_active,
+            is_in_scope=in_scope,
+            lock_ids=special_lock_ids,
+            half_semester_segment=half_pair_by_course.get(
+                offering.course_id, (None, None)
+            )[1],
+            credit_value=float(offering.course.credit_value),
+        )
+        fixed_rows.append(row)
+        if is_active:
+            if in_scope and not row.is_locked:
+                movable_course_by_student.add((enrollment.student_id, offering.course_id))
+            else:
+                fixed_course_by_student.add((enrollment.student_id, offering.course_id))
+
+    commitment_request_dtos = tuple(
+        StudentScheduleCommitmentRequestDTO(
+            request_id=item.id,
+            student_id=item.student_id,
+            commitment_type=item.commitment_type,
+            is_in_scope=(
+                scope.scope_type == "full" or item.student_id in scope.student_ids
+            ),
+        )
+        for item in StudentScheduleCommitmentRequest.objects.filter(
+            academic_year_id=academic_year_id
+        ).order_by("id")
+    )
+    fixed_commitments = []
+    for commitment in StudentScheduleCommitment.objects.filter(
+        academic_year_id=academic_year_id,
+    ).select_related("course_request__course", "course_offering").prefetch_related("occupancies").order_by("id"):
+        is_active = commitment.lifecycle_status == "active"
+        source_request_id = commitment.schedule_commitment_request_id
+        source_course_request_id = commitment.course_request_id
+        relevant_lock_ids = tuple(sorted(
+            lock.id for lock in special_locks
+            if (
+                source_request_id is not None
+                and lock.schedule_commitment_request_id == source_request_id
+            ) or (
+                source_course_request_id is not None
+                and lock.course_request_id == source_course_request_id
+            )
+        ))
+        fixed_commitments.append(FixedStudentScheduleCommitmentDTO(
+            commitment_id=commitment.id,
+            student_id=commitment.student_id,
+            commitment_kind=commitment.commitment_kind,
+            schedule_commitment_request_id=source_request_id,
+            course_request_id=source_course_request_id,
+            course_offering_id=commitment.course_offering_id,
+            course_id=(
+                commitment.course_request.course_id
+                if commitment.course_request_id
+                else None
+            ),
+            credit_value=float(commitment.credit_value),
+            occupancy=tuple(sorted(
+                (item.timeslot_id, item.half_semester_segment)
+                for item in commitment.occupancies.all()
+            )),
+            is_active=is_active,
+            is_locked=bool(relevant_lock_ids),
+            is_historical=not is_active,
+            is_in_scope=(
+                is_active and (
+                    scope.scope_type == "full" or commitment.student_id in scope.student_ids
+                )
+            ),
+        ))
     resolutions_by_student = _active_assignment_backup_resolutions(
         academic_year_id=academic_year_id,
         sections=sections,
@@ -1035,6 +1374,15 @@ def load_student_assignment_input(
                 priority_tier=request.course.priority_profile.tier,
                 current_enrollment_id=current_enrollment_id,
                 is_in_scope=in_scope,
+                delivery_kind=request.course.delivery_kind,
+                duration=request.course.duration,
+                credit_value=float(request.course.credit_value),
+                half_semester_segment=half_pair_by_course.get(
+                    request.course_id, (None, None)
+                )[1],
+                paired_half_course_id=half_pair_by_course.get(
+                    request.course_id, (None, None)
+                )[0],
             ))
             continue
         relevant = [
@@ -1070,6 +1418,15 @@ def load_student_assignment_input(
                     "outcome": outcome,
                 },
                 is_in_scope=in_scope,
+                delivery_kind=backup.course.delivery_kind,
+                duration=backup.course.duration,
+                credit_value=float(backup.course.credit_value),
+                half_semester_segment=half_pair_by_course.get(
+                    backup.course_id, (None, None)
+                )[1],
+                paired_half_course_id=half_pair_by_course.get(
+                    backup.course_id, (None, None)
+                )[0],
             ))
     hard_edges = list(CoursePrerequisite.objects.values_list("prerequisite_id", "course_id"))
     if _has_directed_cycle(hard_edges):
@@ -1090,6 +1447,12 @@ def load_student_assignment_input(
     } | {
         item.course_id for item in fixed_rows
         if item.is_active and not item.is_historical
+    } | {
+        item.course_id
+        for item in fixed_commitments
+        if item.is_active
+        and not item.is_historical
+        and item.course_id is not None
     }
     relevant_courses = list(Course.objects.filter(id__in=relevant_course_ids).order_by("id"))
     historical_rows = list(StudentCourseHistoricalResult.objects.filter(
@@ -1141,6 +1504,16 @@ def load_student_assignment_input(
         course_category_diversity_importance=soft_constraint_importance["course_category_diversity"],
         course_difficulties=course_difficulties,
         course_category_relationships=course_category_relationships,
+        online_supervision_sessions=tuple(online_session_dtos),
+        schedule_commitment_requests=commitment_request_dtos,
+        special_commitment_locks=special_lock_dtos,
+        fixed_schedule_commitments=tuple(fixed_commitments),
+        timeslots=tuple(
+            TimeSlotDTO(
+                slot.id, slot.academic_year_id, slot.semester, slot.block, slot.is_available
+            )
+            for slot in TimeSlot.objects.filter(academic_year_id=academic_year_id).order_by("id")
+        ),
         student_assignment_locks=lock_dtos,
         schedule_preservation_level=schedule_preservation_level,
         priority_request_ids=priority_request_ids,
@@ -1159,7 +1532,9 @@ def load_section_placement_input(*, academic_year_id, input_mode, budget_approva
 
     from backend.apps.constraints.models import CourseConflictMatrix, TeacherAvailability
     from backend.apps.control.models import ManualOverride, SectionLock
-    from backend.apps.courses.models import DeliveryGroup, Enrollment, Section
+    from backend.apps.courses.models import (
+        DeliveryGroup, Enrollment, HalfSemesterSectionPair, Section,
+    )
     from backend.apps.courses.selectors import active_delivery_groups_for_year, active_sections_for_year
     from backend.apps.scheduling.constants import (
         SECTION_PLACEMENT_INPUT_ANNUAL_TOTAL,
@@ -1167,7 +1542,7 @@ def load_section_placement_input(*, academic_year_id, input_mode, budget_approva
     )
     from backend.apps.scheduling.models import (
         AnnualPlacementLock, SectionBudgetApproval, SectionSchedule,
-        TeacherPlanningCapacity, TeacherPlanningRoster,
+        TeacherPlanningCapacity, TeacherPlanningRoster, OnlineSupervisionSession,
     )
 
     if input_mode not in {SECTION_PLACEMENT_INPUT_FIXED_SEMESTER, SECTION_PLACEMENT_INPUT_ANNUAL_TOTAL}:
@@ -1201,6 +1576,13 @@ def load_section_placement_input(*, academic_year_id, input_mode, budget_approva
             section__lifecycle_status=SECTION_LIFECYCLE_ACTIVE,
         ).select_related("locked_timeslot", "locked_teacher")
     }
+    paired_section_key = {}
+    for pair in HalfSemesterSectionPair.objects.filter(
+        first_section__academic_year_id=academic_year_id,
+    ).select_related("first_section", "second_section").order_by("id"):
+        key = f"half_semester_pair:{pair.id}"
+        paired_section_key[pair.first_section_id] = key
+        paired_section_key[pair.second_section_id] = key
     dependency_section_ids = set(Enrollment.objects.filter(
         section__academic_year_id=academic_year_id,
         section__lifecycle_status=SECTION_LIFECYCLE_ACTIVE,
@@ -1247,6 +1629,7 @@ def load_section_placement_input(*, academic_year_id, input_mode, budget_approva
                 locked_timeslot_id=lock.locked_timeslot_id if lock else None,
                 locked_teacher_id=lock.locked_teacher_id if lock else None,
                 source_mode=input_mode,
+                shared_staffing_key=paired_section_key.get(section.id),
             ))
     else:
         if budget_approval is None:
@@ -1288,6 +1671,40 @@ def load_section_placement_input(*, academic_year_id, input_mode, budget_approva
         ]
         if out_of_range:
             raise ValueError(f"Annual placement lock(s) are outside approved annual counts: {', '.join(out_of_range)}.")
+
+    # Online supervision is a shared physical resource, not a normal course
+    # section.  Its approved annual slots join the same timing solve because a
+    # supervisor still needs one workload-safe A-D block, while its missing
+    # subject qualification is intentional rather than a data error.
+    online_sessions = list(OnlineSupervisionSession.objects.filter(
+        academic_year_id=academic_year_id,
+        lifecycle_status="active",
+    ).select_related("timeslot", "plan_approval_session").order_by("id"))
+    for session in online_sessions:
+        if session.timeslot_id:
+            fixed.append(FixedPlacementDTO(
+                section_id=None,
+                timeslot_id=session.timeslot_id,
+                teacher_id=session.supervisor_id,
+                online_supervision_session_id=session.id,
+            ))
+            continue
+        if session.plan_approval_session_id is None:
+            raise ValueError(
+                f"Online supervision session {session.id} has no approved capacity provenance."
+            )
+        allowed = tuple(sorted(int(value) for value in session.plan_approval_session.allowed_semesters))
+        if not allowed:
+            raise ValueError(f"Online supervision session {session.id} has no legal semester.")
+        units.append(PlacementUnitDTO(
+            key=f"online_supervision:{session.id}",
+            delivery_group_id=-session.id,
+            member_course_ids=(),
+            allowed_semesters=allowed,
+            source_mode=input_mode,
+            requires_course_qualification=False,
+            online_supervision_session_id=session.id,
+        ))
 
     # Existing accepted schedules outside the current decision scope reserve a
     # teacher at that block and consume workload before candidates are modelled.

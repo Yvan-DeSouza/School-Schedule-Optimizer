@@ -25,6 +25,7 @@ from backend.apps.scheduling.models import (
     SectionPlacementApprovalAssignment,
     SectionPlacementRun,
     SectionSchedule,
+    OnlineSupervisionSession,
 )
 from backend.apps.scheduling.services.engine_adapter import (
     load_section_placement_input,
@@ -198,23 +199,67 @@ def approve_section_placement_run(run, *, approved_by, reason):
     # same ordering is used for both modes to keep concurrent approval behavior
     # deterministic on PostgreSQL.
     section_ids = sorted(int(item["section_id"]) for item in assignments if item.get("section_id"))
+    online_session_ids = sorted(
+        int(item["online_supervision_session_id"])
+        for item in assignments
+        if item.get("online_supervision_session_id") is not None
+    )
     sections = {
         section.id: section
         for section in Section.objects.select_for_update().filter(id__in=section_ids).select_related("delivery_group", "course")
     }
     if SectionSchedule.objects.select_for_update().filter(section_id__in=section_ids).exists():
         raise SectionPlacementConflictError({"detail": "A section gained timing context since the placement run."})
+    online_sessions = {
+        session.id: session
+        for session in OnlineSupervisionSession.objects.select_for_update().filter(
+            id__in=online_session_ids,
+            academic_year_id=run.academic_year_id,
+            lifecycle_status="active",
+        ).select_related("plan_approval_session")
+    }
+    if len(online_sessions) != len(online_session_ids):
+        raise SectionPlacementConflictError({
+            "detail": "An online supervision session from the reviewed run no longer exists or is inactive."
+        })
+    if any(session.timeslot_id for session in online_sessions.values()):
+        raise SectionPlacementConflictError({
+            "detail": "An online supervision session gained timing context since the placement run."
+        })
     approval = SectionPlacementApproval.objects.create(
         placement_run=run, approved_by=approved_by, reason=reason.strip(),
     )
     groups = {
         group.id: group
         for group in DeliveryGroup.objects.select_for_update().filter(
-            id__in={int(item["delivery_group_id"]) for item in assignments},
+            id__in={
+                int(item["delivery_group_id"])
+                for item in assignments
+                if item.get("online_supervision_session_id") is None
+            },
         ).select_related("capacity_profile").prefetch_related("offerings__course")
     }
     allocators = {}
     for item in assignments:
+        online_session_id = item.get("online_supervision_session_id")
+        if online_session_id is not None:
+            session = online_sessions[int(online_session_id)]
+            allowed = set(session.plan_approval_session.allowed_semesters)
+            timeslot_id = int(item["timeslot_id"])
+            from backend.apps.scheduling.models import TimeSlot
+
+            timeslot = TimeSlot.objects.get(pk=timeslot_id)
+            if timeslot.academic_year_id != run.academic_year_id or timeslot.semester not in allowed:
+                raise SectionPlacementConflictError({
+                    "detail": "The reviewed online supervision timing is no longer legal for its approved slot."
+                })
+            # This direct link supplies immutable placement provenance without
+            # inventing a SectionPlacementApprovalAssignment for a non-section.
+            session.timeslot_id = timeslot_id
+            session.placement_approval = approval
+            session.full_clean()
+            session.save(update_fields=["timeslot", "placement_approval"])
+            continue
         section_id = item.get("section_id")
         if section_id:
             section = sections.get(int(section_id))

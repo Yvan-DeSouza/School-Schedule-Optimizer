@@ -21,6 +21,13 @@ defines the explicitly approved replacement workflow for scoped, unlocked
 active enrollments. It does not change the behavior or audit meaning of
 existing first-release runs.
 
+The accepted special-program extension
+[`special-student-schedule-commitments.md`](special-student-schedule-commitments.md)
+adds Study, Focus, Co-op, online supervision, and the school's narrow
+half-semester pattern without changing the meaning of a normal instructional
+section or enrollment. Its special occupancy records and online-enrollment
+provenance join this stage's immutable snapshot/approval model.
+
 ## Staffing-assumption modes
 
 The counselor chooses one transparent staffing mode for every immutable run:

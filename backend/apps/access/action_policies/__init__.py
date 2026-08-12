@@ -17,6 +17,10 @@ from backend.apps.access.action_policies.student_assignment import (
     StudentAssignmentLockAction,
     StudentAssignmentLockActionPolicy,
 )
+from backend.apps.access.action_policies.student_schedule_commitments import (
+    StudentSpecialCommitmentLockAction,
+    StudentSpecialCommitmentLockActionPolicy,
+)
 
 # Explicit exports keep callers out of internal module layout.
 __all__ = [
@@ -29,4 +33,6 @@ __all__ = [
     "SchedulingActionPolicy",
     "StudentAssignmentLockAction",
     "StudentAssignmentLockActionPolicy",
+    "StudentSpecialCommitmentLockAction",
+    "StudentSpecialCommitmentLockActionPolicy",
 ]

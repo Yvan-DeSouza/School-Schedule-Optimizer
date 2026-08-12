@@ -80,3 +80,16 @@ def test_missing_eligible_teacher_produces_a_non_approvable_result():
     assert result.status == "infeasible"
     assert result.unplaced_unit_keys == ("annual:1:1",)
     assert result.diagnostics[0]["code"] == "no_eligible_teacher"
+
+
+def test_online_supervision_is_placed_without_subject_qualification():
+    """A supervisor needs workload-safe time, not the online course's teachable."""
+
+    result = _solve(units=(PlacementUnitDTO(
+        "online_supervision:9", -9, (), (1,), annual_index=1,
+        source_mode="annual_total", requires_course_qualification=False,
+        online_supervision_session_id=9,
+    ),), teachers=(_teacher(courses=()),))
+
+    assert result.status == "complete"
+    assert result.assignments[0].online_supervision_session_id == 9
