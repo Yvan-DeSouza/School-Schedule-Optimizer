@@ -644,6 +644,71 @@ def test_unpaired_half_semester_course_is_assigned_then_flagged_for_review():
     assert result.review_items[0].code == "student_assignment_half_semester_unallocated_opposite_half"
 
 
+def test_unallocated_school_time_is_reviewed_without_creating_study():
+    """A genuine gap is review evidence, never an implicit student commitment."""
+
+    slots = _timeslots()
+    first_slot = next(slot for slot in slots if slot.semester == 1 and slot.block == "A")
+    result = solve_student_assignment(_input(
+        sections=(_section(timeslot_id=first_slot.id),),
+        timeslots=slots,
+    ))
+
+    review_items = [
+        item for item in result.review_items
+        if item.code == "student_assignment_unallocated_school_time"
+    ]
+    assert review_items
+    assert all(item.detail["recognized_commitment"] is False for item in review_items)
+    assert all(item.detail["has_requested_study"] is False for item in review_items)
+    assert all(item.detail["timeslot_id"] != first_slot.id for item in review_items)
+
+
+def test_unallocated_school_time_does_not_duplicate_an_explicit_alternate_review():
+    """An alternate is recorded demand context, not an inferred Study period."""
+
+    slots = _timeslots()
+    first_slot = next(slot for slot in slots if slot.semester == 1 and slot.block == "A")
+    result = solve_student_assignment(_input(
+        sections=(_section(timeslot_id=first_slot.id),),
+        timeslots=slots,
+        student_ids_with_alternate_requests=(1,),
+    ))
+
+    assert not any(
+        item.code == "student_assignment_unallocated_school_time"
+        for item in result.review_items
+    )
+
+
+def test_unpaired_half_course_uses_its_specific_review_instead_of_generic_gap():
+    """Counselors should see one precise half-course warning for the missing half."""
+
+    slots = _timeslots()
+    first_slot = next(slot for slot in slots if slot.semester == 1 and slot.block == "A")
+    result = solve_student_assignment(_input(
+        requests=(_request(
+            77, course_id=1, course_offering_id=11, duration="half_semester",
+            credit_value=0.5, half_semester_segment="first_half", paired_half_course_id=2,
+        ),),
+        sections=(_section(
+            timeslot_id=first_slot.id, half_semester_segment="first_half",
+        ),),
+        timeslots=slots,
+    ))
+
+    assert any(
+        item.code == "student_assignment_half_semester_unallocated_opposite_half"
+        for item in result.review_items
+    )
+    assert not any(
+        item.code == "student_assignment_unallocated_school_time"
+        and item.detail["timeslot_id"] == first_slot.id
+        and "second_half" in item.detail["unallocated_half_segments"]
+        for item in result.review_items
+    )
+
+
 def test_half_semester_online_keeps_full_term_supervision_and_flags_unused_half():
     result = solve_student_assignment(_input(
         requests=(_request(
@@ -662,6 +727,33 @@ def test_half_semester_online_keeps_full_term_supervision_and_flags_unused_half(
         "student_assignment_half_semester_unallocated_opposite_half",
         "student_assignment_online_half_semester_unused_supervision_half",
     }
+
+
+def test_fixed_half_semester_online_enrollment_blocks_both_supervision_halves():
+    """A rerun may not reuse the unused academic half of an occupied online seat."""
+
+    result = solve_student_assignment(_input(
+        requests=(_request(
+            79, course_id=1, course_offering_id=11, duration="half_semester",
+            credit_value=0.5, half_semester_segment="second_half",
+        ),),
+        sections=(
+            _section(-1, delivery_group_id=-1, timeslot_id=101),
+            _section(
+                2, delivery_group_id=2, timeslot_id=101,
+                half_semester_segment="second_half",
+            ),
+        ),
+        fixed_enrollments=(FixedEnrollmentDTO(
+            enrollment_id=80, student_id=1, section_id=-1, course_offering_id=99,
+            course_id=99, semester=1, timeslot_id=101,
+            half_semester_segment="first_half", delivery_kind="online",
+            is_in_scope=False,
+        ),),
+    ))
+
+    assert result.status == "partial"
+    assert result.unmet_requests[0].diagnostic_code == "student_assignment_timeslot_collision"
 
 
 def test_unknown_solver_outcome_is_failed_not_reported_as_infeasible(monkeypatch):

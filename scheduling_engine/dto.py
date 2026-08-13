@@ -310,6 +310,9 @@ class FixedEnrollmentDTO:
     lock_ids: Tuple[int, ...] = ()
     half_semester_segment: Optional[str] = None
     credit_value: float = 1.0
+    # Active online enrollment retains its full-semester physical supervision
+    # occupancy even when its academic course is a half-semester course.
+    delivery_kind: str = "normal_instruction"
 
 
 @dataclass(frozen=True)
@@ -466,6 +469,10 @@ class StudentAssignmentInputDTO:
     # section meets there, so their candidates require the complete target-year
     # time identity list rather than inferring it from course sections.
     timeslots: Tuple[TimeSlotDTO, ...] = ()
+    # An alternate is not an implicit time commitment.  It is still frozen so
+    # factual empty-time review can distinguish a student with no requested
+    # fallback from one whose course-request workflow already records one.
+    student_ids_with_alternate_requests: Tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -687,6 +694,33 @@ class PlacementUnitDTO:
 
 
 @dataclass(frozen=True)
+class OnlineSupervisionPlacementSessionDTO:
+    """One generic supervision resource available to the placement stage.
+
+    This is deliberately separate from ``PlacementUnitDTO``.  The unit is a
+    timing/staffing decision; this record carries the shared-seat capacity that
+    lets placement prove students with several online requests can attend
+    distinct supervision blocks without pretending those courses have their
+    own instructional sections.
+    """
+
+    session_id: int
+    capacity_max: int
+    allowed_semesters: Tuple[int, ...]
+    fixed_timeslot_id: Optional[int] = None
+
+
+@dataclass(frozen=True)
+class OnlineSupervisionDemandDTO:
+    """One primary online request used only as a placement feasibility witness."""
+
+    request_id: int
+    student_id: int
+    course_id: int
+    allowed_semesters: Tuple[int, ...]
+
+
+@dataclass(frozen=True)
 class FixedPlacementDTO:
     """Accepted timing context outside this placement run's decision scope."""
 
@@ -729,6 +763,11 @@ class PlacementInputDTO:
     timeslots: Tuple[TimeSlotDTO, ...]
     teachers: Tuple[PlacementTeacherDTO, ...]
     conflicts: Tuple[PlacementConflictDTO, ...]
+    # Placement never persists these temporary student-to-session witnesses.
+    # They only ensure generic supervision capacity is spread across enough
+    # blocks for students who requested multiple online courses.
+    online_supervision_sessions: Tuple[OnlineSupervisionPlacementSessionDTO, ...] = ()
+    online_supervision_demands: Tuple[OnlineSupervisionDemandDTO, ...] = ()
     time_limit_seconds: int = 30
 
 

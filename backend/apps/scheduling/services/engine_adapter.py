@@ -29,7 +29,8 @@ from scheduling_engine.dto import (
     TeacherDTO, TeacherPlanningCapacityDTO, TeacherQualificationDTO, TimeSlotDTO,
     PlanningOfferingDTO,
     FixedPlacementDTO, PlacementConflictDTO, PlacementInputDTO,
-    PlacementTeacherDTO, PlacementUnitDTO,
+    PlacementTeacherDTO, PlacementUnitDTO, OnlineSupervisionPlacementSessionDTO,
+    OnlineSupervisionDemandDTO,
     FixedTeacherAssignmentDTO, TeacherAssignmentInputDTO,
     TeacherAssignmentSectionDTO, TeacherAssignmentTeacherDTO,
     TeacherCourseAssignmentRuleDTO,
@@ -923,7 +924,7 @@ def _active_assignment_backup_resolutions(*, academic_year_id, sections):
     return by_student
 
 
-def _student_assignment_request_in_scope(*, scope, request, sections_by_offering):
+def _student_assignment_request_in_scope(*, scope, request, course_offering_id, sections_by_offering):
     """Resolve request scope using the same explicit student/course/section IDs."""
 
     if scope.scope_type == "full":
@@ -932,7 +933,7 @@ def _student_assignment_request_in_scope(*, scope, request, sections_by_offering
         return True
     return any(
         section.section_id in scope.section_ids
-        for section in sections_by_offering.get(request.course_offering_id, ())
+        for section in sections_by_offering.get(course_offering_id, ())
     )
 
 
@@ -1273,6 +1274,7 @@ def load_student_assignment_input(
                 offering.course_id, (None, None)
             )[1],
             credit_value=float(offering.course.credit_value),
+            delivery_kind="online",
         )
         fixed_rows.append(row)
         if is_active:
@@ -1354,6 +1356,7 @@ def load_student_assignment_input(
             in_scope = _student_assignment_request_in_scope(
                 scope=scope,
                 request=request,
+                course_offering_id=offering.id,
                 sections_by_offering=sections_by_offering,
             )
             current_enrollment_id = None
@@ -1405,6 +1408,7 @@ def load_student_assignment_input(
             in_scope = _student_assignment_request_in_scope(
                 scope=scope,
                 request=backup,
+                course_offering_id=backup_offering.id,
                 sections_by_offering=sections_by_offering,
             )
             requests.append(StudentAssignmentRequestDTO(
@@ -1519,6 +1523,12 @@ def load_student_assignment_input(
         priority_request_ids=priority_request_ids,
         priority_request_limit=int(priority_request_limit),
         scope=scope,
+        student_ids_with_alternate_requests=tuple(sorted(set(
+            CourseRequest.objects.filter(
+                academic_year_id=academic_year_id,
+                request_type=COURSE_REQUEST_TYPE_ALTERNATE,
+            ).values_list("student_id", flat=True)
+        ))),
     ), staffing_context
 
 
@@ -1680,7 +1690,27 @@ def load_section_placement_input(*, academic_year_id, input_mode, budget_approva
         academic_year_id=academic_year_id,
         lifecycle_status="active",
     ).select_related("timeslot", "plan_approval_session").order_by("id"))
+    online_placement_sessions = []
     for session in online_sessions:
+        if session.plan_approval_session_id is None:
+            if session.timeslot_id is None:
+                raise ValueError(
+                    f"Online supervision session {session.id} has no approved capacity provenance."
+                )
+            # A legacy accepted session is fixed context, not a newly planned
+            # resource. Its approved timing is enough to reserve the generic
+            # seat in the student-level diversity witness.
+            allowed = (session.timeslot.semester,)
+        else:
+            allowed = tuple(sorted(int(value) for value in session.plan_approval_session.allowed_semesters))
+        if not allowed:
+            raise ValueError(f"Online supervision session {session.id} has no legal semester.")
+        online_placement_sessions.append(OnlineSupervisionPlacementSessionDTO(
+            session_id=session.id,
+            capacity_max=session.capacity_max,
+            allowed_semesters=allowed,
+            fixed_timeslot_id=session.timeslot_id,
+        ))
         if session.timeslot_id:
             fixed.append(FixedPlacementDTO(
                 section_id=None,
@@ -1689,13 +1719,6 @@ def load_section_placement_input(*, academic_year_id, input_mode, budget_approva
                 online_supervision_session_id=session.id,
             ))
             continue
-        if session.plan_approval_session_id is None:
-            raise ValueError(
-                f"Online supervision session {session.id} has no approved capacity provenance."
-            )
-        allowed = tuple(sorted(int(value) for value in session.plan_approval_session.allowed_semesters))
-        if not allowed:
-            raise ValueError(f"Online supervision session {session.id} has no legal semester.")
         units.append(PlacementUnitDTO(
             key=f"online_supervision:{session.id}",
             delivery_group_id=-session.id,
@@ -1705,6 +1728,29 @@ def load_section_placement_input(*, academic_year_id, input_mode, budget_approva
             requires_course_qualification=False,
             online_supervision_session_id=session.id,
         ))
+
+    # This carries primary online co-request facts into the timing stage solely
+    # to prove that generic supervision seats can occupy distinct blocks for a
+    # student with multiple online courses. It does not assign a student to a
+    # session early or make supervision resources course-specific.
+    offered_online_course_ids = set(CourseOffering.objects.filter(
+        academic_year_id=academic_year_id,
+        status=COURSE_OFFERING_STATUS_OFFERED,
+        course__delivery_kind="online",
+    ).values_list("course_id", flat=True))
+    online_supervision_demands = tuple(
+        OnlineSupervisionDemandDTO(
+            request_id=request.id,
+            student_id=request.student_id,
+            course_id=request.course_id,
+            allowed_semesters=_allowed_semester_ids(request.course.allowed_semester),
+        )
+        for request in CourseRequest.objects.filter(
+            academic_year_id=academic_year_id,
+            request_type=COURSE_REQUEST_TYPE_PRIMARY,
+            course_id__in=offered_online_course_ids,
+        ).select_related("course").order_by("id")
+    )
 
     # Existing accepted schedules outside the current decision scope reserve a
     # teacher at that block and consume workload before candidates are modelled.
@@ -1753,4 +1799,6 @@ def load_section_placement_input(*, academic_year_id, input_mode, budget_approva
         academic_year_id=int(academic_year_id), input_mode=input_mode,
         units=tuple(units), fixed_placements=tuple(fixed_context),
         timeslots=base.timeslots, teachers=tuple(teachers), conflicts=conflicts,
+        online_supervision_sessions=tuple(online_placement_sessions),
+        online_supervision_demands=online_supervision_demands,
     ), conflict_matrix, roster

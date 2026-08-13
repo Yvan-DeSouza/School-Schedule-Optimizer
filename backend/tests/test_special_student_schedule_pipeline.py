@@ -51,6 +51,7 @@ from backend.apps.scheduling.models import (
     TeacherPlanningRoster,
     TimeSlot,
 )
+from backend.apps.scheduling.constants import STUDENT_ASSIGNMENT_RUN_SCOPE_SCOPED
 from backend.apps.scheduling.services.online_supervision import (
     approve_online_supervision_plan_run,
     create_online_supervision_plan_run,
@@ -153,9 +154,10 @@ def test_realistic_special_commitments_flow_through_reviewed_pipeline(counselor_
     """Exercise demand through student approval with a small real-school mixture.
 
     The scenario contains ordinary pupils, requested Study, shared online
-    supervision, Co-op, locked Focus, and the school's two normal trimestre
-    courses.  It intentionally leaves one student with spare time and no Study
-    request: the approval must never invent a Study commitment for that pupil.
+    supervision, Co-op, locked Focus, the school's two normal trimestre
+    courses, and one online half-semester request. It intentionally leaves one
+    student with spare time and no Study request: approval must never invent a
+    Study commitment for that pupil and must instead expose factual review.
     """
 
     academic_year = AcademicYear.objects.create(name="2031-2032")
@@ -220,11 +222,28 @@ def test_realistic_special_commitments_flow_through_reviewed_pipeline(counselor_
         code="PENG4V", name="Online English", category="english", profile=profile,
         priority=priority, delivery_kind="online",
     )
+    online_wellness = _course(
+        code="PHEM4V", name="Online Wellness first half",
+        category="health_and_physical_education", profile=profile, priority=priority,
+        delivery_kind="online", duration="half_semester", credit_value="0.5",
+    )
+    online_arts = _course(
+        code="PAVI4V", name="Online Visual Arts second half", category="arts",
+        profile=profile, priority=priority, delivery_kind="online",
+        duration="half_semester", credit_value="0.5",
+    )
     co_op = _course(
         code="PCOP4X", name="Co-op", category="", profile=profile, priority=priority,
         delivery_kind="co_op", credit_value="2.0",
     )
     HalfSemesterCoursePair.objects.create(first_course=wellness, second_course=arts)
+    # The real school has only two normal trimestre courses. This separate
+    # online pair exists only to validate the defined online-half interaction;
+    # one side is requested so the unused supervision half remains reviewable.
+    HalfSemesterCoursePair.objects.create(
+        first_course=online_wellness,
+        second_course=online_arts,
+    )
 
     for course in (math, science, wellness, focus_semester_two_math, focus_semester_one_science):
         CourseQualificationRequirement.objects.create(course=course, qualification=math_qualification)
@@ -285,19 +304,24 @@ def test_realistic_special_commitments_flow_through_reviewed_pipeline(counselor_
     paired_half_student = _student(academic_year=academic_year, index=9)
     first_half_only_student = _student(academic_year=academic_year, index=10)
     second_half_only_student = _student(academic_year=academic_year, index=11)
+    online_half_student = _student(academic_year=academic_year, index=12)
 
     requests = {
         normal_student: (math, science, english, online_math),
         one_study_student: (math, english, science, online_english),
         two_study_student: (math,),
         online_student: (online_math, english, science),
-        second_online_student: (online_math, math),
+        # This student is the integration-level regression for the generic
+        # supervision block-diversity witness: both online courses must land
+        # in distinct physical session times, without dedicated course rooms.
+        second_online_student: (online_math, online_english, math),
         co_op_student: (co_op, english, math, online_math),
         focus_one_student: (focus_semester_two_math,),
         focus_two_student: (focus_semester_one_science,),
         paired_half_student: (wellness, arts, math, english),
         first_half_only_student: (wellness, science, english),
         second_half_only_student: (arts, math, history),
+        online_half_student: (online_wellness, history),
     }
     request_by_student_course = {}
     for student, courses in requests.items():
@@ -328,7 +352,7 @@ def test_realistic_special_commitments_flow_through_reviewed_pipeline(counselor_
 
     ensure_academic_year_offerings(academic_year, actor=counselor_user)
     offerings = {item.course_id: item for item in academic_year.courseoffering_set.all()}
-    # The online planner owns a separate capacity policy.  Five online requests
+    # The online planner owns a separate capacity policy. Seven online requests
     # against a target of four must create more than one shared session.
     OnlineSupervisionConfiguration.objects.create(
         academic_year=academic_year,
@@ -415,6 +439,9 @@ def test_realistic_special_commitments_flow_through_reviewed_pipeline(counselor_
         academic_year=academic_year,
         timeslot__isnull=False,
     ).count() == 2
+    assert len(set(OnlineSupervisionSession.objects.filter(
+        academic_year=academic_year,
+    ).values_list("timeslot_id", flat=True))) == 2
 
     teacher_run = create_teacher_assignment_run(
         academic_year_id=academic_year.id,
@@ -431,7 +458,7 @@ def test_realistic_special_commitments_flow_through_reviewed_pipeline(counselor_
         supervisor=supervisor,
     ).exists()
 
-    create_student_special_commitment_lock(
+    first_study_lock = create_student_special_commitment_lock(
         academic_year=academic_year,
         created_by=counselor_user,
         lock_type="study_time",
@@ -440,7 +467,7 @@ def test_realistic_special_commitments_flow_through_reviewed_pipeline(counselor_
         timeslot=slots[(1, "A")],
         reason="Keep the first requested Study in Semester 1 Block A.",
     )
-    create_student_special_commitment_lock(
+    second_study_lock = create_student_special_commitment_lock(
         academic_year=academic_year,
         created_by=counselor_user,
         lock_type="study_time",
@@ -493,7 +520,7 @@ def test_realistic_special_commitments_flow_through_reviewed_pipeline(counselor_
     )
 
     assert approval.student_assignment_run_id == student_run.id
-    assert OnlineEnrollment.objects.filter(supervision_session__academic_year=academic_year).count() == 5
+    assert OnlineEnrollment.objects.filter(supervision_session__academic_year=academic_year).count() == 7
     assert not Section.objects.filter(course=co_op, academic_year=academic_year).exists()
     assert offerings[co_op.id].delivery_group_id is None
     assert all(
@@ -503,6 +530,12 @@ def test_realistic_special_commitments_flow_through_reviewed_pipeline(counselor_
             for session in OnlineSupervisionSession.objects.filter(academic_year=academic_year)
         )
     )
+    second_online_enrollments = list(OnlineEnrollment.objects.filter(
+        student=second_online_student,
+        lifecycle_status="active",
+    ).select_related("supervision_session").order_by("id"))
+    assert len(second_online_enrollments) == 2
+    assert len({item.supervision_session.timeslot_id for item in second_online_enrollments}) == 2
     # The supervisor carries a normal workload slot but is deliberately not a
     # teachable match for the online academic course codes being supervised.
     assert not TeacherQualification.objects.filter(teacher=supervisor).exists()
@@ -592,6 +625,44 @@ def test_realistic_special_commitments_flow_through_reviewed_pipeline(counselor_
         and item["student_id"] in {first_half_only_student.id, second_half_only_student.id}
         for item in review["special_commitment_review_items"]
     )
+    online_half_assignment = next(
+        item for item in review["assignments"]
+        if item["student_id"] == online_half_student.id
+        and item["course_id"] == online_wellness.id
+    )
+    assert online_half_assignment["half_semester_segment"] == "first_half"
+    assert any(
+        item["code"] == "student_assignment_online_half_semester_unused_supervision_half"
+        and item["student_id"] == online_half_student.id
+        and item["request_id"] == request_by_student_course[online_half_student.id, online_wellness.id].id
+        for item in review["special_commitment_review_items"]
+    )
+    assert not any(
+        item["code"] == "student_assignment_unallocated_school_time"
+        and item["student_id"] == online_half_student.id
+        and item["detail"]["timeslot_id"] == online_half_assignment["timeslot_id"]
+        for item in review["special_commitment_review_items"]
+    )
+    unallocated_items = [
+        item for item in review["special_commitment_review_items"]
+        if item["code"] == "student_assignment_unallocated_school_time"
+    ]
+    assert any(
+        item["student_id"] == normal_student.id
+        and item["detail"]["has_requested_study"] is False
+        and item["detail"]["recognized_commitment"] is False
+        for item in unallocated_items
+    )
+    assert not any(
+        item["student_id"] == focus_one_student.id
+        and item["detail"]["semester"] == 1
+        for item in unallocated_items
+    )
+    assert not any(
+        item["student_id"] == focus_two_student.id
+        and item["detail"]["semester"] == 2
+        for item in unallocated_items
+    )
     difficulty_by_course = {
         item["course_id"]: item
         for item in review["course_difficulty_facts"]
@@ -656,3 +727,27 @@ def test_realistic_special_commitments_flow_through_reviewed_pipeline(counselor_
         schedule.timeslot_id is not None
         for schedule in SectionSchedule.objects.filter(section__academic_year=academic_year)
     )
+
+    # A scoped rerun reads the approved history and the existing special locks
+    # as fixed context. It must neither move the locked Study occupancy nor
+    # rewrite the prior approval while the counselor only reviews the rerun.
+    rerun = create_student_assignment_run(
+        academic_year=academic_year,
+        staffing_mode="final_staffing",
+        soft_constraint_importance=SOFT_IMPORTANCE,
+        created_by=counselor_user,
+        scope_type=STUDENT_ASSIGNMENT_RUN_SCOPE_SCOPED,
+        source_approval=approval,
+        scope_student_ids=(two_study_student.id,),
+    )
+    assert rerun.status == "complete", rerun.result
+    assert {
+        item["lock_id"] for item in rerun.input_snapshot["special_commitment_locks"]
+    } >= {first_study_lock.id, second_study_lock.id}
+    assert set(
+        StudentScheduleCommitmentOccupancy.objects.filter(
+            commitment__student=two_study_student,
+            commitment__commitment_kind="study",
+            commitment__lifecycle_status="active",
+        ).values_list("timeslot_id", "half_semester_segment")
+    ) == locked_study_occupancy

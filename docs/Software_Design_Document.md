@@ -992,7 +992,10 @@ sections, timing, or rooms.
   and prerequisite behavior, while its `OnlineEnrollment` reserves a seat in a
   separately planned, placed, and staffed `OnlineSupervisionSession`. The
   supervisor consumes normal teacher workload and availability but does not
-  require subject qualification.
+  require subject qualification. Placement carries a temporary student online
+  co-request feasibility witness so generic supervision capacity is placed in
+  enough distinct blocks for one student to attend multiple online courses;
+  the witness is not a persisted early enrollment.
 - A normal half-semester course remains an instructional section with a
   first/second-half segment. The configured pair shares a time and qualified
   teacher sequentially, so it uses one teacher workload slot and is not treated

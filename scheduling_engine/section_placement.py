@@ -20,6 +20,8 @@ from .diagnostics import (
     NO_COMPLETE_PLACEMENT,
     NO_ELIGIBLE_TEACHER,
     NO_LEGAL_SEMESTER,
+    ONLINE_SUPERVISION_BLOCK_DIVERSITY_INSUFFICIENT,
+    ONLINE_SUPERVISION_CAPACITY_INSUFFICIENT,
 )
 from .dto import (
     PlacementAssignmentDTO,
@@ -63,6 +65,26 @@ def compile_section_placement_constraints(data: PlacementInputDTO) -> dict:
             raise ValueError("Fixed placement references an unknown target-year timeslot.")
         if fixed.teacher_id is not None and fixed.teacher_id not in teacher_ids:
             raise ValueError("Fixed placement references a teacher outside the confirmed roster.")
+    online_session_ids = set()
+    for session in data.online_supervision_sessions:
+        if session.session_id in online_session_ids:
+            raise ValueError(f"Duplicate online supervision session {session.session_id}.")
+        online_session_ids.add(session.session_id)
+        if session.capacity_max <= 0:
+            raise ValueError("Online supervision session capacity must be positive.")
+        if not set(session.allowed_semesters) <= {1, 2} or not session.allowed_semesters:
+            raise ValueError("Online supervision session must have one or two legal semesters.")
+        if session.fixed_timeslot_id is not None:
+            slot = timeslots.get(session.fixed_timeslot_id)
+            if slot is None or slot.semester not in session.allowed_semesters:
+                raise ValueError("Fixed online supervision timing is outside the session's legal semester.")
+    online_demand_ids = set()
+    for demand in data.online_supervision_demands:
+        if demand.request_id in online_demand_ids:
+            raise ValueError(f"Duplicate online supervision demand request {demand.request_id}.")
+        online_demand_ids.add(demand.request_id)
+        if not set(demand.allowed_semesters) <= {1, 2} or not demand.allowed_semesters:
+            raise ValueError("Online supervision demand must have one or two legal semesters.")
     return {"timeslots": timeslots}
 
 
@@ -122,6 +144,153 @@ def _course_pair_weight(data: PlacementInputDTO, unit_a, unit_b) -> int:
     return round(value * 100)
 
 
+def _online_session_slot_options(data, placement_vars):
+    """Return legal generic supervision placements without exposing course sections.
+
+    The normal timing model already decides every unplaced supervision session's
+    semester/A-D block.  These options let a small internal witness prove that
+    the same generic seats can serve students with more than one online course
+    in distinct blocks.  They never become persisted student assignments.
+    """
+
+    unit_by_session_id = {
+        unit.online_supervision_session_id: unit
+        for unit in data.units
+        if unit.online_supervision_session_id is not None
+    }
+    options = {}
+    for session in data.online_supervision_sessions:
+        if session.fixed_timeslot_id is not None:
+            options[session.session_id] = ((session.fixed_timeslot_id, None),)
+            continue
+        unit = unit_by_session_id.get(session.session_id)
+        if unit is None:
+            options[session.session_id] = ()
+            continue
+        options[session.session_id] = tuple(
+            (timeslot_id, variable)
+            for (unit_key, timeslot_id), variable in placement_vars.items()
+            if unit_key == unit.key
+        )
+    return options
+
+
+def _add_online_supervision_demand_witness(model, data, timeslots, session_options):
+    """Require a feasible temporary allocation of online requests to generic seats.
+
+    A session may supervise many course codes, so the witness has no
+    course-to-session restriction.  It does, however, bind each request to the
+    session's selected time and prevents one student from using two
+    supervision seats in the same semester/A-D slot.  This protects the later
+    student-assignment stage without coupling normal course placement to a
+    persisted online roster.
+    """
+
+    if not data.online_supervision_demands:
+        return
+    sessions_by_id = {
+        session.session_id: session
+        for session in data.online_supervision_sessions
+    }
+    assignments_by_session = defaultdict(list)
+    assignments_by_student_slot = defaultdict(list)
+    for demand in sorted(data.online_supervision_demands, key=lambda item: item.request_id):
+        choices = []
+        for session_id, session in sessions_by_id.items():
+            for timeslot_id, placement_variable in session_options.get(session_id, ()):
+                if timeslots[timeslot_id].semester not in demand.allowed_semesters:
+                    continue
+                variable = model.NewBoolVar(
+                    f"online_supervision_request_{demand.request_id}_{session_id}_{timeslot_id}"
+                )
+                if placement_variable is not None:
+                    model.Add(variable <= placement_variable)
+                choices.append(variable)
+                assignments_by_session[session_id].append(variable)
+                assignments_by_student_slot[demand.student_id, timeslot_id].append(variable)
+        if choices:
+            model.AddExactlyOne(choices)
+        else:
+            # Preserve an explicit hard infeasibility rather than allowing a
+            # student with online demand to disappear from the placement proof.
+            model.Add(0 == 1)
+    for session_id, assignments in assignments_by_session.items():
+        model.Add(sum(assignments) <= sessions_by_id[session_id].capacity_max)
+    for assignments in assignments_by_student_slot.values():
+        model.Add(sum(assignments) <= 1)
+
+
+def _online_supervision_demand_feasibility(data, timeslots, session_options):
+    """Classify an online-only capacity/block failure before the full solve.
+
+    This deliberately omits normal sections and named staffing competition.  A
+    negative result therefore truthfully identifies a problem inherent to the
+    available generic supervision seats or their block diversity, while other
+    full-placement failures retain their existing diagnostics.
+    """
+
+    if not data.online_supervision_demands:
+        return None
+    sessions_by_id = {
+        session.session_id: session
+        for session in data.online_supervision_sessions
+    }
+    if sum(session.capacity_max for session in sessions_by_id.values()) < len(data.online_supervision_demands):
+        return "capacity"
+    if any(
+        not session_options.get(session_id)
+        for session_id in sessions_by_id
+    ):
+        # A normal placement diagnostic already explains the session with no
+        # time/teacher candidate; do not mislabel it as a block-diversity issue.
+        return None
+
+    model = cp_model.CpModel()
+    placement_variables = {}
+    for session_id, options in session_options.items():
+        values = []
+        for timeslot_id, _placement_variable in options:
+            variable = model.NewBoolVar(f"online_session_{session_id}_{timeslot_id}")
+            placement_variables[session_id, timeslot_id] = variable
+            values.append(variable)
+        model.AddExactlyOne(values)
+
+    assignments_by_session = defaultdict(list)
+    assignments_by_student_slot = defaultdict(list)
+    for demand in sorted(data.online_supervision_demands, key=lambda item: item.request_id):
+        choices = []
+        for session_id, options in session_options.items():
+            for timeslot_id, _placement_variable in options:
+                if timeslots[timeslot_id].semester not in demand.allowed_semesters:
+                    continue
+                variable = model.NewBoolVar(
+                    f"online_demand_{demand.request_id}_{session_id}_{timeslot_id}"
+                )
+                model.Add(variable <= placement_variables[session_id, timeslot_id])
+                choices.append(variable)
+                assignments_by_session[session_id].append(variable)
+                assignments_by_student_slot[demand.student_id, timeslot_id].append(variable)
+        if choices:
+            model.AddExactlyOne(choices)
+        else:
+            model.Add(0 == 1)
+    for session_id, assignments in assignments_by_session.items():
+        model.Add(sum(assignments) <= sessions_by_id[session_id].capacity_max)
+    for assignments in assignments_by_student_slot.values():
+        model.Add(sum(assignments) <= 1)
+
+    solver = cp_model.CpSolver()
+    solver.parameters.max_time_in_seconds = min(float(data.time_limit_seconds), 2.0)
+    solver.parameters.num_search_workers = 1
+    solver.parameters.random_seed = 0
+    status = solver.Solve(model)
+    if status in {cp_model.OPTIMAL, cp_model.FEASIBLE}:
+        return "feasible"
+    if status == cp_model.INFEASIBLE:
+        return "infeasible"
+    return "unknown"
+
+
 def solve_section_placement(data: PlacementInputDTO) -> PlacementResultDTO:
     """Find a reviewable timing candidate while proving hidden staffing exists."""
 
@@ -157,6 +326,31 @@ def solve_section_placement(data: PlacementInputDTO) -> PlacementResultDTO:
                 placement_vars[unit.key, slot.id] = placement
         if vars_for_unit:
             model.Add(sum(vars_for_unit) <= 1)
+
+    online_session_options = _online_session_slot_options(data, placement_vars)
+    online_feasibility = _online_supervision_demand_feasibility(
+        data, timeslots, online_session_options,
+    )
+    if online_feasibility == "capacity":
+        diagnostics.append({
+            "code": ONLINE_SUPERVISION_CAPACITY_INSUFFICIENT,
+            "online_request_count": len(data.online_supervision_demands),
+            "total_supervision_capacity": sum(
+                session.capacity_max for session in data.online_supervision_sessions
+            ),
+        })
+    elif online_feasibility == "infeasible":
+        diagnostics.append({
+            "code": ONLINE_SUPERVISION_BLOCK_DIVERSITY_INSUFFICIENT,
+            "online_request_count": len(data.online_supervision_demands),
+            "online_session_count": len(data.online_supervision_sessions),
+            "affected_student_ids": sorted({
+                demand.student_id for demand in data.online_supervision_demands
+            }),
+        })
+    _add_online_supervision_demand_witness(
+        model, data, timeslots, online_session_options,
+    )
 
     # A configured trimestre pair is sequential delivery by one qualified
     # teacher in one recurring block. Equalizing the hidden (slot, teacher)

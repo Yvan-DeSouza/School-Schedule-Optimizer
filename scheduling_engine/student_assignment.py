@@ -115,6 +115,97 @@ def _request_occupied_half_segments(request, section):
     return _occupied_half_segments(section.half_semester_segment)
 
 
+def _fixed_enrollment_occupied_half_segments(enrollment):
+    """Preserve full-term supervision occupancy for an active online history row."""
+
+    if enrollment.delivery_kind == "online":
+        return HALF_SEMESTER_SEGMENTS
+    return _occupied_half_segments(enrollment.half_semester_segment)
+
+
+def _append_unallocated_school_time_review_items(
+    *, data, sections, requests_by_id, fixed_slots, fixed_rows,
+    assignments, commitment_assignments, unpaired_half_occupancies, review_items,
+):
+    """Report factual unallocated student time without creating an implicit Study.
+
+    The solver's assignment choices are already complete when this runs.  The
+    calculation therefore reports only observable occupancy from accepted
+    fixed context, the candidate assignments, and explicit special commitments.
+    It is a counselor review aid, not an additional optimization objective.
+    """
+
+    timeslots = [slot for slot in data.timeslots if slot.is_available]
+    if not timeslots:
+        return
+    occupied_by_student = defaultdict(set)
+    for student_id, occupancy in fixed_slots.items():
+        occupied_by_student[student_id].update(occupancy)
+    for assignment in assignments:
+        request = requests_by_id[assignment.request_id]
+        section_id = (
+            assignment.section_id
+            if assignment.section_id is not None
+            else -assignment.online_supervision_session_id
+        )
+        section = sections[section_id]
+        occupied_by_student[assignment.student_id].update(
+            (assignment.timeslot_id, segment)
+            for segment in _request_occupied_half_segments(request, section)
+        )
+    for commitment in commitment_assignments:
+        occupied_by_student[commitment.student_id].update(commitment.occupancy)
+
+    student_ids = {
+        request.student_id for request in data.requests
+    } | {
+        row.student_id for row in fixed_rows
+    } | {
+        request.student_id for request in data.schedule_commitment_requests
+    } | {
+        commitment.student_id
+        for commitment in data.fixed_schedule_commitments
+        if commitment.is_active and not commitment.is_historical
+    }
+    students_with_study_requests = {
+        request.student_id
+        for request in data.schedule_commitment_requests
+        if request.commitment_type == "study"
+    }
+    students_with_alternates = set(data.student_ids_with_alternate_requests)
+
+    for student_id in sorted(student_ids):
+        # An alternate is already an explicit counselor-recorded response to
+        # unmet demand. It is not an automatic Study, but it prevents this
+        # separate empty-time review from duplicating the request review.
+        if student_id in students_with_alternates:
+            continue
+        occupied = occupied_by_student[student_id]
+        for timeslot in timeslots:
+            unallocated_segments = tuple(
+                segment
+                for segment in HALF_SEMESTER_SEGMENTS
+                if (timeslot.id, segment) not in occupied
+                and (student_id, timeslot.id, segment) not in unpaired_half_occupancies
+            )
+            if not unallocated_segments:
+                continue
+            review_items.append(StudentAssignmentReviewItemDTO(
+                code=STUDENT_ASSIGNMENT_UNALLOCATED_SCHOOL_TIME,
+                student_id=student_id,
+                detail={
+                    "semester": timeslot.semester,
+                    "block": timeslot.block,
+                    "timeslot_id": timeslot.id,
+                    "unallocated_half_segments": unallocated_segments,
+                    "has_requested_study": student_id in students_with_study_requests,
+                    "has_alternate_request": False,
+                    "recognized_commitment": False,
+                    "reason": "no_requested_study_or_recognized_commitment",
+                },
+            ))
+
+
 def _outcome_name(status):
     return {
         cp_model.OPTIMAL: "optimal",
@@ -719,7 +810,7 @@ def _solve_student_assignment(data, *, include_lock_costs):
     fixed_courses = defaultdict(list)
     for enrollment in fixed_rows:
         fixed_by_section[enrollment.section_id].append(enrollment)
-        for segment in _occupied_half_segments(enrollment.half_semester_segment):
+        for segment in _fixed_enrollment_occupied_half_segments(enrollment):
             fixed_slots[enrollment.student_id].add((enrollment.timeslot_id, segment))
             fixed_slot_rows[
                 enrollment.student_id, enrollment.timeslot_id, segment
@@ -1681,6 +1772,7 @@ def _solve_student_assignment(data, *, include_lock_costs):
     assignments_by_student_course = {
         (item.student_id, item.course_id): item for item in assignments
     }
+    unpaired_half_occupancies = set()
     for request in data.requests:
         if request.duration != "half_semester":
             continue
@@ -1697,6 +1789,17 @@ def _solve_student_assignment(data, *, include_lock_costs):
             and partner.half_semester_segment != assignment.half_semester_segment
         )
         if not paired:
+            if request.delivery_kind != "online":
+                # The normal half-course review already identifies this precise
+                # missing half. Suppress the broader empty-time item for the
+                # same slot so counselors receive one truthful explanation.
+                unpaired_half_occupancies.add((
+                    request.student_id,
+                    assignment.timeslot_id,
+                    "second_half"
+                    if assignment.half_semester_segment == "first_half"
+                    else "first_half",
+                ))
             review_items.append(StudentAssignmentReviewItemDTO(
                 code=STUDENT_ASSIGNMENT_HALF_SEMESTER_UNALLOCATED_OPPOSITE_HALF,
                 student_id=request.student_id,
@@ -1743,6 +1846,18 @@ def _solve_student_assignment(data, *, include_lock_costs):
             course_id=course_id,
             detail={"commitment_kind": kind, "candidate_count": len(choices)},
         ))
+
+    _append_unallocated_school_time_review_items(
+        data=data,
+        sections=sections,
+        requests_by_id=requests_by_id,
+        fixed_slots=fixed_slots,
+        fixed_rows=fixed_rows,
+        assignments=assignments,
+        commitment_assignments=commitment_assignments,
+        unpaired_half_occupancies=unpaired_half_occupancies,
+        review_items=review_items,
+    )
 
     unmet = []
     diagnostics = []

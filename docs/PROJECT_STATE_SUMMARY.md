@@ -483,7 +483,9 @@ Where the workflow stops today:
   Exact/exclusion locks and stable review codes cover each special choice;
 - online supervision capacity has its own immutable plan/review/approval,
   then joins the existing placement and named-teacher stages without becoming a
-  fake normal instructional section;
+  fake normal instructional section; placement includes a primary online
+  co-request feasibility witness so multiple online courses for one student
+  receive distinct supervision blocks when a valid placement exists;
 - section cancellation with active enrollments fails closed with the affected
   student IDs until a reviewed rerun resolves those enrollments; historical
   enrollments then remain audit evidence while reconciliation may retire the

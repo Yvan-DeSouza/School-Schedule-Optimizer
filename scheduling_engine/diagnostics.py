@@ -34,6 +34,8 @@ NO_AVAILABLE_TIMESLOT = "no_available_timeslot"
 NO_ELIGIBLE_TEACHER = "no_eligible_teacher"
 TEACHER_AVAILABILITY_COLLISION = "teacher_availability_collision"
 TEACHER_SEMESTER_OR_ANNUAL_CAPACITY_SHORTAGE = "teacher_semester_or_annual_capacity_shortage"
+ONLINE_SUPERVISION_CAPACITY_INSUFFICIENT = "online_supervision_capacity_insufficient"
+ONLINE_SUPERVISION_BLOCK_DIVERSITY_INSUFFICIENT = "online_supervision_block_diversity_insufficient"
 NO_COMPLETE_PLACEMENT = "no_complete_placement"
 
 # Named teacher assignment diagnostics are stable API codes.  Views may change

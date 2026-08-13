@@ -72,7 +72,11 @@ placement and named-teacher stages:
 2. Approval materializes unplaced supervision resources; it does not create
    instructional sections or assign teachers.
 3. The regular placement stage assigns their semester/A-D timeslots alongside
-   normal sections.
+   normal sections. It carries primary online co-request facts as an internal
+   feasibility witness, ensuring the generic session seats are spread across
+   enough distinct blocks for a student with multiple online courses. This
+   witness is not an early student assignment and does not make a session
+   course-specific.
 4. The regular named-teacher stage assigns a supervisor. A supervisor occupies
    ordinary availability and workload capacity, but no course-specific
    qualification is required.
@@ -142,7 +146,9 @@ student-assignment snapshot and revalidated before approval.
 Stable lower-snake-case diagnostics cover invalid or unavailable special
 commitments, study limits, online supervision capacity, invalid Co-op pairs,
 Focus placement, special locks, incomplete half-course pairs, unused online
-supervision halves, and unallocated school time. Review uses these codes and
+supervision halves, and unallocated school time. The placement stage also
+distinguishes insufficient generic supervision capacity from insufficient
+supervision block diversity for online co-requests. Review uses these codes and
 concrete occupancy facts rather than invented narrative explanations.
 
 Deferred work includes grouping the same online course within supervision as a
