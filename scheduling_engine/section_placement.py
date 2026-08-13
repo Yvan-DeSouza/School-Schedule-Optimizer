@@ -124,15 +124,26 @@ def _eligible_candidates(data: PlacementInputDTO, unit, timeslots):
     return slots, choices
 
 
-def _course_pair_weight(data: PlacementInputDTO, unit_a, unit_b) -> int:
-    """Return a scaled conflict cost for two physical delivery units."""
+def _course_pair_weights(data: PlacementInputDTO) -> dict[tuple[int, int], float]:
+    """Compile annual conflict facts once before expanding physical section pairs.
 
-    weights = {
+    A placement input can contain hundreds of physical units. Rebuilding this
+    immutable lookup for every unit pair made model construction grow with both
+    the square of section count and the complete conflict matrix, even though
+    the underlying annual facts never change during one solve.
+    """
+
+    return {
         tuple(sorted((row.course_a_id, row.course_b_id))): (
             float(row.weight) * float(row.estimated_retained_co_request_count)
         )
         for row in data.conflicts
     }
+
+
+def _course_pair_weight(unit_a, unit_b, weights: dict[tuple[int, int], float]) -> int:
+    """Return a scaled conflict cost for two physical delivery units."""
+
     value = sum(
         weights.get(tuple(sorted((course_a, course_b))), 0.0)
         for course_a in unit_a.member_course_ids
@@ -420,8 +431,9 @@ def solve_section_placement(data: PlacementInputDTO) -> PlacementResultDTO:
 
     units = sorted(data.units, key=lambda item: item.key)
     collision_terms = []
+    course_pair_weights = _course_pair_weights(data)
     for unit_a, unit_b in combinations(units, 2):
-        pair_weight = _course_pair_weight(data, unit_a, unit_b)
+        pair_weight = _course_pair_weight(unit_a, unit_b, course_pair_weights)
         if pair_weight <= 0:
             continue
         for slot_id, slot in timeslots.items():

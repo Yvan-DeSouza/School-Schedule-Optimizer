@@ -1,0 +1,1062 @@
+"""Deterministic, explicitly-invoked production-scale scheduling validation.
+
+This file intentionally does not use the normal ``test_*.py`` filename
+pattern.  It creates and approves a real 1,400-student planning year through
+the normal reviewed services, so it belongs in release-validation runs rather
+than every fast developer test command.  Invoke it explicitly with:
+
+``pytest -q backend/tests/production_scale_special_scheduling_validation.py``
+
+All rows are created in pytest's isolated database.  The harness prepares
+catalogue and source-request data directly, but it never manufactures final
+sections, placements, staffing, enrollments, or commitment records; those are
+created only by the production approval services under test.
+"""
+
+from __future__ import annotations
+
+from collections import Counter, defaultdict
+from dataclasses import dataclass
+from decimal import Decimal
+from time import perf_counter
+
+from django.contrib.auth.models import User
+import pytest
+
+from backend.apps.common.constants import (
+    COURSE_REQUEST_TYPE_PRIMARY,
+    GRADE_LEVEL_12,
+    QUALIFICATION_DIVISION_SENIOR,
+    QUALIFICATION_REVIEW_VERIFIED,
+)
+from backend.apps.common.models import AcademicYear
+from backend.apps.constraints.conflict_matrix import create_course_conflict_matrix
+from backend.apps.constraints.models import (
+    CourseQualificationRequirement,
+    Qualification,
+    TeacherAvailability,
+    TeacherQualification,
+)
+from backend.apps.courses.models import (
+    Course,
+    CourseRequest,
+    Enrollment,
+    HalfSemesterCoursePair,
+    HalfSemesterSectionPair,
+    Section,
+    StudentScheduleCommitmentRequest,
+)
+from backend.apps.courses.services.offerings import ensure_academic_year_offerings
+from backend.apps.people.models import Student, Teacher
+from backend.apps.scheduling.constants import (
+    STUDENT_ASSIGNMENT_RUN_SCOPE_SCOPED,
+    STUDENT_ASSIGNMENT_STAFFING_MODE_FINAL_STAFFING,
+)
+from backend.apps.scheduling.models import (
+    CapacityProfile,
+    CoursePriorityProfile,
+    OnlineEnrollment,
+    OnlineSupervisionConfiguration,
+    OnlineSupervisionSession,
+    SectionSchedule,
+    StudentAssignmentApprovalEnrollment,
+    StudentScheduleCommitment,
+    StudentScheduleCommitmentOccupancy,
+    StudentSpecialCommitmentLock,
+    TeacherPlanningAnnualCapacity,
+    TeacherPlanningCapacity,
+    TeacherPlanningRoster,
+    TimeSlot,
+)
+from backend.apps.scheduling.services.online_supervision import (
+    approve_online_supervision_plan_run,
+    create_online_supervision_plan_run,
+)
+from backend.apps.scheduling.services.section_budget_planning import (
+    approve_section_budget_run,
+    create_section_budget_run,
+)
+from backend.apps.scheduling.services.section_placement import (
+    approve_section_placement_run,
+    create_section_placement_run,
+)
+from backend.apps.scheduling.services.staffing_configuration import (
+    confirm_roster_ready,
+    set_roster_members,
+)
+from backend.apps.scheduling.services.staffing_planning import (
+    approve_staffing_plan_run,
+    create_staffing_plan_run,
+)
+from backend.apps.scheduling.services.student_assignment import (
+    approve_student_assignment_run,
+    create_student_assignment_run,
+    preview_student_assignment_approval,
+)
+from backend.apps.scheduling.services.student_assignment_locks import (
+    create_student_assignment_lock,
+    release_student_assignment_lock,
+)
+from backend.apps.scheduling.services.student_special_commitment_locks import (
+    create_student_special_commitment_lock,
+    release_student_special_commitment_lock,
+)
+from backend.apps.scheduling.services.teacher_assignment import (
+    approve_teacher_assignment_run,
+    create_teacher_assignment_run,
+)
+
+
+STUDENT_COUNT = 1400
+RANDOM_SEED = 20260812
+NORMAL_COURSE_COUNT_PER_SEMESTER = 20
+TEACHER_COUNT = 60
+SUPERVISOR_COUNT = 5
+QUALIFICATION_GROUP_COUNT = 11
+
+SOFT_IMPORTANCE = {
+    "section_utilization_balance": "important",
+    "student_semester_balance": "important",
+    "course_sequence_preferences": "important",
+    "difficulty_balance": "important",
+    "course_category_diversity": "important",
+}
+
+
+@dataclass(frozen=True)
+class SimulationSummary:
+    """Comparable, opaque-ID-free facts from one isolated planning year."""
+
+    student_count: int
+    request_count: int
+    normal_section_count: int
+    online_session_count: int
+    pipeline_status: str
+    stopped_at: str | None
+    placement_solver_outcome: str | None
+    enrollment_count: int
+    online_enrollment_count: int
+    commitment_count: int
+    review_code_counts: tuple[tuple[str, int], ...]
+    schedule_fingerprint: tuple[tuple[str, str, int, str, str], ...]
+    stage_seconds: tuple[tuple[str, float], ...]
+
+
+def _elapsed(stage_seconds, name, action):
+    """Record wall-clock service time without changing production behavior."""
+
+    started = perf_counter()
+    value = action()
+    stage_seconds[name] = round(perf_counter() - started, 3)
+    # This explicit long-running validation is normally invoked with ``-s``.
+    # Progress facts make a timeout diagnosable without changing solver limits.
+    print(f"[production-scale] {name}: {stage_seconds[name]:.3f}s", flush=True)
+    return value
+
+
+def _normal_course_selection(courses, *, index, semester, count):
+    """Use realistic pathway cohorts instead of an artificial complete graph.
+
+    Real students select related course bundles.  Giving every student a
+    pseudo-random choice from every catalogue course made the annual conflict
+    matrix a dense all-course graph that does not resemble the school's
+    pathway-based demand and overwhelms the legitimate placement objective.
+    Each four-course cohort still has strong meaningful co-request conflicts.
+    """
+
+    cohort_size = 4
+    cohort_count = len(courses) // cohort_size
+    cohort_index = (index * (3 if semester == 1 else 2) + RANDOM_SEED) % cohort_count
+    start = cohort_index * cohort_size
+    rotation = (index + semester) % cohort_size
+    cohort = courses[start:start + cohort_size]
+    return tuple(cohort[(rotation + step) % cohort_size] for step in range(count))
+
+
+def _bulk_students(*, academic_year, prefix):
+    """Create identities efficiently; scheduling services only receive real model rows."""
+
+    users = [
+        User(username=f"{prefix}-student-{index:04d}", password="!")
+        for index in range(STUDENT_COUNT)
+    ]
+    User.objects.bulk_create(users, batch_size=500)
+    return Student.objects.bulk_create([
+        Student(
+            user=user,
+            student_number=f"{prefix.upper()}-{index:04d}",
+            email=f"{prefix}-student-{index:04d}@example.test",
+            first_name="Scale",
+            last_name=f"Student {index:04d}",
+            date_of_birth="2008-01-01",
+            grade_level=GRADE_LEVEL_12,
+            academic_year=academic_year,
+        )
+        for index, user in enumerate(users)
+    ], batch_size=500)
+
+
+def _bulk_teachers(*, prefix, qualifications):
+    """Make a constrained but ample senior-teacher roster with real credentials."""
+
+    users = [
+        User(username=f"{prefix}-teacher-{index:03d}", password="!")
+        for index in range(TEACHER_COUNT)
+    ]
+    User.objects.bulk_create(users, batch_size=200)
+    teachers = Teacher.objects.bulk_create([
+        Teacher(
+            user=user,
+            first_name="Scale",
+            last_name=f"Teacher {index:03d}",
+            email=f"{prefix}-teacher-{index:03d}@example.test",
+            department="Production-scale validation",
+            max_courses_per_semester=4,
+            max_courses_total=8,
+        )
+        for index, user in enumerate(users)
+    ], batch_size=200)
+    # Each qualification group has five eligible teachers. The first five
+    # teachers remain intentionally unqualified supervisors, proving that
+    # online supervision consumes workload without pretending to be subject
+    # teaching. Narrower qualification groups reduce artificial witness
+    # symmetry while remaining a realistic senior-school staffing constraint.
+    qualifications_by_teacher = []
+    for index, teacher in enumerate(teachers):
+        if index < SUPERVISOR_COUNT:
+            continue
+        qualification = qualifications[(index - SUPERVISOR_COUNT) // 5]
+        qualifications_by_teacher.append(TeacherQualification(
+            teacher=teacher,
+            qualification=qualification,
+            review_status=QUALIFICATION_REVIEW_VERIFIED,
+        ))
+    TeacherQualification.objects.bulk_create(qualifications_by_teacher, batch_size=500)
+    return teachers
+
+
+def _create_catalogue(*, academic_year, prefix, profile, priority):
+    """Create the small, real-school catalogue needed by the source requests."""
+
+    categories = ("math", "science", "language", "technology", "arts")
+    qualifications = [
+        Qualification.objects.create(
+            code=f"{prefix}-qualification-{index}",
+            name=f"{prefix} senior qualification group {index}",
+            kind="teachable",
+            subject_code=categories[index % len(categories)],
+            division=QUALIFICATION_DIVISION_SENIOR,
+        )
+        for index in range(QUALIFICATION_GROUP_COUNT)
+    ]
+    qualification_by_course = {}
+    semester_courses = {1: [], 2: []}
+    normal_courses = []
+    for semester in (1, 2):
+        for index in range(NORMAL_COURSE_COUNT_PER_SEMESTER):
+            category = categories[index % len(categories)]
+            course = Course.objects.create(
+                course_code=f"{prefix.upper()}-{semester}{index:02d}",
+                name=f"Scale {category.title()} {semester}-{index:02d}",
+                grade_level=GRADE_LEVEL_12,
+                category=category,
+                capacity_profile=profile,
+                priority_profile=priority,
+                capacity_min=profile.hard_min,
+                capacity_max=profile.hard_max,
+                allowed_semester=f"semester_{semester}_only",
+                manual_difficulty_override=40 + (index % 5) * 10,
+            )
+            semester_courses[semester].append(course)
+            normal_courses.append(course)
+            qualification_by_course[course.id] = qualifications[index % 10]
+    half_first = Course.objects.create(
+        course_code=f"{prefix.upper()}-HALF-1",
+        name="Scale first-half trimester",
+        grade_level=GRADE_LEVEL_12,
+        category="arts",
+        capacity_profile=profile,
+        priority_profile=priority,
+        capacity_min=profile.hard_min,
+        capacity_max=profile.hard_max,
+        allowed_semester="semester_1_only",
+        duration="half_semester",
+        credit_value=Decimal("0.5"),
+        manual_difficulty_override=55,
+    )
+    half_second = Course.objects.create(
+        course_code=f"{prefix.upper()}-HALF-2",
+        name="Scale second-half trimestre",
+        grade_level=GRADE_LEVEL_12,
+        category="technology",
+        capacity_profile=profile,
+        priority_profile=priority,
+        capacity_min=profile.hard_min,
+        capacity_max=profile.hard_max,
+        allowed_semester="semester_1_only",
+        duration="half_semester",
+        credit_value=Decimal("0.5"),
+        manual_difficulty_override=70,
+    )
+    HalfSemesterCoursePair.objects.create(first_course=half_first, second_course=half_second)
+    qualification_by_course[half_first.id] = qualifications[10]
+    qualification_by_course[half_second.id] = qualifications[10]
+    online_courses = [
+        Course.objects.create(
+            course_code=f"{prefix.upper()}-ONLINE-{index}",
+            name=f"Scale online {category.title()}",
+            grade_level=GRADE_LEVEL_12,
+            category=category,
+            capacity_profile=profile,
+            priority_profile=priority,
+            capacity_min=profile.hard_min,
+            capacity_max=profile.hard_max,
+            delivery_kind="online",
+            manual_difficulty_override=45 + index * 8,
+        )
+        for index, category in enumerate(categories[:4], start=1)
+    ]
+    online_half = Course.objects.create(
+        course_code=f"{prefix.upper()}-ONLINE-HALF",
+        name="Scale online first-half trimester",
+        grade_level=GRADE_LEVEL_12,
+        category="arts",
+        capacity_profile=profile,
+        priority_profile=priority,
+        capacity_min=profile.hard_min,
+        capacity_max=profile.hard_max,
+        delivery_kind="online",
+        duration="half_semester",
+        credit_value=Decimal("0.5"),
+        allowed_semester="semester_2_only",
+        manual_difficulty_override=65,
+    )
+    co_op = Course.objects.create(
+        course_code=f"{prefix.upper()}-COOP",
+        name="Scale Co-op",
+        grade_level=GRADE_LEVEL_12,
+        category="",
+        capacity_profile=profile,
+        priority_profile=priority,
+        capacity_min=profile.hard_min,
+        capacity_max=profile.hard_max,
+        delivery_kind="co_op",
+        credit_value=Decimal("2.0"),
+        manual_difficulty_override=50,
+    )
+    CourseQualificationRequirement.objects.bulk_create([
+        CourseQualificationRequirement(course=course, qualification=qualification_by_course[course.id])
+        for course in (*normal_courses, half_first, half_second)
+    ])
+    return {
+        "semester_courses": semester_courses,
+        "normal_courses": normal_courses,
+        "half_first": half_first,
+        "half_second": half_second,
+        "online_courses": online_courses,
+        "online_half": online_half,
+        "co_op": co_op,
+        "qualifications": qualifications,
+    }
+
+
+def _create_requests(*, academic_year, students, catalogue):
+    """Create varied but model-valid source demand, never final assignments.
+
+    The ranges deliberately skew toward ordinary schedules while exercising
+    every accepted special-commitment path.  All students have a realistic
+    eight-block annual demand once Co-op, Focus, Study, and sequential halves
+    are considered; unpaired normal half-courses remain intentionally reviewable.
+    """
+
+    course_requests = []
+    commitment_requests = []
+    by_profile = Counter()
+    special_request_ids = defaultdict(dict)
+
+    def add_course_requests(student, courses):
+        for course in courses:
+            course_requests.append(CourseRequest(
+                student=student,
+                academic_year=academic_year,
+                course=course,
+                request_type=COURSE_REQUEST_TYPE_PRIMARY,
+                is_mandatory=True,
+            ))
+
+    for index, student in enumerate(students):
+        sem_one = list(_normal_course_selection(
+            catalogue["semester_courses"][1], index=index, semester=1, count=4,
+        ))
+        sem_two = list(_normal_course_selection(
+            catalogue["semester_courses"][2], index=index, semester=2, count=4,
+        ))
+        normal_eight = sem_one + sem_two
+        if index < 850:
+            by_profile["normal"] += 1
+            add_course_requests(student, normal_eight)
+        elif index < 960:
+            by_profile["one_online"] += 1
+            add_course_requests(student, normal_eight[:-1] + [catalogue["online_courses"][index % 4]])
+        elif index < 1040:
+            by_profile["two_online"] += 1
+            add_course_requests(student, normal_eight[:-2] + [
+                catalogue["online_courses"][index % 4],
+                catalogue["online_courses"][(index + 1) % 4],
+            ])
+        elif index < 1090:
+            by_profile["study_online"] += 1
+            # Three fixed-semester courses in each term leave one genuine
+            # candidate block for the requested Study and one online course.
+            add_course_requests(student, sem_one[:3] + sem_two[:3] + [catalogue["online_courses"][index % 4]])
+            commitment_requests.append(StudentScheduleCommitmentRequest(
+                student=student, academic_year=academic_year, commitment_type="study", request_index=1,
+            ))
+        elif index < 1120:
+            by_profile["two_study"] += 1
+            add_course_requests(student, sem_one[:3] + sem_two[:3])
+            commitment_requests.extend([
+                StudentScheduleCommitmentRequest(
+                    student=student, academic_year=academic_year, commitment_type="study", request_index=1,
+                ),
+                StudentScheduleCommitmentRequest(
+                    student=student, academic_year=academic_year, commitment_type="study", request_index=2,
+                ),
+            ])
+        elif index < 1160:
+            by_profile["focus"] += 1
+            focus_semester = 1 if index % 2 == 0 else 2
+            local_courses = sem_two if focus_semester == 1 else sem_one
+            add_course_requests(student, local_courses)
+            commitment_requests.append(StudentScheduleCommitmentRequest(
+                student=student, academic_year=academic_year, commitment_type="focus", request_index=1,
+            ))
+            special_request_ids[student.id]["focus_semester"] = focus_semester
+        elif index < 1180:
+            by_profile["focus_online"] += 1
+            focus_semester = 1 if index % 2 == 0 else 2
+            local_courses = (sem_two if focus_semester == 1 else sem_one)[:3]
+            add_course_requests(student, local_courses + [catalogue["online_courses"][index % 4]])
+            commitment_requests.append(StudentScheduleCommitmentRequest(
+                student=student, academic_year=academic_year, commitment_type="focus", request_index=1,
+            ))
+            special_request_ids[student.id]["focus_semester"] = focus_semester
+        elif index < 1250:
+            by_profile["co_op"] += 1
+            add_course_requests(student, normal_eight[:-2] + [catalogue["co_op"]])
+        elif index < 1290:
+            by_profile["co_op_online"] += 1
+            add_course_requests(student, normal_eight[:-3] + [catalogue["co_op"], catalogue["online_courses"][index % 4]])
+        elif index < 1340:
+            by_profile["paired_half"] += 1
+            # The paired half-courses share one Semester 1 block sequentially,
+            # so this student has three simultaneous S1 courses, not five.
+            add_course_requests(student, sem_one[:3] + sem_two + [catalogue["half_first"], catalogue["half_second"]])
+        elif index < 1365:
+            by_profile["unpaired_half"] += 1
+            add_course_requests(student, normal_eight[:-1] + [
+                catalogue["half_first"] if index % 2 == 0 else catalogue["half_second"],
+            ])
+        elif index < 1385:
+            by_profile["online_half"] += 1
+            add_course_requests(student, normal_eight[:-1] + [catalogue["online_half"]])
+        else:
+            by_profile["co_op_two_online_study"] += 1
+            add_course_requests(student, normal_eight[:3] + [
+                catalogue["co_op"],
+                catalogue["online_courses"][index % 4],
+                catalogue["online_courses"][(index + 1) % 4],
+            ])
+            commitment_requests.append(StudentScheduleCommitmentRequest(
+                student=student, academic_year=academic_year, commitment_type="study", request_index=1,
+            ))
+
+    CourseRequest.objects.bulk_create(course_requests, batch_size=1000)
+    StudentScheduleCommitmentRequest.objects.bulk_create(commitment_requests, batch_size=500)
+    return by_profile, special_request_ids
+
+
+def _prepare_staffing(*, academic_year, teachers, timeslots, counselor_user):
+    """Use the real ready-roster contract with finite slot-based capacity."""
+
+    for teacher in teachers:
+        for semester in (1, 2):
+            TeacherPlanningCapacity.objects.create(
+                teacher=teacher,
+                academic_year=academic_year,
+                semester=semester,
+                maximum_sections=4,
+            )
+        TeacherPlanningAnnualCapacity.objects.create(
+            teacher=teacher,
+            academic_year=academic_year,
+            maximum_sections=8,
+        )
+    unavailable_pairs = []
+    denied_slots = (
+        timeslots[(1, "A")], timeslots[(1, "B")],
+        timeslots[(2, "A")], timeslots[(2, "B")],
+    )
+    for index, teacher in enumerate(teachers):
+        # Availability is default-on in production. One explicit recurring
+        # denial per teacher gives this scale scenario real availability facts
+        # without making the staffing certificate artificially under-supplied.
+        unavailable_pairs.append(TeacherAvailability(
+            teacher=teacher,
+            timeslot=denied_slots[index % len(denied_slots)],
+            is_available=False,
+        ))
+    TeacherAvailability.objects.bulk_create(unavailable_pairs, batch_size=200)
+    roster = TeacherPlanningRoster.objects.create(academic_year=academic_year)
+    set_roster_members(roster, teacher_ids=[teacher.id for teacher in teachers], actor=counselor_user)
+    confirm_roster_ready(roster, actor=counselor_user)
+    return roster
+
+
+def _create_timeslots(*, academic_year):
+    return {
+        (semester, block): TimeSlot.objects.create(
+            academic_year=academic_year,
+            semester=semester,
+            block=block,
+        )
+        for semester in (1, 2)
+        for block in ("A", "B", "C", "D")
+    }
+
+
+def _special_request_rows(*, academic_year):
+    course_requests = {
+        (row.student_id, row.course.delivery_kind): []
+        for row in CourseRequest.objects.filter(academic_year=academic_year).select_related("course")
+    }
+    for row in CourseRequest.objects.filter(academic_year=academic_year).select_related("course").order_by("id"):
+        course_requests[row.student_id, row.course.delivery_kind].append(row)
+    commitment_requests = defaultdict(list)
+    for row in StudentScheduleCommitmentRequest.objects.filter(academic_year=academic_year).order_by("id"):
+        commitment_requests[row.student_id].append(row)
+    return course_requests, commitment_requests
+
+
+def _create_special_locks(*, academic_year, timeslots, counselor_user):
+    """Create exact and exclusion locks only after real session placement exists."""
+
+    by_delivery, commitments = _special_request_rows(academic_year=academic_year)
+    online_slots = list(OnlineSupervisionSession.objects.filter(
+        academic_year=academic_year,
+        lifecycle_status="active",
+        timeslot__isnull=False,
+    ).order_by("id").values_list("timeslot_id", flat=True))
+    assert len(set(online_slots)) >= 2, "Scale fixture must create distinct online supervision blocks."
+    locks = []
+    for student_id, rows in sorted(commitments.items()):
+        for row in rows:
+            if row.commitment_type == "study":
+                if len(locks) >= 24:
+                    continue
+                locks.append(create_student_special_commitment_lock(
+                    academic_year=academic_year,
+                    created_by=counselor_user,
+                    lock_type="study_time",
+                    lock_mode="exact" if len(locks) % 2 == 0 else "exclude",
+                    schedule_commitment_request=row,
+                    timeslot_id=timeslots[(1, "A")].id,
+                    reason="Exercise reviewed Study-time restriction at production scale.",
+                ))
+            elif row.commitment_type == "focus":
+                # Keep a distinct set of Focus locks even though Study rows
+                # sort earlier in this scale population.
+                if sum(lock.lock_type == "focus_semester" for lock in locks) >= 12:
+                    continue
+                locks.append(create_student_special_commitment_lock(
+                    academic_year=academic_year,
+                    created_by=counselor_user,
+                    lock_type="focus_semester",
+                    lock_mode="exact" if len(locks) % 2 == 0 else "exclude",
+                    schedule_commitment_request=row,
+                    semester=1 if len(locks) % 2 == 0 else 2,
+                    reason="Exercise reviewed Focus-semester restriction at production scale.",
+                ))
+    online_rows = [row for (_student_id, delivery), rows in by_delivery.items() if delivery == "online" for row in rows]
+    co_op_rows = [row for (_student_id, delivery), rows in by_delivery.items() if delivery == "co_op" for row in rows]
+    for index, row in enumerate(online_rows[:12]):
+        locks.append(create_student_special_commitment_lock(
+            academic_year=academic_year,
+            created_by=counselor_user,
+            lock_type="online_supervision_time",
+            lock_mode="exact" if index < 6 else "exclude",
+            course_request=row,
+            timeslot_id=online_slots[index % len(online_slots)],
+            reason="Exercise reviewed online-supervision time restriction at production scale.",
+        ))
+    for index, row in enumerate(co_op_rows[:12]):
+        locks.append(create_student_special_commitment_lock(
+            academic_year=academic_year,
+            created_by=counselor_user,
+            lock_type="co_op_time",
+            lock_mode="exact" if index < 6 else "exclude",
+            course_request=row,
+            semester=1 if index % 2 == 0 else 2,
+            co_op_block_pair="a_b" if index % 2 == 0 else "c_d",
+            reason="Exercise reviewed Co-op time restriction at production scale.",
+        ))
+    return locks
+
+
+def _occupancy_rows(*, academic_year):
+    """Yield every active approved student-time fact in one common half-slot shape."""
+
+    schedules = dict(SectionSchedule.objects.filter(
+        section__academic_year=academic_year,
+    ).values_list("section_id", "timeslot_id"))
+    for enrollment in Enrollment.objects.filter(
+        section__academic_year=academic_year,
+        lifecycle_status="active",
+    ).select_related("section"):
+        segments = (enrollment.section.half_semester_segment,) if enrollment.section.half_semester_segment else (
+            "first_half", "second_half",
+        )
+        for segment in segments:
+            yield enrollment.student_id, schedules[enrollment.section_id], segment, "normal"
+    for enrollment in OnlineEnrollment.objects.filter(
+        supervision_session__academic_year=academic_year,
+        lifecycle_status="active",
+    ):
+        for segment in ("first_half", "second_half"):
+            yield enrollment.student_id, enrollment.supervision_session.timeslot_id, segment, "online"
+    for occupancy in StudentScheduleCommitmentOccupancy.objects.filter(
+        commitment__academic_year=academic_year,
+        commitment__lifecycle_status="active",
+    ).select_related("commitment"):
+        yield occupancy.commitment.student_id, occupancy.timeslot_id, occupancy.half_semester_segment, occupancy.commitment.commitment_kind
+
+
+def _assert_persisted_invariants(*, academic_year, review):
+    """Check approved facts, rather than merely trusting a complete solver status."""
+
+    occupancy = defaultdict(list)
+    for student_id, timeslot_id, segment, source in _occupancy_rows(academic_year=academic_year):
+        occupancy[student_id].append((timeslot_id, segment, source))
+    collisions = {
+        student_id: values
+        for student_id, values in occupancy.items()
+        if len({(timeslot_id, segment) for timeslot_id, segment, _source in values}) != len(values)
+    }
+    assert not collisions, f"Student-time collisions found: {dict(list(collisions.items())[:3])}"
+
+    assert not Section.objects.filter(
+        academic_year=academic_year,
+        course__delivery_kind__in=("online", "co_op"),
+    ).exists()
+    assert not Enrollment.objects.filter(
+        section__academic_year=academic_year,
+        course_offering__course__delivery_kind__in=("online", "co_op"),
+        lifecycle_status="active",
+    ).exists()
+    assert not StudentScheduleCommitment.objects.filter(
+        academic_year=academic_year,
+        commitment_kind__in=("study", "focus", "co_op"),
+        lifecycle_status="active",
+        course_offering__delivery_group__isnull=False,
+    ).exists()
+
+    for session in OnlineSupervisionSession.objects.filter(academic_year=academic_year):
+        assert session.supervisor_id is not None
+        assert session.timeslot_id is not None
+        assert session.online_enrollments.filter(lifecycle_status="active").count() <= session.capacity_max
+    assert not OnlineEnrollment.objects.filter(
+        lifecycle_status="active",
+    ).exclude(course_offering__course__delivery_kind="online").exists()
+
+    occupied_by_student = defaultdict(set)
+    for student_id, timeslot_id, segment, _source in _occupancy_rows(academic_year=academic_year):
+        occupied_by_student[student_id].add((timeslot_id, segment))
+    for commitment in StudentScheduleCommitment.objects.filter(
+        academic_year=academic_year,
+        commitment_kind="focus",
+        lifecycle_status="active",
+    ):
+        slots = StudentScheduleCommitmentOccupancy.objects.filter(commitment=commitment)
+        assert slots.count() == 8
+    for commitment in StudentScheduleCommitment.objects.filter(
+        academic_year=academic_year,
+        commitment_kind="co_op",
+        lifecycle_status="active",
+    ):
+        values = set(commitment.occupancies.values_list("timeslot__semester", "timeslot__block"))
+        assert values in ({(1, "A"), (1, "B")}, {(1, "C"), (1, "D")}, {(2, "A"), (2, "B")}, {(2, "C"), (2, "D")})
+    for pair in HalfSemesterSectionPair.objects.filter(first_section__academic_year=academic_year).select_related("first_section", "second_section"):
+        assert pair.first_section.teacher_id == pair.second_section.teacher_id
+        assert SectionSchedule.objects.get(section=pair.first_section).timeslot_id == SectionSchedule.objects.get(section=pair.second_section).timeslot_id
+
+    review_codes = Counter(item["code"] for item in review["special_commitment_review_items"])
+    assert review_codes["student_assignment_half_semester_unallocated_opposite_half"] > 0
+    assert review_codes["student_assignment_online_half_semester_unused_supervision_half"] > 0
+    return review_codes
+
+
+def _schedule_fingerprint(*, academic_year):
+    """Compare independent runs by source identity, never database primary keys."""
+
+    rows = []
+    for enrollment in Enrollment.objects.filter(
+        section__academic_year=academic_year,
+        lifecycle_status="active",
+    ).select_related("student", "course_offering__course", "section__section_schedule__timeslot"):
+        slot = enrollment.section.section_schedule.timeslot
+        rows.append((
+            enrollment.student.student_number.split("-")[-1],
+            enrollment.course_offering.course.course_code.split("-")[-1],
+            slot.semester,
+            slot.block,
+            enrollment.section.half_semester_segment or "full_semester",
+        ))
+    for enrollment in OnlineEnrollment.objects.filter(
+        supervision_session__academic_year=academic_year,
+        lifecycle_status="active",
+    ).select_related("student", "course_offering__course", "supervision_session__timeslot"):
+        slot = enrollment.supervision_session.timeslot
+        rows.append((
+            enrollment.student.student_number.split("-")[-1],
+            enrollment.course_offering.course.course_code.split("-")[-1],
+            slot.semester,
+            slot.block,
+            "online_supervision",
+        ))
+    return tuple(sorted(rows))
+
+
+def _run_controlled_reruns(*, academic_year, approval, counselor_user):
+    """Exercise history and lock semantics against approved operational state."""
+
+    active = list(Enrollment.objects.filter(
+        section__academic_year=academic_year,
+        lifecycle_status="active",
+    ).select_related("student", "course_offering__course", "section__teacher").order_by("id"))
+    target = next(row for row in active if row.section.teacher_id is not None)
+    alternatives = list(Section.objects.filter(
+        academic_year=academic_year,
+        delivery_group=target.section.delivery_group,
+        lifecycle_status="active",
+    ).exclude(id=target.section_id).select_related("teacher", "section_schedule").order_by("id"))
+    assert alternatives, "Each high-demand normal offering needs an alternate section for rerun validation."
+    alternate = next((row for row in alternatives if row.teacher_id == target.section.teacher_id), alternatives[0])
+
+    exact_lock = create_student_assignment_lock(
+        academic_year=academic_year,
+        lock_type="exact_student_section",
+        created_by=counselor_user,
+        reason="Move one reviewed student to an alternate valid physical section.",
+        student=target.student,
+        section=alternate,
+        course=target.course_offering.course,
+        staffing_mode=STUDENT_ASSIGNMENT_STAFFING_MODE_FINAL_STAFFING,
+    )
+    rerun = create_student_assignment_run(
+        academic_year=academic_year,
+        staffing_mode=STUDENT_ASSIGNMENT_STAFFING_MODE_FINAL_STAFFING,
+        soft_constraint_importance=SOFT_IMPORTANCE,
+        created_by=counselor_user,
+        scope_type=STUDENT_ASSIGNMENT_RUN_SCOPE_SCOPED,
+        source_approval=approval,
+        scope_student_ids=(target.student_id,),
+        schedule_preservation_level="strong",
+    )
+    assert rerun.status == "complete", rerun.result
+    rerun_approval = approve_student_assignment_run(
+        rerun,
+        approved_by=counselor_user,
+        reason="Approve one controlled, locked enrollment replacement.",
+    )
+    target.refresh_from_db()
+    assert target.lifecycle_status == "historical"
+    replacement = StudentAssignmentApprovalEnrollment.objects.get(
+        approval=rerun_approval,
+        superseded_enrollment=target,
+    ).enrollment
+    assert replacement.section_id == alternate.id
+
+    whole_schedule_lock = create_student_assignment_lock(
+        academic_year=academic_year,
+        lock_type="whole_student_schedule",
+        created_by=counselor_user,
+        reason="Protect the reviewed replacement schedule during a later scoped run.",
+        student=target.student,
+        staffing_mode=STUDENT_ASSIGNMENT_STAFFING_MODE_FINAL_STAFFING,
+    )
+    teacher_lock = create_student_assignment_lock(
+        academic_year=academic_year,
+        lock_type="student_teacher_course",
+        created_by=counselor_user,
+        reason="Keep the approved course with its current final teacher.",
+        student=target.student,
+        course=replacement.course_offering.course,
+        teacher=replacement.section.teacher,
+        staffing_mode=STUDENT_ASSIGNMENT_STAFFING_MODE_FINAL_STAFFING,
+    )
+    protected_run = create_student_assignment_run(
+        academic_year=academic_year,
+        staffing_mode=STUDENT_ASSIGNMENT_STAFFING_MODE_FINAL_STAFFING,
+        soft_constraint_importance=SOFT_IMPORTANCE,
+        created_by=counselor_user,
+        scope_type=STUDENT_ASSIGNMENT_RUN_SCOPE_SCOPED,
+        source_approval=rerun_approval,
+        scope_student_ids=(target.student_id,),
+    )
+    assert protected_run.status == "complete", protected_run.result
+    assert any(
+        item["reason_code"] == "student_assignment_locked_enrollment_blocks_request"
+        for item in preview_student_assignment_approval(protected_run)["protected_assignments"]
+    )
+    release_student_assignment_lock(
+        whole_schedule_lock,
+        released_by=counselor_user,
+        release_reason="Reopen this one schedule after controlled validation.",
+    )
+    # The exact lock remains active.  Releasing a lock is append-only and a
+    # fresh run proves its current selection rather than approving stale work.
+    released_run = create_student_assignment_run(
+        academic_year=academic_year,
+        staffing_mode=STUDENT_ASSIGNMENT_STAFFING_MODE_FINAL_STAFFING,
+        soft_constraint_importance=SOFT_IMPORTANCE,
+        created_by=counselor_user,
+        scope_type=STUDENT_ASSIGNMENT_RUN_SCOPE_SCOPED,
+        source_approval=rerun_approval,
+        scope_student_ids=(target.student_id,),
+    )
+    assert released_run.status == "complete", released_run.result
+    return {
+        "scoped_runs": 3,
+        "historical_enrollments": Enrollment.objects.filter(
+            section__academic_year=academic_year,
+            lifecycle_status="historical",
+        ).count(),
+        "active_locks": [exact_lock.id, teacher_lock.id],
+    }
+
+
+def run_production_scale_special_scheduling_validation(*, counselor_user, prefix, include_reruns):
+    """Create one 1,400-student complete pipeline scenario and validate it."""
+
+    stage_seconds = {}
+    # Demand forecasting deliberately accepts only the real ``YYYY-YYYY``
+    # school-year label.  Two valid years make the repeatability replay
+    # independent without weakening that production input contract.
+    academic_year = AcademicYear.objects.create(
+        name="2035-2036" if prefix == "scale-a" else "2036-2037"
+    )
+    profile = CapacityProfile.objects.create(
+        name=f"{prefix} normal capacity",
+        hard_min=1,
+        soft_min=24,
+        target=35,
+        soft_max=38,
+        hard_max=40,
+    )
+    online_profile = CapacityProfile.objects.create(
+        name=f"{prefix} online supervision capacity",
+        hard_min=1,
+        soft_min=30,
+        target=35,
+        soft_max=38,
+        hard_max=40,
+    )
+    priority = CoursePriorityProfile.objects.create(name=f"{prefix} core priority", tier=1)
+    catalogue = _create_catalogue(
+        academic_year=academic_year,
+        prefix=prefix,
+        profile=profile,
+        priority=priority,
+    )
+    teachers = _bulk_teachers(prefix=prefix, qualifications=catalogue["qualifications"])
+    students = _bulk_students(academic_year=academic_year, prefix=prefix)
+    profile_counts, _focus_semesters = _create_requests(
+        academic_year=academic_year,
+        students=students,
+        catalogue=catalogue,
+    )
+    timeslots = _create_timeslots(academic_year=academic_year)
+    _prepare_staffing(
+        academic_year=academic_year,
+        teachers=teachers,
+        timeslots=timeslots,
+        counselor_user=counselor_user,
+    )
+    ensure_academic_year_offerings(academic_year, actor=counselor_user)
+    OnlineSupervisionConfiguration.objects.create(
+        academic_year=academic_year,
+        capacity_profile=online_profile,
+        updated_by=counselor_user,
+    )
+
+    online_run = _elapsed(stage_seconds, "online_supervision_planning", lambda: create_online_supervision_plan_run(
+        academic_year=academic_year, created_by=counselor_user,
+    ))
+    assert online_run.status == "complete", online_run.result
+    _elapsed(stage_seconds, "online_supervision_approval", lambda: approve_online_supervision_plan_run(
+        online_run, approved_by=counselor_user, reason="Approve scale shared supervision capacity.",
+    ))
+    budget_run = _elapsed(stage_seconds, "section_budget", lambda: create_section_budget_run(
+        academic_year=academic_year,
+        created_by=counselor_user,
+        budget_type="ceiling",
+        section_budget=400,
+        backup_policy="ignore",
+        backup_overrides=(),
+        offering_constraints=(),
+    ))
+    assert budget_run.status == "complete", budget_run.result
+    budget_approval = _elapsed(stage_seconds, "section_budget_approval", lambda: approve_section_budget_run(
+        budget_run, approved_by=counselor_user, reason="Approve demand-based scale section counts.",
+    ))
+    staffing_run = _elapsed(stage_seconds, "staffing_planning", lambda: create_staffing_plan_run(
+        academic_year=academic_year,
+        created_by=counselor_user,
+        budget_approval=budget_approval,
+        backup_policy="ignore",
+        backup_overrides=(),
+        offering_constraints=(),
+        teacher_capacity_adjustments=(),
+    ))
+    assert staffing_run.status == "complete", staffing_run.result
+    _elapsed(stage_seconds, "staffing_approval", lambda: approve_staffing_plan_run(
+        staffing_run, approved_by=counselor_user, reason="Approve staff-feasible scale normal sections.",
+    ))
+    print(
+        "[production-scale] prepared "
+        f"students={STUDENT_COUNT} requests={CourseRequest.objects.filter(academic_year=academic_year).count()} "
+        f"normal_sections={Section.objects.filter(academic_year=academic_year, lifecycle_status='active').count()} "
+        f"online_sessions={OnlineSupervisionSession.objects.filter(academic_year=academic_year, lifecycle_status='active').count()}",
+        flush=True,
+    )
+    create_course_conflict_matrix(
+        academic_year=academic_year,
+        initialization_mode="fresh_current_demand",
+        actor=counselor_user,
+    )
+    placement_run = _elapsed(stage_seconds, "section_placement", lambda: create_section_placement_run(
+        academic_year_id=academic_year.id,
+        input_mode="fixed_semester",
+        created_by=counselor_user,
+    ))
+    if placement_run.status != "complete":
+        # A production-scale validation must distinguish a real hard
+        # infeasibility from a solver that found no incumbent. Persisted run
+        # status intentionally remains non-approvable; this harness returns a
+        # structured finding rather than manufacturing downstream state.
+        assert placement_run.result["solver_outcome"] == "unknown", placement_run.result
+        return SimulationSummary(
+            student_count=STUDENT_COUNT,
+            request_count=CourseRequest.objects.filter(academic_year=academic_year).count(),
+            normal_section_count=Section.objects.filter(academic_year=academic_year, lifecycle_status="active").count(),
+            online_session_count=OnlineSupervisionSession.objects.filter(academic_year=academic_year, lifecycle_status="active").count(),
+            pipeline_status="blocked",
+            stopped_at="section_placement",
+            placement_solver_outcome=placement_run.result["solver_outcome"],
+            enrollment_count=0,
+            online_enrollment_count=0,
+            commitment_count=0,
+            review_code_counts=(),
+            schedule_fingerprint=(),
+            stage_seconds=tuple(sorted(stage_seconds.items())),
+        )
+    _elapsed(stage_seconds, "placement_approval", lambda: approve_section_placement_run(
+        placement_run, approved_by=counselor_user, reason="Approve scale Semester and A-D placement.",
+    ))
+    assert OnlineSupervisionSession.objects.filter(academic_year=academic_year, timeslot__isnull=False).count() > 1
+    teacher_run = _elapsed(stage_seconds, "teacher_assignment", lambda: create_teacher_assignment_run(
+        academic_year_id=academic_year.id, created_by=counselor_user,
+    ))
+    assert teacher_run.status == "complete", teacher_run.result
+    _elapsed(stage_seconds, "teacher_approval", lambda: approve_teacher_assignment_run(
+        teacher_run, approved_by=counselor_user, reason="Approve scale named teachers and supervisors.",
+    ))
+    _create_special_locks(
+        academic_year=academic_year,
+        timeslots=timeslots,
+        counselor_user=counselor_user,
+    )
+    student_run = _elapsed(stage_seconds, "student_assignment", lambda: create_student_assignment_run(
+        academic_year=academic_year,
+        staffing_mode=STUDENT_ASSIGNMENT_STAFFING_MODE_FINAL_STAFFING,
+        soft_constraint_importance=SOFT_IMPORTANCE,
+        created_by=counselor_user,
+    ))
+    assert student_run.status == "complete", student_run.result
+    review = _elapsed(stage_seconds, "student_review", lambda: preview_student_assignment_approval(student_run))
+    approval = _elapsed(stage_seconds, "student_approval", lambda: approve_student_assignment_run(
+        student_run,
+        approved_by=counselor_user,
+        reason="Approve reviewed production-scale student schedule.",
+    ))
+    review_codes = _assert_persisted_invariants(academic_year=academic_year, review=review)
+    rerun_summary = _run_controlled_reruns(
+        academic_year=academic_year,
+        approval=approval,
+        counselor_user=counselor_user,
+    ) if include_reruns else {"scoped_runs": 0, "historical_enrollments": 0, "active_locks": []}
+
+    assert Student.objects.filter(academic_year=academic_year).count() == STUDENT_COUNT
+    assert profile_counts["normal"] > sum(value for key, value in profile_counts.items() if key != "normal")
+    assert Section.objects.filter(academic_year=academic_year, lifecycle_status="active").count() > 250
+    assert OnlineEnrollment.objects.filter(
+        supervision_session__academic_year=academic_year,
+        lifecycle_status="active",
+    ).count() > 400
+    assert StudentScheduleCommitment.objects.filter(
+        academic_year=academic_year,
+        lifecycle_status="active",
+    ).count() > 150
+    return SimulationSummary(
+        student_count=STUDENT_COUNT,
+        request_count=CourseRequest.objects.filter(academic_year=academic_year).count(),
+        normal_section_count=Section.objects.filter(academic_year=academic_year, lifecycle_status="active").count(),
+        online_session_count=OnlineSupervisionSession.objects.filter(academic_year=academic_year, lifecycle_status="active").count(),
+        pipeline_status="complete",
+        stopped_at=None,
+        placement_solver_outcome=placement_run.result.get("solver_outcome"),
+        enrollment_count=Enrollment.objects.filter(section__academic_year=academic_year, lifecycle_status="active").count(),
+        online_enrollment_count=OnlineEnrollment.objects.filter(supervision_session__academic_year=academic_year, lifecycle_status="active").count(),
+        commitment_count=StudentScheduleCommitment.objects.filter(academic_year=academic_year, lifecycle_status="active").count(),
+        review_code_counts=tuple(sorted(review_codes.items())),
+        schedule_fingerprint=_schedule_fingerprint(academic_year=academic_year),
+        stage_seconds=tuple(sorted(stage_seconds.items())),
+    )
+
+
+@pytest.mark.django_db
+def test_production_scale_special_scheduling_validation(counselor_user):
+    """Run two independently persisted 1,400-student scenarios with one seed.
+
+    The first run includes controlled reruns against accepted state; the second
+    replays the initial full pipeline only.  Their opaque-ID-free schedule
+    fingerprints prove repeatability in this environment without claiming that
+    database primary keys themselves are stable.
+    """
+
+    first = run_production_scale_special_scheduling_validation(
+        counselor_user=counselor_user,
+        prefix="scale-a",
+        include_reruns=True,
+    )
+    second = run_production_scale_special_scheduling_validation(
+        counselor_user=counselor_user,
+        prefix="scale-b",
+        include_reruns=False,
+    )
+    assert first.student_count == second.student_count == STUDENT_COUNT
+    assert first.request_count == second.request_count
+    assert first.normal_section_count == second.normal_section_count
+    assert first.online_session_count == second.online_session_count
+    assert first.pipeline_status == second.pipeline_status
+    assert first.stopped_at == second.stopped_at
+    assert first.placement_solver_outcome == second.placement_solver_outcome
+    if first.pipeline_status == "blocked":
+        assert first.stopped_at == "section_placement"
+        assert first.placement_solver_outcome == "unknown"
+        return
+    assert first.enrollment_count == second.enrollment_count
+    assert first.online_enrollment_count == second.online_enrollment_count
+    assert first.commitment_count == second.commitment_count
+    assert first.review_code_counts == second.review_code_counts
+    assert first.schedule_fingerprint == second.schedule_fingerprint

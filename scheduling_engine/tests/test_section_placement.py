@@ -9,6 +9,7 @@ from scheduling_engine.dto import (
     PlacementUnitDTO,
     TimeSlotDTO,
 )
+import scheduling_engine.section_placement as section_placement
 from scheduling_engine.section_placement import solve_section_placement
 
 
@@ -79,6 +80,33 @@ def test_pair_collision_weight_chooses_different_blocks_when_staffing_allows_it(
     )
     assert result.status == "complete"
     assert len({item.block for item in result.assignments}) == 2
+
+
+def test_conflict_weight_lookup_is_compiled_once_per_placement_solve(monkeypatch):
+    """Large section runs must not rebuild unchanged annual conflict facts per pair."""
+
+    calls = 0
+    original = section_placement._course_pair_weights
+
+    def count_compilations(data):
+        nonlocal calls
+        calls += 1
+        return original(data)
+
+    monkeypatch.setattr(section_placement, "_course_pair_weights", count_compilations)
+    result = _solve(
+        units=(
+            PlacementUnitDTO("section:1", 1, (1,), (1,), section_id=1, fixed_semester=1),
+            PlacementUnitDTO("section:2", 2, (2,), (1,), section_id=2, fixed_semester=1),
+            PlacementUnitDTO("section:3", 3, (1,), (1,), section_id=3, fixed_semester=1),
+        ),
+        teachers=(_teacher(1, (1, 2)), _teacher(2, (1, 2))),
+        conflicts=(PlacementConflictDTO(1, 2, 100, 20),),
+        mode="fixed_semester",
+    )
+
+    assert result.status == "complete"
+    assert calls == 1
 
 
 def test_missing_eligible_teacher_produces_a_non_approvable_result():
