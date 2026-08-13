@@ -59,6 +59,42 @@ def test_multiple_locks_are_exact_and_teacher_witness_prevents_same_block_collis
     }
 
 
+def test_post_placement_staffing_witness_rejects_a_double_booked_timing_candidate():
+    """Timing cannot become reviewable when its hidden staffing proof fails."""
+
+    result = _solve(
+        units=(
+            PlacementUnitDTO(
+                "section:1", 1, (1,), (1,), section_id=1,
+                fixed_semester=1, locked_timeslot_id=11,
+            ),
+            PlacementUnitDTO(
+                "section:2", 2, (2,), (1,), section_id=2,
+                fixed_semester=1, locked_timeslot_id=11,
+            ),
+        ),
+        teachers=(_teacher(1, (1, 2)),),
+        mode="fixed_semester",
+    )
+
+    assert result.status in {"partial", "infeasible"}
+    assert result.status != "complete"
+    assert result.staffing_summary["witness_proven"] is False
+
+
+def test_unit_sort_key_uses_natural_numeric_identity_order():
+    """Opaque database digits must not change deterministic search order."""
+
+    units = (
+        PlacementUnitDTO("section:10", 10, (1,), (1,), section_id=10),
+        PlacementUnitDTO("section:2", 2, (1,), (1,), section_id=2),
+    )
+
+    assert [unit.key for unit in sorted(units, key=section_placement._unit_sort_key)] == [
+        "section:2", "section:10",
+    ]
+
+
 def test_unavailable_by_explicit_denial_but_absent_rows_default_to_available():
     unit = PlacementUnitDTO("section:1", 1, (1,), (1,), section_id=1, fixed_semester=1)
     available_default = _solve(units=(unit,), mode="fixed_semester")

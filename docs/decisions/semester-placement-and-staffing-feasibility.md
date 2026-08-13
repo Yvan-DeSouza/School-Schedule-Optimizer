@@ -28,10 +28,13 @@ section and preserves its audit history.
 
 - Course semester rules, active target-year timeslots, accepted schedules, and
   explicit timing locks are hard constraints.
-- The roster must be ready. The engine internally selects a qualified,
-  available teacher witness for every candidate section and respects teacher
-  block, semester, and annual capacity limits. Witness identities never appear
-  in a result or database write.
+- The roster must be ready. The timing objective first works over legal
+  section-to-timeslot candidates, then an exact anonymous staffing witness
+  validates every complete timing recommendation before it can be returned as
+  complete. The witness enforces qualification, availability, one teacher per
+  block, and semester/annual capacity limits. This decomposition avoids
+  carrying interchangeable teacher identities through the large timing
+  objective; witness identities never appear in a result or database write.
 - Availability is available by default; only an explicit unavailable record
   denies a block.
 - A yearly counselor-managed matrix records primary-request overlap, calculated
@@ -58,3 +61,8 @@ This gives counselors a conflict-aware timetable structure without pretending
 that a staffing witness is a teacher assignment or that an unfinished room plan
 is complete. Later teacher, room, and student stages consume accepted timing as
 fixed context and retain separate approval workflows.
+
+The staffing witness remains a hard approval prerequisite. A timing candidate
+that cannot be covered by the confirmed roster is not returned as complete;
+this formulation change affects search structure only, not the school's
+staffing, qualification, availability, collision, or workload rules.
