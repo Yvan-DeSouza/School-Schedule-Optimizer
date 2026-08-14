@@ -359,6 +359,7 @@ def build_student_assignment_review_summary(run, data, review):
 
     assignments = review.get("assignments", ())
     commitments = review.get("commitment_assignments", ())
+    candidate_ledger = review.get("candidate_ledger", ())
     commitment_counts = Counter(item.get("commitment_kind") for item in commitments)
     special_review_counts = Counter(
         item.get("code") for item in review.get("special_commitment_review_items", ())
@@ -427,10 +428,33 @@ def build_student_assignment_review_summary(run, data, review):
                 facts={"review_item_counts_by_code": dict(sorted(special_review_counts.items()))},
             ),
             explanation_factor(
-                category=EXPLANATION_FACTOR_CATEGORY_INSUFFICIENT_EVIDENCE,
-                key="alternative_section_rejection_ledger_not_captured",
-                facts={},
+                category=EXPLANATION_FACTOR_CATEGORY_HARD_CONSTRAINT,
+                key="bounded_student_candidate_elimination_ledger",
+                facts={
+                    "request_count": len(candidate_ledger),
+                    "recorded_rejected_candidate_count": sum(
+                        item.get("recorded_rejected_candidate_count", 0)
+                        for item in candidate_ledger
+                    ),
+                    "omitted_rejected_candidate_count": sum(
+                        item.get("omitted_rejected_candidate_count", 0)
+                        for item in candidate_ledger
+                    ),
+                },
             ),
+        ),
+        alternatives=(
+            {
+                "key": "student_assignment_candidate_ledger",
+                "facts": {
+                    "available": bool(candidate_ledger),
+                    "per_student_explanation_available": True,
+                    "unresolved_request_count": sum(
+                        item.get("selection_state") == "unresolved"
+                        for item in candidate_ledger
+                    ),
+                },
+            },
         ),
         trade_offs=[
             explanation_factor(

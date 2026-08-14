@@ -188,6 +188,20 @@ def test_student_summary_labels_focus_as_not_comparable_instead_of_zero_load():
         "special_commitment_review_items": [
             {"code": "student_assignment_unallocated_school_time", "student_id": 10},
         ],
+        "candidate_ledger": [
+            {
+                "request_id": 201,
+                "selection_state": "selected",
+                "recorded_rejected_candidate_count": 2,
+                "omitted_rejected_candidate_count": 1,
+            },
+            {
+                "request_id": 202,
+                "selection_state": "unresolved",
+                "recorded_rejected_candidate_count": 1,
+                "omitted_rejected_candidate_count": 0,
+            },
+        ],
         "objective_components": {"mandatory_fulfillment": 2},
         "diagnostics": [],
         "approval_allowed": True,
@@ -204,6 +218,23 @@ def test_student_summary_labels_focus_as_not_comparable_instead_of_zero_load():
         "excluded_from_cross_semester_difficulty_and_category_comparisons": True,
     }
     assert summary["recommendation"]["online_supervision_assignment_count"] == 1
+    candidate_factor = next(
+        item for item in summary["factors"]
+        if item["key"] == "bounded_student_candidate_elimination_ledger"
+    )
+    assert candidate_factor["facts"] == {
+        "request_count": 2,
+        "recorded_rejected_candidate_count": 3,
+        "omitted_rejected_candidate_count": 1,
+    }
+    assert summary["alternatives"] == [{
+        "key": "student_assignment_candidate_ledger",
+        "facts": {
+            "available": True,
+            "per_student_explanation_available": True,
+            "unresolved_request_count": 1,
+        },
+    }]
     assert summary["warnings"] == [{
         "code": "student_assignment_unallocated_school_time",
         "facts": {"student_id": 10},

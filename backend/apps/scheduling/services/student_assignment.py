@@ -45,8 +45,14 @@ from backend.apps.scheduling.services.engine_adapter import (
     placement_input_fingerprint,
 )
 from backend.apps.scheduling.services.review_explanations import (
+    EXPLANATION_FACTOR_CATEGORY_COUNSELOR_LOCK,
+    EXPLANATION_FACTOR_CATEGORY_FIXED_CONTEXT,
+    EXPLANATION_FACTOR_CATEGORY_HARD_CONSTRAINT,
+    EXPLANATION_FACTOR_CATEGORY_INSUFFICIENT_EVIDENCE,
+    EXPLANATION_FACTOR_CATEGORY_REVIEW_CONDITION,
     build_student_assignment_lock_impacts,
     build_student_assignment_review_summary,
+    explanation_factor,
 )
 
 
@@ -420,6 +426,95 @@ def _soft_priority_effects(data, result):
     return effects
 
 
+def _candidate_evidence_factor(fact, *, review_item_codes=()):
+    """Map engine facts into the shared review vocabulary without narrating.
+
+    The engine emits stable diagnostic codes and opaque IDs only.  This Django
+    service owns the counselor-facing category label, including the honest
+    ``insufficient_evidence`` outcome for an unselected alternative that has
+    no recorded final hard blocker.
+    """
+
+    if fact.get("kind") == "fixed_context":
+        return explanation_factor(
+            category=EXPLANATION_FACTOR_CATEGORY_FIXED_CONTEXT,
+            key="student_assignment_fixed_context",
+            facts={},
+        )
+    if fact.get("kind") == "insufficient_evidence":
+        return explanation_factor(
+            category=EXPLANATION_FACTOR_CATEGORY_INSUFFICIENT_EVIDENCE,
+            key="candidate_not_selected_without_recorded_hard_block",
+            facts={},
+        )
+    code = fact.get("code")
+    if not code:
+        return explanation_factor(
+            category=EXPLANATION_FACTOR_CATEGORY_INSUFFICIENT_EVIDENCE,
+            key="candidate_evidence_not_available",
+            facts={},
+        )
+    if fact.get("blocking_lock_id") is not None or code in {
+        "student_assignment_locked_enrollment_blocks_request",
+        "student_assignment_special_commitment_lock_blocks_request",
+    }:
+        category = EXPLANATION_FACTOR_CATEGORY_COUNSELOR_LOCK
+    elif code in set(review_item_codes):
+        category = EXPLANATION_FACTOR_CATEGORY_REVIEW_CONDITION
+    else:
+        category = EXPLANATION_FACTOR_CATEGORY_HARD_CONSTRAINT
+    return explanation_factor(
+        category=category,
+        key=code,
+        facts={
+            key: value
+            for key, value in fact.items()
+            if key not in {"code", "phase", "kind"}
+        },
+    )
+
+
+def _candidate_ledger_explanation(entry):
+    """Attach category-labelled why/alternative facts to one stored ledger row."""
+
+    review_item_codes = entry.get("review_item_codes", ())
+    alternatives = []
+    for candidate in entry.get("alternatives", ()):
+        reasons = list(candidate.get("static_rejections", ())) + list(
+            candidate.get("final_rejections", ())
+        )
+        alternatives.append({
+            **candidate,
+            "why": [
+                _candidate_evidence_factor(
+                    reason,
+                    review_item_codes=review_item_codes,
+                )
+                for reason in reasons
+            ] or [
+                _candidate_evidence_factor(
+                    {"kind": "insufficient_evidence"},
+                    review_item_codes=review_item_codes,
+                )
+            ],
+        })
+    return {
+        "why": [
+            _candidate_evidence_factor(
+                item,
+                review_item_codes=review_item_codes,
+            )
+            for item in entry.get("selection_factors", ())
+        ] or [
+            _candidate_evidence_factor(
+                {"kind": "insufficient_evidence"},
+                review_item_codes=review_item_codes,
+            )
+        ],
+        "alternatives": alternatives,
+    }
+
+
 def _build_student_assignment_review(run, *, data):
     """Build a stable counselor review shape from the immutable stored result."""
 
@@ -427,6 +522,7 @@ def _build_student_assignment_review(run, *, data):
     assignments = list(result.get("assignments", ()))
     commitment_assignments = list(result.get("commitment_assignments", ()))
     unmet = list(result.get("unmet_requests", ()))
+    candidate_ledger = list(result.get("candidate_ledger", ()))
     new_assignments = [item for item in assignments if item.get("previous_enrollment_id") is None]
     changed_assignments = [
         item for item in assignments
@@ -508,6 +604,10 @@ def _build_student_assignment_review(run, *, data):
         "commitment_assignments": commitment_assignments,
         "special_commitment_review_items": result.get("review_items", []),
         "unmet_requests": unmet,
+        # Keep the immutable engine evidence available to the run review. The
+        # per-student endpoint below presents the same data with the shared
+        # why/alternatives vocabulary rather than re-solving the schedule.
+        "candidate_ledger": candidate_ledger,
         "diagnostics": result.get("diagnostics", []),
         "objective_components": result.get("objective_components", {}),
         "course_difficulty_facts": [asdict(item) for item in data.course_difficulties],
@@ -570,6 +670,18 @@ def student_assignment_student_explanation(run, *, student_id):
         int(item["request_id"]): item
         for item in run.result.get("unmet_requests", ())
         if int(item["student_id"]) == student_id
+    }
+    course_candidate_ledger = {
+        int(item["request_id"]): item
+        for item in run.result.get("candidate_ledger", ())
+        if int(item["student_id"]) == student_id
+        and item.get("course_id") is not None
+    }
+    commitment_candidate_ledger = {
+        int(item["request_id"]): item
+        for item in run.result.get("candidate_ledger", ())
+        if int(item["student_id"]) == student_id
+        and item.get("course_id") is None
     }
     sections = {int(item["section_id"]): item for item in snapshot.get("sections", ())}
     timeslot_ids = {
@@ -643,6 +755,19 @@ def student_assignment_student_explanation(run, *, student_id):
         }
         if not row["received"] and row["reason_code"] is None:
             row["reason_code"] = STUDENT_ASSIGNMENT_UNRESOLVED_REQUIRED_REQUEST
+        candidate_evidence = course_candidate_ledger.get(request_id)
+        if candidate_evidence is not None:
+            row.update(_candidate_ledger_explanation(candidate_evidence))
+            row["candidate_summary"] = {
+                key: candidate_evidence.get(key)
+                for key in (
+                    "selection_state", "unresolved_reason_code",
+                    "static_candidate_count", "statically_eligible_candidate_count",
+                    "recorded_rejected_candidate_count",
+                    "omitted_rejected_candidate_count",
+                    "selected_candidate", "review_item_codes",
+                )
+            }
         rows.append(row)
     commitments = []
     for commitment in run.result.get("commitment_assignments", ()):
@@ -663,6 +788,13 @@ def student_assignment_student_explanation(run, *, student_id):
             "course_request_id": commitment.get("course_request_id"),
             "course_offering_id": commitment.get("course_offering_id"),
             "occupancy": occupancy,
+            **_candidate_ledger_explanation(
+                (
+                    course_candidate_ledger.get(int(commitment["request_id"]))
+                    if commitment.get("course_request_id") is not None
+                    else commitment_candidate_ledger.get(int(commitment["request_id"]))
+                ) or {"selection_factors": ({"kind": "insufficient_evidence"},)}
+            ),
         })
     return {
         "run_id": run.id,

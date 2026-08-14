@@ -94,6 +94,16 @@ def test_counselor_can_create_and_review_sections_only_student_run(
     assert "seat_contention" in review.data
     assert "section_balance_facts" in review.data
     assert "soft_priorities" in review.data
+    assert "candidate_ledger" in review.data
+    assert review.data["candidate_ledger"][0]["selected_candidate"]["section_id"] == section.id
+    assert review.data["review_summary"]["alternatives"] == [{
+        "key": "student_assignment_candidate_ledger",
+        "facts": {
+            "available": True,
+            "per_student_explanation_available": True,
+            "unresolved_request_count": 0,
+        },
+    }]
     run_url = f"/api/planning/student-assignment-runs/{response.data['id']}"
     assert authenticated_client(staff_user).post(
         "/api/planning/student-assignment-runs/", payload, format="json",
@@ -118,6 +128,8 @@ def test_counselor_can_create_and_review_sections_only_student_run(
     )
     assert explanation.status_code == 200
     assert explanation.data["requests"][0]["received"] is True
+    assert "why" in explanation.data["requests"][0]
+    assert "alternatives" in explanation.data["requests"][0]
 
 
 @pytest.mark.django_db

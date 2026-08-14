@@ -15,11 +15,13 @@ from ortools.sat.python import cp_model
 from .diagnostics import (
     NO_COMPLETE_STUDENT_ASSIGNMENT,
     STUDENT_ASSIGNMENT_HARD_PREREQUISITE_SEQUENCE_UNAVAILABLE,
+    STUDENT_ASSIGNMENT_COMBINED_SECTION_COLLISION,
     STUDENT_ASSIGNMENT_HALF_SEMESTER_UNALLOCATED_OPPOSITE_HALF,
     STUDENT_ASSIGNMENT_LIMITED_SEAT_CONTENTION,
     STUDENT_ASSIGNMENT_LOCKED_ENROLLMENT_BLOCKS_REQUEST,
     STUDENT_ASSIGNMENT_NO_ACTIVE_PLACED_SECTION,
     STUDENT_ASSIGNMENT_ONLINE_HALF_SEMESTER_UNUSED_SUPERVISION_HALF,
+    STUDENT_ASSIGNMENT_ONLINE_SUPERVISION_CAPACITY_EXHAUSTED,
     STUDENT_ASSIGNMENT_NO_ELIGIBLE_SECTION,
     STUDENT_ASSIGNMENT_REQUIRES_ADDITIONAL_CAPACITY,
     STUDENT_ASSIGNMENT_REQUIRES_LOCK_RELEASE,
@@ -37,6 +39,7 @@ from .diagnostics import (
     STUDENT_ASSIGNMENT_SPECIAL_COMMITMENT_LOCK_BLOCKS_REQUEST,
 )
 from .dto import (
+    StudentAssignmentCandidateLedgerDTO,
     StudentAssignmentDTO,
     StudentAssignmentInputDTO,
     StudentAssignmentLockCostDTO,
@@ -82,6 +85,147 @@ LOCK_TYPES = {
 }
 
 HALF_SEMESTER_SEGMENTS = ("first_half", "second_half")
+
+# A full target-year run can contain more than ten thousand requests.  Keeping
+# the selected option plus six stable rejected alternatives gives counselors a
+# useful elimination trail while bounding the immutable result to at most seven
+# option records per request.  The ledger reports omitted counts explicitly;
+# it never implies that a truncated list is exhaustive.
+CANDIDATE_LEDGER_MAX_REJECTED_ALTERNATIVES = 6
+
+
+def _candidate_rejection(*, code, phase, blocking_lock_id=None,
+                         blocking_section_id=None, blocking_student_id=None,
+                         blocking_request_id=None, detail=None):
+    """Build one stable, non-narrative candidate-elimination fact."""
+
+    return {
+        "code": code,
+        "phase": phase,
+        **({"blocking_lock_id": blocking_lock_id} if blocking_lock_id is not None else {}),
+        **({"blocking_section_id": blocking_section_id} if blocking_section_id is not None else {}),
+        **({"blocking_student_id": blocking_student_id} if blocking_student_id is not None else {}),
+        **({"blocking_request_id": blocking_request_id} if blocking_request_id is not None else {}),
+        **({"detail": detail} if detail else {}),
+    }
+
+
+def _append_candidate_rejection(candidate, rejection, *, static):
+    """Record a distinct rejection without altering the CP-SAT candidate domain."""
+
+    key = (
+        rejection["code"],
+        rejection.get("blocking_lock_id"),
+        rejection.get("blocking_section_id"),
+        rejection.get("blocking_student_id"),
+        rejection.get("blocking_request_id"),
+    )
+    collection_key = "static_rejections" if static else "final_rejections"
+    if any(
+        (
+            item["code"],
+            item.get("blocking_lock_id"),
+            item.get("blocking_section_id"),
+            item.get("blocking_student_id"),
+            item.get("blocking_request_id"),
+        ) == key
+        for item in candidate[collection_key]
+    ):
+        return
+    candidate[collection_key].append(rejection)
+    if static:
+        candidate["is_statically_eligible"] = False
+
+
+def _new_candidate_ledger_entry(*, source_key, student_id, request_kind,
+                                course_id=None, course_offering_id=None,
+                                assignment_basis=None, delivery_kind=None,
+                                duration=None, half_semester_segment=None,
+                                paired_half_course_id=None):
+    """Start mutable internal evidence for one immutable result-ledger row."""
+
+    return {
+        "source_key": source_key,
+        "request_id": source_key[1],
+        "student_id": student_id,
+        "request_kind": request_kind,
+        "course_id": course_id,
+        "course_offering_id": course_offering_id,
+        "assignment_basis": assignment_basis,
+        "delivery_kind": delivery_kind,
+        "duration": duration,
+        "half_semester_segment": half_semester_segment,
+        "paired_half_course_id": paired_half_course_id,
+        "candidates": [],
+    }
+
+
+def _new_section_candidate_evidence(*, request, section, timeslots_by_id):
+    """Represent a normal section or generic online-supervision seat honestly."""
+
+    timeslot = timeslots_by_id.get(section.timeslot_id)
+    is_online_supervision = request.delivery_kind == "online" and section.section_id < 0
+    return {
+        "candidate_kind": (
+            "online_supervision_session" if is_online_supervision else "section"
+        ),
+        "section_id": None if is_online_supervision else section.section_id,
+        "online_supervision_session_id": (
+            -section.section_id if is_online_supervision else None
+        ),
+        "semester": section.semester,
+        "timeslot_id": section.timeslot_id,
+        "block": timeslot.block if timeslot is not None else None,
+        "half_semester_segment": (
+            request.half_semester_segment
+            if request.delivery_kind == "online"
+            else section.half_semester_segment
+        ),
+        "engine_section_id": section.section_id,
+        "occupancy": tuple(
+            (section.timeslot_id, segment)
+            for segment in _request_occupied_half_segments(request, section)
+        ),
+        "is_statically_eligible": True,
+        "static_rejections": [],
+        "final_rejections": [],
+        "is_selected": False,
+    }
+
+
+def _new_commitment_candidate_evidence(*, candidate_kind, semester, occupancy,
+                                       timeslots_by_id, co_op_block_pair=None):
+    """Represent a Study, Focus, or Co-op time choice without a fake section."""
+
+    return {
+        "candidate_kind": candidate_kind,
+        "section_id": None,
+        "online_supervision_session_id": None,
+        "semester": semester,
+        "timeslot_id": occupancy[0][0] if occupancy else None,
+        "block": (
+            timeslots_by_id[occupancy[0][0]].block
+            if occupancy and occupancy[0][0] in timeslots_by_id else None
+        ),
+        "half_semester_segment": None,
+        "co_op_block_pair": co_op_block_pair,
+        "engine_section_id": None,
+        "occupancy": tuple(occupancy),
+        "is_statically_eligible": True,
+        "static_rejections": [],
+        "final_rejections": [],
+        "is_selected": False,
+    }
+
+
+def _public_candidate_evidence(candidate):
+    """Drop engine-only occupancy identities before immutable result storage."""
+
+    return {
+        key: value
+        for key, value in candidate.items()
+        if key not in {"engine_section_id", "occupancy"}
+    }
 
 
 def _occupied_half_segments(half_semester_segment):
@@ -681,6 +825,415 @@ def _diagnostic_for_unmet_request(
     return STUDENT_ASSIGNMENT_NO_ELIGIBLE_SECTION, None, None, None, ()
 
 
+def _candidate_sort_key(candidate):
+    """Keep counselor evidence stable without reusing database-ID solver ordering."""
+
+    return (
+        candidate["candidate_kind"],
+        candidate.get("semester") or 0,
+        candidate.get("block") or "",
+        candidate.get("timeslot_id") or 0,
+        candidate.get("section_id") or 0,
+        candidate.get("online_supervision_session_id") or 0,
+        candidate.get("co_op_block_pair") or "",
+    )
+
+
+def _candidate_source_from_commitment(commitment):
+    if commitment.course_request_id is not None:
+        return "course", commitment.course_request_id
+    # Candidate recommendations intentionally store their source in the common
+    # ``request_id`` field, while persisted fixed commitments retain the more
+    # explicit model-origin field. Avoid ``getattr(..., commitment.request_id)``
+    # here: its fallback expression would be evaluated even for fixed rows.
+    source_request_id = getattr(commitment, "schedule_commitment_request_id", None)
+    if source_request_id is None:
+        source_request_id = commitment.request_id
+    return "commitment", source_request_id
+
+
+def _final_course_placements(*, assignments, fixed_rows):
+    """Index final course context once for bounded alternative evidence."""
+
+    placements = defaultdict(list)
+    for assignment in assignments:
+        placements[assignment.student_id, assignment.course_id].append(
+            (assignment.semester, assignment.request_id)
+        )
+    for row in fixed_rows:
+        placements[row.student_id, row.course_id].append((row.semester, None))
+    return placements
+
+
+def _candidate_prerequisite_rejections(*, request, candidate_semester,
+                                       final_course_placements,
+                                       hard_prerequisites):
+    """Return final-state prerequisite incompatibilities for one alternative.
+
+    This is evidence about the returned recommendation, not a second attempt to
+    solve with the candidate forced.  It only names a prerequisite conflict
+    when the other side is already present in final or fixed context.
+    """
+
+    if not hard_prerequisites:
+        return ()
+    rejections = []
+    for edge in hard_prerequisites:
+        if edge.prerequisite_id == request.course_id:
+            for dependent_semester, dependent_request_id in final_course_placements[
+                request.student_id, edge.course_id
+            ]:
+                if dependent_request_id == request.request_id:
+                    continue
+                if candidate_semester == 1 and dependent_semester == 2:
+                    continue
+                rejections.append(_candidate_rejection(
+                    code=STUDENT_ASSIGNMENT_HARD_PREREQUISITE_SEQUENCE_UNAVAILABLE,
+                    phase="final",
+                    blocking_request_id=dependent_request_id,
+                    detail={
+                        "prerequisite_course_id": edge.prerequisite_id,
+                        "dependent_course_id": edge.course_id,
+                    },
+                ))
+        elif edge.course_id == request.course_id:
+            for prerequisite_semester, prerequisite_request_id in final_course_placements[
+                request.student_id, edge.prerequisite_id
+            ]:
+                if prerequisite_request_id == request.request_id:
+                    continue
+                if prerequisite_semester == 1 and candidate_semester == 2:
+                    continue
+                rejections.append(_candidate_rejection(
+                    code=STUDENT_ASSIGNMENT_HARD_PREREQUISITE_SEQUENCE_UNAVAILABLE,
+                    phase="final",
+                    blocking_request_id=prerequisite_request_id,
+                    detail={
+                        "prerequisite_course_id": edge.prerequisite_id,
+                        "dependent_course_id": edge.course_id,
+                    },
+                ))
+    return rejections
+
+
+def _build_candidate_ledger(
+    *, data, entries, sections, fixed_rows, fixed_by_section,
+    selected_by_section, assignments, commitment_assignments, unmet_requests,
+    review_items, has_solution,
+):
+    """Finalize bounded candidate evidence from one already-completed solve.
+
+    Candidate generation above remains the source of static eligibility.  This
+    function only compares those choices with the final immutable result.  It
+    deliberately does not force alternatives, change variable domains, or
+    invoke CP-SAT again; a candidate with no final hard blocker is labelled as
+    insufficient evidence rather than being given an invented explanation.
+    """
+
+    unmet_by_request = {item.request_id: item for item in unmet_requests}
+    review_codes_by_source = defaultdict(list)
+    for item in review_items:
+        if item.request_id is not None:
+            review_codes_by_source[("course", item.request_id)].append(item.code)
+            review_codes_by_source[("commitment", item.request_id)].append(item.code)
+
+    assignment_by_source = {
+        ("course", item.request_id): item for item in assignments
+    }
+    commitment_by_source = {
+        _candidate_source_from_commitment(item): item
+        for item in commitment_assignments
+    }
+    fixed_commitments_by_source = {
+        _candidate_source_from_commitment(item): item
+        for item in data.fixed_schedule_commitments
+        if item.is_active and not item.is_historical
+        and (
+            item.course_request_id is not None
+            or item.schedule_commitment_request_id is not None
+        )
+    }
+    request_by_id = {item.request_id: item for item in data.requests}
+    final_course_placements = _final_course_placements(
+        assignments=assignments,
+        fixed_rows=fixed_rows,
+    ) if has_solution and data.hard_prerequisites else {}
+    occupancy_by_student_slot = defaultdict(list)
+    occupancy_by_student_section = defaultdict(list)
+    final_rows_by_section = {
+        section_id: tuple(fixed_by_section[section_id]) + tuple(
+            selected_by_section.get(section_id, ())
+        )
+        for section_id in sections
+    }
+    for row in fixed_rows:
+        for segment in _fixed_enrollment_occupied_half_segments(row):
+            occupancy = {
+                "source_key": ("fixed_enrollment", row.enrollment_id),
+                "timeslot_id": row.timeslot_id,
+                "half_semester_segment": segment,
+                "section_id": row.section_id,
+                "student_id": row.student_id,
+            }
+            occupancy_by_student_slot[
+                row.student_id, row.timeslot_id, segment
+            ].append(occupancy)
+            occupancy_by_student_section[
+                row.student_id, row.section_id
+            ].append(occupancy)
+    for item in assignments:
+        request = request_by_id[item.request_id]
+        engine_section_id = (
+            item.section_id
+            if item.section_id is not None
+            else -item.online_supervision_session_id
+        )
+        section = sections[engine_section_id]
+        for segment in _request_occupied_half_segments(request, section):
+            occupancy = {
+                "source_key": ("course", item.request_id),
+                "timeslot_id": item.timeslot_id,
+                "half_semester_segment": segment,
+                "section_id": engine_section_id,
+                "student_id": item.student_id,
+            }
+            occupancy_by_student_slot[
+                item.student_id, item.timeslot_id, segment
+            ].append(occupancy)
+            occupancy_by_student_section[
+                item.student_id, engine_section_id
+            ].append(occupancy)
+    for item in commitment_assignments:
+        source_key = _candidate_source_from_commitment(item)
+        for timeslot_id, segment in item.occupancy:
+            occupancy = {
+                "source_key": source_key,
+                "timeslot_id": timeslot_id,
+                "half_semester_segment": segment,
+                "section_id": None,
+                "student_id": item.student_id,
+            }
+            occupancy_by_student_slot[
+                item.student_id, timeslot_id, segment
+            ].append(occupancy)
+    for item in fixed_commitments_by_source.values():
+        source_key = _candidate_source_from_commitment(item)
+        for timeslot_id, segment in item.occupancy:
+            occupancy = {
+                "source_key": source_key,
+                "timeslot_id": timeslot_id,
+                "half_semester_segment": segment,
+                "section_id": None,
+                "student_id": item.student_id,
+            }
+            occupancy_by_student_slot[
+                item.student_id, timeslot_id, segment
+            ].append(occupancy)
+
+    ledger = []
+    for source_key, entry in sorted(entries.items(), key=lambda item: item[0]):
+        selected_assignment = assignment_by_source.get(source_key)
+        selected_commitment = commitment_by_source.get(source_key)
+        fixed_commitment = fixed_commitments_by_source.get(source_key)
+        selected_candidate = None
+        if selected_assignment is not None:
+            selected_engine_section_id = (
+                selected_assignment.section_id
+                if selected_assignment.section_id is not None
+                else -selected_assignment.online_supervision_session_id
+            )
+            for candidate in entry["candidates"]:
+                if candidate["engine_section_id"] == selected_engine_section_id:
+                    candidate["is_selected"] = True
+                    selected_candidate = candidate
+                    break
+        elif selected_commitment is not None:
+            selected_occupancy = tuple(selected_commitment.occupancy)
+            for candidate in entry["candidates"]:
+                if candidate["occupancy"] == selected_occupancy:
+                    candidate["is_selected"] = True
+                    selected_candidate = candidate
+                    break
+        elif fixed_commitment is not None:
+            selected_candidate = _new_commitment_candidate_evidence(
+                candidate_kind=f"{fixed_commitment.commitment_kind}_fixed_context",
+                semester=next((
+                    slot.semester for slot in data.timeslots
+                    if fixed_commitment.occupancy and slot.id == fixed_commitment.occupancy[0][0]
+                ), None),
+                occupancy=fixed_commitment.occupancy,
+                timeslots_by_id={item.id: item for item in data.timeslots},
+            )
+            selected_candidate["is_selected"] = True
+
+        if has_solution:
+            for candidate in entry["candidates"]:
+                if candidate["is_selected"] or not candidate["is_statically_eligible"]:
+                    continue
+                if candidate["engine_section_id"] is not None:
+                    section = sections[candidate["engine_section_id"]]
+                    occupied_rows = final_rows_by_section[section.section_id]
+                    if len(occupied_rows) >= section.capacity_max:
+                        blocking_row = occupied_rows[0] if occupied_rows else None
+                        _append_candidate_rejection(
+                            candidate,
+                            _candidate_rejection(
+                                code=(
+                                    STUDENT_ASSIGNMENT_ONLINE_SUPERVISION_CAPACITY_EXHAUSTED
+                                    if section.section_id < 0
+                                    else STUDENT_ASSIGNMENT_SECTION_CAPACITY_EXHAUSTED
+                                ),
+                                phase="final",
+                                blocking_section_id=(
+                                    None if section.section_id < 0 else section.section_id
+                                ),
+                                blocking_student_id=(
+                                    getattr(blocking_row, "student_id", None)
+                                ),
+                                blocking_request_id=(
+                                    getattr(blocking_row, "request_id", None)
+                                ),
+                            ),
+                            static=False,
+                        )
+                    if entry["request_kind"] in {"course_request", "co_op_request"}:
+                        request = request_by_id.get(entry["request_id"])
+                        if request is not None:
+                            for rejection in _candidate_prerequisite_rejections(
+                                request=request,
+                                candidate_semester=candidate["semester"],
+                                final_course_placements=final_course_placements,
+                                hard_prerequisites=data.hard_prerequisites,
+                            ):
+                                _append_candidate_rejection(
+                                    candidate, rejection, static=False,
+                                )
+                conflicts = [
+                    row
+                    for timeslot_id, segment in candidate["occupancy"]
+                    for row in occupancy_by_student_slot[
+                        entry["student_id"], timeslot_id, segment
+                    ]
+                    if row["source_key"] != source_key
+                ]
+                if conflicts:
+                    blocking = sorted(
+                        conflicts,
+                        key=lambda item: (
+                            item["timeslot_id"], item["half_semester_segment"],
+                            item["source_key"],
+                        ),
+                    )[0]
+                    _append_candidate_rejection(
+                        candidate,
+                        _candidate_rejection(
+                            code=STUDENT_ASSIGNMENT_TIMESLOT_COLLISION,
+                            phase="final",
+                            blocking_section_id=blocking["section_id"],
+                            blocking_student_id=blocking["student_id"],
+                            blocking_request_id=(
+                                blocking["source_key"][1]
+                                if blocking["source_key"][0] in {"course", "commitment"}
+                                else None
+                            ),
+                        ),
+                        static=False,
+                    )
+                if candidate["engine_section_id"] is not None:
+                    shared_section_rows = [
+                        row for row in occupancy_by_student_section[
+                            entry["student_id"], candidate["engine_section_id"]
+                        ]
+                        if row["source_key"] != source_key
+                    ]
+                    if shared_section_rows:
+                        blocking = shared_section_rows[0]
+                        _append_candidate_rejection(
+                            candidate,
+                            _candidate_rejection(
+                                code=STUDENT_ASSIGNMENT_COMBINED_SECTION_COLLISION,
+                                phase="final",
+                                blocking_section_id=(
+                                    candidate["engine_section_id"]
+                                    if candidate["engine_section_id"] > 0 else None
+                                ),
+                                blocking_student_id=blocking["student_id"],
+                                blocking_request_id=(
+                                    blocking["source_key"][1]
+                                    if blocking["source_key"][0] == "course" else None
+                                ),
+                            ),
+                            static=False,
+                        )
+
+        rejected = [
+            candidate for candidate in entry["candidates"] if not candidate["is_selected"]
+        ]
+        rejected.sort(key=_candidate_sort_key)
+        visible_rejected = rejected[:CANDIDATE_LEDGER_MAX_REJECTED_ALTERNATIVES]
+        unresolved = unmet_by_request.get(entry["request_id"])
+        review_item_codes = tuple(sorted(set(review_codes_by_source[source_key])))
+        if selected_candidate is not None:
+            selection_state = "fixed_context" if fixed_commitment is not None else "selected"
+            unresolved_reason_code = None
+            selection_factors = (
+                {"kind": "fixed_context"},
+            ) if fixed_commitment is not None else ()
+        elif unresolved is not None:
+            selection_state = "unresolved"
+            unresolved_reason_code = unresolved.diagnostic_code
+            selection_factors = (_candidate_rejection(
+                code=unresolved.diagnostic_code,
+                phase="final",
+                blocking_lock_id=unresolved.blocking_lock_id,
+                blocking_section_id=unresolved.blocking_section_id,
+                blocking_student_id=unresolved.blocking_student_id,
+            ),)
+        elif review_item_codes:
+            selection_state = "review_required"
+            unresolved_reason_code = review_item_codes[0]
+            selection_factors = tuple(
+                _candidate_rejection(code=code, phase="final")
+                for code in review_item_codes
+            )
+        else:
+            selection_state = "no_solver_incumbent" if not has_solution else "not_selected"
+            unresolved_reason_code = None
+            selection_factors = ({"kind": "insufficient_evidence"},)
+
+        ledger.append(StudentAssignmentCandidateLedgerDTO(
+            request_id=entry["request_id"],
+            student_id=entry["student_id"],
+            request_kind=entry["request_kind"],
+            course_id=entry["course_id"],
+            course_offering_id=entry["course_offering_id"],
+            assignment_basis=entry["assignment_basis"],
+            delivery_kind=entry["delivery_kind"],
+            duration=entry["duration"],
+            half_semester_segment=entry["half_semester_segment"],
+            paired_half_course_id=entry["paired_half_course_id"],
+            selection_state=selection_state,
+            unresolved_reason_code=unresolved_reason_code,
+            selected_candidate=(
+                _public_candidate_evidence(selected_candidate)
+                if selected_candidate is not None else None
+            ),
+            static_candidate_count=len(entry["candidates"]),
+            statically_eligible_candidate_count=sum(
+                candidate["is_statically_eligible"] for candidate in entry["candidates"]
+            ),
+            recorded_rejected_candidate_count=len(visible_rejected),
+            omitted_rejected_candidate_count=len(rejected) - len(visible_rejected),
+            alternatives=tuple(
+                _public_candidate_evidence(candidate)
+                for candidate in visible_rejected
+            ),
+            selection_factors=selection_factors,
+            review_item_codes=review_item_codes,
+        ))
+    return tuple(ledger)
+
+
 def _build_lock_costs(data, result):
     """Measure each lock's cost with an internal deterministic relaxation.
 
@@ -704,7 +1257,14 @@ def _build_lock_costs(data, result):
             # unbounded sequence of counterfactual solves.
             time_limit_seconds=min(data.time_limit_seconds, 5.0),
         )
-        relaxed_result = _solve_student_assignment(relaxed_data, include_lock_costs=False)
+        # Lock-cost comparison is an internal counterfactual measurement, not
+        # a counselor-visible immutable run. Avoid materializing another full
+        # candidate ledger for every one-lock relaxation.
+        relaxed_result = _solve_student_assignment(
+            relaxed_data,
+            include_lock_costs=False,
+            include_candidate_ledger=False,
+        )
         newly_assigned = {
             item.request_id for item in relaxed_result.assignments
         } & base_unmet_request_ids
@@ -719,10 +1279,14 @@ def _build_lock_costs(data, result):
 def solve_student_assignment(data: StudentAssignmentInputDTO) -> StudentAssignmentResultDTO:
     """Return the best safe recommendation with immutable review evidence."""
 
-    return _solve_student_assignment(data, include_lock_costs=True)
+    return _solve_student_assignment(
+        data,
+        include_lock_costs=True,
+        include_candidate_ledger=True,
+    )
 
 
-def _solve_student_assignment(data, *, include_lock_costs):
+def _solve_student_assignment(data, *, include_lock_costs, include_candidate_ledger=True):
     if data.scope.scope_type == "scoped":
         # Keep the complete request list in the detached run snapshot, but do
         # not let a partial rerun silently rewrite demand outside its approved
@@ -742,8 +1306,10 @@ def _solve_student_assignment(data, *, include_lock_costs):
     offering_sections = _validate_input(data)
     model = cp_model.CpModel()
     sections = {item.section_id: item for item in data.sections}
+    timeslots_by_id = {item.id: item for item in data.timeslots}
     requests_by_id = {item.request_id: item for item in data.requests}
     active_locks = _active_locks(data)
+    candidate_ledger_entries = {}
 
     whole_schedule_lock_ids = defaultdict(set)
     frozen_section_lock_ids = defaultdict(set)
@@ -858,12 +1424,36 @@ def _solve_student_assignment(data, *, include_lock_costs):
         if lock.is_active and lock.course_request_id is not None:
             special_locks_by_course_request[lock.course_request_id].append(lock)
     for request in sorted(data.requests, key=lambda item: item.request_id):
+        source_key = ("course", request.request_id)
+        ledger_entry = _new_candidate_ledger_entry(
+            source_key=source_key,
+            student_id=request.student_id,
+            request_kind="course_request",
+            course_id=request.course_id,
+            course_offering_id=request.course_offering_id,
+            assignment_basis=request.assignment_basis,
+            delivery_kind=request.delivery_kind,
+            duration=request.duration,
+            half_semester_segment=request.half_semester_segment,
+            paired_half_course_id=request.paired_half_course_id,
+        )
+        candidate_ledger_entries[source_key] = ledger_entry
         if request.delivery_kind == "co_op":
             # Co-op is fulfilled by its paired external commitment below. It
             # must not be forced through a normal instructional section merely
             # because it is still an academic two-credit course request.
             request_candidates[request.request_id] = []
             continue
+        potential_sections = tuple(offering_sections.get(request.course_offering_id, ()))
+        candidate_by_section_id = {
+            section.section_id: _new_section_candidate_evidence(
+                request=request,
+                section=section,
+                timeslots_by_id=timeslots_by_id,
+            )
+            for section in potential_sections
+        }
+        ledger_entry["candidates"].extend(candidate_by_section_id.values())
         student_course_key = request.student_id, request.course_id
         existing_fixed = fixed_courses[student_course_key]
         if existing_fixed:
@@ -879,6 +1469,16 @@ def _solve_student_assignment(data, *, include_lock_costs):
             if any(row.is_locked for row in existing_fixed) or lock_ids:
                 direct_protected_requests[request.request_id] = min(lock_ids) if lock_ids else None
             request_lock_blockers[request.request_id].update(lock_ids)
+            for candidate in candidate_by_section_id.values():
+                _append_candidate_rejection(
+                    candidate,
+                    _candidate_rejection(
+                        code=STUDENT_ASSIGNMENT_LOCKED_ENROLLMENT_BLOCKS_REQUEST,
+                        phase="static",
+                        blocking_lock_id=min(lock_ids) if lock_ids else None,
+                    ),
+                    static=True,
+                )
             request_candidates[request.request_id] = []
             continue
 
@@ -891,10 +1491,30 @@ def _solve_student_assignment(data, *, include_lock_costs):
 
         if request.student_id in whole_schedule_lock_ids:
             request_lock_blockers[request.request_id].update(whole_schedule_lock_ids[request.student_id])
+            for candidate in candidate_by_section_id.values():
+                _append_candidate_rejection(
+                    candidate,
+                    _candidate_rejection(
+                        code=STUDENT_ASSIGNMENT_LOCKED_ENROLLMENT_BLOCKS_REQUEST,
+                        phase="static",
+                        blocking_lock_id=min(whole_schedule_lock_ids[request.student_id]),
+                    ),
+                    static=True,
+                )
             request_candidates[request.request_id] = []
             continue
         if request.course_id in frozen_course_lock_ids:
             request_lock_blockers[request.request_id].update(frozen_course_lock_ids[request.course_id])
+            for candidate in candidate_by_section_id.values():
+                _append_candidate_rejection(
+                    candidate,
+                    _candidate_rejection(
+                        code=STUDENT_ASSIGNMENT_LOCKED_ENROLLMENT_BLOCKS_REQUEST,
+                        phase="static",
+                        blocking_lock_id=min(frozen_course_lock_ids[request.course_id]),
+                    ),
+                    static=True,
+                )
             request_candidates[request.request_id] = []
             continue
 
@@ -926,25 +1546,87 @@ def _solve_student_assignment(data, *, include_lock_costs):
             request_lock_blockers[request.request_id].update(
                 lock.lock_id for lock in special_locks if lock.lock_mode == "exact"
             )
+            blocking_lock_id = min(
+                lock.lock_id for lock in special_locks if lock.lock_mode == "exact"
+            )
+            for candidate in candidate_by_section_id.values():
+                _append_candidate_rejection(
+                    candidate,
+                    _candidate_rejection(
+                        code=STUDENT_ASSIGNMENT_SPECIAL_COMMITMENT_LOCK_BLOCKS_REQUEST,
+                        phase="static",
+                        blocking_lock_id=blocking_lock_id,
+                    ),
+                    static=True,
+                )
             request_candidates[request.request_id] = []
             continue
         candidates = []
-        for section in offering_sections.get(request.course_offering_id, ()):
-            if any(
-                (section.timeslot_id, segment) in fixed_slots[request.student_id]
+        for section in potential_sections:
+            candidate = candidate_by_section_id[section.section_id]
+            colliding_rows = [
+                row
                 for segment in _occupied_half_segments(section.half_semester_segment)
-            ):
+                if (section.timeslot_id, segment) in fixed_slots[request.student_id]
+                for row in fixed_slot_rows[request.student_id, section.timeslot_id, segment]
+            ]
+            if colliding_rows:
+                blocking_row = colliding_rows[0]
+                _append_candidate_rejection(
+                    candidate,
+                    _candidate_rejection(
+                        code=STUDENT_ASSIGNMENT_TIMESLOT_COLLISION,
+                        phase="static",
+                        blocking_lock_id=(
+                            blocking_row.lock_ids[0]
+                            if getattr(blocking_row, "lock_ids", ()) else None
+                        ),
+                        blocking_section_id=getattr(blocking_row, "section_id", None),
+                        blocking_student_id=getattr(blocking_row, "student_id", None),
+                    ),
+                    static=True,
+                )
                 continue
             if section.section_id in frozen_section_lock_ids:
                 request_lock_blockers[request.request_id].update(
                     frozen_section_lock_ids[section.section_id]
                 )
+                _append_candidate_rejection(
+                    candidate,
+                    _candidate_rejection(
+                        code=STUDENT_ASSIGNMENT_LOCKED_ENROLLMENT_BLOCKS_REQUEST,
+                        phase="static",
+                        blocking_lock_id=min(frozen_section_lock_ids[section.section_id]),
+                        blocking_section_id=section.section_id,
+                    ),
+                    static=True,
+                )
                 continue
             if exact_locks and section.section_id not in allowed_exact_section_ids:
                 request_lock_blockers[request.request_id].update(lock.lock_id for lock in exact_locks)
+                _append_candidate_rejection(
+                    candidate,
+                    _candidate_rejection(
+                        code=STUDENT_ASSIGNMENT_LOCKED_ENROLLMENT_BLOCKS_REQUEST,
+                        phase="static",
+                        blocking_lock_id=min(lock.lock_id for lock in exact_locks),
+                        blocking_section_id=section.section_id,
+                    ),
+                    static=True,
+                )
                 continue
             if teacher_locks and section.teacher_id not in allowed_teacher_ids:
                 request_lock_blockers[request.request_id].update(lock.lock_id for lock in teacher_locks)
+                _append_candidate_rejection(
+                    candidate,
+                    _candidate_rejection(
+                        code=STUDENT_ASSIGNMENT_LOCKED_ENROLLMENT_BLOCKS_REQUEST,
+                        phase="static",
+                        blocking_lock_id=min(lock.lock_id for lock in teacher_locks),
+                        blocking_section_id=section.section_id,
+                    ),
+                    static=True,
+                )
                 continue
             if request.delivery_kind == "online":
                 # A counselor restriction names the student's supervision
@@ -953,10 +1635,34 @@ def _solve_student_assignment(data, *, include_lock_costs):
                     request_lock_blockers[request.request_id].update(
                         lock.lock_id for lock in special_locks if lock.lock_mode == "exact"
                     )
+                    _append_candidate_rejection(
+                        candidate,
+                        _candidate_rejection(
+                            code=STUDENT_ASSIGNMENT_SPECIAL_COMMITMENT_LOCK_BLOCKS_REQUEST,
+                            phase="static",
+                            blocking_lock_id=min(
+                                lock.lock_id for lock in special_locks
+                                if lock.lock_mode == "exact"
+                            ),
+                        ),
+                        static=True,
+                    )
                     continue
                 if section.timeslot_id in excluded_special_timeslot_ids:
                     request_lock_blockers[request.request_id].update(
                         lock.lock_id for lock in special_locks if lock.lock_mode == "exclude"
+                    )
+                    _append_candidate_rejection(
+                        candidate,
+                        _candidate_rejection(
+                            code=STUDENT_ASSIGNMENT_SPECIAL_COMMITMENT_LOCK_BLOCKS_REQUEST,
+                            phase="static",
+                            blocking_lock_id=min(
+                                lock.lock_id for lock in special_locks
+                                if lock.lock_mode == "exclude"
+                            ),
+                        ),
+                        static=True,
                     )
                     continue
             variable = model.NewBoolVar(f"enroll_{request.request_id}_{section.section_id}")
@@ -1010,6 +1716,19 @@ def _solve_student_assignment(data, *, include_lock_costs):
                 for request in rows:
                     request_candidates[request.request_id] = []
                     request_lock_blockers[request.request_id].add(lock.lock_id)
+                    for candidate in candidate_ledger_entries[
+                        ("course", request.request_id)
+                    ]["candidates"]:
+                        if candidate["is_statically_eligible"]:
+                            _append_candidate_rejection(
+                                candidate,
+                                _candidate_rejection(
+                                    code=STUDENT_ASSIGNMENT_LOCKED_ENROLLMENT_BLOCKS_REQUEST,
+                                    phase="static",
+                                    blocking_lock_id=lock.lock_id,
+                                ),
+                                static=True,
+                            )
             continue
         group_requests = [rows[0] for rows in member_requests]
         fixed_group_sections = {
@@ -1031,6 +1750,19 @@ def _solve_student_assignment(data, *, include_lock_costs):
             for request in group_requests:
                 request_candidates[request.request_id] = []
                 request_lock_blockers[request.request_id].add(lock.lock_id)
+                for candidate in candidate_ledger_entries[
+                    ("course", request.request_id)
+                ]["candidates"]:
+                    if candidate["is_statically_eligible"]:
+                        _append_candidate_rejection(
+                            candidate,
+                            _candidate_rejection(
+                                code=STUDENT_ASSIGNMENT_LOCKED_ENROLLMENT_BLOCKS_REQUEST,
+                                phase="static",
+                                blocking_lock_id=lock.lock_id,
+                            ),
+                            static=True,
+                        )
             continue
         for request in group_requests:
             request_candidates[request.request_id] = [
@@ -1038,6 +1770,22 @@ def _solve_student_assignment(data, *, include_lock_costs):
                 for section, variable in request_candidates[request.request_id]
                 if section.section_id in common_section_ids
             ]
+            for candidate in candidate_ledger_entries[
+                ("course", request.request_id)
+            ]["candidates"]:
+                if (
+                    candidate["is_statically_eligible"]
+                    and candidate["engine_section_id"] not in common_section_ids
+                ):
+                    _append_candidate_rejection(
+                        candidate,
+                        _candidate_rejection(
+                            code=STUDENT_ASSIGNMENT_LOCKED_ENROLLMENT_BLOCKS_REQUEST,
+                            phase="static",
+                            blocking_lock_id=lock.lock_id,
+                        ),
+                        static=True,
+                    )
         if fixed_group_sections:
             for request in group_requests:
                 model.Add(sum(variable for _section, variable in request_candidates[request.request_id]) == 1)
@@ -1097,11 +1845,14 @@ def _solve_student_assignment(data, *, include_lock_costs):
         (slot.semester, slot.block): slot for slot in available_timeslots
     }
 
-    def can_occupy(student_id, occupancy):
-        return not any((timeslot_id, segment) in fixed_slots[student_id] for timeslot_id, segment in occupancy)
-
     for request in data.schedule_commitment_requests:
         source_key = ("commitment", request.request_id)
+        ledger_entry = _new_candidate_ledger_entry(
+            source_key=source_key,
+            student_id=request.student_id,
+            request_kind=f"{request.commitment_type}_commitment_request",
+        )
+        candidate_ledger_entries[source_key] = ledger_entry
         if not request.is_in_scope or source_key in fixed_commitment_sources:
             continue
         kind = request.commitment_type
@@ -1114,10 +1865,49 @@ def _solve_student_assignment(data, *, include_lock_costs):
             choices = []
             for slot in available_timeslots:
                 occupancy = tuple((slot.id, segment) for segment in HALF_SEMESTER_SEGMENTS)
-                if can_occupy(request.student_id, occupancy) and _special_lock_allows_candidate(
+                candidate = _new_commitment_candidate_evidence(
+                    candidate_kind="study_time",
+                    semester=slot.semester,
+                    occupancy=occupancy,
+                    timeslots_by_id=timeslots_by_id,
+                )
+                ledger_entry["candidates"].append(candidate)
+                colliding_rows = [
+                    row
+                    for timeslot_id, segment in occupancy
+                    for row in fixed_slot_rows[request.student_id, timeslot_id, segment]
+                ]
+                if colliding_rows:
+                    blocking_row = colliding_rows[0]
+                    _append_candidate_rejection(
+                        candidate,
+                        _candidate_rejection(
+                            code=STUDENT_ASSIGNMENT_TIMESLOT_COLLISION,
+                            phase="static",
+                            blocking_lock_id=(
+                                blocking_row.lock_ids[0]
+                                if getattr(blocking_row, "lock_ids", ()) else None
+                            ),
+                            blocking_section_id=getattr(blocking_row, "section_id", None),
+                            blocking_student_id=getattr(blocking_row, "student_id", None),
+                        ),
+                        static=True,
+                    )
+                    continue
+                if not _special_lock_allows_candidate(
                     locks, timeslot_id=slot.id, semester=slot.semester,
                 ):
-                    choices.append((slot.id, occupancy, None))
+                    _append_candidate_rejection(
+                        candidate,
+                        _candidate_rejection(
+                            code=STUDENT_ASSIGNMENT_SPECIAL_COMMITMENT_LOCK_BLOCKS_REQUEST,
+                            phase="static",
+                            blocking_lock_id=min(lock.lock_id for lock in locks),
+                        ),
+                        static=True,
+                    )
+                    continue
+                choices.append((slot.id, occupancy, None))
             commitment_candidates[source_key] = choices
             commitment_metadata[source_key] = (request.student_id, "study", None, None, None)
         elif kind == "focus":
@@ -1129,17 +1919,62 @@ def _solve_student_assignment(data, *, include_lock_costs):
             choices = []
             for semester in (1, 2):
                 semester_slots = [slot for slot in available_timeslots if slot.semester == semester]
-                if len(semester_slots) != 4:
-                    continue
                 occupancy = tuple(
                     (slot.id, segment)
                     for slot in semester_slots
                     for segment in HALF_SEMESTER_SEGMENTS
                 )
-                if can_occupy(request.student_id, occupancy) and _special_lock_allows_candidate(
-                    locks, semester=semester,
-                ):
-                    choices.append((semester, occupancy, None))
+                candidate = _new_commitment_candidate_evidence(
+                    candidate_kind="focus_semester",
+                    semester=semester,
+                    occupancy=occupancy,
+                    timeslots_by_id=timeslots_by_id,
+                )
+                ledger_entry["candidates"].append(candidate)
+                if len(semester_slots) != 4:
+                    _append_candidate_rejection(
+                        candidate,
+                        _candidate_rejection(
+                            code=STUDENT_ASSIGNMENT_NO_VALID_FOCUS_SEMESTER,
+                            phase="static",
+                        ),
+                        static=True,
+                    )
+                    continue
+                colliding_rows = [
+                    row
+                    for timeslot_id, segment in occupancy
+                    for row in fixed_slot_rows[request.student_id, timeslot_id, segment]
+                ]
+                if colliding_rows:
+                    blocking_row = colliding_rows[0]
+                    _append_candidate_rejection(
+                        candidate,
+                        _candidate_rejection(
+                            code=STUDENT_ASSIGNMENT_TIMESLOT_COLLISION,
+                            phase="static",
+                            blocking_lock_id=(
+                                blocking_row.lock_ids[0]
+                                if getattr(blocking_row, "lock_ids", ()) else None
+                            ),
+                            blocking_section_id=getattr(blocking_row, "section_id", None),
+                            blocking_student_id=getattr(blocking_row, "student_id", None),
+                        ),
+                        static=True,
+                    )
+                    continue
+                if not _special_lock_allows_candidate(locks, semester=semester):
+                    _append_candidate_rejection(
+                        candidate,
+                        _candidate_rejection(
+                            code=STUDENT_ASSIGNMENT_SPECIAL_COMMITMENT_LOCK_BLOCKS_REQUEST,
+                            phase="static",
+                            blocking_lock_id=min(lock.lock_id for lock in locks),
+                        ),
+                        static=True,
+                    )
+                    continue
+                choices.append((semester, occupancy, None))
             commitment_candidates[source_key] = choices
             commitment_metadata[source_key] = (request.student_id, "focus", None, None, None)
 
@@ -1147,6 +1982,8 @@ def _solve_student_assignment(data, *, include_lock_costs):
         if request.delivery_kind != "co_op":
             continue
         source_key = ("course", request.request_id)
+        ledger_entry = candidate_ledger_entries[source_key]
+        ledger_entry["request_kind"] = "co_op_request"
         if not request.is_in_scope or source_key in fixed_commitment_sources:
             continue
         locks = _special_lock_candidates(
@@ -1158,17 +1995,65 @@ def _solve_student_assignment(data, *, include_lock_costs):
         for semester in (1, 2):
             for pair, blocks in (("a_b", ("A", "B")), ("c_d", ("C", "D"))):
                 slots = [slots_by_semester_block.get((semester, block)) for block in blocks]
-                if any(slot is None for slot in slots):
-                    continue
                 occupancy = tuple(
                     (slot.id, segment)
-                    for slot in slots
+                    for slot in slots if slot is not None
                     for segment in HALF_SEMESTER_SEGMENTS
                 )
-                if can_occupy(request.student_id, occupancy) and _special_lock_allows_candidate(
+                candidate = _new_commitment_candidate_evidence(
+                    candidate_kind="co_op_block_pair",
+                    semester=semester,
+                    occupancy=occupancy,
+                    timeslots_by_id=timeslots_by_id,
+                    co_op_block_pair=pair,
+                )
+                ledger_entry["candidates"].append(candidate)
+                if any(slot is None for slot in slots):
+                    _append_candidate_rejection(
+                        candidate,
+                        _candidate_rejection(
+                            code=STUDENT_ASSIGNMENT_NO_VALID_CO_OP_BLOCK_PAIR,
+                            phase="static",
+                        ),
+                        static=True,
+                    )
+                    continue
+                colliding_rows = [
+                    row
+                    for timeslot_id, segment in occupancy
+                    for row in fixed_slot_rows[request.student_id, timeslot_id, segment]
+                ]
+                if colliding_rows:
+                    blocking_row = colliding_rows[0]
+                    _append_candidate_rejection(
+                        candidate,
+                        _candidate_rejection(
+                            code=STUDENT_ASSIGNMENT_TIMESLOT_COLLISION,
+                            phase="static",
+                            blocking_lock_id=(
+                                blocking_row.lock_ids[0]
+                                if getattr(blocking_row, "lock_ids", ()) else None
+                            ),
+                            blocking_section_id=getattr(blocking_row, "section_id", None),
+                            blocking_student_id=getattr(blocking_row, "student_id", None),
+                        ),
+                        static=True,
+                    )
+                    continue
+                if not _special_lock_allows_candidate(
                     locks, semester=semester, co_op_block_pair=pair,
                 ):
-                    choices.append((semester, occupancy, pair))
+                    _append_candidate_rejection(
+                        candidate,
+                        _candidate_rejection(
+                            code=STUDENT_ASSIGNMENT_SPECIAL_COMMITMENT_LOCK_BLOCKS_REQUEST,
+                            phase="static",
+                            blocking_lock_id=min(lock.lock_id for lock in locks),
+                        ),
+                        static=True,
+                    )
+                    continue
+                choices.append((semester, occupancy, pair))
         commitment_candidates[source_key] = choices
         commitment_metadata[source_key] = (
             request.student_id, "co_op", request.request_id,
@@ -1677,25 +2562,42 @@ def _solve_student_assignment(data, *, include_lock_costs):
         # mathematically infeasible, so preserve that distinction for review
         # and for the target-scale benchmark.
         result_status = "infeasible" if outcome == cp_model.INFEASIBLE else "failed"
+        failed_unmet = tuple(
+            StudentAssignmentUnmetRequestDTO(
+                request_id=item.request_id,
+                student_id=item.student_id,
+                course_id=item.course_id,
+                is_primary=item.is_primary,
+                is_mandatory=item.is_mandatory,
+                assignment_basis=item.assignment_basis,
+                diagnostic_code=STUDENT_ASSIGNMENT_UNRESOLVED_REQUIRED_REQUEST,
+            )
+            for item in data.requests
+        )
         result = StudentAssignmentResultDTO(
             status=result_status,
             solver_outcome=_outcome_name(outcome),
             assignments=(),
-            unmet_requests=tuple(
-                StudentAssignmentUnmetRequestDTO(
-                    request_id=item.request_id,
-                    student_id=item.student_id,
-                    course_id=item.course_id,
-                    is_primary=item.is_primary,
-                    is_mandatory=item.is_mandatory,
-                    assignment_basis=item.assignment_basis,
-                    diagnostic_code=STUDENT_ASSIGNMENT_UNRESOLVED_REQUIRED_REQUEST,
-                )
-                for item in data.requests
-            ),
+            unmet_requests=failed_unmet,
             diagnostics=({"code": NO_COMPLETE_STUDENT_ASSIGNMENT},),
             objective_components={},
             sequence_outcomes=(),
+            candidate_ledger=(
+                _build_candidate_ledger(
+                    data=data,
+                    entries=candidate_ledger_entries,
+                    sections=sections,
+                    fixed_rows=fixed_rows,
+                    fixed_by_section=fixed_by_section,
+                    selected_by_section=defaultdict(list),
+                    assignments=(),
+                    commitment_assignments=(),
+                    unmet_requests=failed_unmet,
+                    review_items=(),
+                    has_solution=False,
+                )
+                if include_candidate_ledger else ()
+            ),
         )
         return replace(result, lock_costs=_build_lock_costs(data, result)) if include_lock_costs else result
 
@@ -2018,5 +2920,21 @@ def _solve_student_assignment(data, *, include_lock_costs):
         section_balance_facts=tuple(section_balance_facts),
         commitment_assignments=tuple(commitment_assignments),
         review_items=tuple(review_items),
+        candidate_ledger=(
+            _build_candidate_ledger(
+                data=data,
+                entries=candidate_ledger_entries,
+                sections=sections,
+                fixed_rows=fixed_rows,
+                fixed_by_section=fixed_by_section,
+                selected_by_section=selected_by_section,
+                assignments=assignments,
+                commitment_assignments=commitment_assignments,
+                unmet_requests=unmet,
+                review_items=review_items,
+                has_solution=True,
+            )
+            if include_candidate_ledger else ()
+        ),
     )
     return replace(result, lock_costs=_build_lock_costs(data, result)) if include_lock_costs else result

@@ -509,6 +509,92 @@ def test_unresolved_capacity_reason_identifies_the_competing_section_and_student
     assert unmet.blocking_student_id == 1
 
 
+def test_candidate_ledger_records_final_capacity_elimination_without_a_second_solve():
+    """A losing request retains its compatible section and final seat fact."""
+
+    result = solve_student_assignment(_input(
+        requests=(_request(1, student_id=1), _request(2, student_id=2)),
+        sections=(_section(capacity_max=1),),
+    ))
+
+    ledger_by_request = {item.request_id: item for item in result.candidate_ledger}
+    losing = ledger_by_request[2]
+    assert losing.selection_state == "unresolved"
+    assert losing.unresolved_reason_code == "student_assignment_section_capacity_exhausted"
+    assert losing.static_candidate_count == 1
+    assert losing.statically_eligible_candidate_count == 1
+    assert losing.alternatives[0]["section_id"] == 1
+    assert losing.alternatives[0]["final_rejections"] == [{
+        "code": "student_assignment_section_capacity_exhausted",
+        "phase": "final",
+        "blocking_section_id": 1,
+        "blocking_student_id": 1,
+        "blocking_request_id": 1,
+    }]
+
+
+def test_candidate_ledger_bounds_rejected_options_but_reports_omission():
+    """Target-scale evidence remains bounded even when a request has many choices."""
+
+    result = solve_student_assignment(_input(
+        sections=tuple(
+            _section(index, timeslot_id=100 + index)
+            for index in range(1, 9)
+        ),
+    ))
+
+    ledger = result.candidate_ledger[0]
+    assert ledger.static_candidate_count == 8
+    assert ledger.recorded_rejected_candidate_count == 6
+    assert ledger.omitted_rejected_candidate_count == 1
+    assert ledger.selected_candidate["section_id"] == 1
+
+
+def test_candidate_ledger_captures_study_focus_and_co_op_lock_eliminations():
+    """Special commitments receive the same bounded evidence as course requests."""
+
+    slots = _timeslots()
+    study_slot = next(slot for slot in slots if slot.semester == 2 and slot.block == "C")
+    result = solve_student_assignment(_input(
+        requests=(_request(
+            83, student_id=3, course_id=9, course_offering_id=99,
+            delivery_kind="co_op", credit_value=2.0,
+        ),),
+        sections=(),
+        timeslots=slots,
+        schedule_commitment_requests=(
+            StudentScheduleCommitmentRequestDTO(81, 1, "study"),
+            StudentScheduleCommitmentRequestDTO(82, 2, "focus"),
+        ),
+        special_commitment_locks=(
+            StudentSpecialCommitmentLockDTO(
+                lock_id=81, lock_type="study_time", lock_mode="exact",
+                schedule_commitment_request_id=81, timeslot_id=study_slot.id,
+            ),
+            StudentSpecialCommitmentLockDTO(
+                lock_id=82, lock_type="focus_semester", lock_mode="exact",
+                schedule_commitment_request_id=82, semester=1,
+            ),
+            StudentSpecialCommitmentLockDTO(
+                lock_id=83, lock_type="co_op_time", lock_mode="exact",
+                course_request_id=83, semester=1, co_op_block_pair="a_b",
+            ),
+        ),
+    ))
+
+    ledger_by_request = {item.request_id: item for item in result.candidate_ledger}
+    for request_id, candidate_kind in ((81, "study_time"), (82, "focus_semester"), (83, "co_op_block_pair")):
+        entry = ledger_by_request[request_id]
+        assert entry.selection_state == "selected"
+        assert entry.selected_candidate["candidate_kind"] == candidate_kind
+        assert any(
+            item["static_rejections"]
+            and item["static_rejections"][0]["code"]
+            == "student_assignment_special_commitment_lock_blocks_request"
+            for item in entry.alternatives
+        )
+
+
 def test_requested_study_occupies_one_block_without_becoming_a_course_assignment():
     result = solve_student_assignment(_input(
         requests=(),
@@ -727,6 +813,13 @@ def test_half_semester_online_keeps_full_term_supervision_and_flags_unused_half(
         "student_assignment_half_semester_unallocated_opposite_half",
         "student_assignment_online_half_semester_unused_supervision_half",
     }
+    ledger = result.candidate_ledger[0]
+    assert ledger.selected_candidate["candidate_kind"] == "online_supervision_session"
+    assert ledger.selected_candidate["online_supervision_session_id"] == 1
+    assert ledger.review_item_codes == (
+        "student_assignment_half_semester_unallocated_opposite_half",
+        "student_assignment_online_half_semester_unused_supervision_half",
+    )
 
 
 def test_fixed_half_semester_online_enrollment_blocks_both_supervision_halves():

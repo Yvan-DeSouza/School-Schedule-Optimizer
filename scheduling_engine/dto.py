@@ -565,6 +565,38 @@ class StudentAssignmentSectionBalanceDTO:
 
 
 @dataclass(frozen=True)
+class StudentAssignmentCandidateLedgerDTO:
+    """Bounded, factual candidate evidence for one effective student request.
+
+    The ledger describes candidate domains and final-state hard incompatibilities
+    from one completed solver result.  It is not a counterfactual solve and it
+    must not claim a unique causal reason when an unselected candidate remained
+    otherwise compatible with the final recommendation.
+    """
+
+    request_id: int
+    student_id: int
+    request_kind: str
+    course_id: Optional[int]
+    course_offering_id: Optional[int]
+    assignment_basis: Optional[str]
+    delivery_kind: Optional[str]
+    duration: Optional[str]
+    half_semester_segment: Optional[str]
+    paired_half_course_id: Optional[int]
+    selection_state: str
+    unresolved_reason_code: Optional[str]
+    selected_candidate: Optional[Mapping[str, object]]
+    static_candidate_count: int
+    statically_eligible_candidate_count: int
+    recorded_rejected_candidate_count: int
+    omitted_rejected_candidate_count: int
+    alternatives: Tuple[Mapping[str, object], ...] = ()
+    selection_factors: Tuple[Mapping[str, object], ...] = ()
+    review_item_codes: Tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class StudentAssignmentResultDTO:
     """Complete or partial student-assignment recommendation and diagnostics."""
 
@@ -580,6 +612,7 @@ class StudentAssignmentResultDTO:
     section_balance_facts: Tuple[StudentAssignmentSectionBalanceDTO, ...] = ()
     commitment_assignments: Tuple[StudentScheduleCommitmentAssignmentDTO, ...] = ()
     review_items: Tuple[StudentAssignmentReviewItemDTO, ...] = ()
+    candidate_ledger: Tuple[StudentAssignmentCandidateLedgerDTO, ...] = ()
 
 
 @dataclass(frozen=True)
