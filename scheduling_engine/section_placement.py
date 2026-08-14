@@ -30,6 +30,43 @@ from .dto import (
 )
 
 
+# These bounds are part of the established placement strategy.  Keeping them
+# named makes the private feasibility-seed and bounded retry behavior visible
+# without turning either into a separate scheduling policy.
+FEASIBILITY_SEED_TIME_LIMIT_SECONDS = 10.0
+FEASIBILITY_SEED_WORKER_COUNT = 8
+TIMING_OBJECTIVE_WORKER_COUNT = 1
+ONLINE_DEMAND_WITNESS_TIME_LIMIT_SECONDS = 2.0
+ANONYMOUS_STAFFING_RETRY_LIMIT = 20
+
+
+def _new_solver(time_limit_seconds, *, worker_count):
+    """Create a solver with the placement engine's established search settings."""
+
+    solver = cp_model.CpSolver()
+    solver.parameters.max_time_in_seconds = float(time_limit_seconds)
+    solver.parameters.num_search_workers = worker_count
+    solver.parameters.random_seed = 0
+    return solver
+
+
+def _has_solution(status):
+    """Return whether CP-SAT produced a candidate that may be inspected."""
+
+    return status in {cp_model.OPTIMAL, cp_model.FEASIBLE}
+
+
+def _solver_outcome_name(status):
+    """Translate CP-SAT's result without changing application result semantics."""
+
+    return {
+        cp_model.OPTIMAL: "optimal",
+        cp_model.FEASIBLE: "feasible",
+        cp_model.INFEASIBLE: "infeasible",
+        cp_model.MODEL_INVALID: "model_invalid",
+    }.get(status, "unknown")
+
+
 def _unit_sort_key(unit):
     """Order equivalent physical units naturally instead of by string digits.
 
@@ -310,12 +347,12 @@ def _online_supervision_demand_feasibility(data, timeslots, session_options):
         placement_options,
     )
 
-    solver = cp_model.CpSolver()
-    solver.parameters.max_time_in_seconds = min(float(data.time_limit_seconds), 2.0)
-    solver.parameters.num_search_workers = 1
-    solver.parameters.random_seed = 0
+    solver = _new_solver(
+        min(float(data.time_limit_seconds), ONLINE_DEMAND_WITNESS_TIME_LIMIT_SECONDS),
+        worker_count=TIMING_OBJECTIVE_WORKER_COUNT,
+    )
     status = solver.Solve(model)
-    if status in {cp_model.OPTIMAL, cp_model.FEASIBLE}:
+    if _has_solution(status):
         return "feasible"
     if status == cp_model.INFEASIBLE:
         return "infeasible"
@@ -412,14 +449,14 @@ def _has_anonymous_staffing_witness(data, timeslots, selected_timeslot_by_unit):
     for teacher_id, variables in by_teacher_annual.items():
         model.Add(sum(variables) <= teachers[teacher_id].remaining_annual)
 
-    solver = cp_model.CpSolver()
-    solver.parameters.max_time_in_seconds = min(float(data.time_limit_seconds), 10.0)
-    solver.parameters.num_search_workers = 1
-    solver.parameters.random_seed = 0
-    return solver.Solve(model) in {cp_model.OPTIMAL, cp_model.FEASIBLE}
+    solver = _new_solver(
+        min(float(data.time_limit_seconds), FEASIBILITY_SEED_TIME_LIMIT_SECONDS),
+        worker_count=TIMING_OBJECTIVE_WORKER_COUNT,
+    )
+    return _has_solution(solver.Solve(model))
 
 
-def _selected_timeslots(units, timeslots, placement_vars, solver):
+def _extract_timing_candidate(units, timeslots, placement_vars, solver):
     """Extract one complete timing candidate from a solved placement model."""
 
     selected = {}
@@ -432,7 +469,7 @@ def _selected_timeslots(units, timeslots, placement_vars, solver):
     return selected
 
 
-def _complete_timing_seed(model, placed, time_limit_seconds):
+def _solve_complete_timing_seed(model, placed, time_limit_seconds):
     """Find a complete timing incumbent before bounded objective improvement."""
 
     if not placed:
@@ -443,15 +480,15 @@ def _complete_timing_seed(model, placed, time_limit_seconds):
         for variable in placed
     ]
     seed_model.Add(sum(seed_placed) == len(seed_placed))
-    solver = cp_model.CpSolver()
-    solver.parameters.max_time_in_seconds = min(float(time_limit_seconds), 10.0)
+    solver = _new_solver(
+        min(float(time_limit_seconds), FEASIBILITY_SEED_TIME_LIMIT_SECONDS),
+        worker_count=FEASIBILITY_SEED_WORKER_COUNT,
+    )
     # Parallelism is limited to the private feasibility seed. The production
     # objective remains one-worker deterministic, and the seed is accepted
     # only after the exact deterministic staffing witness validates it.
-    solver.parameters.num_search_workers = 8
-    solver.parameters.random_seed = 0
     status = solver.Solve(seed_model)
-    return solver if status in {cp_model.OPTIMAL, cp_model.FEASIBLE} else None
+    return solver if _has_solution(status) else None
 
 
 def _set_solver_hints(model, solver):
@@ -463,6 +500,163 @@ def _set_solver_hints(model, solver):
             model.GetIntVarFromProtoIndex(index),
             solver.Value(model.GetIntVarFromProtoIndex(index)),
         )
+
+
+def _is_validated_complete_timing_candidate(data, timeslots, units, candidate):
+    """Require both complete timing and an exact anonymous staffing proof.
+
+    The timing model intentionally has no authority to call a placement
+    complete by itself.  This single gate keeps the private seed, objective
+    candidate, retries, fallback, and result conversion from drifting apart.
+    """
+
+    return (
+        len(candidate) == len(units)
+        and _has_anonymous_staffing_witness(data, timeslots, candidate)
+    )
+
+
+def _exclude_timing_candidate(model, placement_vars, candidate):
+    """Forbid exactly one rejected timing candidate while preserving the model."""
+
+    model.AddBoolOr([
+        placement_vars[unit_key, timeslot_id].Not()
+        for unit_key, timeslot_id in candidate.items()
+    ])
+
+
+def _placement_assignments_from_candidate(units, timeslots, candidate):
+    """Convert an extracted timing candidate into the public placement DTOs."""
+
+    assignments = []
+    for unit in units:
+        timeslot_id = candidate.get(unit.key)
+        if timeslot_id is None:
+            continue
+        slot = timeslots[timeslot_id]
+        assignments.append(PlacementAssignmentDTO(
+            unit_key=unit.key,
+            section_id=unit.section_id,
+            delivery_group_id=unit.delivery_group_id,
+            semester=slot.semester,
+            timeslot_id=slot.id,
+            block=slot.block,
+            annual_index=unit.annual_index,
+            online_supervision_session_id=unit.online_supervision_session_id,
+        ))
+    return assignments
+
+
+def _solve_validated_complete_timing_seed(
+    model,
+    placed,
+    data,
+    timeslots,
+    units,
+    placement_vars,
+):
+    """Return a complete seed only after the anonymous staffing proof succeeds."""
+
+    seed_solver = _solve_complete_timing_seed(
+        model,
+        placed,
+        data.time_limit_seconds,
+    )
+    if seed_solver is None:
+        return None
+    seed_candidate = _extract_timing_candidate(
+        units, timeslots, placement_vars, seed_solver,
+    )
+    if not _is_validated_complete_timing_candidate(
+        data, timeslots, units, seed_candidate,
+    ):
+        return None
+    return seed_solver
+
+
+def _solve_timing_objective_with_staffing_validation(
+    model,
+    data,
+    timeslots,
+    units,
+    placement_vars,
+    validated_seed_solver,
+    by_teacher_slot,
+    fixed_teacher_times,
+):
+    """Solve the timing objective without ever accepting an unstaffable result.
+
+    The model passed here already contains every timing objective and all hard
+    rules except the deliberately deferred anonymous teacher block matching.
+    Each complete candidate is checked by the exact witness. Rejected timing
+    candidates receive a no-good exclusion; only then does the retained
+    small-case integrated model restore teacher-block constraints as a bounded
+    fallback. This order is the scalability architecture, not a relaxation.
+    """
+
+    if validated_seed_solver is not None:
+        _set_solver_hints(model, validated_seed_solver)
+    solver = _new_solver(
+        data.time_limit_seconds,
+        worker_count=TIMING_OBJECTIVE_WORKER_COUNT,
+    )
+    status = solver.Solve(model)
+    if not _has_solution(status) and validated_seed_solver is not None:
+        # A validated feasibility seed remains a safe complete recommendation
+        # when later soft-objective improvement reaches its time limit.
+        solver = validated_seed_solver
+        status = cp_model.FEASIBLE
+
+    for _attempt in range(ANONYMOUS_STAFFING_RETRY_LIMIT):
+        if not _has_solution(status):
+            break
+        candidate = _extract_timing_candidate(
+            units, timeslots, placement_vars, solver,
+        )
+        if _is_validated_complete_timing_candidate(
+            data, timeslots, units, candidate,
+        ):
+            return solver, status
+        _exclude_timing_candidate(model, placement_vars, candidate)
+        solver = _new_solver(
+            data.time_limit_seconds,
+            worker_count=TIMING_OBJECTIVE_WORKER_COUNT,
+        )
+        status = solver.Solve(model)
+
+    if (
+        (
+            not _has_solution(status)
+            or len(_extract_timing_candidate(units, timeslots, placement_vars, solver)) != len(units)
+        )
+        and validated_seed_solver is not None
+    ):
+        solver = validated_seed_solver
+        status = cp_model.FEASIBLE
+
+    candidate = (
+        _extract_timing_candidate(units, timeslots, placement_vars, solver)
+        if _has_solution(status)
+        else {}
+    )
+    if _has_solution(status) and not _is_validated_complete_timing_candidate(
+        data, timeslots, units, candidate,
+    ):
+        # The compact witness is the scalable default. This exact fallback is
+        # retained for tightly constrained runs where several equal timing
+        # candidates fail staffing and the original combined search can find a
+        # different legal arrangement directly. It restores—not relaxes—the
+        # one-teacher-per-block constraints for the final bounded solve.
+        for (teacher_id, slot_id), variables in by_teacher_slot.items():
+            model.Add(sum(variables) <= (
+                0 if (teacher_id, slot_id) in fixed_teacher_times else 1
+            ))
+        solver = _new_solver(
+            data.time_limit_seconds,
+            worker_count=TIMING_OBJECTIVE_WORKER_COUNT,
+        )
+        status = solver.Solve(model)
+    return solver, status
 
 
 def solve_section_placement(data: PlacementInputDTO) -> PlacementResultDTO:
@@ -590,17 +784,14 @@ def solve_section_placement(data: PlacementInputDTO) -> PlacementResultDTO:
 
     units = sorted(data.units, key=_unit_sort_key)
     placed = list(placement_vars.values())
-    seed_solver = _complete_timing_seed(model, placed, data.time_limit_seconds)
-    if seed_solver is not None:
-        seed_timeslots = _selected_timeslots(units, timeslots, placement_vars, seed_solver)
-        validated_seed_solver = (
-            seed_solver
-            if len(seed_timeslots) == len(units)
-            and _has_anonymous_staffing_witness(data, timeslots, seed_timeslots)
-            else None
-        )
-    else:
-        validated_seed_solver = None
+    validated_seed_solver = _solve_validated_complete_timing_seed(
+        model,
+        placed,
+        data,
+        timeslots,
+        units,
+        placement_vars,
+    )
     objective_terms = []
     # Highest priority: maximum placement. The configured scale dominates every
     # possible soft metric in a school-sized run, preserving the intended
@@ -681,99 +872,30 @@ def solve_section_placement(data: PlacementInputDTO) -> PlacementResultDTO:
         + sum((index + 1) * variable for index, variable in enumerate(placed))
     )
     model.Minimize(weighted_objective)
-    if validated_seed_solver is not None:
-        _set_solver_hints(model, validated_seed_solver)
-    solver = cp_model.CpSolver()
-    solver.parameters.max_time_in_seconds = data.time_limit_seconds
-    solver.parameters.num_search_workers = 1
-    solver.parameters.random_seed = 0
-    status = solver.Solve(model)
-    if (
-        status not in {cp_model.OPTIMAL, cp_model.FEASIBLE}
-        and validated_seed_solver is not None
-    ):
-        solver = validated_seed_solver
-        status = cp_model.FEASIBLE
-    # The timing objective intentionally omits symmetric anonymous matching.
-    # If its first complete timing candidate fails the exact witness, exclude
-    # only that one schedule and let the same objective choose another. This
-    # preserves every hard staffing rule without making teacher identities a
-    # high-dimensional part of the placement search.
-    for _attempt in range(20):
-        if status not in {cp_model.OPTIMAL, cp_model.FEASIBLE}:
-            break
-        selected_timeslot_by_unit = _selected_timeslots(units, timeslots, placement_vars, solver)
-        if len(selected_timeslot_by_unit) != len(units) or _has_anonymous_staffing_witness(
-            data,
-            timeslots,
-            selected_timeslot_by_unit,
-        ):
-            break
-        model.AddBoolOr([
-            placement_vars[unit_key, timeslot_id].Not()
-            for unit_key, timeslot_id in selected_timeslot_by_unit.items()
-        ])
-        solver = cp_model.CpSolver()
-        solver.parameters.max_time_in_seconds = data.time_limit_seconds
-        solver.parameters.num_search_workers = 1
-        solver.parameters.random_seed = 0
-        status = solver.Solve(model)
-    if (
-        (status not in {cp_model.OPTIMAL, cp_model.FEASIBLE}
-         or len(_selected_timeslots(units, timeslots, placement_vars, solver)) != len(units))
-        and validated_seed_solver is not None
-    ):
-        solver = validated_seed_solver
-        status = cp_model.FEASIBLE
-    if status in {cp_model.OPTIMAL, cp_model.FEASIBLE}:
-        selected_timeslot_by_unit = _selected_timeslots(units, timeslots, placement_vars, solver)
-        requires_integrated_fallback = (
-            len(selected_timeslot_by_unit) != len(units)
-            or not _has_anonymous_staffing_witness(data, timeslots, selected_timeslot_by_unit)
-        )
-    else:
-        requires_integrated_fallback = False
-    if requires_integrated_fallback:
-        # The compact witness is the scalable default. This exact fallback is
-        # retained for tightly constrained runs where several equal timing
-        # candidates fail staffing and the original combined search can find a
-        # different legal arrangement directly. It restores—not relaxes—the
-        # one-teacher-per-block constraints for the final bounded solve.
-        for (teacher_id, slot_id), variables in by_teacher_slot.items():
-            model.Add(sum(variables) <= (0 if (teacher_id, slot_id) in fixed_teacher_times else 1))
-        solver = cp_model.CpSolver()
-        solver.parameters.max_time_in_seconds = data.time_limit_seconds
-        solver.parameters.num_search_workers = 1
-        solver.parameters.random_seed = 0
-        status = solver.Solve(model)
-    status_name = {
-        cp_model.OPTIMAL: "optimal", cp_model.FEASIBLE: "feasible",
-        cp_model.INFEASIBLE: "infeasible", cp_model.MODEL_INVALID: "model_invalid",
-    }.get(status, "unknown")
+    solver, status = _solve_timing_objective_with_staffing_validation(
+        model,
+        data,
+        timeslots,
+        units,
+        placement_vars,
+        validated_seed_solver,
+        by_teacher_slot,
+        fixed_teacher_times,
+    )
+    status_name = _solver_outcome_name(status)
 
-    assignments = []
-    if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        for unit in units:
-            for slot_id, slot in timeslots.items():
-                variable = placement_vars.get((unit.key, slot_id))
-                if variable is not None and solver.Value(variable):
-                    assignments.append(PlacementAssignmentDTO(
-                        unit_key=unit.key, section_id=unit.section_id,
-                        delivery_group_id=unit.delivery_group_id, semester=slot.semester,
-                        timeslot_id=slot.id, block=slot.block, annual_index=unit.annual_index,
-                        online_supervision_session_id=unit.online_supervision_session_id,
-                    ))
-                    break
+    selected_timeslot_by_unit = (
+        _extract_timing_candidate(units, timeslots, placement_vars, solver)
+        if _has_solution(status)
+        else {}
+    )
+    assignments = _placement_assignments_from_candidate(
+        units, timeslots, selected_timeslot_by_unit,
+    )
     staffing_witness_proven = False
     if len(assignments) == len(units):
-        selected_timeslot_by_unit = {
-            assignment.unit_key: assignment.timeslot_id
-            for assignment in assignments
-        }
-        staffing_witness_proven = _has_anonymous_staffing_witness(
-            data,
-            timeslots,
-            selected_timeslot_by_unit,
+        staffing_witness_proven = _is_validated_complete_timing_candidate(
+            data, timeslots, units, selected_timeslot_by_unit,
         )
         if not staffing_witness_proven:
             # Timing alone is never approval-ready. A candidate that cannot be
