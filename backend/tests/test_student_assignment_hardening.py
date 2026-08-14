@@ -283,4 +283,12 @@ def test_review_reports_changed_and_protected_categories(
     protected_run = _run(academic_year, counselor_user)
     protected_review = preview_student_assignment_approval(protected_run)
     assert protected_review["protected_assignments"]
+    assert protected_review["review_summary"]["explanation_schema_version"] == 1
+    assert protected_review["review_summary"]["decision"]["stage"] == "student_assignment"
+    assert any(
+        item["lock_id"] == whole.id
+        and item["lock_record_type"] == "student_assignment_lock"
+        and item["direct_effect"] == "preserves_existing_student_schedule"
+        for item in protected_review["lock_impacts"]
+    )
     assert whole.is_active is True

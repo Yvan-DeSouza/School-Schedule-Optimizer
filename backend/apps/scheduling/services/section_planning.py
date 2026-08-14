@@ -51,6 +51,9 @@ from backend.apps.scheduling.models import (
 from backend.apps.scheduling.services.engine_adapter import (
     get_section_count_plan_with_snapshot,
 )
+from backend.apps.scheduling.services.review_explanations import (
+    build_section_planning_review_summary,
+)
 from backend.apps.scheduling.services.run_contracts import (
     ensure_unique_selection,
 )
@@ -389,7 +392,7 @@ def preview_section_planning_approval(run, *, selections=None):
             "message": "No unapproved courses remain in this planning run.",
         })
 
-    return {
+    preview = {
         # The response is deliberately JSON-ready because both review endpoints
         # return it directly and approval reuses it inside the transaction.
         "planning_run_id": run.id,
@@ -403,6 +406,8 @@ def preview_section_planning_approval(run, *, selections=None):
         "validation_errors": validation_errors,
         "can_approve": bool(course_reviews) and not conflicts and not validation_errors,
     }
+    preview["review_summary"] = build_section_planning_review_summary(run, preview)
+    return preview
 
 
 @transaction.atomic

@@ -38,10 +38,15 @@ from backend.apps.scheduling.models import (
     StudentAssignmentApprovalEnrollment,
     StudentAssignmentLock,
     StudentAssignmentRun,
+    StudentSpecialCommitmentLock,
 )
 from backend.apps.scheduling.services.engine_adapter import (
     load_student_assignment_input,
     placement_input_fingerprint,
+)
+from backend.apps.scheduling.services.review_explanations import (
+    build_student_assignment_lock_impacts,
+    build_student_assignment_review_summary,
 )
 
 
@@ -496,7 +501,7 @@ def _build_student_assignment_review(run, *, data):
         for student_id, totals in sorted(difficulty_totals.items())
     ]
     student_ids_for = lambda rows: len({int(item["student_id"]) for item in rows if item.get("student_id") is not None})
-    return {
+    review = {
         "approval_allowed": True,
         "assignment_count": len(assignments),
         "assignments": assignments,
@@ -521,6 +526,32 @@ def _build_student_assignment_review(run, *, data):
         "soft_priorities": _soft_priority_effects(data, result),
         "staffing_context": run.input_snapshot.get("staffing_context", {}),
     }
+    # Level 1 lock impact is deliberately derived from the reviewed snapshot
+    # and current active lock records only. It reports the lock's direct target
+    # and frozen occupancy; it does not pretend to predict downstream changes
+    # without a separate, explicitly requested what-if solve.
+    ordinary_lock_details = {
+        item["id"]: {"reason": item["reason"]}
+        for item in StudentAssignmentLock.objects.filter(
+            id__in=[lock.lock_id for lock in data.student_assignment_locks],
+            is_active=True,
+        ).values("id", "reason")
+    }
+    special_lock_details = {
+        item["id"]: {"reason": item["reason"]}
+        for item in StudentSpecialCommitmentLock.objects.filter(
+            id__in=[lock.lock_id for lock in data.special_commitment_locks],
+            is_active=True,
+        ).values("id", "reason")
+    }
+    review["lock_impacts"] = build_student_assignment_lock_impacts(
+        data=data,
+        result=result,
+        ordinary_lock_details=ordinary_lock_details,
+        special_lock_details=special_lock_details,
+    )
+    review["review_summary"] = build_student_assignment_review_summary(run, data, review)
+    return review
 
 
 def student_assignment_student_explanation(run, *, student_id):

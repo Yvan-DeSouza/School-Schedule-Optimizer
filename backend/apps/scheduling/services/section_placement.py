@@ -31,6 +31,9 @@ from backend.apps.scheduling.services.engine_adapter import (
     load_section_placement_input,
     placement_input_fingerprint,
 )
+from backend.apps.scheduling.services.review_explanations import (
+    build_section_placement_review_summary,
+)
 
 
 class SectionPlacementValidationError(DomainValidationError):
@@ -127,7 +130,7 @@ def preview_section_placement_approval(run):
         _current_input_for_run(run)
     except ValueError as error:
         raise SectionPlacementConflictError({"detail": str(error)}) from error
-    return {
+    preview = {
         "approval_allowed": True,
         "assignment_count": len(run.result.get("assignments", [])),
         "assignments": run.result.get("assignments", []),
@@ -136,6 +139,8 @@ def preview_section_placement_approval(run):
         "rooms_included": False,
         "teacher_assignments_included": False,
     }
+    preview["review_summary"] = build_section_placement_review_summary(run, preview)
+    return preview
 
 
 def _number_allocator(group_id, academic_year_id):

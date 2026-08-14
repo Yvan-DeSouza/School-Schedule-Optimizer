@@ -45,6 +45,9 @@ from backend.apps.scheduling.services.run_contracts import (
     ensure_unique_selection,
     require_text_reason,
 )
+from backend.apps.scheduling.services.review_explanations import (
+    build_section_budget_review_summary,
+)
 from scheduling_engine.section_budget_planner import (
     plan_section_budget,
     plan_section_budget_with_backups,
@@ -289,7 +292,7 @@ def preview_section_budget_approval(run, *, selections=None):
                 "code": ADJUSTED_BUDGET_NO_LONGER_FEASIBLE,
                 "diagnostics": proof.get("diagnostics", []),
             })
-    return {
+    preview = {
         "budget_run_id": run.id,
         "budget_type": run.budget_type,
         "section_budget": run.section_budget,
@@ -300,6 +303,8 @@ def preview_section_budget_approval(run, *, selections=None):
         "validation_errors": errors,
         "can_approve": not errors and not hasattr(run, "approval"),
     }
+    preview["review_summary"] = build_section_budget_review_summary(run, preview)
+    return preview
 
 
 @transaction.atomic

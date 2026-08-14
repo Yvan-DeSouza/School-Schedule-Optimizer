@@ -63,6 +63,7 @@ from backend.apps.scheduling.services.section_budget_planning import (
 from backend.apps.scheduling.services.section_placement import (
     approve_section_placement_run,
     create_section_placement_run,
+    preview_section_placement_approval,
 )
 from backend.apps.scheduling.services.staffing_configuration import (
     confirm_roster_ready,
@@ -83,6 +84,7 @@ from backend.apps.scheduling.services.student_special_commitment_locks import (
 from backend.apps.scheduling.services.teacher_assignment import (
     approve_teacher_assignment_run,
     create_teacher_assignment_run,
+    preview_teacher_assignment_approval,
 )
 
 
@@ -430,6 +432,12 @@ def test_realistic_special_commitments_flow_through_reviewed_pipeline(counselor_
         created_by=counselor_user,
     )
     assert placement_run.status == "complete"
+    placement_review = preview_section_placement_approval(placement_run)
+    assert placement_review["review_summary"]["decision"]["stage"] == "section_placement"
+    assert next(
+        item for item in placement_review["review_summary"]["factors"]
+        if item["key"] == "anonymous_staffing_witness"
+    )["facts"]["teacher_names_or_assignments_returned"] is False
     approve_section_placement_run(
         placement_run,
         approved_by=counselor_user,
@@ -448,6 +456,12 @@ def test_realistic_special_commitments_flow_through_reviewed_pipeline(counselor_
         created_by=counselor_user,
     )
     assert teacher_run.status == "complete"
+    teacher_review = preview_teacher_assignment_approval(teacher_run)
+    assert teacher_review["review_summary"]["decision"]["stage"] == "named_teacher_assignment"
+    assert next(
+        item for item in teacher_review["review_summary"]["factors"]
+        if item["key"] == "online_supervision_qualification_exception"
+    )["facts"]["course_specific_qualification_required"] is False
     approve_teacher_assignment_run(
         teacher_run,
         approved_by=counselor_user,
@@ -513,6 +527,15 @@ def test_realistic_special_commitments_flow_through_reviewed_pipeline(counselor_
     )
     assert student_run.status == "complete", student_run.result
     review = preview_student_assignment_approval(student_run)
+    summary = review["review_summary"]
+    assert summary["explanation_schema_version"] == 1
+    assert summary["recommendation"]["study_commitment_count"] >= 2
+    assert summary["recommendation"]["focus_commitment_count"] == 2
+    assert summary["recommendation"]["co_op_commitment_count"] >= 1
+    assert {
+        item["lock_type"] for item in review["lock_impacts"]
+        if item["lock_record_type"] == "student_special_commitment_lock"
+    } >= {"study_time", "focus_semester", "co_op_time"}
     approval = approve_student_assignment_run(
         student_run,
         approved_by=counselor_user,

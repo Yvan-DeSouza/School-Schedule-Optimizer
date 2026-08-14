@@ -53,6 +53,9 @@ from backend.apps.scheduling.services.run_contracts import (
     ensure_unique_selection,
     require_text_reason,
 )
+from backend.apps.scheduling.services.review_explanations import (
+    build_staffing_plan_review_summary,
+)
 from scheduling_engine.section_budget_planner import (
     plan_section_budget,
     resolve_backup_requests,
@@ -386,6 +389,8 @@ def preview_staffing_plan_approval(run, *, selections=None):
         "conflicts": conflicts,
         "can_approve": bool(reviews) and not validation_errors and not conflicts,
     }
+    preview["review_summary"] = build_staffing_plan_review_summary(run, preview)
+    return preview
 
 
 @transaction.atomic

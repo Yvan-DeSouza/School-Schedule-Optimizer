@@ -129,6 +129,12 @@ def test_planning_role_can_preview_and_approve_draft_sections_with_audit_trace(
     assert review.status_code == 200
     assert review.data["can_approve"] is True
     assert review.data["courses"][0]["recommended_annual_count"] == 1
+    assert review.data["review_summary"]["explanation_schema_version"] == 1
+    assert review.data["review_summary"]["decision"]["stage"] == "section_count"
+    assert next(
+        item for item in review.data["review_summary"]["factors"]
+        if item["key"] == "normal_instruction_section_scope"
+    )["facts"]["excluded_delivery_kinds"] == ["online", "co_op"]
 
     preview = counselor_client.post(preview_url, selection, format="json")
     assert preview.status_code == 200

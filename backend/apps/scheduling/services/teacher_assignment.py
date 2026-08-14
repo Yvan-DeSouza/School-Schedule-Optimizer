@@ -25,6 +25,9 @@ from backend.apps.scheduling.models import (
 from backend.apps.scheduling.services.engine_adapter import (
     load_teacher_assignment_input, placement_input_fingerprint,
 )
+from backend.apps.scheduling.services.review_explanations import (
+    build_teacher_assignment_review_summary,
+)
 
 
 class TeacherAssignmentValidationError(DomainValidationError):
@@ -98,7 +101,7 @@ def preview_teacher_assignment_approval(run):
         _current_input_for_run(run)
     except ValueError as error:
         raise TeacherAssignmentConflictError({"detail": str(error)}) from error
-    return {
+    preview = {
         "approval_allowed": True,
         "assignment_count": len(run.result.get("assignments", [])),
         "assignments": run.result.get("assignments", []),
@@ -107,6 +110,8 @@ def preview_teacher_assignment_approval(run):
         "rooms_included": False,
         "students_included": False,
     }
+    preview["review_summary"] = build_teacher_assignment_review_summary(run, preview)
+    return preview
 
 
 @transaction.atomic
