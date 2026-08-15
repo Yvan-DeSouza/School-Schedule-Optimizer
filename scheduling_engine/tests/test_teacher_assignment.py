@@ -4,6 +4,8 @@ from scheduling_engine.dto import (
     FixedTeacherAssignmentDTO, TeacherAssignmentInputDTO, TeacherAssignmentSectionDTO,
     TeacherAssignmentTeacherDTO, TeacherCourseAssignmentRuleDTO,
 )
+from ortools.sat.python import cp_model
+import scheduling_engine.teacher_assignment as teacher_assignment
 from scheduling_engine.teacher_assignment import solve_teacher_assignment
 
 
@@ -23,6 +25,27 @@ def _section(section_id=1, **overrides):
     )
     values.update(overrides)
     return TeacherAssignmentSectionDTO(**values)
+
+
+def test_compact_teacher_load_balance_penalty_matches_pairwise_boolean_count():
+    """The scale-safe objective form remains exactly n-choose-2."""
+
+    model = cp_model.CpModel()
+    variables = {
+        ("section", identifier): model.NewBoolVar(f"assignment_{identifier}")
+        for identifier in range(3)
+    }
+    for variable in variables.values():
+        model.Add(variable == 1)
+    penalties = teacher_assignment._teacher_load_balance_penalties(
+        model,
+        {(key, 1): value for key, value in variables.items()},
+        {1: object()},
+    )
+    solver = cp_model.CpSolver()
+
+    assert solver.Solve(model) == cp_model.OPTIMAL
+    assert solver.Value(penalties[0]) == 3
 
 
 def test_assigns_legal_teacher_and_keeps_timing_fixed():

@@ -8,8 +8,6 @@ accepted fixed context, and only the teacher dimension is being decided here.
 from __future__ import annotations
 
 from collections import defaultdict
-from itertools import combinations
-
 from ortools.sat.python import cp_model
 
 from .diagnostics import (
@@ -93,6 +91,47 @@ def _candidates(section, teachers):
             continue
         candidates.append(teacher)
     return candidates
+
+
+def _teacher_load_balance_penalties(model, variables, teachers):
+    """Return the existing pairwise workload penalty without pair variables.
+
+    The former model created one Boolean for every pair of candidate variables
+    for a teacher.  For Boolean choices, that sum is exactly ``n choose 2``,
+    where ``n`` is the number of that teacher's selected candidate rows.  An
+    element lookup preserves the objective's value—including the deliberate
+    double counting of the two linked half-semester rows—without making model
+    size quadratic in the ready-roster candidate pool.
+    """
+
+    penalties = []
+    for teacher_id in teachers:
+        teacher_vars = [
+            variable
+            for (_section_key, candidate_teacher_id), variable in variables.items()
+            if candidate_teacher_id == teacher_id
+        ]
+        if not teacher_vars:
+            continue
+        selected_count = model.NewIntVar(
+            0,
+            len(teacher_vars),
+            f"teacher_selected_candidate_count_{teacher_id}",
+        )
+        model.Add(selected_count == sum(teacher_vars))
+        maximum_penalty = len(teacher_vars) * (len(teacher_vars) - 1) // 2
+        penalty = model.NewIntVar(
+            0,
+            maximum_penalty,
+            f"teacher_load_pair_penalty_{teacher_id}",
+        )
+        model.AddElement(
+            selected_count,
+            [count * (count - 1) // 2 for count in range(len(teacher_vars) + 1)],
+            penalty,
+        )
+        penalties.append(penalty)
+    return penalties
 
 
 def solve_teacher_assignment(data: TeacherAssignmentInputDTO) -> TeacherAssignmentResultDTO:
@@ -224,14 +263,7 @@ def solve_teacher_assignment(data: TeacherAssignmentInputDTO) -> TeacherAssignme
     # Pairwise same-teacher use is a deliberately small final penalty.  It
     # spreads discretionary work across available staff without ever defeating
     # a course request, continuity, time preference, seniority, or hard rule.
-    balance_terms = []
-    for teacher_id in teachers:
-        teacher_vars = [variable for (_section_key, candidate_teacher_id), variable in variables.items() if candidate_teacher_id == teacher_id]
-        for index, (left, right) in enumerate(combinations(teacher_vars, 2)):
-            together = model.NewBoolVar(f"teacher_load_pair_{teacher_id}_{index}")
-            model.AddBoolAnd([left, right]).OnlyEnforceIf(together)
-            model.AddBoolOr([left.Not(), right.Not(), together])
-            balance_terms.append(together)
+    balance_terms = _teacher_load_balance_penalties(model, variables, teachers)
     objective.extend([
         -1_000_000 * sum(requested or [0]),
         -10_000 * sum(continuity or [0]),
