@@ -292,9 +292,10 @@ def build_section_placement_review_summary(run, preview):
 
 
 def build_teacher_assignment_review_summary(run, preview):
-    """Summarize named staffing facts without claiming unrecorded alternatives."""
+    """Summarize named staffing facts and recorded candidate evidence."""
 
     assignments = preview.get("assignments", ())
+    candidate_ledger = preview.get("candidate_ledger", ())
     online_supervision_assignment_count = sum(
         item.get("online_supervision_session_id") is not None for item in assignments
     )
@@ -334,10 +335,40 @@ def build_teacher_assignment_review_summary(run, preview):
                 facts={"shared_teacher_pair_count": len(half_pair_keys)},
             ),
             explanation_factor(
-                category=EXPLANATION_FACTOR_CATEGORY_INSUFFICIENT_EVIDENCE,
-                key="rejected_teacher_candidate_comparisons_not_captured",
-                facts={},
+                category=EXPLANATION_FACTOR_CATEGORY_HARD_CONSTRAINT,
+                key="teacher_candidate_elimination_ledger",
+                facts={
+                    "staffing_decision_count": len(candidate_ledger),
+                    "roster_candidate_count": sum(
+                        len(item.get("candidates", ())) for item in candidate_ledger
+                    ),
+                    "possible_in_isolation_count": sum(
+                        candidate.get("comparison_state")
+                        == "possible_in_isolation_global_comparison_not_yet_proven"
+                        for item in candidate_ledger
+                        for candidate in item.get("candidates", ())
+                    ),
+                },
             ),
+        ),
+        alternatives=(
+            {
+                "key": "teacher_assignment_candidate_ledger",
+                "facts": {
+                    "available": bool(candidate_ledger),
+                    "online_supervision_decision_count": sum(
+                        item.get("decision_kind") == "online_supervision"
+                        for item in candidate_ledger
+                    ),
+                    "half_semester_pair_decision_count": sum(
+                        item.get("decision_kind") == "half_semester_pair"
+                        for item in candidate_ledger
+                    ),
+                    "possible_in_isolation_wording": (
+                        "possible in isolation; global comparison not yet proven"
+                    ),
+                },
+            },
         ),
         trade_offs=[
             explanation_factor(

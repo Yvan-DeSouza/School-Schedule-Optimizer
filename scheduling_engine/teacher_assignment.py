@@ -20,6 +20,7 @@ from .diagnostics import (
     TEACHER_COURSE_RULE_INFEASIBLE,
 )
 from .dto import TeacherAssignmentDTO, TeacherAssignmentInputDTO, TeacherAssignmentResultDTO
+from .teacher_assignment_evidence import build_teacher_assignment_candidate_ledger
 
 
 def _decision_key(item):
@@ -259,6 +260,11 @@ def solve_teacher_assignment(data: TeacherAssignmentInputDTO) -> TeacherAssignme
                 for item in decision_sections
                 if item.is_online_supervision and item.online_supervision_session_id is not None
             ),
+            candidate_ledger=build_teacher_assignment_candidate_ledger(
+                data=data,
+                assignments=(),
+                has_solution=False,
+            ),
         )
 
     assignments = []
@@ -314,4 +320,9 @@ def solve_teacher_assignment(data: TeacherAssignmentInputDTO) -> TeacherAssignme
             "teacher_load_balance_penalty": float(sum(solver.Value(item) for item in balance_terms)),
         },
         unassigned_online_supervision_session_ids=unassigned_online,
+        candidate_ledger=build_teacher_assignment_candidate_ledger(
+            data=data,
+            assignments=tuple(assignments),
+            has_solution=True,
+        ),
     )

@@ -105,6 +105,7 @@ def preview_teacher_assignment_approval(run):
         "approval_allowed": True,
         "assignment_count": len(run.result.get("assignments", [])),
         "assignments": run.result.get("assignments", []),
+        "candidate_ledger": run.result.get("candidate_ledger", []),
         "diagnostics": run.result.get("diagnostics", []),
         "objective_components": run.result.get("objective_components", {}),
         "rooms_included": False,

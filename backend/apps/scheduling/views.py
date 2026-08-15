@@ -916,7 +916,10 @@ class TeacherAssignmentRunViewSet(
         from backend.apps.scheduling.services.teacher_assignment import create_teacher_assignment_run
 
         try:
-            run = create_teacher_assignment_run(created_by=request.user, **serializer.validated_data)
+            run = create_teacher_assignment_run(
+                academic_year_id=serializer.validated_data["academic_year"],
+                created_by=request.user,
+            )
         except (ValueError, DomainValidationError) as error:
             detail = error.detail if isinstance(error, DomainValidationError) else {"detail": str(error)}
             raise ValidationError(detail) from error

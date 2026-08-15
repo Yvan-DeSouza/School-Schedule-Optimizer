@@ -48,6 +48,15 @@ TEACHER_TIMESLOT_COLLISION = "teacher_timeslot_collision"
 TEACHER_SEMESTER_CAPACITY_SHORTAGE = "teacher_semester_capacity_shortage"
 TEACHER_ANNUAL_CAPACITY_SHORTAGE = "teacher_annual_capacity_shortage"
 TEACHER_COURSE_RULE_INFEASIBLE = "teacher_course_rule_infeasible"
+# Candidate-ledger facts identify why a real roster member could not be used
+# for one named staffing decision. They are narrower than stage-level output
+# diagnostics such as ``no_eligible_teacher_for_section``.
+TEACHER_ASSIGNMENT_QUALIFICATION_UNAVAILABLE = "teacher_assignment_qualification_unavailable"
+TEACHER_ASSIGNMENT_TEACHER_UNAVAILABLE = "teacher_assignment_teacher_unavailable"
+TEACHER_ASSIGNMENT_EXACT_TEACHER_LOCKED_ELSEWHERE = "teacher_assignment_exact_teacher_locked_elsewhere"
+TEACHER_ASSIGNMENT_SEMESTER_CAPACITY_EXHAUSTED = "teacher_assignment_semester_capacity_exhausted"
+TEACHER_ASSIGNMENT_ANNUAL_CAPACITY_EXHAUSTED = "teacher_assignment_annual_capacity_exhausted"
+TEACHER_ASSIGNMENT_COURSE_RULE_MAXIMUM_REACHED = "teacher_assignment_course_rule_maximum_reached"
 NO_COMPLETE_TEACHER_ASSIGNMENT = "no_complete_teacher_assignment"
 TEACHER_ASSIGNMENT_INPUT_CHANGED_SINCE_RUN = "teacher_assignment_input_changed_since_run"
 TEACHER_ASSIGNMENT_FIXED_CONTEXT_CHANGED_SINCE_RUN = "teacher_assignment_fixed_context_changed_since_run"

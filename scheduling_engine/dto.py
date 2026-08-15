@@ -917,6 +917,22 @@ class TeacherAssignmentDTO:
 
 
 @dataclass(frozen=True)
+class TeacherAssignmentCandidateLedgerDTO:
+    """Bounded factual candidate evidence for one named staffing decision."""
+
+    decision_kind: str
+    section_ids: Tuple[int, ...]
+    online_supervision_session_id: Optional[int]
+    shared_staffing_key: Optional[str]
+    semester: int
+    timeslot_id: int
+    selection_state: str
+    selected_teacher_id: Optional[int]
+    candidates: Tuple[Mapping[str, object], ...]
+    selection_factors: Tuple[Mapping[str, object], ...] = ()
+
+
+@dataclass(frozen=True)
 class TeacherAssignmentResultDTO:
     """Pure named-teacher recommendation and stable diagnostic evidence."""
 
@@ -927,6 +943,7 @@ class TeacherAssignmentResultDTO:
     diagnostics: Tuple[dict, ...]
     objective_components: Mapping[str, float]
     unassigned_online_supervision_session_ids: Tuple[int, ...] = ()
+    candidate_ledger: Tuple[TeacherAssignmentCandidateLedgerDTO, ...] = ()
 
 
 @dataclass(frozen=True)

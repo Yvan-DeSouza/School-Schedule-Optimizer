@@ -298,6 +298,12 @@ def test_other_stage_summaries_expose_existing_facts_in_the_same_envelope():
     ), {
         "assignment_count": 8,
         "assignments": [{"online_supervision_session_id": 9}],
+        "candidate_ledger": [{
+            "decision_kind": "online_supervision",
+            "candidates": [{
+                "comparison_state": "possible_in_isolation_global_comparison_not_yet_proven",
+            }],
+        }],
         "diagnostics": [],
         "objective_components": {"preferred_course_match": 3},
         "approval_allowed": True,
@@ -319,6 +325,8 @@ def test_other_stage_summaries_expose_existing_facts_in_the_same_envelope():
     assert witness["facts"]["teacher_names_or_assignments_returned"] is False
     online = next(item for item in teacher["factors"] if item["key"] == "online_supervision_qualification_exception")
     assert online["facts"]["course_specific_qualification_required"] is False
+    teacher_ledger = next(item for item in teacher["alternatives"] if item["key"] == "teacher_assignment_candidate_ledger")
+    assert teacher_ledger["facts"]["available"] is True
 
 
 def test_unknown_factor_categories_fail_closed():
