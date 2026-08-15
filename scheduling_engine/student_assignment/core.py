@@ -1331,6 +1331,43 @@ def _solve_student_assignment(data, *, include_lock_costs, include_candidate_led
         | {commitment.student_id for commitment in data.fixed_schedule_commitments}
         | set(fixed_slots)
     )
+    # Objective construction below repeatedly needs the same per-student
+    # request, fixed-context, commitment, and candidate views. Build those
+    # views once so the optional balance objectives do not turn a school-wide
+    # model build into repeated scans of every request/candidate pair.
+    requests_by_student = defaultdict(list)
+    request_course_ids_by_student = defaultdict(set)
+    credit_by_student_course = {}
+    for request in data.requests:
+        requests_by_student[request.student_id].append(request)
+        request_course_ids_by_student[request.student_id].add(request.course_id)
+        credit_by_student_course[request.student_id, request.course_id] = request.credit_value
+    fixed_rows_by_student = defaultdict(list)
+    for row in fixed_rows:
+        fixed_rows_by_student[row.student_id].append(row)
+    active_commitments_by_student = defaultdict(list)
+    for commitment in data.fixed_schedule_commitments:
+        if commitment.is_active and not commitment.is_historical:
+            active_commitments_by_student[commitment.student_id].append(commitment)
+    commitment_variables_by_student = defaultdict(list)
+    for (source_key, index), variable in commitment_variables.items():
+        student_id = commitment_metadata[source_key][0]
+        commitment_variables_by_student[student_id].append((
+            source_key,
+            index,
+            variable,
+        ))
+    candidate_variables_by_student_course_segment = defaultdict(list)
+    for request_id, candidates in request_candidates.items():
+        request = requests_by_id[request_id]
+        for section, variable in candidates:
+            for segment in _request_occupied_half_segments(request, section):
+                candidate_variables_by_student_course_segment[
+                    request.student_id,
+                    request.course_id,
+                    section.semester,
+                    segment,
+                ].append(variable)
     fixed_semesters = {
         (student_id, course_id): {row.semester for row in rows}
         for (student_id, course_id), rows in fixed_courses.items()
@@ -1340,15 +1377,17 @@ def _solve_student_assignment(data, *, include_lock_costs, include_candidate_led
         for student_id in student_ids:
             prerequisite_rows = [
                 (semester, variable)
-                for (candidate_student, course_id, semester), variables_for_course in by_student_course_semester.items()
-                if candidate_student == student_id and course_id == edge.prerequisite_id
-                for variable in variables_for_course
+                for semester in (1, 2)
+                for variable in by_student_course_semester[
+                    student_id, edge.prerequisite_id, semester
+                ]
             ]
             dependent_rows = [
                 (semester, variable)
-                for (candidate_student, course_id, semester), variables_for_course in by_student_course_semester.items()
-                if candidate_student == student_id and course_id == edge.course_id
-                for variable in variables_for_course
+                for semester in (1, 2)
+                for variable in by_student_course_semester[
+                    student_id, edge.course_id, semester
+                ]
             ]
             prerequisite_rows.extend(
                 (semester, None)
@@ -1483,38 +1522,27 @@ def _solve_student_assignment(data, *, include_lock_costs, include_candidate_led
     for student_id in student_ids:
         if student_id in focus_student_ids:
             continue
-        requests_for_student = [
-            request for request in data.requests if request.student_id == student_id
-        ]
-        requested_course_ids = {request.course_id for request in requests_for_student}
-        credit_by_course = {
-            request.course_id: request.credit_value for request in requests_for_student
-        }
+        requested_course_ids = request_course_ids_by_student[student_id]
         semester_1 = sum(
-            round(credit_by_course.get(course_id, 1.0) * 2) * variable
+            round(credit_by_student_course.get((student_id, course_id), 1.0) * 2) * variable
             for course_id in requested_course_ids
             for variable in by_student_course_semester[student_id, course_id, 1]
         )
         semester_2 = sum(
-            round(credit_by_course.get(course_id, 1.0) * 2) * variable
+            round(credit_by_student_course.get((student_id, course_id), 1.0) * 2) * variable
             for course_id in requested_course_ids
             for variable in by_student_course_semester[student_id, course_id, 2]
         )
         semester_1 += sum(
             round(row.credit_value * 2)
-            for row in fixed_rows if row.student_id == student_id and row.semester == 1
+            for row in fixed_rows_by_student[student_id] if row.semester == 1
         )
         semester_2 += sum(
             round(row.credit_value * 2)
-            for row in fixed_rows if row.student_id == student_id and row.semester == 2
+            for row in fixed_rows_by_student[student_id] if row.semester == 2
         )
-        for commitment in data.fixed_schedule_commitments:
-            if (
-                not commitment.is_active
-                or commitment.is_historical
-                or commitment.student_id != student_id
-                or commitment.commitment_kind != "co_op"
-            ):
+        for commitment in active_commitments_by_student[student_id]:
+            if commitment.commitment_kind != "co_op":
                 continue
             commitment_semesters = {
                 semester_by_timeslot.get(timeslot_id)
@@ -1526,10 +1554,10 @@ def _solve_student_assignment(data, *, include_lock_costs, include_candidate_led
                 semester_2 += round(commitment.credit_value * 2)
         # Co-op carries two credits as one linked academic experience. Study
         # and Focus still reserve time, but they are not academic course load.
-        for (source_key, index), variable in commitment_variables.items():
+        for source_key, index, variable in commitment_variables_by_student[student_id]:
             candidate_semester, _occupancy, _pair = commitment_candidates[source_key][index]
             metadata = commitment_metadata[source_key]
-            if metadata[0] != student_id or metadata[1] != "co_op":
+            if metadata[1] != "co_op":
                 continue
             if candidate_semester == 1:
                 semester_1 += 4 * variable
@@ -1555,24 +1583,18 @@ def _solve_student_assignment(data, *, include_lock_costs, include_candidate_led
         difficulty_by_course = {
             item.course_id: item.effective_difficulty for item in data.course_difficulties
         }
-        credit_by_student_course = {
-            (request.student_id, request.course_id): request.credit_value
-            for request in data.requests
-        }
         semester_by_timeslot = {slot.id: slot.semester for slot in data.timeslots}
         for student_id in student_ids:
             if student_id in focus_student_ids:
                 continue
-            requested_course_ids = {
-                request.course_id for request in data.requests if request.student_id == student_id
-            }
+            requested_course_ids = request_course_ids_by_student[student_id]
             semester_1_difficulty = sum(
                 round(difficulty_by_course.get(course_id, 0) * credit_by_student_course.get((student_id, course_id), 1.0)) * variable
                 for course_id in requested_course_ids
                 for variable in by_student_course_semester[student_id, course_id, 1]
             ) + sum(
                 round(difficulty_by_course.get(row.course_id, 0) * row.credit_value)
-                for row in fixed_rows if row.student_id == student_id and row.semester == 1
+                for row in fixed_rows_by_student[student_id] if row.semester == 1
             )
             semester_2_difficulty = sum(
                 round(difficulty_by_course.get(course_id, 0) * credit_by_student_course.get((student_id, course_id), 1.0)) * variable
@@ -1580,15 +1602,9 @@ def _solve_student_assignment(data, *, include_lock_costs, include_candidate_led
                 for variable in by_student_course_semester[student_id, course_id, 2]
             ) + sum(
                 round(difficulty_by_course.get(row.course_id, 0) * row.credit_value)
-                for row in fixed_rows if row.student_id == student_id and row.semester == 2
+                for row in fixed_rows_by_student[student_id] if row.semester == 2
             )
-            for commitment in data.fixed_schedule_commitments:
-                if (
-                    not commitment.is_active
-                    or commitment.is_historical
-                    or commitment.student_id != student_id
-                ):
-                    continue
+            for commitment in active_commitments_by_student[student_id]:
                 semesters = {
                     semester_by_timeslot.get(timeslot_id)
                     for timeslot_id, _segment in commitment.occupancy
@@ -1606,18 +1622,15 @@ def _solve_student_assignment(data, *, include_lock_costs, include_candidate_led
                     semester_1_difficulty += contribution
                 if 2 in semesters:
                     semester_2_difficulty += contribution
-            for (source_key, index), variable in commitment_variables.items():
+            for source_key, index, variable in commitment_variables_by_student[student_id]:
                 candidate_semester, _occupancy, _pair = commitment_candidates[source_key][index]
                 metadata = commitment_metadata[source_key]
-                if metadata[0] != student_id:
-                    continue
                 if metadata[1] == "co_op":
                     contribution = round(
                         difficulty_by_course.get(metadata[4], 0)
                         * next(
                             request.credit_value
-                            for request in data.requests
-                            if request.request_id == metadata[2]
+                            for request in (requests_by_id[metadata[2]],)
                         )
                     )
                 elif metadata[1] == "study":
@@ -1671,10 +1684,8 @@ def _solve_student_assignment(data, *, include_lock_costs, include_candidate_led
         for student_id in student_ids:
             if student_id in focus_student_ids:
                 continue
-            course_ids = {
-                request.course_id for request in data.requests if request.student_id == student_id
-            } | {
-                row.course_id for row in fixed_rows if row.student_id == student_id
+            course_ids = request_course_ids_by_student[student_id] | {
+                row.course_id for row in fixed_rows_by_student[student_id]
             }
             for course_id in course_ids:
                 for semester in (1, 2):
@@ -1685,17 +1696,14 @@ def _solve_student_assignment(data, *, include_lock_costs, include_candidate_led
                         ]:
                             course_segment_presence[key] = 1
                             continue
-                        variables_for_course = [
-                            variable
-                            for request_id, candidates in request_candidates.items()
-                            for section, variable in candidates
-                            if requests_by_id[request_id].student_id == student_id
-                            and requests_by_id[request_id].course_id == course_id
-                            and section.semester == semester
-                            and segment in _request_occupied_half_segments(
-                                requests_by_id[request_id], section
-                            )
-                        ]
+                        variables_for_course = (
+                            candidate_variables_by_student_course_segment[
+                                student_id,
+                                course_id,
+                                semester,
+                                segment,
+                            ]
+                        )
                         if not variables_for_course:
                             course_segment_presence[key] = 0
                             continue
@@ -1708,9 +1716,9 @@ def _solve_student_assignment(data, *, include_lock_costs, include_candidate_led
             if student_id in focus_student_ids:
                 continue
             course_ids = sorted({
-                request.course_id for request in data.requests if request.student_id == student_id
+                request.course_id for request in requests_by_student[student_id]
             } | {
-                row.course_id for row in fixed_rows if row.student_id == student_id
+                row.course_id for row in fixed_rows_by_student[student_id]
             })
             for index, left_course_id in enumerate(course_ids):
                 for right_course_id in course_ids[index + 1:]:

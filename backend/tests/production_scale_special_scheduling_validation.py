@@ -37,6 +37,12 @@ from backend.apps.constraints.models import (
     TeacherAvailability,
     TeacherQualification,
 )
+from backend.apps.courses.constants import (
+    COURSE_ALLOWED_SEMESTER_1_ONLY,
+    COURSE_ALLOWED_SEMESTER_2_ONLY,
+    COURSE_DELIVERY_KIND_CO_OP,
+    COURSE_DURATION_FULL_SEMESTER,
+)
 from backend.apps.courses.models import (
     Course,
     CourseRequest,
@@ -49,6 +55,8 @@ from backend.apps.courses.models import (
 from backend.apps.courses.services.offerings import ensure_academic_year_offerings
 from backend.apps.people.models import Student, Teacher
 from backend.apps.scheduling.constants import (
+    CO_OP_BLOCK_PAIR_A_B,
+    CO_OP_BLOCK_PAIR_C_D,
     STUDENT_ASSIGNMENT_RUN_SCOPE_SCOPED,
     STUDENT_ASSIGNMENT_STAFFING_MODE_FINAL_STAFFING,
 )
@@ -538,7 +546,35 @@ def _special_request_rows(*, academic_year):
     return course_requests, commitment_requests
 
 
-def _create_special_locks(*, academic_year, timeslots, counselor_user):
+def _co_op_lock_target(*, course_request, academic_year):
+    """Choose one exact fixture target outside a student's forced local term.
+
+    The production-scale fixture must exercise a real hard Co-op lock, but it
+    must not manufacture a counselor decision that is already impossible: four
+    full-semester local requests restricted to one term occupy A-D before
+    Co-op's paired A+B/C+D commitment can be considered.
+    """
+
+    forced_request_counts = {
+        semester: CourseRequest.objects.filter(
+            student=course_request.student,
+            academic_year=academic_year,
+            is_mandatory=True,
+            course__duration=COURSE_DURATION_FULL_SEMESTER,
+            course__allowed_semester=(
+                COURSE_ALLOWED_SEMESTER_1_ONLY
+                if semester == 1
+                else COURSE_ALLOWED_SEMESTER_2_ONLY
+            ),
+        ).exclude(course__delivery_kind=COURSE_DELIVERY_KIND_CO_OP).count()
+        for semester in (1, 2)
+    }
+    semester = min(forced_request_counts, key=lambda item: (forced_request_counts[item], item))
+    assert forced_request_counts[semester] < 4
+    return semester, CO_OP_BLOCK_PAIR_A_B if semester == 2 else CO_OP_BLOCK_PAIR_C_D
+
+
+def _create_special_locks(*, academic_year, timeslots, counselor_user, focus_semesters):
     """Create exact and exclusion locks only after real session placement exists."""
 
     by_delivery, commitments = _special_request_rows(academic_year=academic_year)
@@ -568,13 +604,19 @@ def _create_special_locks(*, academic_year, timeslots, counselor_user):
                 # sort earlier in this scale population.
                 if sum(lock.lock_type == "focus_semester" for lock in locks) >= 12:
                     continue
+                focus_semester = focus_semesters[row.student_id]["focus_semester"]
+                # Excluding the opposite semester is the equivalent hard
+                # restriction to an exact focus-semester lock.  Keep both lock
+                # modes in the fixture while preserving the student's known
+                # external-program semester.
+                is_exact = len(locks) % 2 == 0
                 locks.append(create_student_special_commitment_lock(
                     academic_year=academic_year,
                     created_by=counselor_user,
                     lock_type="focus_semester",
-                    lock_mode="exact" if len(locks) % 2 == 0 else "exclude",
+                    lock_mode="exact" if is_exact else "exclude",
                     schedule_commitment_request=row,
-                    semester=1 if len(locks) % 2 == 0 else 2,
+                    semester=focus_semester if is_exact else 3 - focus_semester,
                     reason="Exercise reviewed Focus-semester restriction at production scale.",
                 ))
     online_rows = [row for (_student_id, delivery), rows in by_delivery.items() if delivery == "online" for row in rows]
@@ -590,14 +632,19 @@ def _create_special_locks(*, academic_year, timeslots, counselor_user):
             reason="Exercise reviewed online-supervision time restriction at production scale.",
         ))
     for index, row in enumerate(co_op_rows[:12]):
+        semester, co_op_block_pair = _co_op_lock_target(
+            course_request=row,
+            academic_year=academic_year,
+        )
+        is_exact = index < 6
         locks.append(create_student_special_commitment_lock(
             academic_year=academic_year,
             created_by=counselor_user,
             lock_type="co_op_time",
-            lock_mode="exact" if index < 6 else "exclude",
+            lock_mode="exact" if is_exact else "exclude",
             course_request=row,
-            semester=1 if index % 2 == 0 else 2,
-            co_op_block_pair="a_b" if index % 2 == 0 else "c_d",
+            semester=semester if is_exact else 3 - semester,
+            co_op_block_pair=co_op_block_pair,
             reason="Exercise reviewed Co-op time restriction at production scale.",
         ))
     return locks
@@ -870,7 +917,7 @@ def run_production_scale_special_scheduling_validation(*, counselor_user, prefix
     )
     teachers = _bulk_teachers(prefix=prefix, qualifications=catalogue["qualifications"])
     students = _bulk_students(academic_year=academic_year, prefix=prefix)
-    profile_counts, _focus_semesters = _create_requests(
+    profile_counts, focus_semesters = _create_requests(
         academic_year=academic_year,
         students=students,
         catalogue=catalogue,
@@ -975,6 +1022,7 @@ def run_production_scale_special_scheduling_validation(*, counselor_user, prefix
         academic_year=academic_year,
         timeslots=timeslots,
         counselor_user=counselor_user,
+        focus_semesters=focus_semesters,
     )
     student_run = _elapsed(stage_seconds, "student_assignment", lambda: create_student_assignment_run(
         academic_year=academic_year,
