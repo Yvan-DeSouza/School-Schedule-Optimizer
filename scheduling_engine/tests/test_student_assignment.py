@@ -2,7 +2,8 @@
 
 from ortools.sat.python import cp_model
 
-import scheduling_engine.student_assignment as student_assignment_module
+import scheduling_engine.student_assignment.core as student_assignment_module
+import scheduling_engine.student_assignment.solver as student_assignment_solver
 from scheduling_engine.dto import (
     CourseCategoryRelationshipDTO,
     CourseDifficultyDTO,
@@ -890,12 +891,12 @@ def test_later_lexicographic_timeout_returns_the_prior_valid_incumbent(monkeypat
     timed_out = _ControlledSolver(cp_model.UNKNOWN)
     solvers = iter((incumbent, timed_out))
     monkeypatch.setattr(
-        student_assignment_module,
-        "_new_solver",
+        student_assignment_solver,
+        "new_solver",
         lambda *_args, **_kwargs: next(solvers),
     )
 
-    solver, outcome = student_assignment_module._solve_lexicographically(
+    solver, outcome = student_assignment_solver.solve_lexicographically(
         model,
         (mandatory, primary),
         1.0,
@@ -914,12 +915,12 @@ def test_lexicographic_solver_skips_constant_objective_slots(monkeypatch):
     mandatory = model.NewBoolVar("mandatory")
     solver = _ControlledSolver(cp_model.OPTIMAL, value=0)
     monkeypatch.setattr(
-        student_assignment_module,
-        "_new_solver",
+        student_assignment_solver,
+        "new_solver",
         lambda *_args, **_kwargs: solver,
     )
 
-    returned_solver, outcome = student_assignment_module._solve_lexicographically(
+    returned_solver, outcome = student_assignment_solver.solve_lexicographically(
         model,
         (0, mandatory),
         1.0,
@@ -936,12 +937,12 @@ def test_all_constant_objectives_still_return_a_reviewable_feasibility_result(mo
     model = cp_model.CpModel()
     solver = _ControlledSolver(cp_model.OPTIMAL)
     monkeypatch.setattr(
-        student_assignment_module,
-        "_new_solver",
+        student_assignment_solver,
+        "new_solver",
         lambda *_args, **_kwargs: solver,
     )
 
-    returned_solver, outcome = student_assignment_module._solve_lexicographically(
+    returned_solver, outcome = student_assignment_solver.solve_lexicographically(
         model,
         (0, 0),
         1.0,
@@ -957,12 +958,12 @@ def test_lexicographic_infeasibility_without_an_incumbent_remains_infeasible(mon
     mandatory = model.NewBoolVar("mandatory")
     solver = _ControlledSolver(cp_model.INFEASIBLE)
     monkeypatch.setattr(
-        student_assignment_module,
-        "_new_solver",
+        student_assignment_solver,
+        "new_solver",
         lambda *_args, **_kwargs: solver,
     )
 
-    returned_solver, outcome = student_assignment_module._solve_lexicographically(
+    returned_solver, outcome = student_assignment_solver.solve_lexicographically(
         model,
         (mandatory,),
         1.0,

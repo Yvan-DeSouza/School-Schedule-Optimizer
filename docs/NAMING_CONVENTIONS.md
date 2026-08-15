@@ -81,9 +81,14 @@ Constants belong in the domain module that owns them:
 - qualification values: `backend/apps/constraints/constants.py`
 - planning values: `backend/apps/scheduling/constants.py`
 - solver diagnostics: `scheduling_engine/diagnostics.py`
+- pure scheduling-engine values shared by engine modules:
+  `scheduling_engine/constants.py`
 
 `backend/apps/common/constants.py` is a compatibility export only. New code
 should not add authoritative definitions there.
+
+`scheduling_engine/constants.py` must remain Django-free. It owns shared
+engine vocabulary only; Django-owned domain values remain in their owning app.
 
 Local constants are allowed when they are truly private to one module, but
 shared values must not be duplicated across modules.
