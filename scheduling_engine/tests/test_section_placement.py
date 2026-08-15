@@ -9,6 +9,7 @@ from scheduling_engine.dto import (
     PlacementUnitDTO,
     TimeSlotDTO,
 )
+from ortools.sat.python import cp_model
 import scheduling_engine.section_placement as section_placement
 from scheduling_engine.section_placement import solve_section_placement
 
@@ -46,6 +47,40 @@ def test_annual_unit_respects_semester_only_rule_and_never_returns_teacher():
     assert result.assignments[0].semester == 2
     assert not hasattr(result.assignments[0], "teacher_id")
     assert result.staffing_summary["teacher_names_or_assignments_returned"] is False
+
+
+def test_complete_feasibility_seed_selects_one_slot_per_unit_not_every_candidate_slot():
+    """A complete seed must not make mutually exclusive timing choices all true."""
+
+    unit = PlacementUnitDTO(
+        "section:1", 1, (1,), (1,), section_id=1, fixed_semester=1,
+    )
+    data = PlacementInputDTO(
+        academic_year_id=1,
+        input_mode="fixed_semester",
+        units=(unit,),
+        fixed_placements=(),
+        timeslots=_slots(),
+        teachers=(_teacher(),),
+        conflicts=(),
+    )
+    model = cp_model.CpModel()
+    placement_vars = {
+        (unit.key, slot.id): model.NewBoolVar(f"placement_{slot.id}")
+        for slot in _slots()
+        if slot.semester == 1
+    }
+    model.Add(sum(placement_vars.values()) <= 1)
+    seed = section_placement._solve_complete_timing_seed(
+        model,
+        data,
+        {slot.id: slot for slot in data.timeslots},
+        (unit,),
+        placement_vars,
+        1,
+    )
+
+    assert seed is not None
 
 
 def test_multiple_locks_are_exact_and_teacher_witness_prevents_same_block_collision():

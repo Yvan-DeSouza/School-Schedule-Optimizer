@@ -38,6 +38,10 @@ FEASIBILITY_SEED_WORKER_COUNT = 8
 TIMING_OBJECTIVE_WORKER_COUNT = 1
 ONLINE_DEMAND_WITNESS_TIME_LIMIT_SECONDS = 2.0
 ANONYMOUS_STAFFING_RETRY_LIMIT = 20
+# The integrated teacher-identity formulation is retained only for the small,
+# tightly constrained cases where it is a safe way to improve a valid seed.
+# Large runs keep the seed instead of reintroducing teacher-permutation search.
+INTEGRATED_FALLBACK_MAX_UNITS = 80
 
 
 def _new_solver(time_limit_seconds, *, worker_count):
@@ -374,6 +378,7 @@ def _has_anonymous_staffing_witness(data, timeslots, selected_timeslot_by_unit):
 
     model = cp_model.CpModel()
     candidate_vars = {}
+    unit_by_key = {unit.key: unit for unit in data.units}
     for unit in sorted(data.units, key=_unit_sort_key):
         timeslot_id = selected_timeslot_by_unit.get(unit.key)
         if timeslot_id is None:
@@ -419,7 +424,6 @@ def _has_anonymous_staffing_witness(data, timeslots, selected_timeslot_by_unit):
                 model.Add(left == right)
                 workload_representative[right.Index()] = left
 
-    unit_by_key = {unit.key: unit for unit in data.units}
     teachers = {teacher.id: teacher for teacher in data.teachers}
     fixed_teacher_times = {
         (item.teacher_id, item.timeslot_id)
@@ -469,37 +473,85 @@ def _extract_timing_candidate(units, timeslots, placement_vars, solver):
     return selected
 
 
-def _solve_complete_timing_seed(model, placed, time_limit_seconds):
-    """Find a complete timing incumbent before bounded objective improvement."""
+def _solve_complete_timing_seed(
+    model,
+    data,
+    timeslots,
+    units,
+    placement_vars,
+    time_limit_seconds,
+):
+    """Find a complete timing incumbent before bounded objective improvement.
 
-    if not placed:
+    A complete placement means one selected slot for each physical unit, not
+    every eligible ``unit × slot`` variable selected.  The latter is mutually
+    exclusive by construction and makes a feasible seed falsely infeasible.
+    """
+
+    if not placement_vars:
         return None
     seed_model = model.Clone()
-    seed_placed = [
-        seed_model.GetIntVarFromProtoIndex(variable.Index())
-        for variable in placed
-    ]
-    seed_model.Add(sum(seed_placed) == len(seed_placed))
+    seed_placement_vars = {
+        key: seed_model.GetIntVarFromProtoIndex(variable.Index())
+        for key, variable in placement_vars.items()
+    }
+    for unit in units:
+        unit_placements = [
+            variable
+            for (unit_key, _timeslot_id), variable in seed_placement_vars.items()
+            if unit_key == unit.key
+        ]
+        if not unit_placements:
+            return None
+        seed_model.AddExactlyOne(unit_placements)
+
+    # A timing-only seed can choose a complete block pattern whose staffing
+    # witness is impossible. This compact seed therefore carries the private
+    # exact anonymous matching proof, while the large timing-objective model
+    # remains identity-free. No seed teacher identity is returned or persisted.
+    _add_anonymous_staffing_feasibility_constraints(
+        seed_model,
+        data,
+        timeslots,
+        seed_placement_vars,
+    )
     solver = _new_solver(
         min(float(time_limit_seconds), FEASIBILITY_SEED_TIME_LIMIT_SECONDS),
         worker_count=FEASIBILITY_SEED_WORKER_COUNT,
     )
-    # Parallelism is limited to the private feasibility seed. The production
-    # objective remains one-worker deterministic, and the seed is accepted
-    # only after the exact deterministic staffing witness validates it.
     status = solver.Solve(seed_model)
-    return solver if _has_solution(status) else None
+    if not _has_solution(status):
+        return None
+    candidate = _extract_timing_candidate(
+        units,
+        timeslots,
+        seed_placement_vars,
+        solver,
+    )
+    return (
+        solver
+        if _is_validated_complete_timing_candidate(
+            data,
+            timeslots,
+            units,
+            candidate,
+        )
+        else None
+    )
 
 
-def _set_solver_hints(model, solver):
-    """Carry a validated complete seed into the timing objective model."""
+def _set_solver_hints(model, solver, placement_vars):
+    """Carry only timing decisions from a validated seed into the objective.
+
+    The objective adds auxiliary collision variables after the seed solve.  They
+    were not part of the seed model, so hinting every proto variable would make
+    the seed appear to prescribe facts it never decided.  Timing variables are
+    the shared decision surface and are the only safe, useful hints here.
+    """
 
     model.ClearHints()
-    for index in range(len(model.Proto().variables)):
-        model.AddHint(
-            model.GetIntVarFromProtoIndex(index),
-            solver.Value(model.GetIntVarFromProtoIndex(index)),
-        )
+    for variable in placement_vars.values():
+        model.AddHint(variable, solver.Value(variable))
 
 
 def _is_validated_complete_timing_candidate(data, timeslots, units, candidate):
@@ -523,6 +575,106 @@ def _exclude_timing_candidate(model, placement_vars, candidate):
         placement_vars[unit_key, timeslot_id].Not()
         for unit_key, timeslot_id in candidate.items()
     ])
+
+
+def _add_anonymous_staffing_feasibility_constraints(
+    model,
+    data,
+    timeslots,
+    placement_vars,
+):
+    """Add the private exact anonymous matching proof to a placement model.
+
+    The normal placement search intentionally optimizes only recurring timing
+    and proves staffing afterward.  Building one Boolean for every eligible
+    ``unit × slot × teacher`` combination in that primary model defeats that
+    separation through anonymous-teacher symmetry.  This exact integrated
+    formulation is used only by a compact feasibility seed and by the bounded
+    fallback; it restores every staffing hard rule and never relaxes the
+    normal contract.
+    """
+
+    candidate_vars = {}
+    for unit in sorted(data.units, key=_unit_sort_key):
+        slots, candidates = _eligible_candidates(data, unit, timeslots)
+        for slot in slots:
+            variables = []
+            for candidate_slot, teacher in candidates:
+                if candidate_slot.id != slot.id:
+                    continue
+                variable = model.NewBoolVar(
+                    f"fallback_teacher_{unit.key}_{slot.id}_{teacher.id}"
+                )
+                candidate_vars[unit.key, slot.id, teacher.id] = variable
+                variables.append(variable)
+            placement = placement_vars.get((unit.key, slot.id))
+            if placement is not None:
+                model.Add(sum(variables) == placement)
+
+    workload_representative = {}
+    paired_units = defaultdict(list)
+    for unit in data.units:
+        if unit.shared_staffing_key:
+            paired_units[unit.shared_staffing_key].append(unit)
+    for pair_key, pair_units in paired_units.items():
+        if len(pair_units) != 2:
+            raise ValueError(
+                f"Shared half-semester staffing key {pair_key} must identify exactly two units."
+            )
+        first, second = sorted(pair_units, key=_unit_sort_key)
+        first_vars = {
+            (slot_id, teacher_id): variable
+            for (unit_key, slot_id, teacher_id), variable in candidate_vars.items()
+            if unit_key == first.key
+        }
+        second_vars = {
+            (slot_id, teacher_id): variable
+            for (unit_key, slot_id, teacher_id), variable in candidate_vars.items()
+            if unit_key == second.key
+        }
+        for candidate_key in set(first_vars) | set(second_vars):
+            left, right = first_vars.get(candidate_key), second_vars.get(candidate_key)
+            if left is None:
+                model.Add(right == 0)
+            elif right is None:
+                model.Add(left == 0)
+            else:
+                model.Add(left == right)
+                workload_representative[right.Index()] = left
+
+    unit_by_key = {unit.key: unit for unit in data.units}
+    teachers = {teacher.id: teacher for teacher in data.teachers}
+    fixed_teacher_times = {
+        (item.teacher_id, item.timeslot_id)
+        for item in data.fixed_placements
+        if item.teacher_id is not None
+    }
+    by_teacher_slot = defaultdict(list)
+    by_teacher_semester = defaultdict(list)
+    by_teacher_annual = defaultdict(list)
+    seen_workload_rows = set()
+    for (unit_key, slot_id, teacher_id), variable in candidate_vars.items():
+        variable = workload_representative.get(variable.Index(), variable)
+        workload_key = teacher_id, slot_id, variable.Index()
+        if workload_key in seen_workload_rows:
+            continue
+        seen_workload_rows.add(workload_key)
+        by_teacher_slot[teacher_id, slot_id].append(variable)
+        by_teacher_semester[teacher_id, timeslots[slot_id].semester].append(variable)
+        by_teacher_annual[teacher_id].append(variable)
+    for (teacher_id, slot_id), variables in by_teacher_slot.items():
+        model.Add(sum(variables) <= (
+            0 if (teacher_id, slot_id) in fixed_teacher_times else 1
+        ))
+    for (teacher_id, semester), variables in by_teacher_semester.items():
+        capacity = (
+            teachers[teacher_id].remaining_semester_1
+            if semester == 1
+            else teachers[teacher_id].remaining_semester_2
+        )
+        model.Add(sum(variables) <= capacity)
+    for teacher_id, variables in by_teacher_annual.items():
+        model.Add(sum(variables) <= teachers[teacher_id].remaining_annual)
 
 
 def _placement_assignments_from_candidate(units, timeslots, candidate):
@@ -549,7 +701,6 @@ def _placement_assignments_from_candidate(units, timeslots, candidate):
 
 def _solve_validated_complete_timing_seed(
     model,
-    placed,
     data,
     timeslots,
     units,
@@ -559,18 +710,12 @@ def _solve_validated_complete_timing_seed(
 
     seed_solver = _solve_complete_timing_seed(
         model,
-        placed,
+        data,
+        timeslots,
+        units,
+        placement_vars,
         data.time_limit_seconds,
     )
-    if seed_solver is None:
-        return None
-    seed_candidate = _extract_timing_candidate(
-        units, timeslots, placement_vars, seed_solver,
-    )
-    if not _is_validated_complete_timing_candidate(
-        data, timeslots, units, seed_candidate,
-    ):
-        return None
     return seed_solver
 
 
@@ -581,8 +726,6 @@ def _solve_timing_objective_with_staffing_validation(
     units,
     placement_vars,
     validated_seed_solver,
-    by_teacher_slot,
-    fixed_teacher_times,
 ):
     """Solve the timing objective without ever accepting an unstaffable result.
 
@@ -595,17 +738,30 @@ def _solve_timing_objective_with_staffing_validation(
     """
 
     if validated_seed_solver is not None:
-        _set_solver_hints(model, validated_seed_solver)
+        _set_solver_hints(model, validated_seed_solver, placement_vars)
     solver = _new_solver(
         data.time_limit_seconds,
         worker_count=TIMING_OBJECTIVE_WORKER_COUNT,
     )
     status = solver.Solve(model)
-    if not _has_solution(status) and validated_seed_solver is not None:
+    if validated_seed_solver is not None:
         # A validated feasibility seed remains a safe complete recommendation
-        # when later soft-objective improvement reaches its time limit.
-        solver = validated_seed_solver
-        status = cp_model.FEASIBLE
+        # when the later timing-objective pass times out or proposes a timing
+        # pattern whose exact anonymous staffing proof fails. Retaining it is
+        # safer than spending repeated full objective budgets on unstaffable
+        # candidates, and it never lowers a legal objective candidate that the
+        # witness has actually validated.
+        if not _has_solution(status):
+            return validated_seed_solver, cp_model.FEASIBLE
+        candidate = _extract_timing_candidate(
+            units, timeslots, placement_vars, solver,
+        )
+        if _is_validated_complete_timing_candidate(
+            data, timeslots, units, candidate,
+        ):
+            return solver, status
+        if len(units) > INTEGRATED_FALLBACK_MAX_UNITS:
+            return validated_seed_solver, cp_model.FEASIBLE
 
     for _attempt in range(ANONYMOUS_STAFFING_RETRY_LIMIT):
         if not _has_solution(status):
@@ -647,10 +803,12 @@ def _solve_timing_objective_with_staffing_validation(
         # candidates fail staffing and the original combined search can find a
         # different legal arrangement directly. It restores—not relaxes—the
         # one-teacher-per-block constraints for the final bounded solve.
-        for (teacher_id, slot_id), variables in by_teacher_slot.items():
-            model.Add(sum(variables) <= (
-                0 if (teacher_id, slot_id) in fixed_teacher_times else 1
-            ))
+        _add_anonymous_staffing_feasibility_constraints(
+            model,
+            data,
+            timeslots,
+            placement_vars,
+        )
         solver = _new_solver(
             data.time_limit_seconds,
             worker_count=TIMING_OBJECTIVE_WORKER_COUNT,
@@ -665,11 +823,10 @@ def solve_section_placement(data: PlacementInputDTO) -> PlacementResultDTO:
     compiled = compile_section_placement_constraints(data)
     timeslots = compiled["timeslots"]
     model = cp_model.CpModel()
-    candidate_vars = {}
     placement_vars = {}
     diagnostics = []
 
-    for unit in sorted(data.units, key=lambda item: item.key):
+    for unit in sorted(data.units, key=_unit_sort_key):
         slots, candidates = _eligible_candidates(data, unit, timeslots)
         if not set(unit.allowed_semesters) if unit.fixed_semester is None else not ({unit.fixed_semester} & set(unit.allowed_semesters)):
             diagnostics.append({"code": NO_LEGAL_SEMESTER, "unit_key": unit.key})
@@ -677,21 +834,13 @@ def solve_section_placement(data: PlacementInputDTO) -> PlacementResultDTO:
             diagnostics.append({"code": NO_AVAILABLE_TIMESLOT, "unit_key": unit.key})
         elif not candidates:
             diagnostics.append({"code": NO_ELIGIBLE_TEACHER, "unit_key": unit.key})
+        eligible_slot_ids = {slot.id for slot, _teacher in candidates}
         vars_for_unit = []
-        for slot, teacher in candidates:
-            variable = model.NewBoolVar(f"w_{unit.key}_{slot.id}_{teacher.id}")
-            candidate_vars[unit.key, slot.id, teacher.id] = variable
-            vars_for_unit.append(variable)
         for slot in slots:
-            variables = [
-                candidate_vars[unit.key, slot.id, teacher.id]
-                for _slot, teacher in candidates
-                if _slot.id == slot.id
-            ]
-            if variables:
+            if slot.id in eligible_slot_ids:
                 placement = model.NewBoolVar(f"p_{unit.key}_{slot.id}")
-                model.Add(sum(variables) == placement)
                 placement_vars[unit.key, slot.id] = placement
+                vars_for_unit.append(placement)
         if vars_for_unit:
             model.Add(sum(vars_for_unit) <= 1)
 
@@ -720,11 +869,10 @@ def solve_section_placement(data: PlacementInputDTO) -> PlacementResultDTO:
         model, data, timeslots, online_session_options,
     )
 
-    # A configured trimestre pair is sequential delivery by one qualified
-    # teacher in one recurring block. Equalizing the hidden (slot, teacher)
-    # witnesses proves both timing and shared staffing without leaking a named
-    # teacher into the placement result.
-    workload_representative = {}
+    # A configured trimestre pair shares one recurring block. The separate
+    # exact staffing witness later proves that one qualified teacher can cover
+    # both sequential halves; carrying teacher permutations through the timing
+    # objective would duplicate that hidden proof and reintroduce symmetry.
     paired_units = defaultdict(list)
     for unit in data.units:
         if unit.shared_staffing_key:
@@ -732,61 +880,30 @@ def solve_section_placement(data: PlacementInputDTO) -> PlacementResultDTO:
     for pair_key, pair_units in paired_units.items():
         if len(pair_units) != 2:
             raise ValueError(f"Shared half-semester staffing key {pair_key} must identify exactly two units.")
-        first, second = sorted(pair_units, key=lambda item: item.key)
+        first, second = sorted(pair_units, key=_unit_sort_key)
         first_vars = {
-            (slot_id, teacher_id): variable
-            for (unit_key, slot_id, teacher_id), variable in candidate_vars.items()
+            slot_id: variable
+            for (unit_key, slot_id), variable in placement_vars.items()
             if unit_key == first.key
         }
         second_vars = {
-            (slot_id, teacher_id): variable
-            for (unit_key, slot_id, teacher_id), variable in candidate_vars.items()
+            slot_id: variable
+            for (unit_key, slot_id), variable in placement_vars.items()
             if unit_key == second.key
         }
-        for candidate_key in set(first_vars) | set(second_vars):
-            left = first_vars.get(candidate_key)
-            right = second_vars.get(candidate_key)
+        for slot_id in set(first_vars) | set(second_vars):
+            left, right = first_vars.get(slot_id), second_vars.get(slot_id)
             if left is None:
                 model.Add(right == 0)
             elif right is None:
                 model.Add(left == 0)
             else:
                 model.Add(left == right)
-                workload_representative[right.Index()] = left
-
-    # A witness teacher may never cover concurrent candidate sections. Accepted
-    # assignments outside this run reserve their teacher/time pair first.
-    fixed_teacher_times = {(item.teacher_id, item.timeslot_id) for item in data.fixed_placements if item.teacher_id is not None}
-    by_teacher_slot = defaultdict(list)
-    by_teacher_semester = defaultdict(list)
-    by_teacher_annual = defaultdict(list)
-    seen_workload_rows = set()
-    for (unit_key, slot_id, teacher_id), variable in candidate_vars.items():
-        variable = workload_representative.get(variable.Index(), variable)
-        workload_key = (teacher_id, slot_id, variable.Index())
-        if workload_key in seen_workload_rows:
-            continue
-        seen_workload_rows.add(workload_key)
-        by_teacher_slot[teacher_id, slot_id].append(variable)
-        by_teacher_semester[teacher_id, timeslots[slot_id].semester].append(variable)
-        by_teacher_annual[teacher_id].append(variable)
-    teachers = {item.id: item for item in data.teachers}
-    # Per-block collision proof is intentionally evaluated after a timing
-    # candidate is selected by ``_has_anonymous_staffing_witness``. Keeping
-    # the anonymous matching variables out of the large timing objective avoids
-    # symmetric teacher permutations, while the separate exact witness retains
-    # the same hard one-teacher-per-block rule before a run is complete.
-    for (teacher_id, semester), variables in by_teacher_semester.items():
-        capacity = teachers[teacher_id].remaining_semester_1 if semester == 1 else teachers[teacher_id].remaining_semester_2
-        model.Add(sum(variables) <= capacity)
-    for teacher_id, variables in by_teacher_annual.items():
-        model.Add(sum(variables) <= teachers[teacher_id].remaining_annual)
 
     units = sorted(data.units, key=_unit_sort_key)
     placed = list(placement_vars.values())
     validated_seed_solver = _solve_validated_complete_timing_seed(
         model,
-        placed,
         data,
         timeslots,
         units,
@@ -879,8 +996,6 @@ def solve_section_placement(data: PlacementInputDTO) -> PlacementResultDTO:
         units,
         placement_vars,
         validated_seed_solver,
-        by_teacher_slot,
-        fixed_teacher_times,
     )
     status_name = _solver_outcome_name(status)
 
