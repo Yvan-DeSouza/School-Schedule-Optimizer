@@ -173,6 +173,15 @@ individually eligible requests impossible together. In that case the
 hard-feasibility stage must return `infeasible`; neither a seed nor the later
 lexicographic stage may present an incomplete result as complete.
 
+Placement now rejects the narrower, provable upstream subset of those failures:
+for a same-semester full-course pathway, it enforces aggregate Hall-style
+capacity lower bounds across every A-D block subset. That prevents an accepted
+timing pattern from having adequate annual seats while lacking the block-level
+capacity the pathway necessarily needs. This remains an anonymous placement
+guard, not an early enrollment allocation; the hard-feasibility stage remains
+the authority for complete personal schedules, special commitments, locks,
+fixed enrollment context, and all other student-level rules.
+
 On the deterministic 1,400-student benchmark, this architecture returned all
 9,800 assignments with no unmet request in 91.187 seconds (the final objective
 pass reported `unknown` after retaining the complete incumbent). This remains

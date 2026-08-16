@@ -30,7 +30,7 @@ from scheduling_engine.dto import (
     PlanningOfferingDTO,
     FixedPlacementDTO, PlacementConflictDTO, PlacementInputDTO,
     PlacementTeacherDTO, PlacementUnitDTO, OnlineSupervisionPlacementSessionDTO,
-    OnlineSupervisionDemandDTO,
+    OnlineSupervisionDemandDTO, PlacementStudentTimetableDemandDTO,
     FixedTeacherAssignmentDTO, TeacherAssignmentInputDTO,
     TeacherAssignmentSectionDTO, TeacherAssignmentTeacherDTO,
     TeacherCourseAssignmentRuleDTO,
@@ -77,7 +77,11 @@ from backend.apps.courses.models import (
     HalfSemesterSectionPair,
     Section,
 )
-from backend.apps.courses.constants import ENROLLMENT_LIFECYCLE_ACTIVE
+from backend.apps.courses.constants import (
+    COURSE_DELIVERY_KIND_NORMAL_INSTRUCTION,
+    COURSE_DURATION_FULL_SEMESTER,
+    ENROLLMENT_LIFECYCLE_ACTIVE,
+)
 from backend.apps.courses.services.difficulty import course_difficulty_facts
 from backend.apps.courses.selectors import (
     active_delivery_groups_for_year,
@@ -1611,7 +1615,17 @@ def load_section_placement_input(*, academic_year_id, input_mode, budget_approva
             if schedule:
                 if schedule.timeslot_id is None:
                     raise ValueError(f"Section {section.id} has a schedule row without accepted timing.")
-                fixed.append(FixedPlacementDTO(section.id, schedule.timeslot_id, fixed_teacher_id))
+                fixed.append(FixedPlacementDTO(
+                    section.id,
+                    schedule.timeslot_id,
+                    fixed_teacher_id,
+                    member_course_ids=tuple(
+                        section.delivery_group.offerings.values_list(
+                            "course_id", flat=True,
+                        ) if section.delivery_group_id else (section.course_id,)
+                    ),
+                    capacity_max=section.capacity_max,
+                ))
                 continue
             if (
                 section.planning_approval_course_id is None
@@ -1640,6 +1654,7 @@ def load_section_placement_input(*, academic_year_id, input_mode, budget_approva
                 locked_teacher_id=lock.locked_teacher_id if lock else None,
                 source_mode=input_mode,
                 shared_staffing_key=paired_section_key.get(section.id),
+                capacity_max=section.capacity_max,
             ))
     else:
         if budget_approval is None:
@@ -1673,6 +1688,7 @@ def load_section_placement_input(*, academic_year_id, input_mode, budget_approva
                     allowed_semesters=allowed,
                     locked_timeslot_id=lock.locked_timeslot_id if lock else None,
                     annual_index=annual_index, source_mode=input_mode,
+                    capacity_max=group.capacity_profile.hard_max,
                 ))
         out_of_range = [
             f"{group_id}:{index}"
@@ -1752,6 +1768,26 @@ def load_section_placement_input(*, academic_year_id, input_mode, budget_approva
         ).select_related("course").order_by("id")
     )
 
+    # This private placement witness consumes only completion-defining normal
+    # full-semester demand. It proves that the accepted section timing can
+    # carry known mandatory/primary pathways without creating early rosters or
+    # duplicating the later special-commitment student-assignment model.
+    student_timetable_demands = tuple(
+        PlacementStudentTimetableDemandDTO(
+            request_id=request.id,
+            student_id=request.student_id,
+            course_id=request.course_id,
+            allowed_semesters=_allowed_semester_ids(request.course.allowed_semester),
+        )
+        for request in CourseRequest.objects.filter(
+            academic_year_id=academic_year_id,
+            course__delivery_kind=COURSE_DELIVERY_KIND_NORMAL_INSTRUCTION,
+            course__duration=COURSE_DURATION_FULL_SEMESTER,
+        ).filter(
+            Q(request_type=COURSE_REQUEST_TYPE_PRIMARY) | Q(is_mandatory=True)
+        ).order_by("id")
+    )
+
     # Existing accepted schedules outside the current decision scope reserve a
     # teacher at that block and consume workload before candidates are modelled.
     decision_section_ids = {unit.section_id for unit in units if unit.section_id}
@@ -1801,4 +1837,5 @@ def load_section_placement_input(*, academic_year_id, input_mode, budget_approva
         timeslots=base.timeslots, teachers=tuple(teachers), conflicts=conflicts,
         online_supervision_sessions=tuple(online_placement_sessions),
         online_supervision_demands=online_supervision_demands,
+        student_timetable_demands=student_timetable_demands,
     ), conflict_matrix, roster

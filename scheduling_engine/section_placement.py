@@ -10,7 +10,7 @@ time structure before room capacity and room collisions are considered.
 
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 from itertools import combinations
 
 from ortools.sat.python import cp_model
@@ -307,6 +307,124 @@ def _add_online_supervision_demand_witness(model, data, timeslots, session_optio
         model.Add(sum(allocations) <= 1)
 
 
+def _student_timetable_demand_profiles(data):
+    """Group identical normal-course pathways without retaining student rosters.
+
+    A placement witness needs the number of students following a pathway, not
+    their future section membership. Grouping identical completion-defining
+    full-semester requests makes the proof scale with distinct pathways rather
+    than with every request, while preserving shared section-capacity and
+    per-student A-D collision facts.
+    """
+
+    demands_by_student = defaultdict(list)
+    for demand in data.student_timetable_demands:
+        demands_by_student[demand.student_id].append(demand)
+    profiles = []
+    for demands in demands_by_student.values():
+        # A mandatory course restricted to Semester 1 cannot collide with one
+        # restricted to Semester 2, so those independent components must not
+        # create a Cartesian product of otherwise unrelated pathways. Courses
+        # whose possible semesters overlap remain in one component because a
+        # later placement decision can make them collide.
+        remaining = list(demands)
+        while remaining:
+            component = [remaining.pop()]
+            changed = True
+            while changed:
+                changed = False
+                component_semesters = {
+                    semester
+                    for item in component
+                    for semester in item.allowed_semesters
+                }
+                connected = [
+                    item for item in remaining
+                    if component_semesters & set(item.allowed_semesters)
+                ]
+                if connected:
+                    changed = True
+                    component.extend(connected)
+                    remaining = [item for item in remaining if item not in connected]
+            profiles.append(tuple(sorted(
+                (item.course_id, tuple(sorted(item.allowed_semesters)))
+                for item in component
+            )))
+    return tuple(sorted(
+        Counter(profiles).items()
+    ))
+
+
+def _add_student_timetable_capacity_guard(model, data, timeslots, placement_vars):
+    """Block proven pathway-level timing-capacity shortfalls cheaply.
+
+    This is a necessary aggregate guard, not an early student-assignment
+    roster. For a same-semester profile with ``m`` mandatory normal courses,
+    any subset of blocks must have enough capacity from those courses to carry
+    the minimum demand that cannot fit in the remaining blocks. The guard is
+    a Hall-style lower bound: failing it proves placement is impossible for
+    that pathway; satisfying it does not replace downstream student assignment.
+    """
+
+    if not data.student_timetable_demands:
+        return
+
+    capacity_terms_by_course_slot = defaultdict(list)
+    for unit in data.units:
+        if unit.capacity_max <= 0:
+            continue
+        for (unit_key, timeslot_id), placement_variable in placement_vars.items():
+            if unit_key != unit.key:
+                continue
+            for course_id in unit.member_course_ids:
+                capacity_terms_by_course_slot[course_id, timeslot_id].append(
+                    unit.capacity_max * placement_variable
+                )
+    for fixed in data.fixed_placements:
+        if fixed.capacity_max <= 0:
+            continue
+        for course_id in fixed.member_course_ids:
+            capacity_terms_by_course_slot[course_id, fixed.timeslot_id].append(
+                fixed.capacity_max
+            )
+
+    for course_entries, student_count in _student_timetable_demand_profiles(data):
+        semesters = {
+            semester
+            for _course_id, allowed_semesters in course_entries
+            for semester in allowed_semesters
+        }
+        # A profile with an either-semester course has coupled cross-semester
+        # choices. The downstream hard model remains the authority for that
+        # richer case; this lightweight guard only asserts facts that are
+        # unquestionably necessary in one fixed semester.
+        if len(semesters) != 1:
+            continue
+        semester = next(iter(semesters))
+        semester_slots = tuple(sorted(
+            slot.id for slot in timeslots.values() if slot.semester == semester
+        ))
+        course_ids = tuple(course_id for course_id, _allowed in course_entries)
+        course_count = len(course_ids)
+        for size in range(1, min(course_count, len(semester_slots)) + 1):
+            for block_subset in combinations(semester_slots, size):
+                required_capacity = student_count * max(
+                    0,
+                    course_count - (len(semester_slots) - size),
+                )
+                if required_capacity <= 0:
+                    continue
+                capacity_terms = [
+                    term
+                    for course_id in course_ids
+                    for timeslot_id in block_subset
+                    for term in capacity_terms_by_course_slot[course_id, timeslot_id]
+                ]
+                # A missing course/block capacity remains a true hard failure,
+                # never an invitation to manufacture a student enrollment.
+                model.Add(sum(capacity_terms or [0]) >= required_capacity)
+
+
 def _online_supervision_demand_feasibility(data, timeslots, session_options):
     """Classify an online-only capacity/block failure before the full solve.
 
@@ -558,7 +676,7 @@ def _is_validated_complete_timing_candidate(data, timeslots, units, candidate):
     """Require both complete timing and an exact anonymous staffing proof.
 
     The timing model intentionally has no authority to call a placement
-    complete by itself.  This single gate keeps the private seed, objective
+    complete by itself. This single gate keeps the private seed, objective
     candidate, retries, fallback, and result conversion from drifting apart.
     """
 
@@ -868,6 +986,7 @@ def solve_section_placement(data: PlacementInputDTO) -> PlacementResultDTO:
     _add_online_supervision_demand_witness(
         model, data, timeslots, online_session_options,
     )
+    _add_student_timetable_capacity_guard(model, data, timeslots, placement_vars)
 
     # A configured trimestre pair shares one recurring block. The separate
     # exact staffing witness later proves that one qualified teacher can cover

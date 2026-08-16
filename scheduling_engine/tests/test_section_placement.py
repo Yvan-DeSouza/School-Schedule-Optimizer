@@ -5,6 +5,7 @@ from scheduling_engine.dto import (
     OnlineSupervisionPlacementSessionDTO,
     PlacementConflictDTO,
     PlacementInputDTO,
+    PlacementStudentTimetableDemandDTO,
     PlacementTeacherDTO,
     PlacementUnitDTO,
     TimeSlotDTO,
@@ -30,7 +31,8 @@ def _teacher(identifier=1, courses=(1, 2), semester_capacity=2, annual_capacity=
 
 def _solve(
     *, units, teachers=(_teacher(),), conflicts=(), mode="annual_total",
-    online_sessions=(), online_demands=(), timeslots=None,
+    online_sessions=(), online_demands=(), student_timetable_demands=(),
+    timeslots=None,
 ):
     return solve_section_placement(PlacementInputDTO(
         academic_year_id=1, input_mode=mode, units=tuple(units), fixed_placements=(),
@@ -38,6 +40,7 @@ def _solve(
         teachers=teachers, conflicts=tuple(conflicts),
         online_supervision_sessions=tuple(online_sessions),
         online_supervision_demands=tuple(online_demands),
+        student_timetable_demands=tuple(student_timetable_demands),
     ))
 
 
@@ -151,6 +154,95 @@ def test_pair_collision_weight_chooses_different_blocks_when_staffing_allows_it(
     )
     assert result.status == "complete"
     assert len({item.block for item in result.assignments}) == 2
+
+
+def test_student_timetable_witness_rejects_aggregate_capacity_with_a_block_collision():
+    """Annual seats cannot mask a mandatory pathway's recurring-block deficit."""
+
+    result = _solve(
+        units=(
+            PlacementUnitDTO(
+                "section:1", 1, (1,), (1,), section_id=1,
+                fixed_semester=1, locked_timeslot_id=12, capacity_max=3,
+            ),
+            PlacementUnitDTO(
+                "section:2", 2, (2,), (1,), section_id=2,
+                fixed_semester=1, locked_timeslot_id=11, capacity_max=3,
+            ),
+            PlacementUnitDTO(
+                "section:3", 3, (3,), (1,), section_id=3,
+                fixed_semester=1, locked_timeslot_id=13, capacity_max=3,
+            ),
+            PlacementUnitDTO(
+                "section:4", 4, (4,), (1,), section_id=4,
+                fixed_semester=1, locked_timeslot_id=11, capacity_max=3,
+            ),
+        ),
+        teachers=(
+            _teacher(1, (1, 2, 3, 4), semester_capacity=4),
+            _teacher(2, (1, 2, 3, 4), semester_capacity=4),
+        ),
+        mode="fixed_semester",
+        timeslots=(
+            TimeSlotDTO(11, 1, 1, "A"), TimeSlotDTO(12, 1, 1, "B"),
+            TimeSlotDTO(13, 1, 1, "C"), TimeSlotDTO(14, 1, 1, "D"),
+        ),
+        student_timetable_demands=tuple(
+            PlacementStudentTimetableDemandDTO(
+                request_id=(student_id * 10) + course_id,
+                student_id=student_id,
+                course_id=course_id,
+                allowed_semesters=(1,),
+            )
+            for student_id in (1, 2, 3)
+            for course_id in (1, 2, 3, 4)
+        ),
+    )
+
+    assert result.status == "infeasible"
+
+
+def test_student_timetable_witness_keeps_a_capacity_safe_pathway_placeable():
+    """The witness permits the same demand when the fourth course uses D."""
+
+    result = _solve(
+        units=(
+            PlacementUnitDTO(
+                "section:1", 1, (1,), (1,), section_id=1,
+                fixed_semester=1, locked_timeslot_id=12, capacity_max=3,
+            ),
+            PlacementUnitDTO(
+                "section:2", 2, (2,), (1,), section_id=2,
+                fixed_semester=1, locked_timeslot_id=11, capacity_max=3,
+            ),
+            PlacementUnitDTO(
+                "section:3", 3, (3,), (1,), section_id=3,
+                fixed_semester=1, locked_timeslot_id=13, capacity_max=3,
+            ),
+            PlacementUnitDTO(
+                "section:4", 4, (4,), (1,), section_id=4,
+                fixed_semester=1, locked_timeslot_id=14, capacity_max=3,
+            ),
+        ),
+        teachers=(_teacher(1, (1, 2, 3, 4), semester_capacity=4),),
+        mode="fixed_semester",
+        timeslots=(
+            TimeSlotDTO(11, 1, 1, "A"), TimeSlotDTO(12, 1, 1, "B"),
+            TimeSlotDTO(13, 1, 1, "C"), TimeSlotDTO(14, 1, 1, "D"),
+        ),
+        student_timetable_demands=tuple(
+            PlacementStudentTimetableDemandDTO(
+                request_id=(student_id * 10) + course_id,
+                student_id=student_id,
+                course_id=course_id,
+                allowed_semesters=(1,),
+            )
+            for student_id in (1, 2, 3)
+            for course_id in (1, 2, 3, 4)
+        ),
+    )
+
+    assert result.status == "complete"
 
 
 def test_conflict_weight_lookup_is_compiled_once_per_placement_solve(monkeypatch):

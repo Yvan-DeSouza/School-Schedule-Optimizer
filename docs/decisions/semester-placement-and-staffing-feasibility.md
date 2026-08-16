@@ -40,6 +40,14 @@ section and preserves its audit history.
 - A yearly counselor-managed matrix records primary-request overlap, calculated
   co-request percentage, estimated retained shared demand, and tracked score
   overrides. Pair penalties use both effective score and likely affected volume.
+- Placement also carries completion-defining full-semester normal-course demand
+  as an internal aggregate timing-capacity guard. For same-semester student
+  pathways, Hall-style block-subset lower bounds reject a timing pattern that
+  has enough annual seats but provably too little capacity in the required A-D
+  blocks. The guard is anonymous and creates no enrollment, section roster, or
+  named-teacher decision; downstream student assignment remains the complete
+  per-student feasibility authority for special commitments, locks, and every
+  other student-level rule.
 - Annual mode also balances semester exposure for high-overlap pairs. Same-course
   spread uses delivery-group balance objectives, not invalid self-conflict rows.
 

@@ -724,6 +724,10 @@ class PlacementUnitDTO:
     requires_course_qualification: bool = True
     online_supervision_session_id: Optional[int] = None
     shared_staffing_key: Optional[str] = None
+    # Normal instructional capacity is used only by the private aggregate
+    # student-timetable witness in placement. It never creates an enrollment
+    # or turns the placement stage into student assignment.
+    capacity_max: int = 0
 
 
 @dataclass(frozen=True)
@@ -754,6 +758,21 @@ class OnlineSupervisionDemandDTO:
 
 
 @dataclass(frozen=True)
+class PlacementStudentTimetableDemandDTO:
+    """One completion-defining full-semester normal-course request.
+
+    Placement uses these facts only as an anonymous aggregate capacity and
+    block-collision witness. The witness never chooses a real section roster,
+    creates an enrollment, or replaces downstream student assignment.
+    """
+
+    request_id: int
+    student_id: int
+    course_id: int
+    allowed_semesters: Tuple[int, ...] = (1, 2)
+
+
+@dataclass(frozen=True)
 class FixedPlacementDTO:
     """Accepted timing context outside this placement run's decision scope."""
 
@@ -761,6 +780,11 @@ class FixedPlacementDTO:
     timeslot_id: int
     teacher_id: Optional[int] = None
     online_supervision_session_id: Optional[int] = None
+    # Accepted normal sections outside a rerun remain available capacity in the
+    # aggregate student-timetable witness. Online sessions intentionally keep
+    # these defaults because their separate generic-seat witness owns them.
+    member_course_ids: Tuple[int, ...] = ()
+    capacity_max: int = 0
 
 
 @dataclass(frozen=True)
@@ -801,6 +825,12 @@ class PlacementInputDTO:
     # blocks for students who requested multiple online courses.
     online_supervision_sessions: Tuple[OnlineSupervisionPlacementSessionDTO, ...] = ()
     online_supervision_demands: Tuple[OnlineSupervisionDemandDTO, ...] = ()
+    # Full-semester normal demand proves that accepted timing has enough
+    # physical section capacity in a non-colliding A-D pattern for known
+    # completion-defining requests. It is deliberately narrower than student
+    # assignment, whose special commitments, rosters, locks, and objectives
+    # remain a later reviewed stage.
+    student_timetable_demands: Tuple[PlacementStudentTimetableDemandDTO, ...] = ()
     time_limit_seconds: int = 30
 
 
