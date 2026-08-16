@@ -916,6 +916,74 @@ def test_complete_hard_feasibility_seed_rejects_an_empty_required_group():
     assert indexes == ()
 
 
+def test_hard_feasibility_seed_rejects_a_required_timing_capacity_bottleneck(monkeypatch):
+    """Annual seats alone cannot satisfy a required distinct-block timetable.
+
+    Three students each need the same four Semester-1 courses. Courses 1 and 3
+    force B and C respectively, so every student needs an A-block seat from
+    Course 2 or Course 4. Their combined A capacity is two, although every
+    course has enough annual seats. A complete seed must expose this hard
+    timing/capacity contradiction rather than report a false complete result.
+    """
+
+    requests = tuple(
+        _request(
+            request_id=(student_id - 1) * 4 + course_id,
+            student_id=student_id,
+            course_id=course_id,
+            course_offering_id=course_id * 10,
+            is_mandatory=True,
+        )
+        for student_id in (1, 2, 3)
+        for course_id in (1, 2, 3, 4)
+    )
+    sections = (
+        _section(
+            1, delivery_group_id=1, member_course_offering_ids=(10,),
+            member_course_ids=(1,), timeslot_id=102, capacity_max=3,
+        ),
+        _section(
+            2, delivery_group_id=2, member_course_offering_ids=(20,),
+            member_course_ids=(2,), timeslot_id=101, capacity_max=1,
+        ),
+        _section(
+            3, delivery_group_id=2, member_course_offering_ids=(20,),
+            member_course_ids=(2,), timeslot_id=104, capacity_max=3,
+        ),
+        _section(
+            4, delivery_group_id=3, member_course_offering_ids=(30,),
+            member_course_ids=(3,), timeslot_id=103, capacity_max=3,
+        ),
+        _section(
+            5, delivery_group_id=4, member_course_offering_ids=(40,),
+            member_course_ids=(4,), timeslot_id=101, capacity_max=1,
+        ),
+        _section(
+            6, delivery_group_id=4, member_course_offering_ids=(40,),
+            member_course_ids=(4,), timeslot_id=104, capacity_max=3,
+        ),
+    )
+    seed_statuses = []
+    original_seed_solver = student_assignment_module._solve_complete_hard_feasibility_seed
+
+    def record_seed_status(*args, **kwargs):
+        outcome = original_seed_solver(*args, **kwargs)
+        seed_statuses.append(outcome[3])
+        return outcome
+
+    monkeypatch.setattr(
+        student_assignment_module,
+        "_solve_complete_hard_feasibility_seed",
+        record_seed_status,
+    )
+
+    result = solve_student_assignment(_input(requests=requests, sections=sections))
+
+    assert seed_statuses == [cp_model.INFEASIBLE]
+    assert result.status == "partial"
+    assert len(result.assignments) < len(requests)
+
+
 def test_complete_hard_feasibility_seed_is_retained_when_first_objective_times_out(monkeypatch):
     """A complete CP-SAT seed remains usable when improvement finds no incumbent."""
 

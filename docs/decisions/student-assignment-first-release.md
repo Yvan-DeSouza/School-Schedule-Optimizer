@@ -166,6 +166,13 @@ skipped; a fully protected run with no decision variables still receives one
 feasibility solve so it remains reviewable. These reliability changes neither
 weaken a hard rule nor replace CP-SAT as the constraint authority.
 
+Accepted placement and aggregate course capacity are necessary input facts, but
+they are not by themselves proof that every mandatory personal timetable can
+be completed. A shared timing/capacity bottleneck can still make a set of
+individually eligible requests impossible together. In that case the
+hard-feasibility stage must return `infeasible`; neither a seed nor the later
+lexicographic stage may present an incomplete result as complete.
+
 On the deterministic 1,400-student benchmark, this architecture returned all
 9,800 assignments with no unmet request in 91.187 seconds (the final objective
 pass reported `unknown` after retaining the complete incumbent). This remains
