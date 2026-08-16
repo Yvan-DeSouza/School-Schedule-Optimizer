@@ -141,23 +141,36 @@ capacity/timeslot assignment. The original one-worker lexicographic CP-SAT pass
 timed out with `solver_outcome: unknown` before finding any candidate; it was
 not an infeasibility proof.
 
-Step 9 keeps that one-worker, fixed-seed configuration and adds two solving
-reliability rules: a deterministic, capacity/timeslot-safe initial assignment
-is used only as a CP-SAT-validated hint for independent-request inputs, and a
-valid candidate from a completed lexicographic pass is retained if a later,
-lower-priority pass times out. Empty objective tiers and the redundant final
-cold solve are skipped; a fully protected run with no decision variables still
-receives one feasibility solve so it remains reviewable. If construction is not
-applicable or does not validate, the engine falls back to ordinary CP-SAT
-search. These changes neither weaken a hard rule nor replace CP-SAT as the
-constraint authority. On the fixture, the resulting run returned
-all 9,800 assignments with no unmet request in 135.126 seconds. This is
+Step 9 keeps the one-worker, seed-0 CP-SAT configuration and now first asks
+CP-SAT for a complete hard-feasible student schedule before it starts the
+existing lexicographic improvement passes. The feasibility model is a clone of
+the production model's shared hard-constraint prefix: it requires every
+movable mandatory/primary request and requested Study, Focus, or Co-op
+commitment to be selected exactly once, while fixed enrollment/commitment
+context remains accepted context rather than being selected again. It contains
+the same eligibility, capacity, occupancy, lock, group, half-semester, online
+supervision, and prerequisite constraints as production; it adds no soft
+objective and does not use a greedy schedule.
+
+When CP-SAT returns a complete feasibility candidate, the engine fixes its
+source decisions in the full production model and performs a bounded
+validation solve before using it as the initial incumbent for the unchanged
+lexicographic objective sequence. The objective solver remains free to improve
+the seed. If a later lower-priority pass times out, the validated complete
+candidate from the prior pass (or the feasibility seed) remains the returned
+recommendation. If feasibility cannot produce or validate a complete candidate
+within its configured solve, the established independent-request hint and
+ordinary CP-SAT fallback remain available; no incomplete candidate is presented
+as complete. Empty objective tiers and the redundant final cold solve are
+skipped; a fully protected run with no decision variables still receives one
+feasibility solve so it remains reviewable. These reliability changes neither
+weaken a hard rule nor replace CP-SAT as the constraint authority.
+
+On the deterministic 1,400-student benchmark, this architecture returned all
+9,800 assignments with no unmet request in 91.187 seconds (the final objective
+pass reported `unknown` after retaining the complete incumbent). This remains
 representative-fixture evidence, not a claim that real-school data, HTTP
 request limits, or future larger deployments have been performance-qualified.
-Two further unchanged one-worker/seed-0 runs completed in 136.781 and 134.538
-seconds with identical request-to-section assignments, section loads, and
-objective values. That confirms assignment-level repeatability on this fixture,
-not a universal cross-platform determinism guarantee.
 
 ## Step 10 realistic-condition validation
 

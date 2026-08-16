@@ -81,7 +81,9 @@ from .occupancy import (
 )
 from .solver import (
     outcome_name as _outcome_name,
+    solve_complete_hard_feasibility_seed as _solve_complete_hard_feasibility_seed,
     solve_lexicographically as _solve_lexicographically,
+    validate_complete_hard_feasibility_seed as _validate_complete_hard_feasibility_seed,
 )
 from .initial_hint import build_initial_assignment_hints as _build_initial_assignment_hints
 from .unmet_diagnostics import diagnostic_for_unmet_request as _diagnostic_for_unmet_request
@@ -1410,6 +1412,45 @@ def _solve_student_assignment(data, *, include_lock_costs, include_candidate_led
                     else:
                         model.Add(prerequisite_variable + dependent_variable <= 1)
 
+    # The clone below is the shared hard-model boundary for the two-stage
+    # architecture.  It is deliberately taken after every source decision and
+    # hard rule has been added, but before any soft objective auxiliary exists.
+    # A complete seed requires the same sources that make a returned result
+    # approvable: mandatory and primary course requests plus every movable
+    # requested special commitment.  Fixed context is already an accepted fact,
+    # so it is not re-selected by the seed model.
+    complete_required_decision_groups = []
+    for request in data.requests:
+        source_key = ("course", request.request_id)
+        if request.delivery_kind == "co_op":
+            if source_key not in fixed_commitment_sources:
+                complete_required_decision_groups.append([
+                    variable
+                    for (candidate_source_key, _index), variable in commitment_variables.items()
+                    if candidate_source_key == source_key
+                ])
+            continue
+        if not (request.is_mandatory or request.is_primary):
+            continue
+        if fixed_courses[request.student_id, request.course_id]:
+            continue
+        complete_required_decision_groups.append([
+            variable for _section, variable in request_candidates[request.request_id]
+        ])
+    for source_key in commitment_candidates:
+        if source_key[0] == "commitment" and source_key not in fixed_commitment_sources:
+            complete_required_decision_groups.append([
+                variable
+                for (candidate_source_key, _index), variable in commitment_variables.items()
+                if candidate_source_key == source_key
+            ])
+    if hard_sequence_impossible:
+        # Fixed context already violates a same-year prerequisite. No model can
+        # turn that into an approvable complete candidate, so the seed must
+        # fail closed instead of acting as if source variables could repair it.
+        complete_required_decision_groups.append([])
+    hard_feasibility_model = model.Clone()
+
     objectives = []
     mandatory = [
         variable
@@ -1793,18 +1834,41 @@ def _solve_student_assignment(data, *, include_lock_costs, include_candidate_led
         ) if variables else 0
     )
 
-    initial_assignment_hints = _build_initial_assignment_hints(
-        data=data,
-        request_candidates=request_candidates,
-        fixed_by_section=fixed_by_section,
-        fixed_slots=fixed_slots,
-        group_locks=group_locks,
+    (
+        hard_feasibility_seed_model,
+        hard_feasibility_seed_solver,
+        hard_feasibility_source_variable_indexes,
+        _hard_feasibility_outcome,
+    ) = _solve_complete_hard_feasibility_seed(
+        hard_feasibility_model,
+        complete_required_decision_groups,
+        data.time_limit_seconds,
+    )
+    validated_seed_solver = _validate_complete_hard_feasibility_seed(
+        model,
+        hard_feasibility_seed_model,
+        hard_feasibility_seed_solver,
+        hard_feasibility_source_variable_indexes,
+        data.time_limit_seconds,
+    )
+    # Retain the existing independent-request hint as the documented fallback
+    # when CP-SAT cannot produce a complete hard-feasibility seed in its
+    # bounded stage.  A validated CP-SAT seed always takes precedence.
+    initial_assignment_hints = (
+        {} if validated_seed_solver is not None else _build_initial_assignment_hints(
+            data=data,
+            request_candidates=request_candidates,
+            fixed_by_section=fixed_by_section,
+            fixed_slots=fixed_slots,
+            group_locks=group_locks,
+        )
     )
     solver, outcome = _solve_lexicographically(
         model,
         objectives,
         data.time_limit_seconds,
         initial_assignment_hints=initial_assignment_hints,
+        validated_seed_solver=validated_seed_solver,
     )
     if solver is None:
         # CP-SAT ``UNKNOWN`` means the bounded solve ended without a proof or a

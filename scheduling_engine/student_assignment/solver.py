@@ -5,6 +5,12 @@ from __future__ import annotations
 from ortools.sat.python import cp_model
 
 
+def _has_solution(status):
+    """Return whether CP-SAT produced a complete model assignment."""
+
+    return status in {cp_model.OPTIMAL, cp_model.FEASIBLE}
+
+
 def outcome_name(status):
     return {
         cp_model.OPTIMAL: "optimal",
@@ -56,6 +62,74 @@ def set_assignment_hints(model, assignment_hints):
         )
 
 
+def solve_complete_hard_feasibility_seed(
+    hard_model,
+    required_decision_groups,
+    time_limit_seconds,
+):
+    """Find one complete hard-feasible decision pattern from a shared model.
+
+    ``hard_model`` is cloned only after the production model has added every
+    assignment, occupancy, capacity, lock, and prerequisite constraint.  The
+    clone adds exactly-one requirements for decisions that define a complete
+    result; it deliberately adds no soft objective or heuristic schedule.
+    CP-SAT therefore remains the authority for the initial complete candidate.
+    """
+
+    seed_model = hard_model.Clone()
+    source_variable_indexes = set()
+    for decision_group in required_decision_groups:
+        variables = [
+            seed_model.GetIntVarFromProtoIndex(variable.Index())
+            for variable in decision_group
+        ]
+        # An empty complete-required group is itself the exact hard-feasibility
+        # finding: no valid seed may pretend that source is fulfilled.
+        seed_model.AddExactlyOne(variables)
+        source_variable_indexes.update(variable.Index() for variable in decision_group)
+
+    seed_solver = new_solver(time_limit_seconds)
+    status = seed_solver.Solve(seed_model)
+    return (
+        seed_model,
+        seed_solver if _has_solution(status) else None,
+        tuple(sorted(source_variable_indexes)),
+        status,
+    )
+
+
+def validate_complete_hard_feasibility_seed(
+    model,
+    seed_model,
+    seed_solver,
+    source_variable_indexes,
+    time_limit_seconds,
+):
+    """Validate a seed's source decisions against the full production model.
+
+    The full model contains the same hard prefix plus all derived soft-objective
+    variables and constraints.  Fixing just the source decisions lets CP-SAT
+    derive those auxiliary values and catches any accidental difference between
+    the feasibility prefix and the production model before the seed is used as
+    an optimization incumbent.
+    """
+
+    if seed_solver is None:
+        return None
+    model.ClearHints()
+    for index in source_variable_indexes:
+        model.AddHint(
+            model.GetIntVarFromProtoIndex(index),
+            seed_solver.Value(seed_model.GetIntVarFromProtoIndex(index)),
+        )
+    validator = new_solver(min(time_limit_seconds, 5.0), fix_hints=True)
+    status = validator.Solve(model)
+    if not _has_solution(status):
+        model.ClearHints()
+        return None
+    return validator
+
+
 def validated_initial_hint_solver(model, assignment_hints, time_limit_seconds):
     """Return a full-model candidate only after CP-SAT validates the hint.
 
@@ -78,7 +152,12 @@ def validated_initial_hint_solver(model, assignment_hints, time_limit_seconds):
 
 
 def solve_lexicographically(
-    model, objectives, time_limit_seconds, *, initial_assignment_hints=None,
+    model,
+    objectives,
+    time_limit_seconds,
+    *,
+    initial_assignment_hints=None,
+    validated_seed_solver=None,
 ):
     """Optimize ordered objectives while preserving the last valid candidate.
 
@@ -89,7 +168,10 @@ def solve_lexicographically(
     the uncompleted lower-priority improvement is omitted.
     """
 
-    previous_solver = None
+    # A CP-SAT-validated complete hard-feasibility seed is a real incumbent,
+    # not a heuristic assignment.  Retaining it here means an objective-tier
+    # timeout cannot erase an already complete, legal recommendation.
+    previous_solver = validated_seed_solver
     initial_assignment_hints = initial_assignment_hints or {}
     for objective in objectives:
         # Several stages intentionally add an objective slot even when this

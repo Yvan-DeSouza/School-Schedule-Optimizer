@@ -865,6 +865,78 @@ def test_unknown_solver_outcome_is_failed_not_reported_as_infeasible(monkeypatch
     assert result.solver_outcome == "unknown"
 
 
+def test_complete_hard_feasibility_seed_transfers_to_full_model():
+    """A shared hard prefix can provide a full-model-validated incumbent."""
+
+    hard_model = cp_model.CpModel()
+    selected = hard_model.NewBoolVar("enroll_1_1")
+    alternate = hard_model.NewBoolVar("enroll_1_2")
+    hard_model.Add(selected + alternate <= 1)
+    seed_model, seed_solver, indexes, status = (
+        student_assignment_solver.solve_complete_hard_feasibility_seed(
+            hard_model,
+            ((selected, alternate),),
+            1.0,
+        )
+    )
+
+    assert status in {cp_model.OPTIMAL, cp_model.FEASIBLE}
+    assert seed_solver is not None
+    assert seed_solver.Value(seed_model.GetIntVarFromProtoIndex(selected.Index())) + seed_solver.Value(
+        seed_model.GetIntVarFromProtoIndex(alternate.Index())
+    ) == 1
+
+    full_model = hard_model.Clone()
+    derived = full_model.NewIntVar(0, 1, "derived_full_model_value")
+    full_model.Add(derived == full_model.GetIntVarFromProtoIndex(selected.Index()))
+    validated = student_assignment_solver.validate_complete_hard_feasibility_seed(
+        full_model,
+        seed_model,
+        seed_solver,
+        indexes,
+        1.0,
+    )
+
+    assert validated is not None
+
+
+def test_complete_hard_feasibility_seed_rejects_an_empty_required_group():
+    """An unresolved required source may never be converted into a fake seed."""
+
+    _model, seed_solver, indexes, status = (
+        student_assignment_solver.solve_complete_hard_feasibility_seed(
+            cp_model.CpModel(),
+            ((),),
+            1.0,
+        )
+    )
+
+    assert status == cp_model.INFEASIBLE
+    assert seed_solver is None
+    assert indexes == ()
+
+
+def test_complete_hard_feasibility_seed_is_retained_when_first_objective_times_out(monkeypatch):
+    """A complete CP-SAT seed remains usable when improvement finds no incumbent."""
+
+    captured = {}
+
+    def retain_seed(_model, _objectives, _time_limit, **kwargs):
+        captured["seed"] = kwargs["validated_seed_solver"]
+        return kwargs["validated_seed_solver"], cp_model.UNKNOWN
+
+    monkeypatch.setattr(student_assignment_module, "_solve_lexicographically", retain_seed)
+
+    result = solve_student_assignment(_input(
+        requests=(_request(is_mandatory=True),),
+    ))
+
+    assert captured["seed"] is not None
+    assert result.status == "complete"
+    assert result.solver_outcome == "unknown"
+    assert tuple(item.request_id for item in result.assignments) == (1,)
+
+
 class _ControlledSolver:
     """Small CP-SAT stand-in for deterministic orchestration timeout tests."""
 
