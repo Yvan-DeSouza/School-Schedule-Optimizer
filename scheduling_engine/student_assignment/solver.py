@@ -1,4 +1,4 @@
-"""Deterministic CP-SAT orchestration shared by student assignment."""
+"""CP-SAT orchestration shared by the two student-assignment stages."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ def outcome_name(status):
 
 
 def new_solver(time_limit_seconds, *, fix_hints=False, worker_count=1):
-    """Build the deliberately reproducible CP-SAT configuration for this stage."""
+    """Build a bounded CP-SAT configuration for the requested stage."""
 
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = time_limit_seconds
@@ -138,10 +138,16 @@ def validate_complete_hard_feasibility_seed(
     return validator
 
 
-def validated_initial_hint_solver(model, assignment_hints, time_limit_seconds):
+def validated_initial_hint_solver(
+    model,
+    assignment_hints,
+    time_limit_seconds,
+    *,
+    worker_count=1,
+):
     """Return a full-model candidate only after CP-SAT validates the hint.
 
-    The deterministic constructor below is search guidance, never a second
+    The constructor below is search guidance, never a second
     scheduler. Lock, capacity, timeslot, group, and prerequisite constraints
     remain authoritative in the CP-SAT model. Fixing the proposed enrollment
     choices for this bounded preparatory solve lets CP-SAT fill every derived
@@ -151,7 +157,11 @@ def validated_initial_hint_solver(model, assignment_hints, time_limit_seconds):
     if not assignment_hints:
         return None
     set_assignment_hints(model, assignment_hints)
-    preparer = new_solver(min(time_limit_seconds, 5.0), fix_hints=True)
+    preparer = new_solver(
+        min(time_limit_seconds, 5.0),
+        fix_hints=True,
+        worker_count=worker_count,
+    )
     status = preparer.Solve(model)
     if status not in {cp_model.OPTIMAL, cp_model.FEASIBLE}:
         model.ClearHints()
@@ -166,6 +176,7 @@ def solve_lexicographically(
     *,
     initial_assignment_hints=None,
     validated_seed_solver=None,
+    worker_count=1,
 ):
     """Optimize ordered objectives while preserving the last valid candidate.
 
@@ -195,6 +206,7 @@ def solve_lexicographically(
                 model,
                 initial_assignment_hints,
                 time_limit_seconds,
+                worker_count=worker_count,
             )
             if prepared_solver is not None:
                 set_solver_hints(model, prepared_solver)
@@ -202,7 +214,7 @@ def solve_lexicographically(
                 # optimization pass later reaches UNKNOWN without an incumbent.
                 previous_solver = prepared_solver
 
-        solver = new_solver(time_limit_seconds)
+        solver = new_solver(time_limit_seconds, worker_count=worker_count)
         status = solver.Solve(model)
         if status not in {cp_model.OPTIMAL, cp_model.FEASIBLE}:
             return previous_solver, status
@@ -215,7 +227,7 @@ def solve_lexicographically(
         # requests satisfied by fixed active enrollments. It still needs one
         # feasibility solve so that this valid zero-decision context remains a
         # complete, reviewable run rather than being mislabeled as UNKNOWN.
-        solver = new_solver(time_limit_seconds)
+        solver = new_solver(time_limit_seconds, worker_count=worker_count)
         status = solver.Solve(model)
         return (
             solver if status in {cp_model.OPTIMAL, cp_model.FEASIBLE} else None,

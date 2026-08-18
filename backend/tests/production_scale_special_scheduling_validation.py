@@ -1,4 +1,4 @@
-"""Deterministic, explicitly-invoked production-scale scheduling validation.
+"""Explicitly-invoked production-scale scheduling validation.
 
 This file intentionally does not use the normal ``test_*.py`` filename
 pattern.  It creates and approves a real 1,400-student planning year through
@@ -148,6 +148,11 @@ class SimulationSummary:
     online_enrollment_count: int
     commitment_count: int
     review_code_counts: tuple[tuple[str, int], ...]
+    student_assignment_status: str
+    student_assignment_solver_outcome: str
+    student_assignment_assignment_count: int
+    student_assignment_unmet_count: int
+    student_assignment_optimization_facts: dict
     schedule_fingerprint: tuple[tuple[str, str, int, str, str], ...]
     stage_seconds: tuple[tuple[str, float], ...]
 
@@ -895,11 +900,21 @@ def _schedule_fingerprint(*, academic_year):
 def _run_controlled_reruns(*, academic_year, approval, counselor_user):
     """Exercise history and lock semantics against approved operational state."""
 
-    active = list(Enrollment.objects.filter(
+    # The prior implementation materialized every related field for every
+    # active enrollment before selecting one target.  At production scale that
+    # made the validation harness spend many minutes transferring objects that
+    # the rerun only needs to identify by primary key.  Selecting the first
+    # equivalent target in SQL preserves the exact ordering/selection rule and
+    # leaves the actual target fully loaded for the lock workflow below.
+    target_id = Enrollment.objects.filter(
         section__academic_year=academic_year,
         lifecycle_status="active",
-    ).select_related("student", "course_offering__course", "section__teacher").order_by("id"))
-    target = next(row for row in active if row.section.teacher_id is not None)
+        section__teacher__isnull=False,
+    ).order_by("id").values_list("id", flat=True).first()
+    assert target_id is not None, "The approved schedule must contain a named-teacher enrollment."
+    target = Enrollment.objects.select_related(
+        "student", "course_offering__course", "section__teacher"
+    ).get(id=target_id)
     alternatives = list(Section.objects.filter(
         academic_year=academic_year,
         delivery_group=target.section.delivery_group,
@@ -1123,6 +1138,11 @@ def run_production_scale_special_scheduling_validation(*, counselor_user, prefix
             online_enrollment_count=0,
             commitment_count=0,
             review_code_counts=(),
+            student_assignment_status="blocked",
+            student_assignment_solver_outcome="unknown",
+            student_assignment_assignment_count=0,
+            student_assignment_unmet_count=0,
+            student_assignment_optimization_facts={},
             schedule_fingerprint=(),
             stage_seconds=tuple(sorted(stage_seconds.items())),
         )
@@ -1150,6 +1170,7 @@ def run_production_scale_special_scheduling_validation(*, counselor_user, prefix
         created_by=counselor_user,
     ))
     assert student_run.status == "complete", student_run.result
+    student_result = student_run.result
     review = _elapsed(stage_seconds, "student_review", lambda: preview_student_assignment_approval(student_run))
     approval = _elapsed(stage_seconds, "student_approval", lambda: approve_student_assignment_run(
         student_run,
@@ -1186,6 +1207,11 @@ def run_production_scale_special_scheduling_validation(*, counselor_user, prefix
         online_enrollment_count=OnlineEnrollment.objects.filter(supervision_session__academic_year=academic_year, lifecycle_status="active").count(),
         commitment_count=StudentScheduleCommitment.objects.filter(academic_year=academic_year, lifecycle_status="active").count(),
         review_code_counts=tuple(sorted(review_codes.items())),
+        student_assignment_status=student_result.get("status"),
+        student_assignment_solver_outcome=student_result.get("solver_outcome"),
+        student_assignment_assignment_count=len(student_result.get("assignments", ())),
+        student_assignment_unmet_count=len(student_result.get("unmet_requests", ())),
+        student_assignment_optimization_facts=student_result.get("optimization_facts", {}),
         schedule_fingerprint=_schedule_fingerprint(academic_year=academic_year),
         stage_seconds=tuple(sorted(stage_seconds.items())),
     )
@@ -1193,12 +1219,12 @@ def run_production_scale_special_scheduling_validation(*, counselor_user, prefix
 
 @pytest.mark.django_db
 def test_production_scale_special_scheduling_validation(counselor_user):
-    """Run two independently persisted 1,400-student scenarios with one seed.
+    """Run two independently persisted 1,400-student scenarios.
 
     The first run includes controlled reruns against accepted state; the second
-    replays the initial full pipeline only.  Their opaque-ID-free schedule
-    fingerprints prove repeatability in this environment without claiming that
-    database primary keys themselves are stable.
+    replays the initial full pipeline only. Parallel CP-SAT is allowed to make
+    different choices; both runs must independently prove complete hard-valid
+    assignments and a valid Stage-1-to-Stage-2 objective handoff.
     """
 
     first = run_production_scale_special_scheduling_validation(
@@ -1226,4 +1252,20 @@ def test_production_scale_special_scheduling_validation(counselor_user):
     assert first.online_enrollment_count == second.online_enrollment_count
     assert first.commitment_count == second.commitment_count
     assert first.review_code_counts == second.review_code_counts
-    assert first.schedule_fingerprint == second.schedule_fingerprint
+    for summary in (first, second):
+        assert summary.student_assignment_status == "complete"
+        assert summary.student_assignment_unmet_count == 0
+        facts = summary.student_assignment_optimization_facts
+        stage_1 = facts["stage_1"]
+        stage_2 = facts["stage_2"]
+        assert stage_1["complete_seed_produced"] is True
+        assert stage_1["seed_validated_against_full_model"] is True
+        assert stage_1["solver_outcome"] in {"optimal", "feasible"}
+        assert stage_2["validated_seed_received"] is True
+        assert stage_2["worker_count"] == 8
+        assert stage_2["solver_outcome"] in {"optimal", "feasible", "unknown"}
+        seed_vector = tuple(stage_1["objective_values"])
+        final_vector = tuple(stage_2["objective_values"])
+        assert seed_vector
+        assert final_vector <= seed_vector
+        assert stage_2["improved_over_stage_1"] is (final_vector < seed_vector)

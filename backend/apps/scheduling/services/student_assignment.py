@@ -613,6 +613,7 @@ def _build_student_assignment_review(run, *, data):
         "candidate_ledger": candidate_ledger,
         "diagnostics": result.get("diagnostics", []),
         "objective_components": result.get("objective_components", {}),
+        "optimization_facts": result.get("optimization_facts", {}),
         "course_difficulty_facts": [asdict(item) for item in data.course_difficulties],
         "student_difficulty_balance": difficulty_balance,
         "sequence_outcomes": result.get("sequence_outcomes", []),

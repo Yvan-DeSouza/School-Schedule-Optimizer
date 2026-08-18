@@ -27,6 +27,7 @@ from ..constants import (
     STUDENT_ASSIGNMENT_HARD_FEASIBILITY_WORKER_COUNT,
     STUDENT_ASSIGNMENT_HARD_FEASIBILITY_VALIDATION_TIME_LIMIT_SECONDS,
     STUDENT_ASSIGNMENT_HARD_FEASIBILITY_VALIDATION_WORKER_COUNT,
+    STUDENT_ASSIGNMENT_OPTIMIZATION_WORKER_COUNT,
 )
 from ..diagnostics import (
     NO_COMPLETE_STUDENT_ASSIGNMENT,
@@ -115,6 +116,52 @@ def _candidate_sort_key(candidate):
         candidate.get("online_supervision_session_id") or 0,
         candidate.get("co_op_block_pair") or "",
     )
+
+
+def _objective_values(solver, objectives):
+    """Read the existing ordered objective vector from an existing solution."""
+
+    if solver is None:
+        return ()
+    return tuple(
+        float(objective)
+        if isinstance(objective, (int, float))
+        else float(solver.Value(objective))
+        for objective in objectives
+    )
+
+
+def _optimization_facts(
+    *,
+    hard_feasibility_outcome,
+    required_group_count,
+    hard_seed_solver,
+    validated_seed_solver,
+    final_solver,
+    final_outcome,
+    objectives,
+):
+    """Expose stage handoff and quality facts without changing solver logic."""
+
+    seed_values = _objective_values(validated_seed_solver, objectives)
+    final_values = _objective_values(final_solver, objectives)
+    improved = bool(seed_values and final_values and final_values < seed_values)
+    return {
+        "stage_1": {
+            "solver_outcome": _outcome_name(hard_feasibility_outcome),
+            "required_decision_group_count": required_group_count,
+            "complete_seed_produced": hard_seed_solver is not None,
+            "seed_validated_against_full_model": validated_seed_solver is not None,
+            "objective_values": list(seed_values),
+        },
+        "stage_2": {
+            "solver_outcome": _outcome_name(final_outcome),
+            "worker_count": STUDENT_ASSIGNMENT_OPTIMIZATION_WORKER_COUNT,
+            "validated_seed_received": validated_seed_solver is not None,
+            "objective_values": list(final_values),
+            "improved_over_stage_1": improved,
+        },
+    }
 
 
 def _candidate_source_from_commitment(commitment):
@@ -1901,6 +1948,16 @@ def _solve_student_assignment(
         data.time_limit_seconds,
         initial_assignment_hints=initial_assignment_hints,
         validated_seed_solver=validated_seed_solver,
+        worker_count=STUDENT_ASSIGNMENT_OPTIMIZATION_WORKER_COUNT,
+    )
+    optimization_facts = _optimization_facts(
+        hard_feasibility_outcome=_hard_feasibility_outcome,
+        required_group_count=len(complete_required_decision_groups),
+        hard_seed_solver=hard_feasibility_seed_solver,
+        validated_seed_solver=validated_seed_solver,
+        final_solver=solver,
+        final_outcome=outcome,
+        objectives=objectives,
     )
     if solver is None:
         # CP-SAT ``UNKNOWN`` means the bounded solve ended without a proof or a
@@ -1927,6 +1984,7 @@ def _solve_student_assignment(
             unmet_requests=failed_unmet,
             diagnostics=({"code": NO_COMPLETE_STUDENT_ASSIGNMENT},),
             objective_components={},
+            optimization_facts=optimization_facts,
             sequence_outcomes=(),
             candidate_ledger=(
                 _build_candidate_ledger(
@@ -2261,6 +2319,7 @@ def _solve_student_assignment(
             "schedule_preservation_move_penalty": float(sum(solver.Value(item) for item in preservation_terms)),
             "soft_sequence_preferences_satisfied": float(sum(item["satisfied"] for item in sequence_outcomes)),
         },
+        optimization_facts=optimization_facts,
         sequence_outcomes=tuple(sequence_outcomes),
         seat_contention=tuple(seat_contention),
         section_balance_facts=tuple(section_balance_facts),

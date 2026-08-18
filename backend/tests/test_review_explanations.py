@@ -203,6 +203,10 @@ def test_student_summary_labels_focus_as_not_comparable_instead_of_zero_load():
             },
         ],
         "objective_components": {"mandatory_fulfillment": 2},
+        "optimization_facts": {
+            "stage_1": {"complete_seed_produced": True},
+            "stage_2": {"validated_seed_received": True, "improved_over_stage_1": True},
+        },
         "diagnostics": [],
         "approval_allowed": True,
     }
@@ -227,6 +231,14 @@ def test_student_summary_labels_focus_as_not_comparable_instead_of_zero_load():
         "recorded_rejected_candidate_count": 3,
         "omitted_rejected_candidate_count": 1,
     }
+    quality_factor = next(
+        item for item in summary["factors"]
+        if item["key"] == "student_assignment_two_stage_quality"
+    )
+    assert quality_factor["facts"]["stage_1"]["complete_seed_produced"] is True
+    assert summary["recommendation"]["optimization_facts"]["stage_2"][
+        "validated_seed_received"
+    ] is True
     assert summary["alternatives"] == [{
         "key": "student_assignment_candidate_ledger",
         "facts": {

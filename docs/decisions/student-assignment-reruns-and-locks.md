@@ -167,11 +167,15 @@ and an independent capacity/timeslot feasibility model assigned all requests.
 The original bounded one-worker lexicographic pass returned
 `solver_outcome: unknown` before finding a candidate, rather than proving
 infeasibility. Step 9 then added a separate CP-SAT hard-feasibility bootstrap
-and validation pass before the existing deterministic optimization. The
-bootstrap may use its own bounded parallel configuration to obtain a complete
-incumbent; the lexicographic optimization remains one worker with the fixed
-seed, skips empty tiers, and does not relax any hard constraint. A validated
-seed is retained through later lower-priority timeouts. The same
+and validation pass before the existing lexicographic optimization. Both
+stages may use bounded parallel configurations in the offline batch workflow;
+the bootstrap currently uses eight workers for feasibility and validation, and
+the optimization currently uses eight workers for objective improvement. The
+existing objective sequence is unchanged, empty tiers are skipped, and no
+hard constraint is relaxed. A validated seed is retained through later
+lower-priority timeouts. Independent runs may produce different valid
+recommendations; the acceptance criterion is hard validity, completeness, and
+objective quality rather than identical output. The same
 fixture now returns 9,800 assignments and no unmet request in 135.126 seconds.
 That result is representative-fixture evidence only; real-school data and
 deployment request limits still require their own measurement.

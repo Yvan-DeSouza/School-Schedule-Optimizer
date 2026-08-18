@@ -114,6 +114,21 @@ def test_bounded_counterfactual_can_honor_its_short_feasibility_limit():
     }
 
 
+def test_result_records_validated_seed_and_optimization_quality_facts():
+    """The result proves the two-stage handoff without changing assignments."""
+
+    result = solve_student_assignment(_input())
+
+    facts = result.optimization_facts
+    assert facts["stage_1"]["complete_seed_produced"] is True
+    assert facts["stage_1"]["seed_validated_against_full_model"] is True
+    assert facts["stage_2"]["validated_seed_received"] is True
+    assert facts["stage_2"]["worker_count"] == 8
+    assert tuple(facts["stage_2"]["objective_values"]) <= tuple(
+        facts["stage_1"]["objective_values"]
+    )
+
+
 def _difficulty(course_id, score, category="math"):
     return CourseDifficultyDTO(
         course_id=course_id,

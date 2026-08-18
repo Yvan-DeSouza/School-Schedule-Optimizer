@@ -133,7 +133,7 @@ Development schema changes follow the repository's migrationless local
 `migrate --run-syncdb` workflow. This decision does not authorize generating
 Django migration files.
 
-`scheduling_engine/benchmark_student_assignment.py` provides a deterministic
+`scheduling_engine/benchmark_student_assignment.py` provides an
 approximately 1,400-student/300-section fixture for manual target-scale
 measurement. Step 7 showed that its 9,800 required requests have 10,500 usable
 seats, no course-specific shortage, and a complete independent
@@ -141,14 +141,15 @@ capacity/timeslot assignment. The original one-worker lexicographic CP-SAT pass
 timed out with `solver_outcome: unknown` before finding any candidate; it was
 not an infeasibility proof.
 
-Step 9 keeps the existing one-worker, seed-0 CP-SAT configuration for the
-lexicographic optimization stage and now first asks CP-SAT for a complete
-hard-feasible student schedule before it starts those improvement passes. The
-dedicated feasibility bootstrap is bounded independently (currently 120
-seconds with eight workers), and its seed-validation solve is also bounded
-independently (currently 60 seconds with eight workers). Those settings are
-implementation configuration for obtaining a complete incumbent; they do not
-change the scheduling contract or objective semantics. The feasibility model is a clone of
+Step 9 first asks CP-SAT for a complete hard-feasible student schedule before
+starting the existing lexicographic improvement passes. The dedicated
+feasibility bootstrap is bounded independently (currently 120 seconds with
+eight workers), and its seed-validation solve is also bounded independently
+(currently 60 seconds with eight workers). The optimization pass is also
+allowed to use a bounded parallel configuration (currently eight workers) in
+this offline batch workflow. These settings are implementation configuration
+for obtaining and improving an incumbent; they do not change the scheduling
+contract or objective semantics. The feasibility model is a clone of
 the production model's shared hard-constraint prefix: it requires every
 movable mandatory/primary request and requested Study, Focus, or Co-op
 commitment to be selected exactly once, while fixed enrollment/commitment
@@ -169,7 +170,10 @@ ordinary CP-SAT fallback remain available; no incomplete candidate is presented
 as complete. Empty objective tiers and the redundant final cold solve are
 skipped; a fully protected run with no decision variables still receives one
 feasibility solve so it remains reviewable. These reliability changes neither
-weaken a hard rule nor replace CP-SAT as the constraint authority. Internal
+weaken a hard rule nor replace CP-SAT as the constraint authority. Independent
+runs may produce different but equally valid schedules; correctness,
+completeness, and the existing objective vector take priority over identical
+replay output. Internal
 review counterfactuals that explicitly request a shorter solve limit honor
 that bound rather than inheriting the production bootstrap minimum. They
 remain evidence-only solves and never replace the immutable recommendation.
@@ -190,7 +194,7 @@ guard, not an early enrollment allocation; the hard-feasibility stage remains
 the authority for complete personal schedules, special commitments, locks,
 fixed enrollment context, and all other student-level rules.
 
-On the deterministic 1,400-student benchmark, this architecture returned all
+On the representative 1,400-student benchmark, this architecture returned all
 9,800 assignments with no unmet request in 91.187 seconds (the final objective
 pass reported `unknown` after retaining the complete incumbent). This remains
 representative-fixture evidence, not a claim that real-school data, HTTP
@@ -199,7 +203,7 @@ request limits, or future larger deployments have been performance-qualified.
 ## Step 10 realistic-condition validation
 
 `scheduling_engine/realistic_student_assignment_validation.py` adds a separate
-deterministic validation surface. Its compact scenario exercises uneven
+repeatable validation surface. Its compact scenario exercises uneven
 capacities, an approved backup, a missing offering, same-year prerequisite
 sequencing, A-D collision safety, protected and historical enrollments, an
 exact lock, schedule preservation, and a scoped rerun. The intentionally

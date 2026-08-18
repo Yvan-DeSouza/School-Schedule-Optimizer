@@ -423,6 +423,7 @@ def build_student_assignment_review_summary(run, data, review):
             "online_supervision_assignment_count": online_assignment_count,
             "half_semester_assignment_count": half_semester_assignment_count,
             "objective_components": review.get("objective_components", {}),
+            "optimization_facts": review.get("optimization_facts", {}),
         },
         factors=(
             explanation_factor(
@@ -472,6 +473,11 @@ def build_student_assignment_review_summary(run, data, review):
                         for item in candidate_ledger
                     ),
                 },
+            ),
+            explanation_factor(
+                category=EXPLANATION_FACTOR_CATEGORY_SOFT_OBJECTIVE,
+                key="student_assignment_two_stage_quality",
+                facts=review.get("optimization_facts", {}),
             ),
         ),
         alternatives=(

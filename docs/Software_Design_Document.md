@@ -112,7 +112,7 @@ The design goals are:
 | Safe authorization | Resource and action policies fail closed, and policy filtering occurs before client query filtering. |
 | Explainable failure | Stable diagnostic and workflow codes accompany human-readable messages. |
 | Maintainable engine boundary | Django owns persistence and orchestration; the pure engine consumes immutable DTOs and returns plain result data. |
-| Appropriate scale | The current target is a single school at approximately 1,400 students, 80 teachers, and 250-350 sections. The 1,400-student/300-section fixture has 9,800 required requests and 10,500 usable seats; Step 9 completed all assignments twice with identical assignment-level output using one worker and seed 0. Real-school and deployment measurements remain required. |
+| Appropriate scale | The current target is a single school at approximately 1,400 students, 80 teachers, and 250-350 sections. The 1,400-student/300-section fixture has 9,800 required requests and 10,500 usable seats; Stage 1 and Stage 2 use bounded CP-SAT searches and must return complete, hard-valid results. Independent parallel runs may differ; objective facts and persisted invariants are the quality evidence. Real-school and deployment measurements remain required. |
 
 The project also preserves a migrationless pre-production schema workflow:
 project apps do not contain migration files, and an authorized local schema
@@ -197,7 +197,7 @@ but those foundations do not constitute an implemented capability.
 
 | Category | Current status and design |
 |---|---|
-| Performance | CP-SAT stages use bounded solver calls. The Step 7 audit proved the representative student-assignment fixture is feasible, but the production one-worker lexicographic solve times out before finding a candidate. It is reported as `failed` with `solver_outcome: unknown`, so target-scale quality/readiness is not established. |
+| Performance | CP-SAT stages use bounded solver calls. Student assignment first obtains and validates a complete hard-feasible seed, then runs the existing lexicographic objective sequence with bounded parallel search. A timeout retains the best complete incumbent; target-scale quality is reported through persisted stage/objective facts and hard-validity checks. |
 | Scalability | The pure engine and stage boundaries support future isolation, but the current deployment is a single Django/PostgreSQL application with synchronous solver calls. Horizontal worker scaling is not implemented. |
 | Maintainability | The engine is Django-free, the adapter is the ORM-to-DTO boundary, and services own multi-model workflows. These boundaries are covered by import and service tests. |
 | Auditability | Immutable run, approval, placement, teacher-assignment, offering, staffing, and reconciliation records preserve accepted decisions. General override history remains incomplete. |
@@ -566,8 +566,9 @@ The trade-off is that the current pipeline is not a single globally optimal
 joint solve. This is intentional and accepted: counselor review, stable
 operational history, and bounded stage-specific diagnostics matter more than
 collapsing all variables into one model. The Step 6 benchmark first exposed a
-target-scale failure, while Step 9 added validated deterministic guidance and
-incumbent retention that completed the unchanged representative fixture. That
+target-scale failure, while Step 9 added a validated hard-feasibility seed,
+parallel objective search, and incumbent retention that completed the unchanged
+representative fixture. That
 evidence supports this fixture, not a blanket claim for every future dataset.
 
 ---
@@ -1123,32 +1124,32 @@ real deployment and benchmark requirements are known.
 ## 25. Performance Considerations
 
 The engine is designed for independent testing and bounded solver calls. The
-representative student-assignment fixture now establishes useful one-worker
+representative student-assignment fixture establishes useful two-stage
 solve-quality evidence, but it is not a substitute for real-school or
 deployment measurement.
 
 - Placement and named-teacher DTOs carry `time_limit_seconds`, and their CP-SAT
   solvers set `max_time_in_seconds` and one search worker.
-- Shared planning helpers use deterministic lexicographic solving with a fixed
-  seed/search configuration where applicable.
+- Shared planning helpers use bounded lexicographic solving. Student
+  assignment may use parallel CP-SAT workers; identical replay output is not a
+  production requirement when independent results are both hard-valid and
+  objective-quality checked.
 - The current run services execute synchronously, so request duration is part
   of the current operational contract.
 - The approximately 1,400-student/300-section fixture has 9,800 required
   requests, 10,500 usable seats, no course-specific seat shortage, and a
-  complete independent capacity/timeslot feasibility assignment. Step 9 keeps
-  the production one-worker/fixed-seed configuration while using a deterministic
-  CP-SAT-validated initial hint for independent requests, skipping empty
-  objective tiers, and retaining a valid higher-priority candidate through a
-  lower-priority timeout. It returned all 9,800 assignments with no unmet
-  request in 135.126 seconds on the development Windows environment. Two
-  additional unchanged runs produced identical request-to-section assignments,
-  section loads, and objective values in 136.781 and 134.538 seconds.
+  complete independent capacity/timeslot feasibility assignment. Step 9 uses
+  a CP-SAT-validated complete seed, skips empty objective tiers, and retains a
+  valid higher-priority candidate through a lower-priority timeout. Persisted
+  result facts record the Stage-1 seed vector, Stage-2 vector, worker count,
+  and whether the final vector improved the seed. Independent runs may produce
+  different request-to-section assignments when parallel search is used.
 - Step 10 adds separate realistic-condition fixtures. A compact scenario
   validates uneven capacity, approved backups, missing offerings, prerequisite
   sequencing, A-D safety, historical/protected enrollments, exact locks,
   preservation, and scoped reruns. Its uneven 1,400-student/300-section
-  counterpart completed all 9,800 requests in 72.132 and 76.375 seconds with
-  identical assignment-level output. A seed ordering issue for tight
+  counterpart completed all 9,800 requests in 72.132 and 76.375 seconds; the
+  two recorded runs happened to have identical assignment-level output. A seed ordering issue for tight
   low-capacity offerings was corrected as CP-SAT-validated guidance only; no
   hard constraint or objective priority changed.
 - Student-specific course eligibility and optional request semantics are not

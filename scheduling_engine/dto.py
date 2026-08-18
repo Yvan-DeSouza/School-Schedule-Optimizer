@@ -607,6 +607,7 @@ class StudentAssignmentResultDTO:
     diagnostics: Tuple[Mapping[str, object], ...]
     objective_components: Mapping[str, float]
     sequence_outcomes: Tuple[Mapping[str, object], ...]
+    optimization_facts: Mapping[str, object] = field(default_factory=dict)
     lock_costs: Tuple[StudentAssignmentLockCostDTO, ...] = ()
     seat_contention: Tuple[StudentAssignmentSeatContentionDTO, ...] = ()
     section_balance_facts: Tuple[StudentAssignmentSectionBalanceDTO, ...] = ()
