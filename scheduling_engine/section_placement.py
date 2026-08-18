@@ -33,7 +33,7 @@ from .dto import (
 # These bounds are part of the established placement strategy.  Keeping them
 # named makes the private feasibility-seed and bounded retry behavior visible
 # without turning either into a separate scheduling policy.
-FEASIBILITY_SEED_TIME_LIMIT_SECONDS = 10.0
+FEASIBILITY_SEED_TIME_LIMIT_SECONDS = 60.0
 FEASIBILITY_SEED_WORKER_COUNT = 8
 TIMING_OBJECTIVE_WORKER_COUNT = 1
 ONLINE_DEMAND_WITNESS_TIME_LIMIT_SECONDS = 2.0
@@ -280,6 +280,43 @@ def _add_online_supervision_demand_witness(model, data, timeslots, session_optio
 
     allocations_by_slot = defaultdict(list)
     allocations_by_student_slot = defaultdict(list)
+    allocations_by_student_semester = defaultdict(list)
+    normal_group_count_by_student_semester = defaultdict(int)
+    normal_demands_by_student = defaultdict(list)
+    for demand in data.student_timetable_demands:
+        normal_demands_by_student[demand.student_id].append(demand)
+    for student_id, demands in normal_demands_by_student.items():
+        half_by_course = {
+            demand.course_id: demand
+            for demand in demands
+            if demand.duration == "half_semester"
+        }
+        counted_half_courses = set()
+        for demand in demands:
+            if demand.duration == "half_semester":
+                partner = half_by_course.get(demand.paired_half_course_id)
+                if partner is not None:
+                    if demand.course_id > partner.course_id:
+                        continue
+                    counted_half_courses.add(demand.course_id)
+                    allowed_semesters = set(demand.allowed_semesters) & set(
+                        partner.allowed_semesters
+                    )
+                else:
+                    if demand.course_id in counted_half_courses:
+                        continue
+                    counted_half_courses.add(demand.course_id)
+                    allowed_semesters = set(demand.allowed_semesters)
+            else:
+                allowed_semesters = set(demand.allowed_semesters)
+            # The common production contract uses fixed-semester normal
+            # requests. For an either-semester normal request, do not claim a
+            # free block in either term before the downstream exact model has
+            # selected its semester.
+            if len(allowed_semesters) == 1:
+                semester = next(iter(allowed_semesters))
+                normal_group_count_by_student_semester[student_id, semester] += 1
+
     for group_index, ((student_id, allowed_semesters), request_count) in enumerate(
         sorted(demand_counts.items())
     ):
@@ -293,6 +330,9 @@ def _add_online_supervision_demand_witness(model, data, timeslots, session_optio
             choices.append(variable)
             allocations_by_slot[timeslot_id].append(variable)
             allocations_by_student_slot[student_id, timeslot_id].append(variable)
+            allocations_by_student_semester[
+                student_id, timeslots[timeslot_id].semester
+            ].append(variable)
         if choices:
             # Each Boolean represents one request in a distinct usable block.
             # A count greater than the available blocks is a genuine hard
@@ -305,6 +345,12 @@ def _add_online_supervision_demand_witness(model, data, timeslots, session_optio
         model.Add(sum(allocations) <= sum(capacity_terms_by_slot[timeslot_id]))
     for allocations in allocations_by_student_slot.values():
         model.Add(sum(allocations) <= 1)
+    for (student_id, semester), allocations in allocations_by_student_semester.items():
+        free_blocks = max(
+            0,
+            4 - normal_group_count_by_student_semester[student_id, semester],
+        )
+        model.Add(sum(allocations) <= free_blocks)
 
 
 def _student_timetable_demand_profiles(data):
@@ -319,9 +365,15 @@ def _student_timetable_demand_profiles(data):
 
     demands_by_student = defaultdict(list)
     for demand in data.student_timetable_demands:
+        if demand.duration != "full_semester":
+            continue
         demands_by_student[demand.student_id].append(demand)
     profiles = []
-    for demands in demands_by_student.values():
+    online_demands_by_student = defaultdict(list)
+    for demand in data.online_supervision_demands:
+        online_demands_by_student[demand.student_id].append(demand)
+
+    for student_id, demands in demands_by_student.items():
         # A mandatory course restricted to Semester 1 cannot collide with one
         # restricted to Semester 2, so those independent components must not
         # create a Cartesian product of otherwise unrelated pathways. Courses
@@ -355,7 +407,176 @@ def _student_timetable_demand_profiles(data):
     ))
 
 
-def _add_student_timetable_capacity_guard(model, data, timeslots, placement_vars):
+def _student_timetable_pathway_profiles(data):
+    """Build bounded aggregate pathways for normal student-time demand.
+
+    Half-semester requests still consume one physical A-D block when paired
+    courses are considered together, but a valid pair consumes one seat in
+    each course during opposite halves of that block.  Grouping the pair as
+    one occupancy unit keeps the placement witness faithful to the school's
+    narrow trimestre rule without turning placement into a student roster.
+    Full-semester pathways are included in the same anonymous capacity proof
+    so their section seats cannot be counted twice: once for ordinary students
+    and again for students carrying a half-semester course.
+    """
+
+    demands_by_student = defaultdict(list)
+    for demand in data.student_timetable_demands:
+        demands_by_student[demand.student_id].append(demand)
+
+    profiles = []
+    for demands in demands_by_student.values():
+        half_by_course = {
+            demand.course_id: demand
+            for demand in demands
+            if demand.duration == "half_semester"
+        }
+        groups = []
+        for demand in demands:
+            if demand.duration == "full_semester":
+                groups.append((
+                    (("course", demand.course_id),),
+                    tuple(sorted(demand.allowed_semesters)),
+                    False,
+                ))
+                continue
+            partner = half_by_course.get(demand.paired_half_course_id)
+            if partner is not None:
+                # Emit one physical occupancy group for a valid requested pair.
+                if demand.course_id < partner.course_id:
+                    groups.append((
+                        tuple(sorted(("course", course_id) for course_id in (
+                            demand.course_id, partner.course_id,
+                        ))),
+                        tuple(sorted(
+                            set(demand.allowed_semesters)
+                            & set(partner.allowed_semesters)
+                        )),
+                        True,
+                    ))
+            else:
+                # An unpaired half course remains one legitimate occupied block;
+                # downstream student assignment still supplies its review item.
+                groups.append((
+                    (("course", demand.course_id),),
+                    tuple(sorted(demand.allowed_semesters)),
+                    True,
+                ))
+
+        remaining = list(groups)
+        while remaining:
+            component = [remaining.pop()]
+            changed = True
+            while changed:
+                changed = False
+                component_semesters = {
+                    semester
+                    for _course_ids, semesters, _has_half
+                    in component
+                    for semester in semesters
+                }
+                connected = [
+                    item for item in remaining
+                    if component_semesters & set(item[1])
+                ]
+                if connected:
+                    changed = True
+                    component.extend(connected)
+                    remaining = [item for item in remaining if item not in connected]
+            # An online request can use either semester, so it is the coupling
+            # component for that student's local normal pathways. Without an
+            # online request, independent fixed-semester components stay split
+            # and keep the aggregate model small.
+            profiles.append(tuple(sorted(
+                (course_ids, semesters)
+                for course_ids, semesters, _has_half in component
+            )))
+
+    return tuple(sorted(Counter(profiles).items()))
+
+
+def _add_student_timetable_pathway_capacity_guard(
+    model,
+    data,
+    timeslots,
+    capacity_terms_by_course_slot,
+):
+    """Require an aggregate block allocation for normal pathways.
+
+    This is intentionally a small anonymous witness. It allocates counts of
+    identical pathway patterns rather than students, so it cannot create a
+    roster or replace downstream assignment. A paired half-course group uses
+    one block but consumes capacity in both course resources; full courses
+    occupy both halves and therefore cannot share that block.
+    """
+
+    capacity_usage_by_course_slot = defaultdict(list)
+    for profile_index, (groups, student_count) in enumerate(
+        _student_timetable_pathway_profiles(data)
+    ):
+        semesters = {
+            semester
+            for _course_ids, allowed_semesters in groups
+            for semester in allowed_semesters
+        }
+        pathway_slots = tuple(sorted(
+            slot.id for slot in timeslots.values()
+            if slot.semester in semesters
+        ))
+        if len(groups) > len(pathway_slots):
+            model.Add(0 == 1)
+            continue
+
+        group_slot_variables = defaultdict(list)
+        for group_index, (resource_keys, allowed_semesters) in enumerate(groups):
+            choices = []
+            for slot_id in pathway_slots:
+                if timeslots[slot_id].semester not in allowed_semesters:
+                    continue
+                variable = model.NewIntVar(
+                    0,
+                    student_count,
+                    f"student_timetable_pathway_{profile_index}_{group_index}_{slot_id}",
+                )
+                choices.append(variable)
+                group_slot_variables[group_index, slot_id].append(variable)
+                for resource_key in resource_keys:
+                    _resource_type, course_id = resource_key
+                    capacity_usage_by_course_slot[course_id, slot_id].append(variable)
+            if not choices:
+                model.Add(0 == 1)
+                continue
+            # Every member of this identical pathway profile receives this
+            # group once. The variables count interchangeable students rather
+            # than inventing student identities or persisted rosters.
+            model.Add(sum(choices) == student_count)
+
+        # A profile member may occupy at most one commitment/course group in a
+        # recurring block. These flow constraints are equivalent to enumerating
+        # every injective block pattern, without factorial pattern variables.
+        for slot_id in pathway_slots:
+            model.Add(
+                sum(
+                    variable
+                    for group_index in range(len(groups))
+                    for variable in group_slot_variables[group_index, slot_id]
+                )
+                <= student_count
+            )
+
+    # Capacity is shared across every anonymous pathway profile. Building one
+    # constraint per course/block prevents a normal-student profile from using
+    # the same physical seats that a half-course profile already consumed.
+    for (course_id, slot_id), usage_groups in capacity_usage_by_course_slot.items():
+        model.Add(
+            sum(usage_groups or [0])
+            <= sum(capacity_terms_by_course_slot[course_id, slot_id] or [0])
+        )
+
+
+def _add_student_timetable_capacity_guard(
+    model, data, timeslots, placement_vars, online_session_options,
+):
     """Block proven pathway-level timing-capacity shortfalls cheaply.
 
     This is a necessary aggregate guard, not an early student-assignment
@@ -366,7 +587,7 @@ def _add_student_timetable_capacity_guard(model, data, timeslots, placement_vars
     that pathway; satisfying it does not replace downstream student assignment.
     """
 
-    if not data.student_timetable_demands:
+    if not data.student_timetable_demands and not data.online_supervision_demands:
         return
 
     capacity_terms_by_course_slot = defaultdict(list)
@@ -423,6 +644,13 @@ def _add_student_timetable_capacity_guard(model, data, timeslots, placement_vars
                 # A missing course/block capacity remains a true hard failure,
                 # never an invitation to manufacture a student enrollment.
                 model.Add(sum(capacity_terms or [0]) >= required_capacity)
+
+    _add_student_timetable_pathway_capacity_guard(
+        model,
+        data,
+        timeslots,
+        capacity_terms_by_course_slot,
+    )
 
 
 def _online_supervision_demand_feasibility(data, timeslots, session_options):
@@ -986,7 +1214,13 @@ def solve_section_placement(data: PlacementInputDTO) -> PlacementResultDTO:
     _add_online_supervision_demand_witness(
         model, data, timeslots, online_session_options,
     )
-    _add_student_timetable_capacity_guard(model, data, timeslots, placement_vars)
+    _add_student_timetable_capacity_guard(
+        model,
+        data,
+        timeslots,
+        placement_vars,
+        online_session_options,
+    )
 
     # A configured trimestre pair shares one recurring block. The separate
     # exact staffing witness later proves that one qualified teacher can cover

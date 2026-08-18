@@ -80,6 +80,7 @@ from backend.apps.courses.models import (
 from backend.apps.courses.constants import (
     COURSE_DELIVERY_KIND_NORMAL_INSTRUCTION,
     COURSE_DURATION_FULL_SEMESTER,
+    COURSE_DURATION_HALF_SEMESTER,
     ENROLLMENT_LIFECYCLE_ACTIVE,
 )
 from backend.apps.courses.services.difficulty import course_difficulty_facts
@@ -1768,21 +1769,37 @@ def load_section_placement_input(*, academic_year_id, input_mode, budget_approva
         ).select_related("course").order_by("id")
     )
 
-    # This private placement witness consumes only completion-defining normal
-    # full-semester demand. It proves that the accepted section timing can
-    # carry known mandatory/primary pathways without creating early rosters or
-    # duplicating the later special-commitment student-assignment model.
+    half_pair_by_course = {}
+    for pair in HalfSemesterCoursePair.objects.filter(is_active=True).order_by("id"):
+        half_pair_by_course[pair.first_course_id] = pair.second_course_id
+        half_pair_by_course[pair.second_course_id] = pair.first_course_id
+
+    # This private placement witness carries completion-defining normal demand
+    # for both full- and half-semester courses. It proves that accepted timing
+    # has enough block-level capacity for known pathways without creating early
+    # rosters or duplicating the later special-commitment student-assignment
+    # model. The engine groups a valid half-course pair as one occupied block
+    # while retaining both course identities for capacity accounting.
     student_timetable_demands = tuple(
         PlacementStudentTimetableDemandDTO(
             request_id=request.id,
             student_id=request.student_id,
             course_id=request.course_id,
             allowed_semesters=_allowed_semester_ids(request.course.allowed_semester),
+            duration=request.course.duration,
+            paired_half_course_id=(
+                half_pair_by_course.get(request.course_id)
+                if request.course.duration == COURSE_DURATION_HALF_SEMESTER
+                else None
+            ),
         )
         for request in CourseRequest.objects.filter(
             academic_year_id=academic_year_id,
             course__delivery_kind=COURSE_DELIVERY_KIND_NORMAL_INSTRUCTION,
-            course__duration=COURSE_DURATION_FULL_SEMESTER,
+            course__duration__in=(
+                COURSE_DURATION_FULL_SEMESTER,
+                COURSE_DURATION_HALF_SEMESTER,
+            ),
         ).filter(
             Q(request_type=COURSE_REQUEST_TYPE_PRIMARY) | Q(is_mandatory=True)
         ).order_by("id")

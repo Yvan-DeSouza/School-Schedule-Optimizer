@@ -166,10 +166,12 @@ required requests have 10,500 usable seats, every course has a 14-seat surplus,
 and an independent capacity/timeslot feasibility model assigned all requests.
 The original bounded one-worker lexicographic pass returned
 `solver_outcome: unknown` before finding a candidate, rather than proving
-infeasibility. Step 9 then added deterministic CP-SAT-validated initial hints
-for independent-request inputs and retained the last valid lexicographic
-candidate through later lower-priority timeouts. It keeps one worker and the
-fixed seed, skips empty tiers, and does not relax any hard constraint. The same
+infeasibility. Step 9 then added a separate CP-SAT hard-feasibility bootstrap
+and validation pass before the existing deterministic optimization. The
+bootstrap may use its own bounded parallel configuration to obtain a complete
+incumbent; the lexicographic optimization remains one worker with the fixed
+seed, skips empty tiers, and does not relax any hard constraint. A validated
+seed is retained through later lower-priority timeouts. The same
 fixture now returns 9,800 assignments and no unmet request in 135.126 seconds.
 That result is representative-fixture evidence only; real-school data and
 deployment request limits still require their own measurement.

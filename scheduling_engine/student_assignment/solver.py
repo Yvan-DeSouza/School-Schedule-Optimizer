@@ -21,12 +21,12 @@ def outcome_name(status):
     }.get(status, "unknown")
 
 
-def new_solver(time_limit_seconds, *, fix_hints=False):
+def new_solver(time_limit_seconds, *, fix_hints=False, worker_count=1):
     """Build the deliberately reproducible CP-SAT configuration for this stage."""
 
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = time_limit_seconds
-    solver.parameters.num_search_workers = 1
+    solver.parameters.num_search_workers = worker_count
     solver.parameters.random_seed = 0
     solver.parameters.fix_variables_to_their_hinted_value = fix_hints
     return solver
@@ -66,6 +66,8 @@ def solve_complete_hard_feasibility_seed(
     hard_model,
     required_decision_groups,
     time_limit_seconds,
+    *,
+    worker_count=1,
 ):
     """Find one complete hard-feasible decision pattern from a shared model.
 
@@ -88,7 +90,7 @@ def solve_complete_hard_feasibility_seed(
         seed_model.AddExactlyOne(variables)
         source_variable_indexes.update(variable.Index() for variable in decision_group)
 
-    seed_solver = new_solver(time_limit_seconds)
+    seed_solver = new_solver(time_limit_seconds, worker_count=worker_count)
     status = seed_solver.Solve(seed_model)
     return (
         seed_model,
@@ -104,6 +106,8 @@ def validate_complete_hard_feasibility_seed(
     seed_solver,
     source_variable_indexes,
     time_limit_seconds,
+    *,
+    worker_count=1,
 ):
     """Validate a seed's source decisions against the full production model.
 
@@ -122,7 +126,11 @@ def validate_complete_hard_feasibility_seed(
             model.GetIntVarFromProtoIndex(index),
             seed_solver.Value(seed_model.GetIntVarFromProtoIndex(index)),
         )
-    validator = new_solver(min(time_limit_seconds, 5.0), fix_hints=True)
+    validator = new_solver(
+        time_limit_seconds,
+        fix_hints=True,
+        worker_count=worker_count,
+    )
     status = validator.Solve(model)
     if not _has_solution(status):
         model.ClearHints()

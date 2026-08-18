@@ -141,9 +141,14 @@ capacity/timeslot assignment. The original one-worker lexicographic CP-SAT pass
 timed out with `solver_outcome: unknown` before finding any candidate; it was
 not an infeasibility proof.
 
-Step 9 keeps the one-worker, seed-0 CP-SAT configuration and now first asks
-CP-SAT for a complete hard-feasible student schedule before it starts the
-existing lexicographic improvement passes. The feasibility model is a clone of
+Step 9 keeps the existing one-worker, seed-0 CP-SAT configuration for the
+lexicographic optimization stage and now first asks CP-SAT for a complete
+hard-feasible student schedule before it starts those improvement passes. The
+dedicated feasibility bootstrap is bounded independently (currently 120
+seconds with eight workers), and its seed-validation solve is also bounded
+independently (currently 60 seconds with eight workers). Those settings are
+implementation configuration for obtaining a complete incumbent; they do not
+change the scheduling contract or objective semantics. The feasibility model is a clone of
 the production model's shared hard-constraint prefix: it requires every
 movable mandatory/primary request and requested Study, Focus, or Co-op
 commitment to be selected exactly once, while fixed enrollment/commitment
@@ -164,7 +169,10 @@ ordinary CP-SAT fallback remain available; no incomplete candidate is presented
 as complete. Empty objective tiers and the redundant final cold solve are
 skipped; a fully protected run with no decision variables still receives one
 feasibility solve so it remains reviewable. These reliability changes neither
-weaken a hard rule nor replace CP-SAT as the constraint authority.
+weaken a hard rule nor replace CP-SAT as the constraint authority. Internal
+review counterfactuals that explicitly request a shorter solve limit honor
+that bound rather than inheriting the production bootstrap minimum. They
+remain evidence-only solves and never replace the immutable recommendation.
 
 Accepted placement and aggregate course capacity are necessary input facts, but
 they are not by themselves proof that every mandatory personal timetable can

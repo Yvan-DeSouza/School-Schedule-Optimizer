@@ -770,6 +770,8 @@ class PlacementStudentTimetableDemandDTO:
     student_id: int
     course_id: int
     allowed_semesters: Tuple[int, ...] = (1, 2)
+    duration: str = "full_semester"
+    paired_half_course_id: Optional[int] = None
 
 
 @dataclass(frozen=True)

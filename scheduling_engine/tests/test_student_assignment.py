@@ -1,5 +1,7 @@
 """Contracts for pure student-to-section assignment; no Django dependency."""
 
+from unittest.mock import patch
+
 from ortools.sat.python import cp_model
 
 import scheduling_engine.student_assignment.core as student_assignment_module
@@ -68,6 +70,48 @@ def _timeslots():
         for semester in (1, 2)
         for index, block in enumerate(("A", "B", "C", "D"), start=1)
     )
+
+
+def test_bounded_counterfactual_can_honor_its_short_feasibility_limit():
+    """Review evidence must not inherit the production bootstrap floor."""
+
+    captured = {}
+
+    def fake_seed(model, required_groups, time_limit_seconds, **kwargs):
+        captured["seed_time_limit"] = time_limit_seconds
+        captured["seed_workers"] = kwargs["worker_count"]
+        return model.Clone(), None, (), cp_model.UNKNOWN
+
+    def fake_validate(model, seed_model, seed_solver, source_indexes, time_limit_seconds, **kwargs):
+        captured["validation_time_limit"] = time_limit_seconds
+        captured["validation_workers"] = kwargs["worker_count"]
+        return None
+
+    with patch.object(
+        student_assignment_module,
+        "_solve_complete_hard_feasibility_seed",
+        side_effect=fake_seed,
+    ), patch.object(
+        student_assignment_module,
+        "_validate_complete_hard_feasibility_seed",
+        side_effect=fake_validate,
+    ), patch.object(
+        student_assignment_module,
+        "_solve_lexicographically",
+        return_value=(None, cp_model.UNKNOWN),
+    ):
+        result = student_assignment_module.solve_student_assignment(
+            _input(time_limit_seconds=0.25),
+            use_hard_feasibility_bootstrap=False,
+        )
+
+    assert result.status == "failed"
+    assert captured == {
+        "seed_time_limit": 0.25,
+        "seed_workers": 8,
+        "validation_time_limit": 0.25,
+        "validation_workers": 8,
+    }
 
 
 def _difficulty(course_id, score, category="math"):

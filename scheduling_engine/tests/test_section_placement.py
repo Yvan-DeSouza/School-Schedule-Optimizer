@@ -86,6 +86,74 @@ def test_complete_feasibility_seed_selects_one_slot_per_unit_not_every_candidate
     assert seed is not None
 
 
+def test_half_semester_timetable_guard_rejects_a_block_capacity_collision():
+    """Half-course demand cannot share a block with a full-semester course."""
+
+    slots = tuple(TimeSlotDTO(index, 1, 1, block) for index, block in enumerate(("A", "B", "C", "D"), 11))
+    units = tuple(
+        PlacementUnitDTO(
+            f"section:{course_id}", course_id, (course_id,), (1,),
+            fixed_semester=1, locked_timeslot_id=timeslot_id,
+            capacity_max=2,
+        )
+        for course_id, timeslot_id in ((1, 11), (2, 12), (3, 13), (4, 13))
+    )
+    demands = tuple(
+        PlacementStudentTimetableDemandDTO(
+            request_id=student_id * 10 + course_id,
+            student_id=student_id,
+            course_id=course_id,
+            allowed_semesters=(1,),
+            duration="half_semester" if course_id == 4 else "full_semester",
+        )
+        for student_id in (1, 2)
+        for course_id in (1, 2, 3, 4)
+    )
+
+    result = _solve(
+        units=units,
+        teachers=tuple(_teacher(index, courses=(1, 2, 3, 4), semester_capacity=4, annual_capacity=4) for index in range(1, 5)),
+        timeslots=slots,
+        student_timetable_demands=demands,
+    )
+
+    assert result.status == "infeasible"
+
+
+def test_half_semester_timetable_guard_allows_three_full_courses_and_one_half_course():
+    """A valid unpaired-half pathway remains placeable when a block is free."""
+
+    slots = tuple(TimeSlotDTO(index, 1, 1, block) for index, block in enumerate(("A", "B", "C", "D"), 11))
+    units = tuple(
+        PlacementUnitDTO(
+            f"section:{course_id}", course_id, (course_id,), (1,),
+            fixed_semester=1, locked_timeslot_id=timeslot_id,
+            capacity_max=2,
+        )
+        for course_id, timeslot_id in ((1, 11), (2, 12), (3, 14), (4, 13))
+    )
+    demands = tuple(
+        PlacementStudentTimetableDemandDTO(
+            request_id=student_id * 10 + course_id,
+            student_id=student_id,
+            course_id=course_id,
+            allowed_semesters=(1,),
+            duration="half_semester" if course_id == 4 else "full_semester",
+        )
+        for student_id in (1, 2)
+        for course_id in (1, 2, 3, 4)
+    )
+
+    result = _solve(
+        units=units,
+        teachers=tuple(_teacher(index, courses=(1, 2, 3, 4), semester_capacity=4, annual_capacity=4) for index in range(1, 5)),
+        timeslots=slots,
+        student_timetable_demands=demands,
+    )
+
+    assert result.status == "complete"
+
+
 def test_multiple_locks_are_exact_and_teacher_witness_prevents_same_block_collision():
     units = (
         PlacementUnitDTO("annual:1:1", 1, (1,), (1, 2), locked_timeslot_id=11, annual_index=1, source_mode="annual_total"),

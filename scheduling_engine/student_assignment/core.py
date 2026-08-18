@@ -23,6 +23,10 @@ from ..constants import (
     LOCK_TYPE_STUDENT_TEACHER,
     LOCK_TYPE_WHOLE_SCHEDULE,
     SCHEDULE_PRESERVATION_LEVELS,
+    STUDENT_ASSIGNMENT_HARD_FEASIBILITY_TIME_LIMIT_SECONDS,
+    STUDENT_ASSIGNMENT_HARD_FEASIBILITY_WORKER_COUNT,
+    STUDENT_ASSIGNMENT_HARD_FEASIBILITY_VALIDATION_TIME_LIMIT_SECONDS,
+    STUDENT_ASSIGNMENT_HARD_FEASIBILITY_VALIDATION_WORKER_COUNT,
 )
 from ..diagnostics import (
     NO_COMPLETE_STUDENT_ASSIGNMENT,
@@ -516,21 +520,33 @@ def _build_lock_costs(data, result):
             relaxed_data,
             include_lock_costs=False,
             include_candidate_ledger=False,
+            use_hard_feasibility_bootstrap=False,
         ),
     )
 
 
-def solve_student_assignment(data: StudentAssignmentInputDTO) -> StudentAssignmentResultDTO:
+def solve_student_assignment(
+    data: StudentAssignmentInputDTO,
+    *,
+    use_hard_feasibility_bootstrap=True,
+) -> StudentAssignmentResultDTO:
     """Return the best safe recommendation with immutable review evidence."""
 
     return _solve_student_assignment(
         data,
         include_lock_costs=True,
         include_candidate_ledger=True,
+        use_hard_feasibility_bootstrap=use_hard_feasibility_bootstrap,
     )
 
 
-def _solve_student_assignment(data, *, include_lock_costs, include_candidate_ledger=True):
+def _solve_student_assignment(
+    data,
+    *,
+    include_lock_costs,
+    include_candidate_ledger=True,
+    use_hard_feasibility_bootstrap=True,
+):
     if data.scope.scope_type == "scoped":
         # Keep the complete request list in the detached run snapshot, but do
         # not let a partial rerun silently rewrite demand outside its approved
@@ -1842,14 +1858,30 @@ def _solve_student_assignment(data, *, include_lock_costs, include_candidate_led
     ) = _solve_complete_hard_feasibility_seed(
         hard_feasibility_model,
         complete_required_decision_groups,
-        data.time_limit_seconds,
+        (
+            max(
+                data.time_limit_seconds,
+                STUDENT_ASSIGNMENT_HARD_FEASIBILITY_TIME_LIMIT_SECONDS,
+            )
+            if use_hard_feasibility_bootstrap
+            else data.time_limit_seconds
+        ),
+        worker_count=STUDENT_ASSIGNMENT_HARD_FEASIBILITY_WORKER_COUNT,
     )
     validated_seed_solver = _validate_complete_hard_feasibility_seed(
         model,
         hard_feasibility_seed_model,
         hard_feasibility_seed_solver,
         hard_feasibility_source_variable_indexes,
-        data.time_limit_seconds,
+        (
+            max(
+                data.time_limit_seconds,
+                STUDENT_ASSIGNMENT_HARD_FEASIBILITY_VALIDATION_TIME_LIMIT_SECONDS,
+            )
+            if use_hard_feasibility_bootstrap
+            else data.time_limit_seconds
+        ),
+        worker_count=STUDENT_ASSIGNMENT_HARD_FEASIBILITY_VALIDATION_WORKER_COUNT,
     )
     # Retain the existing independent-request hint as the documented fallback
     # when CP-SAT cannot produce a complete hard-feasibility seed in its

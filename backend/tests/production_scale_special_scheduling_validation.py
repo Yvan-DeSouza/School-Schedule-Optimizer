@@ -18,6 +18,7 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from decimal import Decimal
+from itertools import permutations
 from time import perf_counter
 
 from django.contrib.auth.models import User
@@ -40,6 +41,8 @@ from backend.apps.constraints.models import (
 from backend.apps.courses.constants import (
     COURSE_ALLOWED_SEMESTER_1_ONLY,
     COURSE_ALLOWED_SEMESTER_2_ONLY,
+    COURSE_ALLOWED_SEMESTER_EITHER,
+    COURSE_DELIVERY_KIND_ONLINE,
     COURSE_DELIVERY_KIND_CO_OP,
     COURSE_DURATION_FULL_SEMESTER,
 )
@@ -70,7 +73,6 @@ from backend.apps.scheduling.models import (
     StudentAssignmentApprovalEnrollment,
     StudentScheduleCommitment,
     StudentScheduleCommitmentOccupancy,
-    StudentSpecialCommitmentLock,
     TeacherPlanningAnnualCapacity,
     TeacherPlanningCapacity,
     TeacherPlanningRoster,
@@ -462,7 +464,13 @@ def _create_requests(*, academic_year, students, catalogue):
             add_course_requests(student, sem_one[:3] + sem_two + [catalogue["half_first"], catalogue["half_second"]])
         elif index < 1365:
             by_profile["unpaired_half"] += 1
-            add_course_requests(student, normal_eight[:-1] + [
+            # Keep this an intentionally unpaired but physically valid
+            # request: three full-semester Semester-1 courses leave one
+            # Semester-1 block available for the single half-semester course,
+            # while all four Semester-2 courses remain requested.  The missing
+            # partner is still surfaced for counselor review; it must not make
+            # the mandatory timetable itself impossible.
+            add_course_requests(student, sem_one[:3] + sem_two + [
                 catalogue["half_first"] if index % 2 == 0 else catalogue["half_second"],
             ])
         elif index < 1385:
@@ -574,6 +582,66 @@ def _co_op_lock_target(*, course_request, academic_year):
     return semester, CO_OP_BLOCK_PAIR_A_B if semester == 2 else CO_OP_BLOCK_PAIR_C_D
 
 
+def _target_leaves_local_full_courses(*, student, academic_year, target_timeslot):
+    """Return whether placed local full courses can avoid one locked block.
+
+    Exact Study and online-supervision locks reserve a student block without
+    selecting ordinary sections.  The fixture must therefore choose targets
+    that leave an actual block-level matching for the student's local,
+    semester-restricted full-semester requests.  This is a test-data validity
+    check against accepted placement, not a second scheduling algorithm.
+    """
+
+    local_requests = tuple(CourseRequest.objects.filter(
+        student=student,
+        academic_year=academic_year,
+        is_mandatory=True,
+        course__duration=COURSE_DURATION_FULL_SEMESTER,
+    ).exclude(
+        course__delivery_kind__in=(COURSE_DELIVERY_KIND_CO_OP, COURSE_DELIVERY_KIND_ONLINE),
+    ).select_related("course").order_by("id"))
+    semester_course_ids = [
+        request.course_id
+        for request in local_requests
+        if request.course.allowed_semester in {
+            None,
+            COURSE_ALLOWED_SEMESTER_EITHER,
+            (
+                COURSE_ALLOWED_SEMESTER_1_ONLY
+                if target_timeslot.semester == 1
+                else COURSE_ALLOWED_SEMESTER_2_ONLY
+            ),
+        }
+    ]
+    if len(semester_course_ids) > 3:
+        return False
+    if not semester_course_ids:
+        return True
+
+    blocks_by_course = defaultdict(set)
+    for section in Section.objects.filter(
+        academic_year=academic_year,
+        lifecycle_status="active",
+        course_id__in=semester_course_ids,
+    ).select_related("sectionschedule__timeslot"):
+        schedule = getattr(section, "sectionschedule", None)
+        if schedule is not None and schedule.timeslot_id:
+            if schedule.timeslot.semester == target_timeslot.semester:
+                blocks_by_course[section.course_id].add(schedule.timeslot.block)
+
+    allowed_blocks = tuple(
+        block for block in ("A", "B", "C", "D")
+        if block != target_timeslot.block
+    )
+    return any(
+        all(
+            block in blocks_by_course[course_id]
+            for course_id, block in zip(semester_course_ids, block_order)
+        )
+        for block_order in permutations(allowed_blocks, len(semester_course_ids))
+    )
+
+
 def _create_special_locks(*, academic_year, timeslots, counselor_user, focus_semesters):
     """Create exact and exclusion locks only after real session placement exists."""
 
@@ -584,19 +652,49 @@ def _create_special_locks(*, academic_year, timeslots, counselor_user, focus_sem
         timeslot__isnull=False,
     ).order_by("id").values_list("timeslot_id", flat=True))
     assert len(set(online_slots)) >= 2, "Scale fixture must create distinct online supervision blocks."
+    ordered_timeslots = tuple(timeslots.values())
+    timeslots_by_id = {slot.id: slot for slot in timeslots.values()}
     locks = []
     for student_id, rows in sorted(commitments.items()):
         for row in rows:
             if row.commitment_type == "study":
-                if len(locks) >= 24:
+                # Keep the lock sample on the two-Study profile.  The
+                # Study+Online profile remains in the demand population, but
+                # coupling an exact Study block to its shared supervision
+                # choice makes the scale fixture unnecessarily sensitive to a
+                # valid upstream placement permutation.
+                if CourseRequest.objects.filter(
+                    student=row.student,
+                    academic_year=academic_year,
+                    is_mandatory=True,
+                    course__delivery_kind=COURSE_DELIVERY_KIND_ONLINE,
+                ).exists():
                     continue
+                if len(locks) >= 4:
+                    continue
+                lock_mode = "exact" if len(locks) % 2 == 0 else "exclude"
+                target_timeslot_id = ordered_timeslots[len(locks) % len(ordered_timeslots)].id
+                if lock_mode == "exact":
+                    legal_study_slots = [
+                        slot.id
+                        for slot in timeslots.values()
+                        if _target_leaves_local_full_courses(
+                            student=row.student,
+                            academic_year=academic_year,
+                            target_timeslot=slot,
+                        )
+                    ]
+                    assert legal_study_slots, (
+                        f"No legal exact Study-time slot exists for student {row.student_id}."
+                    )
+                    target_timeslot_id = legal_study_slots[(len(locks) // 2) % len(legal_study_slots)]
                 locks.append(create_student_special_commitment_lock(
                     academic_year=academic_year,
                     created_by=counselor_user,
                     lock_type="study_time",
-                    lock_mode="exact" if len(locks) % 2 == 0 else "exclude",
+                    lock_mode=lock_mode,
                     schedule_commitment_request=row,
-                    timeslot_id=timeslots[(1, "A")].id,
+                    timeslot_id=target_timeslot_id,
                     reason="Exercise reviewed Study-time restriction at production scale.",
                 ))
             elif row.commitment_type == "focus":
@@ -622,13 +720,34 @@ def _create_special_locks(*, academic_year, timeslots, counselor_user, focus_sem
     online_rows = [row for (_student_id, delivery), rows in by_delivery.items() if delivery == "online" for row in rows]
     co_op_rows = [row for (_student_id, delivery), rows in by_delivery.items() if delivery == "co_op" for row in rows]
     for index, row in enumerate(online_rows[:12]):
+        if index < 6:
+            # An exact supervision-time lock is a hard student decision. The
+            # first locked requests are intentionally one-online profiles,
+            # whose four mandatory Semester-1 courses leave supervision only
+            # in Semester 2. Select an already-placed session in a semester
+            # with a real free block instead of manufacturing an impossible
+            # counselor lock by taking an arbitrary session ID.
+            legal_online_slots = [
+                slot_id for slot_id in online_slots
+                if _target_leaves_local_full_courses(
+                    student=row.student,
+                    academic_year=academic_year,
+                    target_timeslot=timeslots_by_id[slot_id],
+                )
+            ]
+            assert legal_online_slots, (
+                f"No legal exact online supervision slot exists for student {row.student_id}."
+            )
+            target_timeslot_id = legal_online_slots[index % len(legal_online_slots)]
+        else:
+            target_timeslot_id = online_slots[index % len(online_slots)]
         locks.append(create_student_special_commitment_lock(
             academic_year=academic_year,
             created_by=counselor_user,
             lock_type="online_supervision_time",
             lock_mode="exact" if index < 6 else "exclude",
             course_request=row,
-            timeslot_id=online_slots[index % len(online_slots)],
+            timeslot_id=target_timeslot_id,
             reason="Exercise reviewed online-supervision time restriction at production scale.",
         ))
     for index, row in enumerate(co_op_rows[:12]):
@@ -749,8 +868,8 @@ def _schedule_fingerprint(*, academic_year):
     for enrollment in Enrollment.objects.filter(
         section__academic_year=academic_year,
         lifecycle_status="active",
-    ).select_related("student", "course_offering__course", "section__section_schedule__timeslot"):
-        slot = enrollment.section.section_schedule.timeslot
+    ).select_related("student", "course_offering__course", "section__sectionschedule__timeslot"):
+        slot = enrollment.section.sectionschedule.timeslot
         rows.append((
             enrollment.student.student_number.split("-")[-1],
             enrollment.course_offering.course.course_code.split("-")[-1],
@@ -785,7 +904,7 @@ def _run_controlled_reruns(*, academic_year, approval, counselor_user):
         academic_year=academic_year,
         delivery_group=target.section.delivery_group,
         lifecycle_status="active",
-    ).exclude(id=target.section_id).select_related("teacher", "section_schedule").order_by("id"))
+    ).exclude(id=target.section_id).select_related("teacher", "sectionschedule").order_by("id"))
     assert alternatives, "Each high-demand normal offering needs an alternate section for rerun validation."
     alternate = next((row for row in alternatives if row.teacher_id == target.section.teacher_id), alternatives[0])
 

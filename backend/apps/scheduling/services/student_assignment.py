@@ -417,7 +417,10 @@ def _soft_priority_effects(data, result):
             time_limit_seconds=min(data.time_limit_seconds, 0.5),
             **{field_name: "not_important"},
         )
-        counterfactual = solve_student_assignment(disabled)
+        counterfactual = solve_student_assignment(
+            disabled,
+            use_hard_feasibility_bootstrap=False,
+        )
         counterfactual_assignments = {_assignment_key(item) for item in asdict(counterfactual).get("assignments", ())}
         effects[name] = {
             "importance": importance,

@@ -38,3 +38,12 @@ LOCK_TYPES = {
 }
 
 HALF_SEMESTER_SEGMENTS = ("first_half", "second_half")
+
+# The hard-feasibility bootstrap is a bounded batch-scheduling search, not the
+# deterministic objective pass.  It may use a wider parallel search and a
+# larger bound to obtain the complete CP-SAT seed that Stage 2 needs.  Stage 2
+# continues to use its own one-worker, seed-zero solver configuration.
+STUDENT_ASSIGNMENT_HARD_FEASIBILITY_TIME_LIMIT_SECONDS = 120.0
+STUDENT_ASSIGNMENT_HARD_FEASIBILITY_WORKER_COUNT = 8
+STUDENT_ASSIGNMENT_HARD_FEASIBILITY_VALIDATION_TIME_LIMIT_SECONDS = 60.0
+STUDENT_ASSIGNMENT_HARD_FEASIBILITY_VALIDATION_WORKER_COUNT = 8
