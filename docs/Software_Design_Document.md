@@ -1134,6 +1134,9 @@ deployment measurement.
   assignment may use parallel CP-SAT workers; identical replay output is not a
   production requirement when independent results are both hard-valid and
   objective-quality checked.
+- Student-assignment optimization currently has a 1,800-second total budget
+  shared across its non-constant lexicographic passes; the remaining budget is
+  reallocated between passes rather than multiplied by the number of tiers.
 - The current run services execute synchronously, so request duration is part
   of the current operational contract.
 - The approximately 1,400-student/300-section fixture has 9,800 required

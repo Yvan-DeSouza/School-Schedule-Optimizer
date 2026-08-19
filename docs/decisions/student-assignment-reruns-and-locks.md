@@ -170,9 +170,10 @@ infeasibility. Step 9 then added a separate CP-SAT hard-feasibility bootstrap
 and validation pass before the existing lexicographic optimization. Both
 stages may use bounded parallel configurations in the offline batch workflow;
 the bootstrap currently uses eight workers for feasibility and validation, and
-the optimization currently uses eight workers for objective improvement. The
-existing objective sequence is unchanged, empty tiers are skipped, and no
-hard constraint is relaxed. A validated seed is retained through later
+the optimization currently uses eight workers for objective improvement and a
+shared 1,800-second global budget across its non-constant passes. The existing
+objective sequence is unchanged, empty tiers are skipped, and no hard
+constraint is relaxed. A validated seed is retained through later
 lower-priority timeouts. Independent runs may produce different valid
 recommendations; the acceptance criterion is hard validity, completeness, and
 objective quality rather than identical output. The same

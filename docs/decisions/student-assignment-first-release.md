@@ -146,10 +146,13 @@ starting the existing lexicographic improvement passes. The dedicated
 feasibility bootstrap is bounded independently (currently 120 seconds with
 eight workers), and its seed-validation solve is also bounded independently
 (currently 60 seconds with eight workers). The optimization pass is also
-allowed to use a bounded parallel configuration (currently eight workers) in
-this offline batch workflow. These settings are implementation configuration
-for obtaining and improving an incumbent; they do not change the scheduling
-contract or objective semantics. The feasibility model is a clone of
+allowed to use a bounded parallel configuration (currently eight workers) and
+an independent global optimization budget (currently 1,800 seconds) in this
+offline batch workflow. That budget is shared across the non-constant
+lexicographic passes rather than multiplied by their count. These settings
+are implementation configuration for obtaining and improving an incumbent;
+they do not change the scheduling contract or objective semantics. The
+feasibility model is a clone of
 the production model's shared hard-constraint prefix: it requires every
 movable mandatory/primary request and requested Study, Focus, or Co-op
 commitment to be selected exactly once, while fixed enrollment/commitment
@@ -173,7 +176,9 @@ feasibility solve so it remains reviewable. These reliability changes neither
 weaken a hard rule nor replace CP-SAT as the constraint authority. Independent
 runs may produce different but equally valid schedules; correctness,
 completeness, and the existing objective vector take priority over identical
-replay output. Internal
+replay output. Stage 2 may return `UNKNOWN` after retaining a complete
+incumbent; the persisted facts distinguish that useful result from a run with
+no complete candidate. Internal
 review counterfactuals that explicitly request a shorter solve limit honor
 that bound rather than inheriting the production bootstrap minimum. They
 remain evidence-only solves and never replace the immutable recommendation.

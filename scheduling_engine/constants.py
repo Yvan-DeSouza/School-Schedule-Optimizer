@@ -50,3 +50,8 @@ STUDENT_ASSIGNMENT_HARD_FEASIBILITY_VALIDATION_WORKER_COUNT = 8
 # Its worker count is independently configurable because this batch workflow
 # now prioritizes useful objective improvement over identical replay output.
 STUDENT_ASSIGNMENT_OPTIMIZATION_WORKER_COUNT = 8
+# The optimization budget is shared across the non-constant lexicographic
+# passes.  Keeping this separate from the DTO's ordinary solve limit prevents
+# a long offline optimization window from being accidentally multiplied by
+# the number of objective tiers.
+STUDENT_ASSIGNMENT_OPTIMIZATION_TIME_LIMIT_SECONDS = 1800.0

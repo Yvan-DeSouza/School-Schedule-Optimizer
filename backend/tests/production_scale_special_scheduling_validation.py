@@ -1263,6 +1263,7 @@ def test_production_scale_special_scheduling_validation(counselor_user):
         assert stage_1["solver_outcome"] in {"optimal", "feasible"}
         assert stage_2["validated_seed_received"] is True
         assert stage_2["worker_count"] == 8
+        assert stage_2["time_limit_seconds"] == 1800.0
         assert stage_2["solver_outcome"] in {"optimal", "feasible", "unknown"}
         seed_vector = tuple(stage_1["objective_values"])
         final_vector = tuple(stage_2["objective_values"])

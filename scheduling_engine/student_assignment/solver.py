@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from time import monotonic
+
 from ortools.sat.python import cp_model
 
 
@@ -177,6 +179,7 @@ def solve_lexicographically(
     initial_assignment_hints=None,
     validated_seed_solver=None,
     worker_count=1,
+    total_time_limit_seconds=None,
 ):
     """Optimize ordered objectives while preserving the last valid candidate.
 
@@ -192,12 +195,31 @@ def solve_lexicographically(
     # timeout cannot erase an already complete, legal recommendation.
     previous_solver = validated_seed_solver
     initial_assignment_hints = initial_assignment_hints or {}
+    optimization_started = monotonic()
+    remaining_objective_count = sum(
+        not isinstance(objective, int) for objective in objectives
+    )
     for objective in objectives:
         # Several stages intentionally add an objective slot even when this
         # input has no rows in that tier. Re-solving a constant objective has
         # no scheduling value and previously could discard an earlier result.
         if isinstance(objective, int):
             continue
+        pass_time_limit_seconds = time_limit_seconds
+        if total_time_limit_seconds is not None:
+            remaining_budget = total_time_limit_seconds - (
+                monotonic() - optimization_started
+            )
+            if remaining_budget <= 0:
+                return previous_solver, cp_model.UNKNOWN
+            # Recompute the share before every tier. A tier that proves its
+            # value early leaves its unused budget available to later tiers;
+            # no tier can consume more than the remaining global allowance.
+            pass_time_limit_seconds = max(
+                0.001,
+                remaining_budget / remaining_objective_count,
+            )
+        remaining_objective_count -= 1
         model.Minimize(objective)
         if previous_solver is not None:
             set_solver_hints(model, previous_solver)
@@ -205,7 +227,7 @@ def solve_lexicographically(
             prepared_solver = validated_initial_hint_solver(
                 model,
                 initial_assignment_hints,
-                time_limit_seconds,
+                pass_time_limit_seconds,
                 worker_count=worker_count,
             )
             if prepared_solver is not None:
@@ -214,7 +236,7 @@ def solve_lexicographically(
                 # optimization pass later reaches UNKNOWN without an incumbent.
                 previous_solver = prepared_solver
 
-        solver = new_solver(time_limit_seconds, worker_count=worker_count)
+        solver = new_solver(pass_time_limit_seconds, worker_count=worker_count)
         status = solver.Solve(model)
         if status not in {cp_model.OPTIMAL, cp_model.FEASIBLE}:
             return previous_solver, status

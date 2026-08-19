@@ -124,9 +124,40 @@ def test_result_records_validated_seed_and_optimization_quality_facts():
     assert facts["stage_1"]["seed_validated_against_full_model"] is True
     assert facts["stage_2"]["validated_seed_received"] is True
     assert facts["stage_2"]["worker_count"] == 8
+    assert facts["stage_2"]["time_limit_seconds"] == 1800.0
     assert tuple(facts["stage_2"]["objective_values"]) <= tuple(
         facts["stage_1"]["objective_values"]
     )
+
+
+def test_lexicographic_budget_is_shared_across_objective_passes():
+    """A global offline budget cannot be multiplied by objective-tier count."""
+
+    model = cp_model.CpModel()
+    value = model.NewIntVar(0, 1, "value")
+    captured_limits = []
+    original_new_solver = student_assignment_solver.new_solver
+
+    def capture_new_solver(time_limit_seconds, **kwargs):
+        captured_limits.append(time_limit_seconds)
+        return original_new_solver(time_limit_seconds, **kwargs)
+
+    with patch.object(
+        student_assignment_solver,
+        "new_solver",
+        side_effect=capture_new_solver,
+    ):
+        solver, outcome = student_assignment_solver.solve_lexicographically(
+            model,
+            (value, value),
+            10.0,
+            total_time_limit_seconds=0.2,
+        )
+
+    assert solver is not None
+    assert outcome == cp_model.FEASIBLE
+    assert len(captured_limits) == 2
+    assert all(0 < limit <= 0.2 for limit in captured_limits)
 
 
 def _difficulty(course_id, score, category="math"):

@@ -27,6 +27,7 @@ from ..constants import (
     STUDENT_ASSIGNMENT_HARD_FEASIBILITY_WORKER_COUNT,
     STUDENT_ASSIGNMENT_HARD_FEASIBILITY_VALIDATION_TIME_LIMIT_SECONDS,
     STUDENT_ASSIGNMENT_HARD_FEASIBILITY_VALIDATION_WORKER_COUNT,
+    STUDENT_ASSIGNMENT_OPTIMIZATION_TIME_LIMIT_SECONDS,
     STUDENT_ASSIGNMENT_OPTIMIZATION_WORKER_COUNT,
 )
 from ..diagnostics import (
@@ -140,6 +141,7 @@ def _optimization_facts(
     final_solver,
     final_outcome,
     objectives,
+    optimization_time_limit_seconds,
 ):
     """Expose stage handoff and quality facts without changing solver logic."""
 
@@ -157,6 +159,7 @@ def _optimization_facts(
         "stage_2": {
             "solver_outcome": _outcome_name(final_outcome),
             "worker_count": STUDENT_ASSIGNMENT_OPTIMIZATION_WORKER_COUNT,
+            "time_limit_seconds": optimization_time_limit_seconds,
             "validated_seed_received": validated_seed_solver is not None,
             "objective_values": list(final_values),
             "improved_over_stage_1": improved,
@@ -1949,6 +1952,11 @@ def _solve_student_assignment(
         initial_assignment_hints=initial_assignment_hints,
         validated_seed_solver=validated_seed_solver,
         worker_count=STUDENT_ASSIGNMENT_OPTIMIZATION_WORKER_COUNT,
+        total_time_limit_seconds=(
+            STUDENT_ASSIGNMENT_OPTIMIZATION_TIME_LIMIT_SECONDS
+            if use_hard_feasibility_bootstrap
+            else None
+        ),
     )
     optimization_facts = _optimization_facts(
         hard_feasibility_outcome=_hard_feasibility_outcome,
@@ -1958,6 +1966,11 @@ def _solve_student_assignment(
         final_solver=solver,
         final_outcome=outcome,
         objectives=objectives,
+        optimization_time_limit_seconds=(
+            STUDENT_ASSIGNMENT_OPTIMIZATION_TIME_LIMIT_SECONDS
+            if use_hard_feasibility_bootstrap
+            else None
+        ),
     )
     if solver is None:
         # CP-SAT ``UNKNOWN`` means the bounded solve ended without a proof or a
