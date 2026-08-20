@@ -90,12 +90,12 @@ analysis, a general manual-override workflow, and the frontend are not yet
 implemented end-to-end.
 
 The backend is Django and Django REST Framework over PostgreSQL. The
-`scheduling_engine` package is pure Python and independent of Django. Current
-solver calls are synchronous inside the application service request. The
-repository deliberately does not contain Celery, Redis, a task queue, a worker
-tier, or persistent downstream run-status infrastructure. A future worker may
-be added only if representative benchmark evidence shows that synchronous
-execution no longer meets the deployment contract.
+`scheduling_engine` package is pure Python and independent of Django. The
+expensive placement, named-teacher, and student-assignment API operations are
+dispatched through a dedicated Celery/Redis queue and tracked by a durable
+`SchedulingExecution` row; the immutable stage run is still created by the
+existing service in the worker. Direct service callers remain synchronous.
+See `docs/SCHEDULING_WORKERS.md` for the worker lifecycle and local setup.
 
 ---
 
@@ -152,10 +152,11 @@ migrations.
   endpoint.
 - Internationalization: the `Translation` model and admin registration exist,
   but no translation API or consuming user interface exists.
-- Operational hardening: tests, local setup, immutable run records, and
-  transaction boundaries exist, but there is no CI workflow, production
-  settings split, generated API contract, or acceptable target-scale
-  solve-quality evidence.
+- Operational hardening: tests, local setup, immutable run records,
+  transaction boundaries, durable asynchronous execution state, Redis/Celery
+  dispatch, idempotency, and clean worker-child recycling exist; CI,
+  production settings split, generated API contract, and full deployment
+  hardening remain future work.
 
 ### 3.3 Not Yet Implemented
 
@@ -164,8 +165,10 @@ migrations.
 - A read-only post-solve conflict analyzer.
 - General manual override application and genuine scoped re-solving.
 - A React/TypeScript frontend.
-- Background execution infrastructure and persistent status tracking for
-  downstream solver runs.
+- Background execution for placement, named-teacher assignment, and student
+  assignment is implemented through the scheduling worker. Broader queue
+  orchestration, cancellation, progress reporting, and a frontend remain
+  future work.
 
 The repository contains models and policy names related to some of these areas,
 but those foundations do not constitute an implemented capability.
@@ -198,12 +201,12 @@ but those foundations do not constitute an implemented capability.
 | Category | Current status and design |
 |---|---|
 | Performance | CP-SAT stages use bounded solver calls. Student assignment first obtains and validates a complete hard-feasible seed, then runs the existing lexicographic objective sequence with bounded parallel search. A timeout retains the best complete incumbent; target-scale quality is reported through persisted stage/objective facts and hard-validity checks. |
-| Scalability | The pure engine and stage boundaries support future isolation, but the current deployment is a single Django/PostgreSQL application with synchronous solver calls. Horizontal worker scaling is not implemented. |
+| Scalability | Expensive downstream solves use a dedicated Celery queue with one process-based worker slot and one heavy task per child. Horizontal worker scaling is intentionally deferred pending resource measurement. |
 | Maintainability | The engine is Django-free, the adapter is the ORM-to-DTO boundary, and services own multi-model workflows. These boundaries are covered by import and service tests. |
 | Auditability | Immutable run, approval, placement, teacher-assignment, offering, staffing, and reconciliation records preserve accepted decisions. General override history remains incomplete. |
 | Authorization | Every API resource/action must declare a policy; missing declarations fail closed. Policy scopes are tested at policy and endpoint levels. |
 | Transactional integrity | Approval and reconciliation writes use Django transactions and stale-input revalidation. Rollback behavior is tested for the implemented workflows. |
-| Availability | CRUD does not depend on a worker or queue. A downstream solver call is a synchronous request and can block until its bounded engine call completes. Graceful asynchronous degradation is not implemented. |
+| Availability | CRUD and review/approval do not depend on a worker. Expensive downstream solve requests return a durable queued execution; broker/worker failures remain distinct from solver outcomes. Cancellation, progress, and stale-running reconciliation remain future work. |
 | Internationalization | Translation storage exists, but no runtime translation boundary is implemented. |
 | Usability | Review payloads include recommendations, accepted values, diagnostics, and conflicts for implemented stages. No counselor frontend exists yet. |
 | Schema development | Project apps intentionally use the migrationless `migrate --run-syncdb` workflow. |
@@ -212,18 +215,19 @@ but those foundations do not constitute an implemented capability.
 
 ## 6. System Overview
 
-The current system has three operational patterns rather than a queue-first
-execution model:
+The current system has three operational patterns:
 
 1. **Data and configuration:** authenticated users call DRF endpoints to create
    requests, manage offerings, configure capacities and qualifications, set
    conflicts, manage rosters, and create locks. Views validate transport shape
    and delegate workflow operations to Django services.
-2. **Synchronous recommendation:** a planning-role request invokes a Django
+2. **Asynchronous expensive recommendation:** a planning-role request validates
+   transport data, persists a `SchedulingExecution`, and publishes only its
+   ID after commit. The worker reloads the stable payload, invokes the Django
    service, which loads a detached DTO snapshot through
    `backend/apps/scheduling/services/engine_adapter.py`, calls a pure engine
    function, and persists an immutable run/result record. No operational
-   sections, schedules, or teachers are written by run creation.
+   sections, schedules, teachers, or enrollments are written by run creation.
 3. **Review and approval:** a counselor/director reviews the stored result,
    optionally adjusts allowed selections, previews approval, and applies an
    unchanged complete result in a transaction. Approval writes only the
@@ -238,9 +242,9 @@ performs ORM writes.
 
 ## 7. High-Level Architecture
 
-The current architecture is a layered synchronous application. The frontend
-box is a future client, not a deployed repository component. The dashed worker
-box is a conditional future addition, not part of today's architecture.
+The current architecture is a layered Django application with a dedicated
+Celery scheduling worker. The frontend box is a future client, not a deployed
+repository component.
 
 ```mermaid
 graph TB
@@ -275,13 +279,15 @@ graph TB
     ADAPTER --> DB
     ADAPTER --> SOLVE
     SOLVE --> ADAPTER
-    WORKER["Conditional future worker/queue\nonly if benchmarks justify it"] -. "future seam" .-> WF
+    REDIS[(Redis broker)] --> WORKER["Celery scheduling worker\nprefork, concurrency 1"]
+    WORKER --> WF
+    WORKER --> DB
 ```
 
-Current solver requests execute in the same application process as the
-service call. `Architecture_Development_Rules.md` and the roadmap explicitly
-defer Celery, Redis, and other background infrastructure until representative
-solve-time and reliability evidence justifies it.
+Placement, named-teacher, and student-assignment API submissions return a
+`SchedulingExecution` identifier. The worker is configured with one heavy task
+per child (`max_tasks_per_child=1`) because representative CP-SAT runs showed
+native-memory retention when large solves were repeated in one process.
 
 ---
 
@@ -299,7 +305,7 @@ solve-time and reliability evidence justifies it.
 | Fail closed | Unknown roles, missing policies, missing senior qualifications, stale approvals, and invalid locks fail rather than guessing. |
 | Stable machine contracts | API and solver behavior keys off stable snake_case codes rather than English message text. |
 | Human review | Conflict/diagnostic data is surfaced for a counselor; the system does not silently merge courses, assign rooms, or replace accepted work. |
-| Measured infrastructure | A queue or worker is a future conditional addition, not an assumed tier. |
+| Measured infrastructure | Expensive downstream solves use the dedicated scheduling queue; Celery concurrency remains one and child recycling is explicit. |
 | Migrationless development | Model changes are synchronized through an explicit local rebuild; migration files are not generated incidentally. |
 | Student-schedule quality | Difficulty and category distribution are snapshot soft preferences. Difficulty uses metadata or recency-weighted leave-one-course-out historical evidence, then honors a counselor override; neither objective weakens fulfillment, capacity, collisions, prerequisites, locks, or fixed context. |
 
@@ -349,8 +355,10 @@ The repository also contains:
 - translation storage under `backend/apps/translations/`; and
 - Django admin registrations for major domain/configuration models.
 
-There is no task broker, worker, notification service, frontend, or production
-observability stack in the repository.
+The scheduling application now includes a Redis-backed Celery task broker and
+one process-recycling scheduling worker boundary for expensive downstream
+solve submissions. Notification, frontend, and production observability
+stacks remain outside the repository.
 
 ---
 
@@ -575,7 +583,7 @@ evidence supports this fixture, not a blanket claim for every future dataset.
 
 ## 15. Data Flow
 
-Current run creation is synchronous:
+Expensive run creation is asynchronous through a durable execution record:
 
 ```mermaid
 flowchart TD
@@ -583,7 +591,10 @@ flowchart TD
     VIEWS --> SERIAL["serializers + policies"]
     SERIAL --> SERVICE["Django application service"]
     SERVICE --> DB[(PostgreSQL)]
-    SERVICE --> ADAPTER["engine_adapter"]
+    SERVICE --> EXEC["SchedulingExecution\nqueued/running/failed"]
+    EXEC --> REDIS[(Redis broker)]
+    REDIS --> WORKER["Celery scheduling worker"]
+    WORKER --> ADAPTER["engine_adapter"]
     ADAPTER --> SNAP["immutable DTO snapshot"]
     SNAP --> ENGINE["pure engine function"]
     ENGINE --> RESULT["result + diagnostics"]
@@ -592,16 +603,17 @@ flowchart TD
     SERVICE --> CLIENT
 ```
 
-Run creation stores the exact input snapshot and result. Approval does not
+The worker stores the exact input snapshot and result through the same
+stage-specific immutable run service used by direct callers. Approval does not
 silently re-solve. It locks relevant rows, reloads current source facts,
 compares the fingerprint and fixed-context state, and either accepts the
 reviewed result or returns a conflict. The placement and teacher-assignment
 services explicitly record that rooms and students are excluded from those
-stages.
+stages. `SchedulingExecution.status` describes delivery; the referenced run's
+status describes the solver result.
 
-The future frontend will use the same JSON endpoints. A future worker can be
-inserted behind the service boundary if measured runtime requires it; no
-current data flow depends on one.
+The future frontend will use the same JSON endpoints and poll the execution
+status endpoint before retrieving the immutable result run for review.
 
 ---
 
@@ -624,7 +636,7 @@ provenance.
 | `courses` | `Course`, capacity/priority references, `CourseCombinationRule` and members, `DeliveryGroup`, `CourseOffering` and decisions, `Section`, `Enrollment`, `CourseRequest`, `CoursePrerequisite`, and `CourseSequencePreference`. |
 | `constraints` | Hard/soft constraints, counselor preferences, normalized `Qualification`, teacher qualifications/preferences/current courses/availability, course room/qualification requirements, `CourseConflictMatrix`, and `CourseConflict`. |
 | `control` | `ManualOverride` audit rows and structured `SectionLock` current-state rows. |
-| `scheduling` | Capacity and priority profiles; teacher semester/annual capacities, rules, preferences, rosters; budget/staffing/planning runs and approvals; backup resolutions; reconciliation/lifecycle audit rows; `TimeSlot`, `SectionSchedule`, annual locks; placement runs/approvals; teacher-assignment runs/approvals; student-assignment runs/approvals and enrollment provenance. |
+| `scheduling` | Capacity and priority profiles; teacher semester/annual capacities, rules, preferences, rosters; budget/staffing/planning runs and approvals; backup resolutions; reconciliation/lifecycle audit rows; `TimeSlot`, `SectionSchedule`, annual locks; placement runs/approvals; teacher-assignment runs/approvals; student-assignment runs/approvals and enrollment provenance; durable `SchedulingExecution` delivery rows. |
 | `translations` | `Translation` key/English/French/context records. |
 
 The `backend/apps/core/` directory is a legacy placeholder app configuration;
@@ -762,8 +774,9 @@ Implemented run groups are:
   `approval-preview`, `approve`, and `affected-students`.
 
 These routes map to `section_planning.py`, `section_reconciliation.py`,
-`section_budget_planning.py`, and `staffing_planning.py`. Run creation is
-synchronous and stores an immutable result. Approval is a separate operation.
+`section_budget_planning.py`, and `staffing_planning.py`. These planning runs
+remain synchronous and store an immutable result. Approval is a separate
+operation.
 
 ### 17.6 Placement and Named Teacher Runs
 
@@ -779,7 +792,9 @@ The current downstream run routes are:
 The corresponding services are `section_placement.py`, `teacher_assignment.py`,
 and `student_assignment.py`. Placement approval writes timeslot-only schedules;
 teacher-assignment approval writes named teachers; student-assignment approval
-writes only new enrollments. None assigns rooms.
+writes only new enrollments. API creation returns a durable execution ID and
+dispatches these expensive solves to the scheduling worker; direct service
+callers remain synchronous. None assigns rooms.
 
 ### 17.7 Planned but Not Implemented Endpoints
 
@@ -788,7 +803,7 @@ The repository does not currently implement endpoints for:
 - a composed timetable or personal student/teacher schedules;
 - a post-solve conflict report;
 - general manual override create/apply/history; or
-- a persistent downstream job-status API.
+- cancellation/progress APIs beyond the implemented execution status route.
 
 Policy/action names for some future actions exist for fail-closed authorization
 planning, but no endpoint should be inferred from those names.
@@ -889,7 +904,7 @@ There is no general `overrides.py`, `orchestration.py`, `scope.py`, or
 | `backend/apps/control` | Manual override audit model, section-lock model, and lock service. |
 | `backend/apps/courses` | Course catalog, requests, sections, enrollments, prerequisites, offerings, delivery groups, and demand/section-state services. |
 | `backend/apps/people` | Domain profiles, role resolution, teacher directory, permissions, and teacher routes. |
-| `backend/apps/scheduling` | Planning configuration, immutable runs/approvals, lifecycle/reconciliation, placement, named teacher assignment, timeslots, and adapter services. |
+| `backend/apps/scheduling` | Planning configuration, durable execution state, immutable runs/approvals, lifecycle/reconciliation, placement, named teacher assignment, timeslots, worker tasks, and adapter services. |
 | `backend/apps/translations` | Translation model/admin storage. |
 | `backend/apps/core` | Legacy placeholder directory/configuration; not an active model domain in `INSTALLED_APPS`. |
 
@@ -906,7 +921,8 @@ trusting a submitted teacher identity.
 `engine_adapter.py` is the only current module intentionally joining Django ORM
 state to engine DTOs. Stage services invoke pure functions, store snapshots and
 results, and perform approval writes in Django transactions. Pure engine code
-does not know whether a run arrived through HTTP, a test, or a future worker.
+does not know whether a run arrived through HTTP, a test, or the current
+Celery worker.
 
 ### 19.5 Data Layer
 
@@ -1069,9 +1085,9 @@ The current error model has three layers:
 
 Approval services use `transaction.atomic`, deterministic row locking where
 needed, and fingerprint/current-state revalidation. A failed approval therefore
-does not partially create the operational rows for that stage. There is no
-worker retry, queue failure, persistent job-status, or completed conflict-report
-error contract to document today.
+does not partially create the operational rows for that stage. Worker delivery
+state is persisted separately, automatic task retries are disabled, and queue
+or worker failure is not translated into a solver result.
 
 Stable diagnostic values live in `scheduling_engine/diagnostics.py`; domain
 workflow codes live in the domain `codes.py` modules. Human-readable details
@@ -1095,10 +1111,10 @@ Implemented records include:
 - `ManualOverride` rows when the existing model is used.
 
 Run records store solver metadata, snapshots, results, status, and timestamps.
-They are the current review/audit source for solver operations. No
-`SchedulingRunLog` model, request-ID logging middleware, centralized log sink,
-or solver-statistics dashboard exists. Adding those belongs to hardening after
-real deployment and benchmark requirements are known.
+They are the review/audit source for solver operations. `SchedulingExecution`
+adds durable queued/running/completed/failed delivery state and a stable
+result-run reference. No `SchedulingRunLog` model, request-ID logging
+middleware, centralized log sink, or solver-statistics dashboard exists yet.
 
 ---
 
@@ -1117,7 +1133,7 @@ real deployment and benchmark requirements are known.
 | Input safety | DRF serializers validate writes; services enforce current-state and reason requirements; ORM queries are used instead of hand-built SQL. |
 | Audit integrity | Immutable run/approval models and append-only decision records preserve accepted workflow facts. |
 | Transport/deployment | HTTPS, production host/CORS settings, operational secrets management, and deployment hardening remain environment/deployment work rather than implemented repository features. |
-| Worker security | No worker exists. Least-privilege worker credentials are therefore a future conditional design concern. |
+| Worker security | A dedicated queue/process worker exists, but least-privilege worker credentials, TLS, and deployment secret rotation remain operational deployment work. |
 
 ---
 
@@ -1139,8 +1155,9 @@ deployment measurement.
 - Student-assignment optimization currently has a 1,800-second total budget
   shared across its non-constant lexicographic passes; the remaining budget is
   reallocated between passes rather than multiplied by the number of tiers.
-- The current run services execute synchronously, so request duration is part
-  of the current operational contract.
+- Expensive API submissions persist a queued execution and return immediately;
+  the worker executes the existing service outside the HTTP request. Direct
+  service calls remain synchronous for tests and non-HTTP callers.
 - The approximately 1,400-student/300-section fixture has 9,800 required
   requests, 10,500 usable seats, no course-specific seat shortage, and a
   complete independent capacity/timeslot feasibility assignment. Step 9 uses
@@ -1166,18 +1183,18 @@ deployment measurement.
   production quality. No queue threshold, production request limit, or
   performance dashboard exists.
 
-The next performance task is representative benchmark evidence for each stage.
-Only after that evidence should the project decide whether to add a worker,
-persistent downstream run status, timeouts at the HTTP boundary, or further
-model decomposition.
+The worker boundary is justified by representative solve duration and
+native-memory retention evidence. Future performance work should measure queue
+capacity, progress, cancellation, and deployment resource limits rather than
+changing scheduling semantics.
 
 ---
 
 ## 26. Scalability Considerations
 
-The current system is single-school and uses PostgreSQL with a Django process
-calling pure engine functions synchronously. The following properties help
-future growth:
+The current system is single-school and uses PostgreSQL with Django API
+processes dispatching expensive work to a conservative Celery worker. The
+following properties help future growth:
 
 - engine computation is isolated from Django models through DTOs;
 - academic year and delivery-group boundaries constrain most input snapshots;
@@ -1187,7 +1204,7 @@ future growth:
 The following are not implemented scalability mechanisms:
 
 - horizontally scaled API or worker deployment;
-- queue-based concurrent solve scheduling;
+- queue-based concurrent solve scheduling beyond the single heavy worker slot;
 - multi-school tenancy;
 - read replicas;
 - target-scale benchmark proof of acceptable solve quality; and
@@ -1213,7 +1230,7 @@ planned modules already exist:
 | Frontend | Stable serializer/policy/run contracts | Build role-gated React/TypeScript features with explicit API mappers. |
 | API publication | Stable serializer and endpoint test surface | Generate OpenAPI or maintain a tested API document before frontend becomes a major consumer. |
 | Historical readiness/reporting | Existing demand and planning models | Add a planning-role API for historical-demand/input completeness. |
-| Background execution | Representative benchmark and deployment requirement | Add only the smallest worker/status system justified by evidence. |
+| Background execution | Representative benchmark and native-memory/process-lifetime evidence | The smallest worker/status system is implemented for placement, named-teacher, and student assignment; broader orchestration remains future work. |
 | Structured operations | Deployment needs and run volume | Add request/run correlation, structured logs, CI, production settings, and acceptance fixtures. |
 | Analytics/AI | Stable stage input/output contracts and more data | Forecasting, explainability, and board-wide analytics remain future expansion, not current dependencies. |
 
@@ -1230,7 +1247,7 @@ and AI decisions that bypass counselor approval remain explicitly deferred.
 | Sequential rather than joint optimization | A later stage cannot globally optimize all earlier choices at once. | Preserve stage review and stable fixed context; revisit only with evidence that quality is insufficient. |
 | Temporary prerequisite assumption | The first student stage assumes prior completion rather than validating transcript evidence. | Add transcript/SIS completion evidence as a separate future decision; keep same-year hard ordering explicit. |
 | No room assignment yet | Accepted placement is timing-only and cannot be presented as a complete timetable. | Keep `SectionSchedule.room` nullable and build a separate reviewed room stage. |
-| Synchronous execution | A large solve can occupy the request process. | Benchmark representative workloads before choosing a worker/queue. |
+| Synchronous execution | Direct service callers remain synchronous, while API solve requests are queued. | Use the durable execution endpoint and a process-recycling scheduling worker for expensive API operations. |
 | Section lock representations | `Section.is_locked` and `SectionLock` can diverge because the invariant is not fully consolidated. | Shared fixed-context logic protects both; make synchronization an explicit future decision. |
 | Migrationless schema | A model field change requires a deliberate local database recreation and can invalidate local data. | Use `migrate --run-syncdb`; never generate migrations incidentally. |
 | Sparse historical data | Forecast and conflict recommendations can be weak for new or incomplete data. | Surface evidence and confidence/diagnostic context; keep counselor decisions explicit. |
@@ -1257,7 +1274,7 @@ The roadmap records the accepted decision divergences that matter here:
 
 - placement is timing-only and excludes rooms;
 - named teacher assignment is a separate reviewed stage after placement;
-- current solver execution is synchronous;
+- expensive downstream solver execution uses the durable Celery boundary;
 - course-conflict recommendations are reviewed rather than silently upserted;
 - the schema workflow is migrationless; and
 - models/DTOs/policy names for future phases do not count as implementation.
@@ -1269,8 +1286,8 @@ an end-to-end capability is actually covered by code and tests.
 
 ## 30. Conclusion
 
-The repository now implements a coherent, synchronous, review-first scheduling
-core rather than the queue-first system described by the original SDD. It can
+The repository now implements a coherent, review-first scheduling core with a
+durable asynchronous boundary for expensive downstream solves. It can
 collect demand and constraints, make offering and backup decisions, plan
 physical section counts against staffing, preserve and reconcile section
 history, place accepted sections in semesters and recurring A-D blocks, and
@@ -1278,10 +1295,10 @@ complete a separate reviewed named-teacher assignment.
 
 The system is not yet a final timetable product. Rooms, post-solve conflict
 analysis, general cross-stage overrides, a frontend, published API contract,
-acceptable target-scale solve quality, and operational hardening remain future
-work. Student assignment and its controlled rerun/lock capability are
-implemented, but the system must not claim capabilities beyond the current
-reviewed contracts.
+queue cancellation/progress, and deployment hardening remain future work.
+Student assignment and its controlled rerun/lock capability are implemented,
+but the system must not claim capabilities beyond the current reviewed
+contracts.
 
 The central architectural contract is therefore:
 

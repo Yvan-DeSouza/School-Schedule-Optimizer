@@ -26,9 +26,11 @@ from backend.apps.scheduling.views import (
     OnlineSupervisionConfigurationViewSet,
     OnlineSupervisionPlanRunViewSet,
     OnlineSupervisionSessionViewSet,
+    SchedulingExecutionViewSet,
 )
 
 router = DefaultRouter()
+router.register("planning/executions", SchedulingExecutionViewSet, basename="scheduling-execution")
 # ViewSet @actions automatically add run review/preview/approve detail routes.
 router.register("timeslots", TimeSlotViewSet, basename="timeslot")
 router.register("planning/capacity-profiles", CapacityProfileViewSet, basename="capacity-profile")

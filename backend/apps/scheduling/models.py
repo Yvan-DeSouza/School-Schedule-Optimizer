@@ -5,9 +5,12 @@ approvals are immutable audit facts. ``SectionSchedule`` is operational state
 for later timetable placement and remains separate from section-count planning.
 """
 
+import uuid
+
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
 from django.db import models
+from django.db.models import Q
 
 from backend.apps.common.constants import (
     BACKUP_POLICY_CHOICES,
@@ -26,6 +29,9 @@ from backend.apps.common.constants import (
     SEMESTER_CHOICES,
 )
 from backend.apps.scheduling.constants import (
+    SCHEDULING_EXECUTION_OPERATION_CHOICES,
+    SCHEDULING_EXECUTION_STATUS_CHOICES,
+    SCHEDULING_EXECUTION_STATUS_QUEUED,
     SECTION_PLACEMENT_INPUT_MODE_CHOICES,
     SECTION_PLACEMENT_RUN_STATUS_CHOICES,
     STUDENT_ASSIGNMENT_BASIS_CHOICES,
@@ -289,6 +295,47 @@ class TeacherPlanningRosterMember(models.Model):
 
     def __str__(self):
         return f"{self.teacher} on {self.roster}"
+
+
+class SchedulingExecution(models.Model):
+    """Durable delivery state for one asynchronous scheduling operation.
+
+    This model is deliberately not a generic foreign key and is not an
+    immutable solver run. ``result_model`` and ``result_id`` identify the
+    immutable stage-specific run created after the worker finishes. Keeping
+    execution lifecycle separate lets worker failures remain visible without
+    changing approval or historical-result semantics.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    operation = models.CharField(max_length=40, choices=SCHEDULING_EXECUTION_OPERATION_CHOICES)
+    status = models.CharField(
+        max_length=20,
+        choices=SCHEDULING_EXECUTION_STATUS_CHOICES,
+        default=SCHEDULING_EXECUTION_STATUS_QUEUED,
+    )
+    payload = models.JSONField(default=dict)
+    created_by = models.ForeignKey("auth.User", null=True, on_delete=models.SET_NULL)
+    celery_task_id = models.CharField(max_length=255, blank=True, default="")
+    idempotency_key = models.CharField(max_length=255, blank=True, default="")
+    payload_fingerprint = models.CharField(max_length=64, blank=True, default="")
+    result_model = models.CharField(max_length=120, blank=True, default="")
+    result_id = models.PositiveBigIntegerField(null=True, blank=True)
+    error_code = models.CharField(max_length=100, blank=True, default="")
+    error_detail = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=("created_by", "operation", "idempotency_key"),
+                condition=~Q(idempotency_key=""),
+                name="unique_scheduling_execution_idempotency_key",
+            ),
+        ]
 
 
 class SectionBudgetRun(models.Model):

@@ -125,6 +125,27 @@ def _resolve_scope(
     )
 
 
+def validate_student_assignment_submission(
+    *, academic_year_id, scope_type, source_approval=None,
+    scope_student_ids=(), scope_course_ids=(), scope_section_ids=(),
+):
+    """Run the inexpensive scope checks before an asynchronous submission.
+
+    The solver still performs the authoritative snapshot validation in the
+    worker. This boundary only prevents obviously malformed scoped reruns from
+    being accepted into the queue as if they were valid requests.
+    """
+
+    return _resolve_scope(
+        academic_year_id=academic_year_id,
+        scope_type=scope_type,
+        source_approval=source_approval,
+        student_ids=scope_student_ids,
+        course_ids=scope_course_ids,
+        section_ids=scope_section_ids,
+    )
+
+
 def _snapshot_scope(snapshot):
     value = snapshot.get("scope") or {}
     return StudentAssignmentScopeDTO(

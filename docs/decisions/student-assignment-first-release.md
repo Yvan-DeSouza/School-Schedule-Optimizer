@@ -124,6 +124,13 @@ approved alternates may remain in a complete result.
 - conflict-analysis and composed personal-timetable endpoints;
 - room assignment, frontend work, asynchronous workers, and background jobs.
 
+This bullet records the historical first-release scope. Current API execution
+has since evolved without changing the student-assignment contract: expensive
+student-assignment submissions are dispatched through the durable Celery
+`SchedulingExecution` boundary, while the immutable run, review, approval,
+snapshot, and solver semantics defined here remain unchanged. See
+`docs/SCHEDULING_WORKERS.md` for the current execution architecture.
+
 The first two areas have an accepted and implemented follow-on contract in
 [`student-assignment-reruns-and-locks.md`](student-assignment-reruns-and-locks.md).
 They remain outside this first-release contract, even though the follow-on

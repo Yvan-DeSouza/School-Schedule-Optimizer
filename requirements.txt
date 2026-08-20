@@ -16,3 +16,5 @@ python-dotenv==1.2.2
 pytest==9.0.2
 pytest-django==4.11.1
 ortools>=9.10,<10
+celery==5.5.3
+redis==6.4.0

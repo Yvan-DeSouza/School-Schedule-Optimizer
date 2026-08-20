@@ -21,6 +21,7 @@ from backend.apps.scheduling.models import (
     TeacherPlanningRoster,
     TeacherPlanningRosterMember,
     TimeSlot,
+    SchedulingExecution,
 )
 
 
@@ -70,6 +71,7 @@ def _create_accepted_teacher_assignment_context(
 @pytest.mark.django_db
 def test_teacher_assignment_review_exposes_persisted_candidate_ledger(
     authenticated_client, academic_year, course, counselor_user, teacher_user,
+    run_scheduling_task_inline,
 ):
     """The API returns evidence saved with the immutable reviewed run."""
 
@@ -100,8 +102,11 @@ def test_teacher_assignment_review_exposes_persisted_candidate_ledger(
         format="json",
     )
 
-    assert created.status_code == 201, created.data
-    review = client.get(f"/api/planning/teacher-assignment-runs/{created.data['id']}/review/")
+    assert created.status_code == 202, created.data
+    execution = SchedulingExecution.objects.get(pk=created.data["id"])
+    assert execution.status == "completed", execution.error_detail
+    run_id = execution.result_id
+    review = client.get(f"/api/planning/teacher-assignment-runs/{run_id}/review/")
     assert review.status_code == 200, review.data
     assert review.data["candidate_ledger"] == [{
         "decision_kind": "section",
@@ -137,6 +142,7 @@ def test_teacher_assignment_review_exposes_persisted_candidate_ledger(
 @pytest.mark.django_db
 def test_teacher_assignment_review_keeps_preassigned_teacher_as_fixed_context(
     authenticated_client, academic_year, course, counselor_user, teacher_user,
+    run_scheduling_task_inline,
 ):
     """A review must not present an inherited teacher as a new recommendation."""
 
@@ -168,8 +174,11 @@ def test_teacher_assignment_review_keeps_preassigned_teacher_as_fixed_context(
         format="json",
     )
 
-    assert created.status_code == 201, created.data
-    review = client.get(f"/api/planning/teacher-assignment-runs/{created.data['id']}/review/")
+    assert created.status_code == 202, created.data
+    execution = SchedulingExecution.objects.get(pk=created.data["id"])
+    assert execution.status == "completed", execution.error_detail
+    run_id = execution.result_id
+    review = client.get(f"/api/planning/teacher-assignment-runs/{run_id}/review/")
     assert review.status_code == 200, review.data
     assert review.data["candidate_ledger"] == [{
         "decision_kind": "section",

@@ -27,7 +27,7 @@ from backend.apps.access.permissions import ActionPolicyPermission
 from backend.apps.access.resource_policies.planning import PlanningConfigurationPolicy
 from backend.apps.access.viewsets import PolicyFilteredModelViewSet
 from backend.apps.common.models import AcademicYear
-from backend.apps.common.exceptions import DomainConflictError, DomainValidationError
+from backend.apps.common.exceptions import DomainConflictError, DomainError, DomainValidationError
 from backend.apps.common.views import ReferenceDataViewSet
 from backend.apps.scheduling.codes import (
     SECTION_PLACEMENT_CONFLICT,
@@ -54,6 +54,7 @@ from backend.apps.scheduling.models import (
     TeacherAssignmentApproval,
     StudentAssignmentRun,
     StudentAssignmentApproval,
+    SchedulingExecution,
     StudentAssignmentLock,
     StudentSpecialCommitmentLock,
     OnlineSupervisionConfiguration,
@@ -62,6 +63,11 @@ from backend.apps.scheduling.models import (
     TeacherPlanningRoster,
     TimeSlot,
     AnnualPlacementLock,
+)
+from backend.apps.scheduling.constants import (
+    SCHEDULING_EXECUTION_OPERATION_SECTION_PLACEMENT,
+    SCHEDULING_EXECUTION_OPERATION_STUDENT_ASSIGNMENT,
+    SCHEDULING_EXECUTION_OPERATION_TEACHER_ASSIGNMENT,
 )
 from backend.apps.scheduling.serializers import (
     CapacityProfileSerializer,
@@ -97,6 +103,7 @@ from backend.apps.scheduling.serializers import (
     TeacherAssignmentApprovalSerializer,
     StudentAssignmentRunCreateSerializer,
     StudentAssignmentRunSerializer,
+    SchedulingExecutionSerializer,
     StudentAssignmentApprovalRequestSerializer,
     StudentAssignmentApprovalSerializer,
     StudentAssignmentLockCreateSerializer,
@@ -115,6 +122,12 @@ from backend.apps.scheduling.serializers import (
     OnlineSupervisionPlanRunSerializer,
     OnlineSupervisionPlanApprovalRequestSerializer,
     OnlineSupervisionSessionSerializer,
+)
+from backend.apps.scheduling.services.execution import (
+    section_placement_payload,
+    student_assignment_payload,
+    submit_scheduling_execution,
+    teacher_assignment_payload,
 )
 from backend.apps.scheduling.services.engine_adapter import get_section_count_recommendations
 from backend.apps.scheduling.services.planning_configuration import apply_course_capacity_policy
@@ -146,6 +159,13 @@ class StudentAssignmentConflict(APIException):
 
     status_code = status.HTTP_409_CONFLICT
     default_code = STUDENT_ASSIGNMENT_CONFLICT
+
+
+class SchedulingExecutionConflict(APIException):
+    """HTTP 409 for a duplicate execution key with different input."""
+
+    status_code = status.HTTP_409_CONFLICT
+    default_code = "scheduling_execution_conflict"
 
 
 _STUDENT_ASSIGNMENT_LOCK_ACTIONS = {
@@ -792,6 +812,20 @@ class CourseCapacityPolicyView(APIView):
         return Response(CapacityProfileSerializer(profile).data)
 
 
+class SchedulingExecutionViewSet(
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    viewsets.GenericViewSet,
+):
+    """Read-only status endpoint for queued and completed scheduling work."""
+
+    permission_classes = [ActionPolicyPermission]
+    action_policy_class = SchedulingActionPolicy
+    action_name = SchedulingAction.VIEW_SCHEDULING_RUN_STATUS
+    queryset = SchedulingExecution.objects.select_related("created_by")
+    serializer_class = SchedulingExecutionSerializer
+
+
 class SectionPlacementRunViewSet(
     mixins.CreateModelMixin,
     mixins.ListModelMixin,
@@ -828,13 +862,21 @@ class SectionPlacementRunViewSet(
         if not AcademicYear.objects.filter(pk=serializer.validated_data["academic_year"]).exists():
             raise NotFound("Academic year not found.")
         try:
-            from backend.apps.scheduling.services.section_placement import create_section_placement_run
-
-            run = create_section_placement_run(created_by=request.user, **serializer.validated_data)
+            execution, created = submit_scheduling_execution(
+                operation=SCHEDULING_EXECUTION_OPERATION_SECTION_PLACEMENT,
+                payload=section_placement_payload(**serializer.validated_data),
+                created_by=request.user,
+                idempotency_key=request.headers.get("Idempotency-Key", ""),
+            )
+        except DomainConflictError as error:
+            raise SchedulingExecutionConflict(error.detail) from error
         except (ValueError, DomainValidationError) as error:
-            detail = error.detail if isinstance(error, DomainValidationError) else {"detail": str(error)}
+            detail = error.detail if isinstance(error, DomainError) else {"detail": str(error)}
             raise ValidationError(detail) from error
-        return Response(SectionPlacementRunSerializer(run).data, status=status.HTTP_201_CREATED)
+        return Response(
+            SchedulingExecutionSerializer(execution).data,
+            status=status.HTTP_202_ACCEPTED if created else status.HTTP_200_OK,
+        )
 
     @action(detail=True, methods=["get"])
     def review(self, request, pk=None):
@@ -913,17 +955,24 @@ class TeacherAssignmentRunViewSet(
         serializer.is_valid(raise_exception=True)
         if not AcademicYear.objects.filter(pk=serializer.validated_data["academic_year"]).exists():
             raise NotFound("Academic year not found.")
-        from backend.apps.scheduling.services.teacher_assignment import create_teacher_assignment_run
-
         try:
-            run = create_teacher_assignment_run(
-                academic_year_id=serializer.validated_data["academic_year"],
+            execution, created = submit_scheduling_execution(
+                operation=SCHEDULING_EXECUTION_OPERATION_TEACHER_ASSIGNMENT,
+                payload=teacher_assignment_payload(
+                    academic_year=serializer.validated_data["academic_year"],
+                ),
                 created_by=request.user,
+                idempotency_key=request.headers.get("Idempotency-Key", ""),
             )
+        except DomainConflictError as error:
+            raise SchedulingExecutionConflict(error.detail) from error
         except (ValueError, DomainValidationError) as error:
-            detail = error.detail if isinstance(error, DomainValidationError) else {"detail": str(error)}
+            detail = error.detail if isinstance(error, DomainError) else {"detail": str(error)}
             raise ValidationError(detail) from error
-        return Response(TeacherAssignmentRunSerializer(run).data, status=status.HTTP_201_CREATED)
+        return Response(
+            SchedulingExecutionSerializer(execution).data,
+            status=status.HTTP_202_ACCEPTED if created else status.HTTP_200_OK,
+        )
 
     @action(detail=True, methods=["get"])
     def review(self, request, pk=None):
@@ -1005,14 +1054,33 @@ class StudentAssignmentRunViewSet(
         serializer.is_valid(raise_exception=True)
         if not AcademicYear.objects.filter(pk=serializer.validated_data["academic_year"]).exists():
             raise NotFound("Academic year not found.")
-        from backend.apps.scheduling.services.student_assignment import create_student_assignment_run
+        from backend.apps.scheduling.services.student_assignment import validate_student_assignment_submission
 
         try:
-            run = create_student_assignment_run(created_by=request.user, **serializer.validated_data)
+            values = dict(serializer.validated_data)
+            validate_student_assignment_submission(
+                academic_year_id=values["academic_year"],
+                scope_type=values["scope_type"],
+                source_approval=values.get("source_approval"),
+                scope_student_ids=values.get("scope_student_ids", ()),
+                scope_course_ids=values.get("scope_course_ids", ()),
+                scope_section_ids=values.get("scope_section_ids", ()),
+            )
+            execution, created = submit_scheduling_execution(
+                operation=SCHEDULING_EXECUTION_OPERATION_STUDENT_ASSIGNMENT,
+                payload=student_assignment_payload(**values),
+                created_by=request.user,
+                idempotency_key=request.headers.get("Idempotency-Key", ""),
+            )
+        except DomainConflictError as error:
+            raise SchedulingExecutionConflict(error.detail) from error
         except (ValueError, DomainValidationError) as error:
-            detail = error.detail if isinstance(error, DomainValidationError) else {"detail": str(error)}
+            detail = error.detail if isinstance(error, DomainError) else {"detail": str(error)}
             raise ValidationError(detail) from error
-        return Response(StudentAssignmentRunSerializer(run).data, status=status.HTTP_201_CREATED)
+        return Response(
+            SchedulingExecutionSerializer(execution).data,
+            status=status.HTTP_202_ACCEPTED if created else status.HTTP_200_OK,
+        )
 
     @action(detail=True, methods=["get"])
     def review(self, request, pk=None):

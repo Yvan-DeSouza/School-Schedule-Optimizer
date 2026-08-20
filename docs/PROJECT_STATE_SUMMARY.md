@@ -517,7 +517,7 @@ Where the workflow stops today:
 
 | Source | What it says | What the code actually does today | Governing truth |
 | --- | --- | --- | --- |
-| `docs/Software_Design_Document.md` | Several sections still imply a queue-first or older room-coupled workflow | Current solver stages are synchronous and review-first; room assignment is explicitly deferred out of semester/A-D placement and named-teacher assignment | Code plus the accepted decision docs |
+| `docs/Software_Design_Document.md` | Several historical sections implied a queue-first or older room-coupled workflow | Expensive downstream API solves now use durable Celery execution while review/approval remains explicit; room assignment remains deferred out of semester/A-D placement and named-teacher assignment | Current code, `docs/SCHEDULING_WORKERS.md`, and accepted decision docs |
 | `docs/Implementation_Roadmap.md` | Older wording still refers to Phase 2 as "A-D block and room placement" | The accepted decision is semester/A-D placement with staffing feasibility, and rooms are not part of that stage | `docs/decisions/semester-placement-and-staffing-feasibility.md` |
 | `README.md` | Still describes `backend/apps/common/constants.py` as the single source of truth for reusable values | `backend/apps/common/constants.py` is now a compatibility export; owning modules are `school_values`, `people.constants`, `courses.constants`, `constraints.constants`, and `scheduling.constants` | Current code and `docs/Architecture_Development_Rules.md` |
 | `README.md` and roadmap text | Older descriptions mention section-count and staffing workflows but not the newer placement and named-teacher stages | Those newer stages are implemented and documented in the decision records | Current code and decision docs |
@@ -601,8 +601,8 @@ first assignment workflow.
   when the temporary assumed-prior-completion policy is replaced?
 - Should the project publish OpenAPI now that the student-assignment API
   surface exists, or wait until the next scheduling increment?
-- Should downstream solver runs get background orchestration only after a
-  measured solve-time benchmark justifies it?
+- How should queue cancellation, progress reporting, and stale-running
+  execution reconciliation evolve beyond the current measured worker boundary?
 - When should room assignment become its own reviewed stage relative to student
   assignment?
 - Should the current manual override audit model evolve into a first-class

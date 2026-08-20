@@ -155,3 +155,24 @@ MIGRATION_MODULES = {
     "scheduling": None,
     "translations": None,
 }
+
+# Expensive scheduling work is dispatched through the dedicated Celery queue.
+# Redis carries task messages only; immutable runs and execution state remain
+# authoritative in PostgreSQL. Environment variables keep local WSL and
+# deployment-specific broker addresses out of application code.
+CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
+CELERY_RESULT_BACKEND = None
+CELERY_TASK_DEFAULT_QUEUE = os.getenv("CELERY_SCHEDULING_QUEUE", "scheduling")
+CELERY_TASK_ROUTES = {
+    "backend.apps.scheduling.tasks.execute_scheduling_execution": {
+        "queue": CELERY_TASK_DEFAULT_QUEUE,
+    },
+}
+CELERY_TASK_IGNORE_RESULT = True
+CELERY_TASK_ACKS_LATE = False
+CELERY_TASK_REJECT_ON_WORKER_LOST = False
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+CELERY_WORKER_CONCURRENCY = 1
+CELERY_WORKER_POOL = "prefork"
+CELERY_WORKER_MAX_TASKS_PER_CHILD = 1
+CELERY_TASK_TRACK_STARTED = True

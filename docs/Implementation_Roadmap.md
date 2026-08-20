@@ -165,7 +165,7 @@ These areas contain useful foundations but are not complete Version 1 capabiliti
 | Manual controls | `SectionLock`, `Section.is_locked`, `ManualOverride` model, admin registration, and future action-policy names | No enforced synchronization invariant between lock row/flag; no override application service/API, typed action workflow, optimistic concurrency, override history endpoint, or scoped re-solve |
 | Timetable visibility | Teachers can read sections already assigned to them | No composed timetable endpoint and no student/teacher personal schedule endpoint |
 | Internationalization | `Translation` model and admin registration | No translation API and no user interface consuming translations |
-| Scheduling orchestration | Section planning runs synchronously and persist immutable results | No run orchestration/status model for placement/assignment stages and no measured decision yet on background workers |
+| Scheduling orchestration | Expensive placement, named-teacher, and student-assignment API submissions persist `SchedulingExecution` state and use the dedicated Celery queue; immutable stage runs remain review-first | Queue cancellation/progress, stale-running reconciliation, and broader planning-stage orchestration remain future work |
 | Frontend | None | The React role-based application described by the SDD has not been started |
 | Delivery hardening | Pytest configuration, extensive tests, README setup, environment-based secrets, and a manual target-scale benchmark script | No visible CI workflow, production settings split, generated API contract, structured operational logging, or acceptable target-scale solve-quality evidence |
 
@@ -176,7 +176,9 @@ These areas contain useful foundations but are not complete Version 1 capabiliti
 - Named teacher-to-section assignment.
 - Post-solve conflict and issue analysis across the completed timetable.
 - General manual override application and immutable history APIs.
-- Persistent status tracking for downstream scheduling runs.
+- Persistent execution/status tracking for downstream placement, named-teacher,
+  and student-assignment runs is implemented; cancellation and progress remain
+  future work.
 - Historical-demand management API coverage required by later workflows.
 - A counselor/administrator, teacher, or student frontend.
 - Final timetable and personal-schedule APIs.
@@ -209,7 +211,11 @@ All remaining phases must preserve these established boundaries and conventions:
 7. **The timetable uses recurring A–D blocks.** A `TimeSlot` is one recurring block in one semester, not an individual calendar-day period.
 8. **Authorization fails closed.** Planning roles are counselor, staff, and director where current policy allows; future stage-specific policy may intentionally distinguish who can run a solver from who can monitor it.
 9. **Schema development is migrationless for this pre-production repository.** Do not create project migration files unless explicitly requested. An authorized local schema rebuild uses `migrate --run-syncdb`; never reset a database as an incidental roadmap task.
-10. **Infrastructure follows measured need.** Do not add Docker, Celery, Redis, or another broker solely because the old roadmap named them. Preserve an orchestration seam and choose deployment infrastructure only after representative solve-time and reliability requirements justify it.
+10. **Infrastructure follows measured need.** Do not add Docker, Celery, Redis,
+    or another broker speculatively. The current Celery/Redis worker exists
+    because representative solve duration and CP-SAT native-memory retention
+    justified the smallest measured execution boundary; add no broader
+    infrastructure without equivalent evidence.
 
 ---
 
@@ -223,7 +229,7 @@ The SDD still describes the product philosophy and long-term pipeline well, but 
 | Counselor confirmation | Counselor manually creates sections through ordinary Section CRUD | Replaced by a stronger review/preview/approval transaction with immutable audit provenance. This is completed work. |
 | Database schema | Described as fixed and largely unmodified | The implementation added planning configuration/run/approval models and explicit role profiles while preserving the SDD's intent. Future schema changes should be additive and justified, not prohibited by an outdated statement. |
 | Roles | Administrator inferred mainly through Django staff/superuser flags | The repository has explicit staff/director role profiles plus domain profile precedence. Use the implemented role system. |
-| Computational execution | All solve stages are presented as asynchronous through a queue | Current section planning is synchronous and bounded enough for existing tests. Downstream stages need a measured orchestration decision; a queue is not yet implemented. |
+| Computational execution | Expensive downstream solve submissions are asynchronous through a queue; direct services and unlisted planning stages remain synchronous | `SchedulingExecution`, Celery/Redis dispatch, idempotency, and one-heavy-task-per-child worker recycling are implemented; broader queue topology remains deferred. |
 | Course conflicts | Demand analysis automatically upserts `CourseConflict` | The pure engine computes recommendations, but the current API does not persist them automatically. Preserve human review rather than silently claiming upsert behavior exists. |
 | Merge/cancel review | Explicit Stage 2 merge/cancel workflow | Implemented as audited year-specific cancellations and approved course-combination rules over one physical `DeliveryGroup`. Late changes are blocked once active sections exist. |
 | Lock state | `Section.is_locked` is described as a synchronized fast flag for `SectionLock` state | The current lock API can create or clear a `SectionLock` without synchronizing `Section.is_locked`, and generic Section CRUD can change the flag independently. Establish one invariant before downstream placement. |
@@ -367,7 +373,9 @@ If lifecycle state belongs on `Section`, add it deliberately to `backend/apps/co
 - A review/preview/approval workflow that writes `SectionSchedule` atomically and never overwrites accepted placements implicitly.
 - An explicit API workflow to review generated co-request conflict recommendations before they update `CourseConflict`; no silent automatic upsert.
 - Bounded solver execution and representative benchmark results.
-- A documented decision on synchronous versus background execution based on measured runtime and deployment reliability, not the old roadmap's assumptions.
+- A documented execution decision based on measured runtime and deployment
+  reliability, with the smallest justified Celery/Redis worker boundary
+  implemented for expensive downstream solves.
 - Pure-engine tests plus adapter, API, transaction, lock, and authorization tests.
 
 **Major Tasks:**
@@ -730,14 +738,20 @@ frontend/
 
 1. Build realistic fixtures and benchmark each solver independently and in sequence.
 2. Confirm time limits return a usable feasible/suboptimal result or actionable infeasibility state.
-3. Decide whether synchronous execution meets the deployment contract. If not, introduce only the smallest justified queue/worker architecture behind existing services.
-4. Add persistent run status, idempotent retry behavior, and failure recovery where required.
+3. The synchronous-versus-background decision is complete for expensive
+   downstream API solves: use the smallest justified queue/worker architecture
+   behind existing services.
+4. Maintain persistent execution status and idempotent duplicate-submission
+   behavior; deliberate re-initiation remains the retry policy until safe
+   recovery/reconciliation is designed.
 5. Add CI without requiring local infrastructure that the project does not otherwise use.
 6. Split development and production settings and run a security review of authorization, PII exposure, and secrets.
 7. Add structured logging and audit correlation IDs.
 8. Reconcile the SDD with implemented section planning and approval evolution.
 9. Verify setup from a fresh clone using the documented migrationless schema procedure.
 10. Run the full acceptance flow and archive the expected results for regression testing.
+11. Operate expensive downstream solves through the measured Celery/Redis
+    execution boundary with durable status and clean worker-child recycling.
 
 **Suggested Folder/Module Structure:**
 
@@ -803,7 +817,9 @@ These are not excuses to leave Version 1 gaps unresolved. They are boundaries pr
 > **Superseded implementation update (2026-08-08):** Phase 2 is now
 > **Counselor-Reviewed Semester and A-D Placement With Staffing Feasibility**.
 > See `docs/decisions/semester-placement-and-staffing-feasibility.md` for the
-> accepted contract. It is implemented synchronously as a review-first stage.
+> accepted contract. It remains review-first; API submissions are dispatched
+> asynchronously through the current scheduling worker, while direct service
+> calls remain synchronous.
 > It places timing only, proves anonymous staffing feasibility, and explicitly
 > defers rooms, named teacher assignments, and student assignments. Any older
 > paragraph in this roadmap that says Phase 2 assigns rooms or requires a queue
@@ -811,7 +827,7 @@ These are not excuses to leave Version 1 gaps unresolved. They are boundaries pr
 
 > **Superseded implementation update (2026-08-08):** Phase 3 is now
 > **Counselor-Reviewed Named Teacher Assignment**. See
-> `docs/decisions/named-teacher-assignment.md`. It runs synchronously after
+> `docs/decisions/named-teacher-assignment.md`. It runs after
 > accepted timing, respects qualifications, availability, annual/semester load,
 > locks, and counselor course rules, and writes named teachers only after
 > approval. Rooms and students remain separate later stages.

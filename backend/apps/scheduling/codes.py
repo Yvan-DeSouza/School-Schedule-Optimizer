@@ -5,6 +5,11 @@ SECTION_PLACEMENT_CONFLICT = "section_placement_conflict"
 TEACHER_ASSIGNMENT_CONFLICT = "teacher_assignment_conflict"
 STUDENT_ASSIGNMENT_CONFLICT = "student_assignment_conflict"
 
+SCHEDULING_EXECUTION_IDEMPOTENCY_CONFLICT = "scheduling_execution_idempotency_conflict"
+SCHEDULING_EXECUTION_ENQUEUE_FAILED = "scheduling_execution_enqueue_failed"
+SCHEDULING_EXECUTION_WORKER_FAILED = "scheduling_execution_worker_failed"
+SCHEDULING_EXECUTION_DOMAIN_FAILED = "scheduling_execution_domain_failed"
+
 # These workflow codes reserve the next-release lock and rerun contract. They
 # are intentionally separate from pure-engine diagnostics because services own
 # authorization, current-state validation, and transactional workflow errors.

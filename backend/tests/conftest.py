@@ -81,3 +81,23 @@ def authenticated_client():
         client.force_authenticate(user=user)
         return client
     return client_for
+
+
+@pytest.fixture
+def run_scheduling_task_inline(monkeypatch):
+    """Execute one Celery task inline for API tests without a broker.
+
+    The production endpoint still returns immediately after enqueueing. This
+    fixture only makes the follow-up result available inside one database test
+    so review and approval assertions can remain focused and deterministic.
+    """
+
+    from backend.apps.scheduling import tasks
+    from backend.apps.scheduling.services import execution
+
+    monkeypatch.setattr(execution.transaction, "on_commit", lambda callback: callback())
+    monkeypatch.setattr(
+        tasks.execute_scheduling_execution,
+        "apply_async",
+        lambda *, args, queue: tasks.execute_scheduling_execution.apply(args=args),
+    )

@@ -143,7 +143,11 @@ generated; the project owner recreates a local database with
 
 The global `StudentAssignmentConfiguration` model, transcript/CSV/SIS
 completion evidence, general manual overrides, conflict analysis, personal
-timetable endpoints, frontend work, and background jobs remain deferred.
+timetable endpoints and frontend work remain deferred. Background execution
+was outside this decision's original scope; current API student-assignment
+submissions use the durable Celery `SchedulingExecution` boundary without
+changing rerun, lock, snapshot, or approval semantics. See
+`docs/SCHEDULING_WORKERS.md` for the current execution architecture.
 
 ## Step 6 verification record
 

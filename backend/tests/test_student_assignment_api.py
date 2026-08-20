@@ -10,7 +10,7 @@ from backend.apps.common.constants import (
 )
 from backend.apps.courses.models import Course, CourseRequest, Section
 from backend.apps.courses.services.offerings import ensure_academic_year_offerings
-from backend.apps.scheduling.models import SectionSchedule, StudentAssignmentLock, TimeSlot
+from backend.apps.scheduling.models import SectionSchedule, SchedulingExecution, StudentAssignmentLock, TimeSlot
 
 
 @pytest.mark.django_db
@@ -57,6 +57,7 @@ def test_prerequisite_and_soft_sequence_configuration_reject_cycles(
 @pytest.mark.django_db
 def test_counselor_can_create_and_review_sections_only_student_run(
     authenticated_client, academic_year, course, counselor_user, student_user, staff_user,
+    run_scheduling_task_inline,
 ):
     offering = ensure_academic_year_offerings(academic_year, actor=counselor_user)[0]
     section = Section.objects.create(
@@ -85,9 +86,11 @@ def test_counselor_can_create_and_review_sections_only_student_run(
     client = authenticated_client(counselor_user)
     response = client.post("/api/planning/student-assignment-runs/", payload, format="json")
 
-    assert response.status_code == 201
-    assert response.data["status"] == "complete"
-    review = client.get(f"/api/planning/student-assignment-runs/{response.data['id']}/review/")
+    assert response.status_code == 202
+    execution = SchedulingExecution.objects.get(pk=response.data["id"])
+    assert execution.status == "completed", execution.error_detail
+    run_id = execution.result_id
+    review = client.get(f"/api/planning/student-assignment-runs/{run_id}/review/")
     assert review.status_code == 200
     assert review.data["approval_allowed"] is True
     assert "lock_costs" in review.data
@@ -104,7 +107,7 @@ def test_counselor_can_create_and_review_sections_only_student_run(
             "unresolved_request_count": 0,
         },
     }]
-    run_url = f"/api/planning/student-assignment-runs/{response.data['id']}"
+    run_url = f"/api/planning/student-assignment-runs/{run_id}"
     assert authenticated_client(staff_user).post(
         "/api/planning/student-assignment-runs/", payload, format="json",
     ).status_code == 403
@@ -117,13 +120,13 @@ def test_counselor_can_create_and_review_sections_only_student_run(
         f"{run_url}/what-if-unlock/", {"lock_ids": [999999]}, format="json",
     ).status_code == 403
     what_if = client.post(
-        f"/api/planning/student-assignment-runs/{response.data['id']}/what-if-unlock/",
+        f"/api/planning/student-assignment-runs/{run_id}/what-if-unlock/",
         {"lock_ids": [999999]}, format="json",
     )
     assert what_if.status_code == 400
     assert what_if.data["code"] == "student_assignment_what_if_lock_not_active"
     explanation = client.get(
-        f"/api/planning/student-assignment-runs/{response.data['id']}/students/"
+        f"/api/planning/student-assignment-runs/{run_id}/students/"
         f"{student_user.student_profile.id}/explanation/"
     )
     assert explanation.status_code == 200

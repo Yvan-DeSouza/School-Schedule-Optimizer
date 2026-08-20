@@ -469,6 +469,15 @@ teachers, or students.
   Approval materializes annual virtual slots if needed and writes only a
   timeslot to `SectionSchedule`; it never changes an unreviewed candidate.
 
+Placement, named-teacher assignment, and student-assignment create requests
+return `202 Accepted` with a durable execution ID because their CP-SAT work can
+take many minutes. Poll `/api/planning/executions/{execution-id}/`; when its
+status is `completed`, use `result_model` and `result_id` to retrieve the
+immutable stage run and continue with the existing review/approval endpoints.
+An optional `Idempotency-Key` header prevents accidental duplicate submissions.
+Delivery failure is distinct from a solver result such as `infeasible` or
+`unknown`. See `docs/SCHEDULING_WORKERS.md` for the Redis/Celery worker setup.
+
 Counselor/director users may create and approve runs. Counselor/staff/director
 users may list, inspect, review, and preview them. A run is rejected at approval
 if the matrix, roster, lock, qualification, capacity, schedule, or other input
@@ -484,8 +493,9 @@ and soft time preferences with:
 - `GET/POST /api/planning/teacher-course-assignment-rules/`
 - `GET/POST /api/planning/teacher-time-preferences/`
 
-Create a reviewed candidate with `POST /api/planning/teacher-assignment-runs/`
-and `{"academic_year": 1}`. Use `GET /{id}/review/`, then
+Create an asynchronous reviewed candidate with `POST /api/planning/teacher-assignment-runs/`
+and `{"academic_year": 1}`. Poll the execution endpoint, then use
+`GET /api/planning/teacher-assignment-runs/{result_id}/review/`, then
 `POST /approval-preview/` or `POST /approve/` with a nonblank reason. Only a
 complete, unchanged run is approvable; approval writes `Section.teacher` and
 immutable assignment provenance, never a room or enrollment.

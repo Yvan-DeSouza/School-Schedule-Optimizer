@@ -26,6 +26,7 @@ from backend.apps.scheduling.constants import (
     STUDENT_SPECIAL_COMMITMENT_LOCK_TYPE_CHOICES,
 )
 from backend.apps.scheduling.models import (
+    SchedulingExecution,
     CapacityProfile,
     CoursePriorityProfile,
     SectionPlanningApproval,
@@ -157,6 +158,26 @@ class OnlineSupervisionPlanApprovalSessionSerializer(serializers.ModelSerializer
         model = OnlineSupervisionPlanApprovalSession
         fields = ("id", "annual_index", "allowed_semesters", "capacity_max", "target_capacity")
         read_only_fields = fields
+
+
+class SchedulingExecutionSerializer(serializers.ModelSerializer):
+    """Stable asynchronous delivery status plus the eventual immutable run."""
+
+    solver_status = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SchedulingExecution
+        fields = (
+            "id", "operation", "status", "created_by", "created_at", "started_at",
+            "finished_at", "celery_task_id", "result_model", "result_id",
+            "solver_status", "error_code", "error_detail",
+        )
+        read_only_fields = fields
+
+    def get_solver_status(self, obj):
+        from backend.apps.scheduling.services.execution import execution_result_status
+
+        return execution_result_status(obj)
 
 
 class OnlineSupervisionPlanApprovalSerializer(serializers.ModelSerializer):
