@@ -183,6 +183,8 @@ def solve_lexicographically(
     validated_seed_solver=None,
     worker_count=1,
     total_time_limit_seconds=None,
+    pass_facts=None,
+    pass_quality_callback=None,
 ):
     """Optimize ordered objectives while preserving the last valid candidate.
 
@@ -202,18 +204,40 @@ def solve_lexicographically(
     remaining_objective_count = sum(
         not isinstance(objective, int) for objective in objectives
     )
-    for objective in objectives:
+    for objective_index, objective in enumerate(objectives):
         # Several stages intentionally add an objective slot even when this
         # input has no rows in that tier. Re-solving a constant objective has
         # no scheduling value and previously could discard an earlier result.
         if isinstance(objective, int):
             continue
+        starting_value = (
+            float(previous_solver.Value(objective))
+            if previous_solver is not None else None
+        )
+        starting_quality = (
+            pass_quality_callback(previous_solver)
+            if pass_quality_callback is not None and previous_solver is not None
+            else None
+        )
         pass_time_limit_seconds = time_limit_seconds
         if total_time_limit_seconds is not None:
             remaining_budget = total_time_limit_seconds - (
                 monotonic() - optimization_started
             )
             if remaining_budget <= 0:
+                if pass_facts is not None:
+                    pass_facts.append({
+                        "objective_index": objective_index,
+                        "status": "unknown",
+                        "allocated_time_seconds": 0.0,
+                        "wall_time_seconds": 0.0,
+                        "starting_objective_value": starting_value,
+                        "ending_objective_value": starting_value,
+                        "starting_quality": starting_quality,
+                        "ending_quality": starting_quality,
+                        "incumbent_improved": False,
+                        "remaining_budget_seconds": 0.0,
+                    })
                 return previous_solver, cp_model.UNKNOWN
             # Recompute the share before every tier. A tier that proves its
             # value early leaves its unused budget available to later tiers;
@@ -241,6 +265,40 @@ def solve_lexicographically(
 
         solver = new_solver(pass_time_limit_seconds, worker_count=worker_count)
         status = solver.Solve(model)
+        solver_has_solution = status in {cp_model.OPTIMAL, cp_model.FEASIBLE}
+        ending_value = (
+            float(solver.Value(objective))
+            if solver_has_solution else starting_value
+        )
+        ending_quality = (
+            pass_quality_callback(solver)
+            if pass_quality_callback is not None and solver_has_solution
+            else starting_quality
+        )
+        if pass_facts is not None:
+            remaining_after = (
+                max(0.0, total_time_limit_seconds - (monotonic() - optimization_started))
+                if total_time_limit_seconds is not None else None
+            )
+            pass_facts.append({
+                "objective_index": objective_index,
+                "status": outcome_name(status),
+                "allocated_time_seconds": pass_time_limit_seconds,
+                "wall_time_seconds": solver.WallTime(),
+                "starting_objective_value": starting_value,
+                "ending_objective_value": ending_value,
+                "starting_quality": starting_quality,
+                "ending_quality": ending_quality,
+                "best_bound": float(solver.BestObjectiveBound()),
+                "conflicts": solver.NumConflicts(),
+                "branches": solver.NumBranches(),
+                "incumbent_improved": (
+                    starting_value is not None
+                    and ending_value is not None
+                    and ending_value < starting_value
+                ),
+                "remaining_budget_seconds": remaining_after,
+            })
         if status not in {cp_model.OPTIMAL, cp_model.FEASIBLE}:
             return previous_solver, status
         previous_solver = solver

@@ -1174,6 +1174,24 @@ def run_production_scale_special_scheduling_validation(*, counselor_user, prefix
     ))
     assert student_run.status == "complete", student_run.result
     student_result = student_run.result
+    print(
+        "[production-scale] student result: "
+        f"status={student_result.get('status')} "
+        f"solver_outcome={student_result.get('solver_outcome')} "
+        f"assignments={len(student_result.get('assignments', ()))} "
+        f"unmet={len(student_result.get('unmet_requests', ()))}",
+        flush=True,
+    )
+    print(
+        "[production-scale] student optimization facts: "
+        f"{student_result.get('optimization_facts', {})}",
+        flush=True,
+    )
+    print(
+        "[production-scale] student objective components: "
+        f"{student_result.get('objective_components', {})}",
+        flush=True,
+    )
     review = _elapsed(stage_seconds, "student_review", lambda: preview_student_assignment_approval(student_run))
     approval = _elapsed(stage_seconds, "student_approval", lambda: approve_student_assignment_run(
         student_run,

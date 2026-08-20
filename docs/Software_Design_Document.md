@@ -1166,6 +1166,11 @@ deployment measurement.
   result facts record the Stage-1 seed vector, Stage-2 vector, worker count,
   and whether the final vector improved the seed. Independent runs may produce
   different request-to-section assignments when parallel search is used.
+- Complete student-assignment candidates are also evaluated by the pure,
+  solver-aligned quality measurement layer. Its compact Stage-1/Stage-2
+  facts and per-pass timings are available in the result payload without
+  adding objectives or search work; the metric definitions and interpretation
+  rules are documented in [`STUDENT_SCHEDULE_QUALITY.md`](STUDENT_SCHEDULE_QUALITY.md).
 - Step 10 adds separate realistic-condition fixtures. A compact scenario
   validates uneven capacity, approved backups, missing offerings, prerequisite
   sequencing, A-D safety, historical/protected enrollments, exact locks,

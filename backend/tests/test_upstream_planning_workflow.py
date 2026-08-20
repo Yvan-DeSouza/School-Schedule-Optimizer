@@ -200,6 +200,16 @@ def test_combined_delivery_moves_from_ready_roster_to_one_physical_section(
             },
             format="json",
         ).status_code == 201
+    assert client.post(
+        "/api/planning/teacher-annual-capacities/",
+        {
+            "teacher": teacher_user.teacher_profile.id,
+            "academic_year": academic_year.id,
+            "maximum_sections": 1,
+            "reserved_sections": 0,
+        },
+        format="json",
+    ).status_code == 201
     roster_response = client.post(
         "/api/planning/teacher-rosters/",
         {"academic_year": academic_year.id},

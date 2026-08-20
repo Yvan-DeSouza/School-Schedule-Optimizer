@@ -103,6 +103,11 @@ from .candidate_evidence import (
     new_section_candidate_evidence as _new_section_candidate_evidence,
     public_candidate_evidence as _public_candidate_evidence,
 )
+from .quality import (
+    compact_student_assignment_quality as _compact_student_assignment_quality,
+    compare_student_assignment_quality as _compare_student_assignment_quality,
+    evaluate_student_assignment_quality as _evaluate_student_assignment_quality,
+)
 
 
 def _candidate_sort_key(candidate):
@@ -132,6 +137,93 @@ def _objective_values(solver, objectives):
     )
 
 
+def _extract_solver_candidate(
+    *, solver, data, request_candidates, commitment_variables,
+    commitment_candidates, commitment_metadata, previous_enrollment_by_request,
+):
+    """Extract source decisions from any valid full-model solver solution.
+
+    Stage 1 validation and Stage 2 optimization solve the same full variable
+    namespace. Keeping extraction in one helper lets the quality evaluator
+    inspect both candidates without creating a second solve or changing which
+    assignment the production solver returns.
+    """
+
+    assignments = []
+    assigned_request_ids = set()
+    selected_by_section = defaultdict(list)
+    for request in sorted(data.requests, key=lambda item: item.request_id):
+        for section, variable in request_candidates[request.request_id]:
+            if solver.Value(variable):
+                previous = previous_enrollment_by_request.get(request.request_id)
+                assignment = StudentAssignmentDTO(
+                    request_id=request.request_id,
+                    student_id=request.student_id,
+                    section_id=(
+                        None if request.delivery_kind == "online" and section.section_id < 0
+                        else section.section_id
+                    ),
+                    course_offering_id=request.course_offering_id,
+                    course_id=request.course_id,
+                    semester=section.semester,
+                    timeslot_id=section.timeslot_id,
+                    assignment_basis=request.assignment_basis,
+                    backup_resolution_snapshot=request.backup_resolution_snapshot,
+                    previous_enrollment_id=previous.enrollment_id if previous else None,
+                    previous_section_id=(
+                        previous.section_id
+                        if previous and previous.section_id > 0
+                        else None
+                    ),
+                    previous_online_supervision_session_id=(
+                        -previous.section_id
+                        if previous and previous.section_id < 0
+                        else None
+                    ),
+                    online_supervision_session_id=(
+                        -section.section_id
+                        if request.delivery_kind == "online" and section.section_id < 0
+                        else None
+                    ),
+                    half_semester_segment=(
+                        request.half_semester_segment
+                        if request.delivery_kind == "online"
+                        else section.half_semester_segment
+                    ),
+                )
+                assignments.append(assignment)
+                selected_by_section[section.section_id].append(assignment)
+                assigned_request_ids.add(request.request_id)
+                break
+
+    commitment_assignments = []
+    assigned_commitment_sources = set()
+    for (source_key, index), variable in sorted(commitment_variables.items()):
+        if not solver.Value(variable):
+            continue
+        _placement_value, occupancy, _pair = commitment_candidates[source_key][index]
+        student_id, kind, course_request_id, course_offering_id, _course_id = commitment_metadata[source_key]
+        commitment_assignments.append(StudentScheduleCommitmentAssignmentDTO(
+            request_id=source_key[1],
+            student_id=student_id,
+            commitment_kind=kind,
+            course_request_id=course_request_id,
+            course_offering_id=course_offering_id,
+            occupancy=occupancy,
+        ))
+        assigned_commitment_sources.add(source_key)
+        if course_request_id is not None:
+            assigned_request_ids.add(course_request_id)
+
+    return (
+        tuple(assignments),
+        tuple(commitment_assignments),
+        assigned_request_ids,
+        selected_by_section,
+        assigned_commitment_sources,
+    )
+
+
 def _optimization_facts(
     *,
     hard_feasibility_outcome,
@@ -142,13 +234,17 @@ def _optimization_facts(
     final_outcome,
     objectives,
     optimization_time_limit_seconds,
+    stage_1_quality=None,
+    stage_2_quality=None,
+    quality_comparison=None,
+    optimization_passes=(),
 ):
     """Expose stage handoff and quality facts without changing solver logic."""
 
     seed_values = _objective_values(validated_seed_solver, objectives)
     final_values = _objective_values(final_solver, objectives)
     improved = bool(seed_values and final_values and final_values < seed_values)
-    return {
+    facts = {
         "stage_1": {
             "solver_outcome": _outcome_name(hard_feasibility_outcome),
             "required_decision_group_count": required_group_count,
@@ -164,7 +260,18 @@ def _optimization_facts(
             "objective_values": list(final_values),
             "improved_over_stage_1": improved,
         },
+        "optimization_passes": list(optimization_passes),
     }
+    if stage_1_quality is not None:
+        facts["quality"] = {
+            "stage_1": _compact_student_assignment_quality(stage_1_quality),
+            "stage_2": (
+                _compact_student_assignment_quality(stage_2_quality)
+                if stage_2_quality is not None else None
+            ),
+            "stage_1_vs_stage_2": quality_comparison,
+        }
+    return facts
 
 
 def _candidate_source_from_commitment(commitment):
@@ -1900,6 +2007,30 @@ def _solve_student_assignment(
         ) if variables else 0
     )
 
+    def _solver_objective_components(candidate_solver):
+        """Read exact aggregate objective facts from one CP-SAT candidate."""
+
+        return {
+            "section_utilization_balance_penalty": float(
+                sum(candidate_solver.Value(item) for item in section_balance_terms)
+            ),
+            "student_semester_balance_penalty": float(
+                sum(candidate_solver.Value(item) for item in semester_balance_terms)
+            ),
+            "difficulty_balance_penalty": float(
+                sum(candidate_solver.Value(item) for item in difficulty_balance_terms)
+            ),
+            "course_category_diversity_penalty": float(
+                sum(candidate_solver.Value(item) for item in category_diversity_terms)
+            ),
+            "schedule_preservation_move_penalty": float(
+                sum(candidate_solver.Value(item) for item in preservation_terms)
+            ),
+            "soft_sequence_preferences_satisfied": float(
+                sum(candidate_solver.Value(item[2]) for item in sequence_satisfied)
+            ),
+        }
+
     (
         hard_feasibility_seed_model,
         hard_feasibility_seed_solver,
@@ -1939,6 +2070,37 @@ def _solve_student_assignment(
     # bootstrap from doubling the large optimization model's memory footprint.
     hard_feasibility_model = None
     hard_feasibility_seed_model = None
+    sequence_opportunities = tuple(
+        (student_id, preference.earlier_course_id, preference.later_course_id)
+        for preference, student_id, _variable in sequence_satisfied
+    )
+    stage_1_quality = None
+    if validated_seed_solver is not None:
+        (
+            stage_1_assignments,
+            stage_1_commitment_assignments,
+            _stage_1_assigned_request_ids,
+            _stage_1_selected_by_section,
+            _stage_1_assigned_commitment_sources,
+        ) = _extract_solver_candidate(
+            solver=validated_seed_solver,
+            data=data,
+            request_candidates=request_candidates,
+            commitment_variables=commitment_variables,
+            commitment_candidates=commitment_candidates,
+            commitment_metadata=commitment_metadata,
+            previous_enrollment_by_request=previous_enrollment_by_request,
+        )
+        stage_1_quality = _evaluate_student_assignment_quality(
+            data,
+            assignments=stage_1_assignments,
+            commitment_assignments=stage_1_commitment_assignments,
+            sequence_opportunities=sequence_opportunities,
+            solver_objective_components=_solver_objective_components(
+                validated_seed_solver
+            ),
+            include_entity_metrics=True,
+        )
     # Retain the existing independent-request hint as the documented fallback
     # when CP-SAT cannot produce a complete hard-feasibility seed in its
     # bounded stage.  A validated CP-SAT seed always takes precedence.
@@ -1951,6 +2113,39 @@ def _solve_student_assignment(
             group_locks=group_locks,
         )
     )
+    optimization_passes = []
+
+    def _quality_for_solver(candidate_solver):
+        """Return bounded quality facts for one completed optimization pass."""
+
+        (
+            pass_assignments,
+            pass_commitment_assignments,
+            _assigned_request_ids,
+            _selected_by_section,
+            _assigned_commitment_sources,
+        ) = _extract_solver_candidate(
+            solver=candidate_solver,
+            data=data,
+            request_candidates=request_candidates,
+            commitment_variables=commitment_variables,
+            commitment_candidates=commitment_candidates,
+            commitment_metadata=commitment_metadata,
+            previous_enrollment_by_request=previous_enrollment_by_request,
+        )
+        return _compact_student_assignment_quality(
+            _evaluate_student_assignment_quality(
+                data,
+                assignments=pass_assignments,
+                commitment_assignments=pass_commitment_assignments,
+                sequence_opportunities=sequence_opportunities,
+                solver_objective_components=_solver_objective_components(
+                    candidate_solver
+                ),
+                include_entity_metrics=True,
+            )
+        )
+
     solver, outcome = _solve_lexicographically(
         model,
         objectives,
@@ -1963,6 +2158,8 @@ def _solve_student_assignment(
             if use_hard_feasibility_bootstrap
             else None
         ),
+        pass_facts=optimization_passes,
+        pass_quality_callback=_quality_for_solver,
     )
     optimization_facts = _optimization_facts(
         hard_feasibility_outcome=_hard_feasibility_outcome,
@@ -1977,6 +2174,8 @@ def _solve_student_assignment(
             if use_hard_feasibility_bootstrap
             else None
         ),
+        stage_1_quality=stage_1_quality,
+        optimization_passes=optimization_passes,
     )
     if solver is None:
         # CP-SAT ``UNKNOWN`` means the bounded solve ended without a proof or a
@@ -2024,72 +2223,38 @@ def _solve_student_assignment(
         )
         return replace(result, lock_costs=_build_lock_costs(data, result)) if include_lock_costs else result
 
-    assignments = []
-    assigned_request_ids = set()
-    selected_by_section = defaultdict(list)
-    for request in sorted(data.requests, key=lambda item: item.request_id):
-        for section, variable in request_candidates[request.request_id]:
-            if solver.Value(variable):
-                previous = previous_enrollment_by_request.get(request.request_id)
-                assignment = StudentAssignmentDTO(
-                    request_id=request.request_id,
-                    student_id=request.student_id,
-                    section_id=(
-                        None if request.delivery_kind == "online" and section.section_id < 0
-                        else section.section_id
-                    ),
-                    course_offering_id=request.course_offering_id,
-                    course_id=request.course_id,
-                    semester=section.semester,
-                    timeslot_id=section.timeslot_id,
-                    assignment_basis=request.assignment_basis,
-                    backup_resolution_snapshot=request.backup_resolution_snapshot,
-                    previous_enrollment_id=previous.enrollment_id if previous else None,
-                    previous_section_id=(
-                        previous.section_id
-                        if previous and previous.section_id > 0
-                        else None
-                    ),
-                    previous_online_supervision_session_id=(
-                        -previous.section_id
-                        if previous and previous.section_id < 0
-                        else None
-                    ),
-                    online_supervision_session_id=(
-                        -section.section_id
-                        if request.delivery_kind == "online" and section.section_id < 0
-                        else None
-                    ),
-                    half_semester_segment=(
-                        request.half_semester_segment
-                        if request.delivery_kind == "online"
-                        else section.half_semester_segment
-                    ),
-                )
-                assignments.append(assignment)
-                selected_by_section[section.section_id].append(assignment)
-                assigned_request_ids.add(request.request_id)
-                break
-
-    commitment_assignments = []
+    (
+        assignments,
+        commitment_assignments,
+        assigned_request_ids,
+        selected_by_section,
+        assigned_commitment_sources,
+    ) = _extract_solver_candidate(
+        solver=solver,
+        data=data,
+        request_candidates=request_candidates,
+        commitment_variables=commitment_variables,
+        commitment_candidates=commitment_candidates,
+        commitment_metadata=commitment_metadata,
+        previous_enrollment_by_request=previous_enrollment_by_request,
+    )
+    stage_2_quality = _evaluate_student_assignment_quality(
+        data,
+        assignments=assignments,
+        commitment_assignments=commitment_assignments,
+        sequence_opportunities=sequence_opportunities,
+        solver_objective_components=_solver_objective_components(solver),
+        include_entity_metrics=True,
+    )
+    if stage_1_quality is not None:
+        optimization_facts["quality"] = {
+            "stage_1": _compact_student_assignment_quality(stage_1_quality),
+            "stage_2": _compact_student_assignment_quality(stage_2_quality),
+            "stage_1_vs_stage_2": _compare_student_assignment_quality(
+                stage_1_quality, stage_2_quality,
+            ),
+        }
     review_items = []
-    assigned_commitment_sources = set()
-    for (source_key, index), variable in sorted(commitment_variables.items()):
-        if not solver.Value(variable):
-            continue
-        placement_value, occupancy, pair = commitment_candidates[source_key][index]
-        student_id, kind, course_request_id, course_offering_id, course_id = commitment_metadata[source_key]
-        commitment_assignments.append(StudentScheduleCommitmentAssignmentDTO(
-            request_id=source_key[1],
-            student_id=student_id,
-            commitment_kind=kind,
-            course_request_id=course_request_id,
-            course_offering_id=course_offering_id,
-            occupancy=occupancy,
-        ))
-        assigned_commitment_sources.add(source_key)
-        if course_request_id is not None:
-            assigned_request_ids.add(course_request_id)
 
     # A half-semester course can be a legitimate unpaired request. The engine
     # schedules it if possible, then tells the counselor that its other half is

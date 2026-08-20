@@ -369,6 +369,8 @@ def summarize_realistic_fixture(data, result=None):
         "assignment_count": len(result.assignments),
         "unmet_request_count": len(result.unmet_requests),
         "objective_components": dict(result.objective_components),
+        "quality": result.optimization_facts.get("quality"),
+        "optimization_passes": result.optimization_facts.get("optimization_passes", ()),
         "minimum_assigned_section_load": min(loads.values(), default=0),
         "maximum_assigned_section_load": max(loads.values(), default=0),
     })

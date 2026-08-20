@@ -128,6 +128,10 @@ def test_result_records_validated_seed_and_optimization_quality_facts():
     assert tuple(facts["stage_2"]["objective_values"]) <= tuple(
         facts["stage_1"]["objective_values"]
     )
+    assert all(
+        "starting_quality" in item and "ending_quality" in item
+        for item in facts["optimization_passes"]
+    )
 
 
 def test_lexicographic_budget_is_shared_across_objective_passes():

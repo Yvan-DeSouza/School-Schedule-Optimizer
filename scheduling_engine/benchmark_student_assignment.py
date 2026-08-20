@@ -140,6 +140,8 @@ def run_target_scale_benchmark():
         "assignment_count": len(result.assignments),
         "unmet_request_count": len(result.unmet_requests),
         "objective_components": dict(result.objective_components),
+        "quality": result.optimization_facts.get("quality"),
+        "optimization_passes": result.optimization_facts.get("optimization_passes", ()),
         **summarize_student_assignment_target_scale_fixture(data),
     }
 
