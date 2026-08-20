@@ -1933,6 +1933,12 @@ def _solve_student_assignment(
         ),
         worker_count=STUDENT_ASSIGNMENT_HARD_FEASIBILITY_VALIDATION_WORKER_COUNT,
     )
+    # Validation transfers the source values into a solver backed by the full
+    # production model. The feasibility clone is no longer part of the
+    # handoff, so release it before Stage 2 to keep a failed or successful
+    # bootstrap from doubling the large optimization model's memory footprint.
+    hard_feasibility_model = None
+    hard_feasibility_seed_model = None
     # Retain the existing independent-request hint as the documented fallback
     # when CP-SAT cannot produce a complete hard-feasibility seed in its
     # bounded stage.  A validated CP-SAT seed always takes precedence.

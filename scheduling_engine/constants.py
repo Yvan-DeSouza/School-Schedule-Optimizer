@@ -39,6 +39,15 @@ LOCK_TYPES = {
 
 HALF_SEMESTER_SEGMENTS = ("first_half", "second_half")
 
+# Placement and named-teacher assignment are offline batch stages. Their
+# production DTO defaults deliberately give CP-SAT enough bounded search time
+# to establish a complete upstream incumbent, while callers can still provide
+# a narrower limit for focused tests or diagnostic runs.
+SECTION_PLACEMENT_TIME_LIMIT_SECONDS = 120
+SECTION_PLACEMENT_WORKER_COUNT = 4
+TEACHER_ASSIGNMENT_TIME_LIMIT_SECONDS = 120
+TEACHER_ASSIGNMENT_WORKER_COUNT = 4
+
 # The hard-feasibility bootstrap is a bounded batch-scheduling search, not the
 # objective pass. It may use a wider parallel search and a larger bound to
 # obtain the complete CP-SAT seed that Stage 2 needs.

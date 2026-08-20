@@ -1006,6 +1006,31 @@ def test_complete_hard_feasibility_seed_rejects_an_empty_required_group():
     assert indexes == ()
 
 
+def test_unknown_hard_feasibility_seed_drops_unsuccessful_model_clone():
+    """A timeout cannot keep a large, unusable feasibility clone alive."""
+
+    model = cp_model.CpModel()
+    selected = model.NewBoolVar("enroll_1_1")
+
+    class _UnknownSolver:
+        def Solve(self, _model):
+            return cp_model.UNKNOWN
+
+    with patch.object(student_assignment_solver, "new_solver", return_value=_UnknownSolver()):
+        seed_model, seed_solver, indexes, status = (
+            student_assignment_solver.solve_complete_hard_feasibility_seed(
+                model,
+                ((selected,),),
+                1.0,
+            )
+        )
+
+    assert seed_model is None
+    assert seed_solver is None
+    assert indexes == (selected.Index(),)
+    assert status == cp_model.UNKNOWN
+
+
 def test_hard_feasibility_seed_rejects_a_required_timing_capacity_bottleneck(monkeypatch):
     """Annual seats alone cannot satisfy a required distinct-block timetable.
 

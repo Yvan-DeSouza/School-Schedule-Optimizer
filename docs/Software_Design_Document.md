@@ -1128,8 +1128,10 @@ representative student-assignment fixture establishes useful two-stage
 solve-quality evidence, but it is not a substitute for real-school or
 deployment measurement.
 
-- Placement and named-teacher DTOs carry `time_limit_seconds`, and their CP-SAT
-  solvers set `max_time_in_seconds` and one search worker.
+- Placement and named-teacher DTOs carry bounded `time_limit_seconds` values;
+  their production defaults are 120 seconds, and their CP-SAT solvers use four
+  parallel search workers. Narrower limits remain available to focused tests
+  and diagnostic runs.
 - Shared planning helpers use bounded lexicographic solving. Student
   assignment may use parallel CP-SAT workers; identical replay output is not a
   production requirement when independent results are both hard-valid and

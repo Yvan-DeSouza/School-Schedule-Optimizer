@@ -95,7 +95,10 @@ def solve_complete_hard_feasibility_seed(
     seed_solver = new_solver(time_limit_seconds, worker_count=worker_count)
     status = seed_solver.Solve(seed_model)
     return (
-        seed_model,
+        # An unsuccessful bounded attempt has no candidate to validate. Do
+        # not keep its cloned model alive while the full optimization model
+        # is being solved; this is a memory-lifetime optimization only.
+        seed_model if _has_solution(status) else None,
         seed_solver if _has_solution(status) else None,
         tuple(sorted(source_variable_indexes)),
         status,

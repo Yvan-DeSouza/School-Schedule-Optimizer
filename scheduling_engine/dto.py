@@ -11,6 +11,11 @@ joins and returns them in results, but never assumes database behavior.
 from dataclasses import dataclass, field
 from typing import Mapping, Optional, Tuple
 
+from .constants import (
+    SECTION_PLACEMENT_TIME_LIMIT_SECONDS,
+    TEACHER_ASSIGNMENT_TIME_LIMIT_SECONDS,
+)
+
 
 @dataclass(frozen=True)
 class CourseDTO:
@@ -834,7 +839,7 @@ class PlacementInputDTO:
     # assignment, whose special commitments, rosters, locks, and objectives
     # remain a later reviewed stage.
     student_timetable_demands: Tuple[PlacementStudentTimetableDemandDTO, ...] = ()
-    time_limit_seconds: int = 30
+    time_limit_seconds: int = SECTION_PLACEMENT_TIME_LIMIT_SECONDS
 
 
 @dataclass(frozen=True)
@@ -934,7 +939,7 @@ class TeacherAssignmentInputDTO:
     teachers: Tuple[TeacherAssignmentTeacherDTO, ...]
     rules: Tuple[TeacherCourseAssignmentRuleDTO, ...] = ()
     fixed_assignments: Tuple[FixedTeacherAssignmentDTO, ...] = ()
-    time_limit_seconds: int = 30
+    time_limit_seconds: int = TEACHER_ASSIGNMENT_TIME_LIMIT_SECONDS
 
 
 @dataclass(frozen=True)

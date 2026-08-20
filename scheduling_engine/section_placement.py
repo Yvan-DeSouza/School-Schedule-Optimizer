@@ -23,6 +23,7 @@ from .diagnostics import (
     ONLINE_SUPERVISION_BLOCK_DIVERSITY_INSUFFICIENT,
     ONLINE_SUPERVISION_CAPACITY_INSUFFICIENT,
 )
+from .constants import SECTION_PLACEMENT_WORKER_COUNT
 from .dto import (
     PlacementAssignmentDTO,
     PlacementInputDTO,
@@ -35,7 +36,7 @@ from .dto import (
 # without turning either into a separate scheduling policy.
 FEASIBILITY_SEED_TIME_LIMIT_SECONDS = 60.0
 FEASIBILITY_SEED_WORKER_COUNT = 8
-TIMING_OBJECTIVE_WORKER_COUNT = 1
+TIMING_OBJECTIVE_WORKER_COUNT = SECTION_PLACEMENT_WORKER_COUNT
 ONLINE_DEMAND_WITNESS_TIME_LIMIT_SECONDS = 2.0
 ANONYMOUS_STAFFING_RETRY_LIMIT = 20
 # The integrated teacher-identity formulation is retained only for the small,

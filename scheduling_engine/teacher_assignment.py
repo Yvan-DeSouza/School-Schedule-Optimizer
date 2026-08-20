@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections import defaultdict
 from ortools.sat.python import cp_model
 
+from .constants import TEACHER_ASSIGNMENT_WORKER_COUNT
 from .diagnostics import (
     LOCKED_TEACHER_INELIGIBLE,
     LOCKED_TEACHER_UNAVAILABLE,
@@ -275,7 +276,7 @@ def solve_teacher_assignment(data: TeacherAssignmentInputDTO) -> TeacherAssignme
 
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = data.time_limit_seconds
-    solver.parameters.num_search_workers = 1
+    solver.parameters.num_search_workers = TEACHER_ASSIGNMENT_WORKER_COUNT
     outcome = solver.Solve(model)
     outcome_name = {
         cp_model.OPTIMAL: "optimal", cp_model.FEASIBLE: "feasible",

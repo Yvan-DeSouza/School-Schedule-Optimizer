@@ -19,6 +19,9 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass
 from decimal import Decimal
 from itertools import permutations
+import os
+import subprocess
+import sys
 from time import perf_counter
 
 from django.contrib.auth.models import User
@@ -1217,56 +1220,87 @@ def run_production_scale_special_scheduling_validation(*, counselor_user, prefix
     )
 
 
-@pytest.mark.django_db
-def test_production_scale_special_scheduling_validation(counselor_user):
-    """Run two independently persisted 1,400-student scenarios.
+def _assert_complete_production_scale_summary(summary):
+    """Validate one scenario without requiring identical parallel schedules."""
 
-    The first run includes controlled reruns against accepted state; the second
-    replays the initial full pipeline only. Parallel CP-SAT is allowed to make
-    different choices; both runs must independently prove complete hard-valid
-    assignments and a valid Stage-1-to-Stage-2 objective handoff.
+    assert summary.student_count == STUDENT_COUNT
+    assert summary.request_count == 10760
+    assert summary.normal_section_count == 304
+    assert summary.online_session_count == 13
+    assert summary.pipeline_status == "complete"
+    assert summary.stopped_at is None
+    assert summary.student_assignment_status == "complete"
+    assert summary.student_assignment_unmet_count == 0
+    facts = summary.student_assignment_optimization_facts
+    stage_1 = facts["stage_1"]
+    stage_2 = facts["stage_2"]
+    assert stage_1["complete_seed_produced"] is True
+    assert stage_1["seed_validated_against_full_model"] is True
+    assert stage_1["solver_outcome"] in {"optimal", "feasible"}
+    assert stage_2["validated_seed_received"] is True
+    assert stage_2["worker_count"] == 8
+    assert stage_2["time_limit_seconds"] == 1800.0
+    assert stage_2["solver_outcome"] in {"optimal", "feasible", "unknown"}
+    seed_vector = tuple(stage_1["objective_values"])
+    final_vector = tuple(stage_2["objective_values"])
+    assert seed_vector
+    assert final_vector <= seed_vector
+    assert stage_2["improved_over_stage_1"] is (final_vector < seed_vector)
+
+
+@pytest.mark.django_db
+def test_production_scale_special_scheduling_scenario(counselor_user):
+    """Run one isolated production-scale scenario in a child process.
+
+    Each full CP-SAT schedule can retain substantial native memory until its
+    Python process exits. The release validation intentionally runs repeated
+    independent scenarios in separate pytest processes, so the second result
+    measures a clean production run rather than resource state left by the
+    first. This changes no scheduling input, rule, objective, or workflow.
     """
 
-    first = run_production_scale_special_scheduling_validation(
+    prefix = os.environ.get("SCHEDULING_PRODUCTION_SCALE_PREFIX")
+    if prefix not in {"scale-a", "scale-b"}:
+        pytest.skip(
+            "the isolated scenario is invoked by the parent release-validation test"
+        )
+    summary = run_production_scale_special_scheduling_validation(
         counselor_user=counselor_user,
-        prefix="scale-a",
-        include_reruns=True,
+        prefix=prefix,
+        include_reruns=prefix == "scale-a",
     )
-    second = run_production_scale_special_scheduling_validation(
-        counselor_user=counselor_user,
-        prefix="scale-b",
-        include_reruns=False,
-    )
-    assert first.student_count == second.student_count == STUDENT_COUNT
-    assert first.request_count == second.request_count
-    assert first.normal_section_count == second.normal_section_count
-    assert first.online_session_count == second.online_session_count
-    assert first.pipeline_status == second.pipeline_status
-    assert first.stopped_at == second.stopped_at
-    assert first.placement_solver_outcome == second.placement_solver_outcome
-    if first.pipeline_status == "blocked":
-        assert first.stopped_at == "section_placement"
-        assert first.placement_solver_outcome == "unknown"
-        return
-    assert first.enrollment_count == second.enrollment_count
-    assert first.online_enrollment_count == second.online_enrollment_count
-    assert first.commitment_count == second.commitment_count
-    assert first.review_code_counts == second.review_code_counts
-    for summary in (first, second):
-        assert summary.student_assignment_status == "complete"
-        assert summary.student_assignment_unmet_count == 0
-        facts = summary.student_assignment_optimization_facts
-        stage_1 = facts["stage_1"]
-        stage_2 = facts["stage_2"]
-        assert stage_1["complete_seed_produced"] is True
-        assert stage_1["seed_validated_against_full_model"] is True
-        assert stage_1["solver_outcome"] in {"optimal", "feasible"}
-        assert stage_2["validated_seed_received"] is True
-        assert stage_2["worker_count"] == 8
-        assert stage_2["time_limit_seconds"] == 1800.0
-        assert stage_2["solver_outcome"] in {"optimal", "feasible", "unknown"}
-        seed_vector = tuple(stage_1["objective_values"])
-        final_vector = tuple(stage_2["objective_values"])
-        assert seed_vector
-        assert final_vector <= seed_vector
-        assert stage_2["improved_over_stage_1"] is (final_vector < seed_vector)
+    _assert_complete_production_scale_summary(summary)
+
+
+def test_production_scale_special_scheduling_validation():
+    """Run two independent full production-scale scenarios.
+
+    The first scenario includes controlled reruns against accepted state; the
+    second replays the initial pipeline. Independent parallel CP-SAT runs may
+    choose different valid schedules, so validation is performed inside each
+    isolated child against hard validity, completeness, and objective facts.
+    """
+
+    test_path = os.path.abspath(__file__)
+    scenario_node = f"{test_path}::test_production_scale_special_scheduling_scenario"
+    for prefix in ("scale-a", "scale-b"):
+        child_environment = os.environ.copy()
+        child_environment["SCHEDULING_PRODUCTION_SCALE_PREFIX"] = prefix
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                "--create-db",
+                "-q",
+                "-s",
+                scenario_node,
+            ],
+            cwd=os.path.dirname(os.path.dirname(os.path.dirname(test_path))),
+            env=child_environment,
+            check=False,
+        )
+        assert completed.returncode == 0, (
+            f"isolated production-scale scenario {prefix} failed with "
+            f"exit code {completed.returncode}"
+        )
