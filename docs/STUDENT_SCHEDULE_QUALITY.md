@@ -175,3 +175,38 @@ environment-specific observations, not contractual performance limits. The
 post-approval controlled-rerun portion of that release-validation child was
 interrupted after the initial schedule completed, so this is not yet evidence
 of a complete repeated rerun validation.
+
+## Diagnostic substantive-tier discovery
+
+The engine also contains a diagnostic-only probe for the existing substantive
+same-priority tier. It reuses the full production model and the validated
+Stage 1 source assignment, preserves every higher-priority objective value,
+and asks a bounded satisfiability question. It is not part of the ordinary
+student-assignment workflow and does not change counselor importance labels,
+objective definitions, or the Stage 2 result.
+
+On the representative 1,400-student input, the Stage 1 substantive value was
+`65,173`. A probe requiring a value at most `65,172` found a complete,
+hard-valid candidate at `65,171`; a second probe restricted to at most two
+changed source decisions found `65,163`. The latter changed only the section
+utilization component (`6,875` to `6,865`); semester load, difficulty, and
+category diversity were unchanged. This is evidence that the current Stage 1
+value is not globally established as optimal and that a very local better
+schedule exists. It is diagnostic evidence only: no production Stage 2
+objective or search rule was changed as a result.
+
+The same-priority component values in that run were:
+
+| Component | Stage 1 value | Share of aggregate |
+| --- | ---: | ---: |
+| Section utilization | 6,875 | 10.5% |
+| Semester-load balance | 175 | 0.3% |
+| Difficulty balance | 35,973 | 55.2% |
+| Category diversity | 22,150 | 34.0% |
+
+These raw values are reported to expose scale and trade-offs, not to imply
+that the solver should normalize or reweight equal-priority counselor
+objectives. Any such change would be a separate product/objective-design
+decision. The probe also reports source-decision deltas and objective-pass
+hint provenance so future search changes can be evaluated against meaningful
+assignment decisions rather than opaque auxiliary variables.

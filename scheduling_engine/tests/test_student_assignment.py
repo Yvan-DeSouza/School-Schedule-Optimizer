@@ -153,6 +153,36 @@ def test_substantive_probe_reports_infeasible_threshold_without_partial_seed():
     assert result.candidate_substantive_value is None
 
 
+def test_substantive_probe_zero_neighborhood_preserves_seed_source_decisions():
+    result = run_substantive_soft_tier_probe(
+        _substantive_probe_input(),
+        threshold=1,
+        time_limit_seconds=5.0,
+        worker_count=1,
+        neighborhood_radius=0,
+    )
+
+    assert result.status in {"feasible", "optimal"}
+    assert result.neighborhood_radius == 0
+    assert result.changed_source_decision_count == 0
+    assert result.source_decision_deltas == ()
+
+
+def test_substantive_probe_can_minimize_one_existing_component():
+    result = run_substantive_soft_tier_probe(
+        _substantive_probe_input(),
+        threshold=None,
+        time_limit_seconds=5.0,
+        worker_count=1,
+        minimize_component="student_semester_balance_penalty",
+    )
+
+    assert result.status in {"feasible", "optimal"}
+    assert result.minimized_component == "student_semester_balance_penalty"
+    assert result.minimized_component_value == 0.0
+    assert result.best_bound == 0.0
+
+
 def test_substantive_probe_preserves_special_commitment_completion():
     study_slot = TimeSlotDTO(301, 1, 1, "B", True)
     result = run_substantive_soft_tier_probe(
@@ -270,6 +300,18 @@ def test_result_records_validated_seed_and_optimization_quality_facts():
         "starting_quality" in item and "ending_quality" in item
         for item in facts["optimization_passes"]
     )
+
+
+def test_stage2_diagnostic_trace_records_seed_hint_and_objective_metadata():
+    result = student_assignment_module.run_student_assignment_stage2_diagnostic(
+        _substantive_probe_input()
+    )
+
+    trace = result.optimization_facts["stage_2_trace"]
+    assert trace
+    assert trace[0]["hint_source"] == "validated_seed"
+    assert trace[0]["hinted_variable_count"] > 0
+    assert all("objective_name" in item for item in trace)
 
 
 def test_lexicographic_budget_is_shared_across_objective_passes():

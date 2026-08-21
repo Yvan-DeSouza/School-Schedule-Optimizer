@@ -58,6 +58,49 @@ class SubstantiveSoftTierProbeResult:
     changed_source_decision_count: int
     source_decision_deltas: tuple
     neighborhood_radius: int | None
+    minimized_component: str | None
+    minimized_component_value: float | None
+    best_bound: float | None
+    model_family_variable_counts: dict
+
+
+def _model_family_variable_counts(model):
+    """Classify model variables for diagnostic accounting only.
+
+    The names are assigned by the existing model builder.  This report is
+    deliberately observational: it never changes a variable, constraint, or
+    objective.  Unknown names remain visible under ``other`` rather than
+    being silently attributed to a quality family.
+    """
+
+    counts = {}
+    for variable in model.Proto().variables:
+        name = variable.name or ""
+        if name.startswith("enroll_"):
+            family = "course_assignment"
+        elif (
+            name.startswith("commitment_")
+            or name.startswith("study_")
+            or name.startswith("focus_")
+            or name.startswith("co_op_")
+        ):
+            family = "special_commitment"
+        elif name.startswith("utilization_"):
+            family = "section_utilization"
+        elif name.startswith("semester_balance_"):
+            family = "semester_balance"
+        elif name.startswith("difficulty_balance_"):
+            family = "difficulty_balance"
+        elif name.startswith("category_"):
+            family = "category_diversity"
+        elif name.startswith("sequence_"):
+            family = "sequence_preferences"
+        elif "preservation" in name:
+            family = "schedule_preservation"
+        else:
+            family = "other"
+        counts[family] = counts.get(family, 0) + 1
+    return dict(sorted(counts.items()))
 
 
 def _expression(model, term_specs):
@@ -91,6 +134,8 @@ def probe_substantive_soft_tier(
     worker_count: int,
     target_importance_level: int,
     neighborhood_radius: int | None = None,
+    component_bounds=None,
+    minimize_component: str | None = None,
 ) -> SubstantiveSoftTierProbeResult:
     """Ask whether the unchanged full model can beat one soft tier.
 
@@ -129,6 +174,10 @@ def probe_substantive_soft_tier(
             changed_source_decision_count=0,
             source_decision_deltas=(),
             neighborhood_radius=neighborhood_radius,
+            minimized_component=minimize_component,
+            minimized_component_value=None,
+            best_bound=None,
+            model_family_variable_counts={},
         )
 
     target_entries = [
@@ -203,6 +252,23 @@ def probe_substantive_soft_tier(
     target_expression = _expression(probe_model, target_metadata["term_specs"])
     if threshold is not None:
         probe_model.Add(target_expression <= int(threshold))
+    component_bounds = component_bounds or {}
+    component_expressions = {}
+    for component_name, bound in component_bounds.items():
+        term_specs = target_metadata["component_specs"].get(component_name)
+        if term_specs is None:
+            raise ValueError(f"Unknown substantive component: {component_name}")
+        expression = _expression(probe_model, term_specs)
+        component_expressions[component_name] = expression
+        probe_model.Add(expression <= int(bound))
+    if minimize_component is not None:
+        term_specs = target_metadata["component_specs"].get(minimize_component)
+        if term_specs is None:
+            raise ValueError(f"Unknown substantive component: {minimize_component}")
+        component_expressions[minimize_component] = _expression(
+            probe_model, term_specs
+        )
+        probe_model.Minimize(component_expressions[minimize_component])
     set_solver_hints(probe_model, seed_solver)
 
     solver = new_solver(
@@ -220,6 +286,7 @@ def probe_substantive_soft_tier(
     changed_source_decision_count = 0
     source_decision_deltas = ()
     candidate_objective_vector = ()
+    minimized_component_value = None
     if complete_candidate_found:
         candidate_component_values = dict(context.solver_objective_components(solver))
         candidate_substantive_value = float(
@@ -253,6 +320,10 @@ def probe_substantive_soft_tier(
         candidate_objective_vector = _objective_vector(
             solver, probe_model, context.objective_metadata
         )
+        if minimize_component is not None:
+            minimized_component_value = float(
+                solver.Value(component_expressions[minimize_component])
+            )
 
     component_deltas = (
         {
@@ -267,7 +338,7 @@ def probe_substantive_soft_tier(
         seed_solver_outcome=seed_outcome,
         seed_validated=True,
         baseline_substantive_value=float(seed_objective_value),
-        requested_threshold=float(threshold),
+        requested_threshold=(float(threshold) if threshold is not None else None),
         elapsed_seconds=elapsed,
         model_variable_count=len(probe_model.Proto().variables),
         model_constraint_count=len(probe_model.Proto().constraints),
@@ -285,4 +356,11 @@ def probe_substantive_soft_tier(
         changed_source_decision_count=changed_source_decision_count,
         source_decision_deltas=source_decision_deltas,
         neighborhood_radius=neighborhood_radius,
+        minimized_component=minimize_component,
+        minimized_component_value=minimized_component_value,
+        best_bound=(
+            float(solver.BestObjectiveBound())
+            if minimize_component is not None else None
+        ),
+        model_family_variable_counts=_model_family_variable_counts(probe_model),
     )

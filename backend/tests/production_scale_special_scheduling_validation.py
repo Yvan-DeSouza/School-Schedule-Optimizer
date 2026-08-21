@@ -1196,6 +1196,11 @@ def run_production_scale_special_scheduling_validation(
             threshold=65172,
             time_limit_seconds=1800.0,
             worker_count=8,
+            neighborhood_radius=(
+                int(os.environ["SCHEDULING_PRODUCTION_SCALE_PROBE_RADIUS"])
+                if os.environ.get("SCHEDULING_PRODUCTION_SCALE_PROBE_RADIUS")
+                else None
+            ),
         )
         print(
             "[production-scale] substantive-tier probe: "
@@ -1210,6 +1215,7 @@ def run_production_scale_special_scheduling_validation(
             f"seed={probe.seed_objective_vector} "
             f"baseline={probe.baseline_substantive_value} "
             f"threshold={probe.requested_threshold} "
+            f"neighborhood_radius={probe.neighborhood_radius} "
             f"elapsed={probe.elapsed_seconds:.3f}s "
             f"model={probe.model_variable_count}v/{probe.model_constraint_count}c "
             f"conflicts={probe.conflicts} branches={probe.branches} "
@@ -1217,7 +1223,9 @@ def run_production_scale_special_scheduling_validation(
             f"seed_assignments={probe.seed_assignment_count} "
             f"candidate_assignments={probe.candidate_assignment_count} "
             f"changed_source_decisions={probe.changed_source_decision_count} "
+            f"source_delta_count={len(probe.source_decision_deltas)} "
             f"candidate_value={probe.candidate_substantive_value} "
+            f"model_families={probe.model_family_variable_counts} "
             f"components={probe.candidate_component_values} "
             f"deltas={probe.component_deltas}",
             flush=True,

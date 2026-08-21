@@ -731,6 +731,8 @@ def run_substantive_soft_tier_probe(
     worker_count=8,
     target_importance_level=IMPORTANCE_LEVELS["important"],
     neighborhood_radius=None,
+    component_bounds=None,
+    minimize_component=None,
 ):
     """Run a diagnostic-only satisfiability probe against the full model.
 
@@ -750,7 +752,21 @@ def run_substantive_soft_tier_probe(
             "worker_count": worker_count,
             "target_importance_level": target_importance_level,
             "neighborhood_radius": neighborhood_radius,
+            "component_bounds": component_bounds,
+            "minimize_component": minimize_component,
         },
+    )
+
+
+def run_student_assignment_stage2_diagnostic(data: StudentAssignmentInputDTO):
+    """Run the unchanged solver while returning an internal pass trace."""
+
+    return _solve_student_assignment(
+        data,
+        include_lock_costs=False,
+        include_candidate_ledger=False,
+        use_hard_feasibility_bootstrap=True,
+        collect_stage2_trace=True,
     )
 
 
@@ -761,6 +777,7 @@ def _solve_student_assignment(
     include_candidate_ledger=True,
     use_hard_feasibility_bootstrap=True,
     substantive_soft_tier_probe=None,
+    collect_stage2_trace=False,
 ):
     if data.scope.scope_type == "scoped":
         # Keep the complete request list in the detached run snapshot, but do
@@ -2148,31 +2165,45 @@ def _solve_student_assignment(
         )
     for level in sorted(soft_objectives, reverse=True):
         level_term_specs = []
+        level_component_specs = {}
         # The existing same-priority tier is the sum of its component
         # expressions.  Record only their source variables so a diagnostic
         # clone can constrain the exact aggregate without changing production
         # objective construction.
         if level == sequence_level and sequence_level:
-            level_term_specs.extend(_term_specs(
+            sequence_terms = _term_specs(
                 [item[2] for item in sequence_satisfied], -1
-            ))
+            )
+            level_term_specs.extend(sequence_terms)
+            level_component_specs["soft_sequence_preferences_satisfied"] = sequence_terms
         if level == utilization_level and utilization_level:
-            level_term_specs.extend(_term_specs(section_balance_terms))
+            utilization_terms = _term_specs(section_balance_terms)
+            level_term_specs.extend(utilization_terms)
+            level_component_specs["section_utilization_balance_penalty"] = utilization_terms
         if level == semester_level and semester_level:
-            level_term_specs.extend(_term_specs(semester_balance_terms))
+            semester_terms = _term_specs(semester_balance_terms)
+            level_term_specs.extend(semester_terms)
+            level_component_specs["student_semester_balance_penalty"] = semester_terms
         if level == difficulty_level and difficulty_level:
-            level_term_specs.extend(_term_specs(difficulty_balance_terms))
+            difficulty_terms = _term_specs(difficulty_balance_terms)
+            level_term_specs.extend(difficulty_terms)
+            level_component_specs["difficulty_balance_penalty"] = difficulty_terms
         if level == category_diversity_level and category_diversity_level:
-            level_term_specs.extend(_term_specs(category_diversity_terms))
+            category_terms = _term_specs(category_diversity_terms)
+            level_term_specs.extend(category_terms)
+            level_component_specs["course_category_diversity_penalty"] = category_terms
         if level == preservation_level and preservation_level:
-            level_term_specs.extend(_term_specs(
+            preservation_terms_spec = _term_specs(
                 preservation_terms, preservation_level
-            ))
+            )
+            level_term_specs.extend(preservation_terms_spec)
+            level_component_specs["schedule_preservation_move_penalty"] = preservation_terms_spec
         _append_objective(
             sum(soft_objectives[level]),
             level_term_specs,
             kind="soft_tier",
             importance_level=level,
+            component_specs=level_component_specs,
         )
     # A final opaque-ID objective makes equivalent recommendations stable.
     final_tie_break_terms = tuple(
@@ -2302,6 +2333,7 @@ def _solve_student_assignment(
         )
     )
     optimization_passes = []
+    optimization_trace = []
 
     def _quality_for_solver(candidate_solver):
         """Return bounded quality facts for one completed optimization pass."""
@@ -2412,6 +2444,7 @@ def _solve_student_assignment(
         ),
         pass_facts=optimization_passes,
         pass_quality_callback=_quality_for_solver,
+        pass_trace=optimization_trace if collect_stage2_trace else None,
     )
     optimization_facts = _optimization_facts(
         hard_feasibility_outcome=_hard_feasibility_outcome,
@@ -2429,6 +2462,13 @@ def _solve_student_assignment(
         stage_1_quality=stage_1_quality,
         optimization_passes=optimization_passes,
     )
+    if collect_stage2_trace:
+        for trace in optimization_trace:
+            metadata = objective_metadata[trace["objective_index"]]
+            trace["objective_kind"] = metadata["kind"]
+            trace["objective_name"] = metadata.get("name")
+            trace["importance_level"] = metadata.get("importance_level")
+        optimization_facts["stage_2_trace"] = optimization_trace
     if solver is None:
         # CP-SAT ``UNKNOWN`` means the bounded solve ended without a proof or a
         # usable candidate. It is not evidence that the scheduling facts are

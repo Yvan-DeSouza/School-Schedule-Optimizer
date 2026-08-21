@@ -185,6 +185,7 @@ def solve_lexicographically(
     total_time_limit_seconds=None,
     pass_facts=None,
     pass_quality_callback=None,
+    pass_trace=None,
 ):
     """Optimize ordered objectives while preserving the last valid candidate.
 
@@ -220,6 +221,7 @@ def solve_lexicographically(
             else None
         )
         pass_time_limit_seconds = time_limit_seconds
+        hint_source = "none"
         if total_time_limit_seconds is not None:
             remaining_budget = total_time_limit_seconds - (
                 monotonic() - optimization_started
@@ -249,6 +251,7 @@ def solve_lexicographically(
         remaining_objective_count -= 1
         model.Minimize(objective)
         if previous_solver is not None:
+            hint_source = "validated_seed" if objective_index == 0 else "prior_pass"
             set_solver_hints(model, previous_solver)
         elif initial_assignment_hints:
             prepared_solver = validated_initial_hint_solver(
@@ -258,13 +261,30 @@ def solve_lexicographically(
                 worker_count=worker_count,
             )
             if prepared_solver is not None:
+                hint_source = "validated_initial_hint"
                 set_solver_hints(model, prepared_solver)
                 # The preparatory candidate is safe even if the first bounded
                 # optimization pass later reaches UNKNOWN without an incumbent.
                 previous_solver = prepared_solver
 
         solver = new_solver(pass_time_limit_seconds, worker_count=worker_count)
+        trace_started = monotonic()
         status = solver.Solve(model)
+        if pass_trace is not None:
+            pass_trace.append({
+                "objective_index": objective_index,
+                "hint_source": hint_source,
+                "hinted_variable_count": (
+                    len(model.Proto().variables) if hint_source != "none" else 0
+                ),
+                "allocated_time_seconds": pass_time_limit_seconds,
+                "wall_time_seconds": solver.WallTime(),
+                "trace_wall_time_seconds": monotonic() - trace_started,
+                "status": outcome_name(status),
+                "conflicts": solver.NumConflicts(),
+                "branches": solver.NumBranches(),
+                "best_bound": float(solver.BestObjectiveBound()),
+            })
         solver_has_solution = status in {cp_model.OPTIMAL, cp_model.FEASIBLE}
         ending_value = (
             float(solver.Value(objective))
