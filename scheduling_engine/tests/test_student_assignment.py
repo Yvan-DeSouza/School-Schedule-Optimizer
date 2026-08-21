@@ -22,7 +22,10 @@ from scheduling_engine.dto import (
     StudentAssignmentScopeDTO,
     TimeSlotDTO,
 )
-from scheduling_engine.student_assignment import solve_student_assignment
+from scheduling_engine.student_assignment import (
+    run_substantive_soft_tier_probe,
+    solve_student_assignment,
+)
 
 
 def _request(request_id=1, **overrides):
@@ -70,6 +73,141 @@ def _timeslots():
         for semester in (1, 2)
         for index, block in enumerate(("A", "B", "C", "D"), start=1)
     )
+
+
+def _substantive_probe_input():
+    """Two mandatory courses with a known zero semester-balance solution."""
+
+    return _input(
+        requests=(
+            _request(
+                1,
+                course_id=1,
+                course_offering_id=11,
+                is_mandatory=True,
+            ),
+            _request(
+                2,
+                course_id=2,
+                course_offering_id=12,
+                is_mandatory=True,
+            ),
+        ),
+        sections=(
+            _section(
+                1,
+                delivery_group_id=1,
+                member_course_offering_ids=(11,),
+                member_course_ids=(1,),
+                semester=1,
+                timeslot_id=101,
+            ),
+            _section(
+                2,
+                delivery_group_id=2,
+                member_course_offering_ids=(12,),
+                member_course_ids=(2,),
+                semester=2,
+                timeslot_id=201,
+            ),
+        ),
+        timeslots=(
+            TimeSlotDTO(101, 1, 1, "A", True),
+            TimeSlotDTO(201, 1, 2, "A", True),
+        ),
+        section_utilization_balance_importance="not_important",
+        student_semester_balance_importance="important",
+        course_sequence_preferences_importance="not_important",
+        difficulty_balance_importance="not_important",
+        course_category_diversity_importance="not_important",
+    )
+
+
+def test_substantive_probe_finds_complete_schedule_below_requested_threshold():
+    result = run_substantive_soft_tier_probe(
+        _substantive_probe_input(),
+        threshold=1,
+        time_limit_seconds=5.0,
+        worker_count=1,
+    )
+
+    assert result.status in {"feasible", "optimal"}
+    assert result.seed_validated is True
+    assert result.complete_candidate_found is True
+    assert result.candidate_substantive_value == 0.0
+    assert result.candidate_assignment_count == 2
+    assert result.component_deltas["student_semester_balance_penalty"] == 0.0
+
+
+def test_substantive_probe_reports_infeasible_threshold_without_partial_seed():
+    result = run_substantive_soft_tier_probe(
+        _substantive_probe_input(),
+        threshold=-1,
+        time_limit_seconds=5.0,
+        worker_count=1,
+    )
+
+    assert result.status == "infeasible"
+    assert result.seed_validated is True
+    assert result.complete_candidate_found is False
+    assert result.candidate_substantive_value is None
+
+
+def test_substantive_probe_preserves_special_commitment_completion():
+    study_slot = TimeSlotDTO(301, 1, 1, "B", True)
+    result = run_substantive_soft_tier_probe(
+        _input(
+            requests=(),
+            sections=(),
+            timeslots=(study_slot,),
+            schedule_commitment_requests=(
+                StudentScheduleCommitmentRequestDTO(
+                    request_id=91,
+                    student_id=1,
+                    commitment_type="study",
+                ),
+            ),
+            section_utilization_balance_importance="not_important",
+            student_semester_balance_importance="important",
+            course_sequence_preferences_importance="not_important",
+            difficulty_balance_importance="not_important",
+            course_category_diversity_importance="not_important",
+        ),
+        threshold=1,
+        time_limit_seconds=5.0,
+        worker_count=1,
+    )
+
+    assert result.seed_validated is True
+    assert result.complete_candidate_found is True
+    assert result.candidate_assignment_count == 1
+
+
+def test_substantive_probe_reports_unknown_as_inconclusive(monkeypatch):
+    class UnknownSolver:
+        def Solve(self, _model):
+            return cp_model.UNKNOWN
+
+        def NumConflicts(self):
+            return 7
+
+        def NumBranches(self):
+            return 11
+
+    monkeypatch.setattr(
+        "scheduling_engine.student_assignment.substantive_probe.new_solver",
+        lambda *_args, **_kwargs: UnknownSolver(),
+    )
+    result = run_substantive_soft_tier_probe(
+        _substantive_probe_input(),
+        threshold=1,
+        time_limit_seconds=5.0,
+        worker_count=1,
+    )
+
+    assert result.status == "unknown"
+    assert result.complete_candidate_found is False
+    assert result.seed_validated is True
 
 
 def test_bounded_counterfactual_can_honor_its_short_feasibility_limit():

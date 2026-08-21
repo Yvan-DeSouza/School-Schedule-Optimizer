@@ -108,6 +108,10 @@ from .quality import (
     compare_student_assignment_quality as _compare_student_assignment_quality,
     evaluate_student_assignment_quality as _evaluate_student_assignment_quality,
 )
+from .substantive_probe import (
+    SubstantiveSoftTierProbeContext,
+    probe_substantive_soft_tier,
+)
 
 
 def _candidate_sort_key(candidate):
@@ -719,12 +723,44 @@ def solve_student_assignment(
     )
 
 
+def run_substantive_soft_tier_probe(
+    data: StudentAssignmentInputDTO,
+    *,
+    threshold,
+    time_limit_seconds=1800.0,
+    worker_count=8,
+    target_importance_level=IMPORTANCE_LEVELS["important"],
+    neighborhood_radius=None,
+):
+    """Run a diagnostic-only satisfiability probe against the full model.
+
+    This deliberately does not return a production assignment result.  It
+    reuses the ordinary model builder through a private diagnostic branch and
+    is intended for focused tests and offline target-scale experiments only.
+    """
+
+    return _solve_student_assignment(
+        data,
+        include_lock_costs=False,
+        include_candidate_ledger=False,
+        use_hard_feasibility_bootstrap=True,
+        substantive_soft_tier_probe={
+            "threshold": threshold,
+            "time_limit_seconds": time_limit_seconds,
+            "worker_count": worker_count,
+            "target_importance_level": target_importance_level,
+            "neighborhood_radius": neighborhood_radius,
+        },
+    )
+
+
 def _solve_student_assignment(
     data,
     *,
     include_lock_costs,
     include_candidate_ledger=True,
     use_hard_feasibility_bootstrap=True,
+    substantive_soft_tier_probe=None,
 ):
     if data.scope.scope_type == "scoped":
         # Keep the complete request list in the detached run snapshot, but do
@@ -1657,6 +1693,22 @@ def _solve_student_assignment(
     hard_feasibility_model = model.Clone()
 
     objectives = []
+    # Keep a parallel, engine-internal description of each objective's source
+    # variables.  CP-SAT expressions belong to one model instance, so the
+    # diagnostic probe uses these stable proto indexes to rebuild the same
+    # expressions on a clone without relying on objective-list positions.
+    objective_metadata = []
+
+    def _term_specs(variables, coefficient=1):
+        return tuple((variable.Index(), coefficient) for variable in variables)
+
+    def _append_objective(expression, term_specs, *, kind, **metadata):
+        objectives.append(expression)
+        objective_metadata.append({
+            "kind": kind,
+            "term_specs": tuple(term_specs),
+            **metadata,
+        })
     mandatory = [
         variable
         for request in data.requests if request.is_mandatory
@@ -1666,7 +1718,12 @@ def _solve_student_assignment(
     # counselor-recognized requirements. Their optional CP-SAT variables allow
     # useful diagnostics, while this top tier makes fulfillment authoritative.
     mandatory.extend(commitment_variables.values())
-    objectives.append(-sum(mandatory or [0]))
+    _append_objective(
+        -sum(mandatory or [0]),
+        _term_specs(mandatory, -1),
+        kind="fulfillment",
+        name="mandatory",
+    )
     priority_request_ids = set(data.priority_request_ids)
     priority_rows = [
         variable
@@ -1674,7 +1731,12 @@ def _solve_student_assignment(
         if request.request_id in priority_request_ids and request.is_primary and not request.is_mandatory
         for _section, variable in request_candidates[request.request_id]
     ]
-    objectives.append(-sum(priority_rows or [0]))
+    _append_objective(
+        -sum(priority_rows or [0]),
+        _term_specs(priority_rows, -1),
+        kind="fulfillment",
+        name="nominated_priority",
+    )
     for priority_tier in sorted({request.priority_tier for request in data.requests if request.is_primary}):
         rows = [
             variable
@@ -1687,13 +1749,23 @@ def _solve_student_assignment(
             )
             for _section, variable in request_candidates[request.request_id]
         ]
-        objectives.append(-sum(rows or [0]))
+        _append_objective(
+            -sum(rows or [0]),
+            _term_specs(rows, -1),
+            kind="fulfillment",
+            name=f"primary_priority_{priority_tier}",
+        )
     approved_backups = [
         variable
         for request in data.requests if not request.is_primary
         for _section, variable in request_candidates[request.request_id]
     ]
-    objectives.append(-sum(approved_backups or [0]))
+    _append_objective(
+        -sum(approved_backups or [0]),
+        _term_specs(approved_backups, -1),
+        kind="fulfillment",
+        name="approved_backup",
+    )
 
     soft_objectives = defaultdict(list)
     # Reward the requested soft sequence only if both related courses appear.
@@ -2075,17 +2147,50 @@ def _solve_student_assignment(
             preservation_level * sum(preservation_terms or [0])
         )
     for level in sorted(soft_objectives, reverse=True):
-        objectives.append(sum(soft_objectives[level]))
+        level_term_specs = []
+        # The existing same-priority tier is the sum of its component
+        # expressions.  Record only their source variables so a diagnostic
+        # clone can constrain the exact aggregate without changing production
+        # objective construction.
+        if level == sequence_level and sequence_level:
+            level_term_specs.extend(_term_specs(
+                [item[2] for item in sequence_satisfied], -1
+            ))
+        if level == utilization_level and utilization_level:
+            level_term_specs.extend(_term_specs(section_balance_terms))
+        if level == semester_level and semester_level:
+            level_term_specs.extend(_term_specs(semester_balance_terms))
+        if level == difficulty_level and difficulty_level:
+            level_term_specs.extend(_term_specs(difficulty_balance_terms))
+        if level == category_diversity_level and category_diversity_level:
+            level_term_specs.extend(_term_specs(category_diversity_terms))
+        if level == preservation_level and preservation_level:
+            level_term_specs.extend(_term_specs(
+                preservation_terms, preservation_level
+            ))
+        _append_objective(
+            sum(soft_objectives[level]),
+            level_term_specs,
+            kind="soft_tier",
+            importance_level=level,
+        )
     # A final opaque-ID objective makes equivalent recommendations stable.
-    objectives.append(
+    final_tie_break_terms = tuple(
+        (variable.Index(), request_id * 100000 + section_id)
+        for (request_id, section_id), variable in variables.items()
+        if any(
+            candidate_section.section_id == section_id and candidate_variable is variable
+            for candidate_section, candidate_variable in request_candidates[request_id]
+        )
+    )
+    _append_objective(
         sum(
-            (request_id * 100000 + section_id) * variable
-            for (request_id, section_id), variable in variables.items()
-            if any(
-                candidate_section.section_id == section_id and candidate_variable is variable
-                for candidate_section, candidate_variable in request_candidates[request_id]
-            )
-        ) if variables else 0
+            coefficient * model.GetIntVarFromProtoIndex(variable_index)
+            for variable_index, coefficient in final_tie_break_terms
+        ) if final_tie_break_terms else 0,
+        final_tie_break_terms,
+        kind="tie_break",
+        name="opaque_source_order",
     )
 
     def _solver_objective_components(candidate_solver):
@@ -2229,6 +2334,68 @@ def _solve_student_assignment(
                 ),
                 include_entity_metrics=True,
             )
+        )
+
+    if substantive_soft_tier_probe is not None:
+        def _candidate_count(candidate_solver):
+            assignments, commitments, *_rest = _extract_solver_candidate(
+                solver=candidate_solver,
+                data=data,
+                request_candidates=request_candidates,
+                commitment_variables=commitment_variables,
+                commitment_candidates=commitment_candidates,
+                commitment_metadata=commitment_metadata,
+                previous_enrollment_by_request=previous_enrollment_by_request,
+            )
+            return len(assignments) + len(commitments)
+
+        def _source_decision_fingerprint(candidate_solver):
+            assignments, commitments, *_rest = _extract_solver_candidate(
+                solver=candidate_solver,
+                data=data,
+                request_candidates=request_candidates,
+                commitment_variables=commitment_variables,
+                commitment_candidates=commitment_candidates,
+                commitment_metadata=commitment_metadata,
+                previous_enrollment_by_request=previous_enrollment_by_request,
+            )
+            decisions = {}
+            for assignment in assignments:
+                decisions[("course", assignment.request_id)] = (
+                    assignment.student_id,
+                    assignment.section_id,
+                    assignment.online_supervision_session_id,
+                    assignment.semester,
+                    assignment.timeslot_id,
+                    assignment.half_semester_segment,
+                )
+            for commitment in commitments:
+                decisions[("commitment", commitment.request_id)] = (
+                    commitment.student_id,
+                    commitment.commitment_kind,
+                    commitment.course_request_id,
+                    commitment.occupancy,
+                )
+            return tuple(sorted(decisions.items(), key=repr))
+
+        probe_context = SubstantiveSoftTierProbeContext(
+            model=model,
+            objective_metadata=tuple(objective_metadata),
+            complete_required_decision_groups=tuple(
+                tuple(group) for group in complete_required_decision_groups
+            ),
+            validated_seed_solver=validated_seed_solver,
+            seed_outcome=_hard_feasibility_outcome,
+            solver_objective_components=_solver_objective_components,
+            candidate_counts=_candidate_count,
+            source_decision_fingerprint=_source_decision_fingerprint,
+            seed_objective_vector=_objective_values(
+                validated_seed_solver, objectives
+            ) if validated_seed_solver is not None else (),
+        )
+        return probe_substantive_soft_tier(
+            probe_context,
+            **substantive_soft_tier_probe,
         )
 
     solver, outcome = _solve_lexicographically(

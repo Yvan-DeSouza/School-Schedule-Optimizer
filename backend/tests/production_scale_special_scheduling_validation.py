@@ -16,7 +16,7 @@ created only by the production approval services under test.
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from decimal import Decimal
 from itertools import permutations
 import os
@@ -85,6 +85,10 @@ from backend.apps.scheduling.services.online_supervision import (
     approve_online_supervision_plan_run,
     create_online_supervision_plan_run,
 )
+from backend.apps.scheduling.services.engine_adapter import (
+    load_student_assignment_input,
+    placement_input_fingerprint,
+)
 from backend.apps.scheduling.services.section_budget_planning import (
     approve_section_budget_run,
     create_section_budget_run,
@@ -118,6 +122,7 @@ from backend.apps.scheduling.services.teacher_assignment import (
     approve_teacher_assignment_run,
     create_teacher_assignment_run,
 )
+from scheduling_engine.student_assignment import run_substantive_soft_tier_probe
 
 
 STUDENT_COUNT = 1400
@@ -1031,7 +1036,9 @@ def _run_controlled_reruns(*, academic_year, approval, counselor_user):
     }
 
 
-def run_production_scale_special_scheduling_validation(*, counselor_user, prefix, include_reruns):
+def run_production_scale_special_scheduling_validation(
+    *, counselor_user, prefix, include_reruns, diagnostic_only=False,
+):
     """Create one 1,400-student complete pipeline scenario and validate it."""
 
     stage_seconds = {}
@@ -1178,6 +1185,44 @@ def run_production_scale_special_scheduling_validation(*, counselor_user, prefix
         counselor_user=counselor_user,
         focus_semesters=focus_semesters,
     )
+    if diagnostic_only:
+        student_input, _staffing_context = load_student_assignment_input(
+            academic_year_id=academic_year.id,
+            staffing_mode=STUDENT_ASSIGNMENT_STAFFING_MODE_FINAL_STAFFING,
+            soft_constraint_importance=SOFT_IMPORTANCE,
+        )
+        probe = run_substantive_soft_tier_probe(
+            student_input,
+            threshold=65172,
+            time_limit_seconds=1800.0,
+            worker_count=8,
+        )
+        print(
+            "[production-scale] substantive-tier probe: "
+            f"input_fingerprint={placement_input_fingerprint(asdict(student_input))} "
+            f"students={len({request.student_id for request in student_input.requests})} "
+            f"requests={len(student_input.requests)} "
+            f"sections={len(student_input.sections)} "
+            f"online_sessions={len(student_input.online_supervision_sessions)} "
+            f"special_requests={len(student_input.schedule_commitment_requests)} "
+            f"status={probe.status} "
+            f"seed_validated={probe.seed_validated} "
+            f"seed={probe.seed_objective_vector} "
+            f"baseline={probe.baseline_substantive_value} "
+            f"threshold={probe.requested_threshold} "
+            f"elapsed={probe.elapsed_seconds:.3f}s "
+            f"model={probe.model_variable_count}v/{probe.model_constraint_count}c "
+            f"conflicts={probe.conflicts} branches={probe.branches} "
+            f"candidate={probe.complete_candidate_found} "
+            f"seed_assignments={probe.seed_assignment_count} "
+            f"candidate_assignments={probe.candidate_assignment_count} "
+            f"changed_source_decisions={probe.changed_source_decision_count} "
+            f"candidate_value={probe.candidate_substantive_value} "
+            f"components={probe.candidate_component_values} "
+            f"deltas={probe.component_deltas}",
+            flush=True,
+        )
+        return probe
     student_run = _elapsed(stage_seconds, "student_assignment", lambda: create_student_assignment_run(
         academic_year=academic_year,
         staffing_mode=STUDENT_ASSIGNMENT_STAFFING_MODE_FINAL_STAFFING,
@@ -1300,6 +1345,24 @@ def test_production_scale_special_scheduling_scenario(counselor_user):
         include_reruns=prefix == "scale-a",
     )
     _assert_complete_production_scale_summary(summary)
+
+
+@pytest.mark.django_db
+def test_production_scale_substantive_soft_tier_probe(counselor_user):
+    """Run only the target-scale substantive-tier diagnostic after staffing."""
+
+    prefix = os.environ.get("SCHEDULING_PRODUCTION_SCALE_PROBE_PREFIX")
+    if not prefix:
+        pytest.skip("the target-scale diagnostic is explicitly invoked")
+    result = run_production_scale_special_scheduling_validation(
+        counselor_user=counselor_user,
+        prefix=prefix,
+        include_reruns=False,
+        diagnostic_only=True,
+    )
+    assert result.seed_validated is True
+    assert result.requested_threshold == 65172.0
+    assert result.status in {"feasible", "optimal", "infeasible", "unknown"}
 
 
 def test_production_scale_special_scheduling_validation():
