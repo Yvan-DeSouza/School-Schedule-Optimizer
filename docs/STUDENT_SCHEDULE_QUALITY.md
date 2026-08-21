@@ -5,7 +5,7 @@ This document describes the measurement-only quality evaluator in
 objectives, hints, or search behavior. CP-SAT remains the authority for the
 recommendation.
 
-The current payload version is `student_schedule_quality_v2`.
+The current payload version is `student_schedule_quality_v3`.
 
 ## Stage comparison
 
@@ -81,14 +81,22 @@ students with applicable and satisfied opportunities.
 For each non-Focus student, the evaluator sums
 `round(effective_difficulty * credit_value)` by semester and minimizes the
 absolute difference. This includes normal and online academic courses,
-fixed enrollments, and the existing Study/Co-op contribution rules. Focus is
-excluded. Half-semester courses use the same effective contribution as the
-current solver; the evaluator does not invent proportional weighting.
+fixed enrollments, and the existing Study/Co-op contribution rules. A Study
+or Co-op candidate's semester is derived from its occupied target-year
+timeslot(s), never from a timeslot identifier. Focus is excluded.
+Half-semester courses use the same effective contribution as the current
+solver; the evaluator does not invent proportional weighting.
 
 The report includes per-student semester difficulty loads and the full
 distribution of absolute differences. Stage comparisons also include entity
 counts and change magnitudes, including mean improvement and mean worsening
 among affected students where those populations are non-empty.
+
+During a rerun, the engine passes the resolved fixed enrollment and special
+commitment context to the evaluator. Movable or replaced active facts are
+therefore counted through the returned candidate rather than counted again as
+fixed context. Schedule-preservation facts still use the original snapshot so
+the legal move opportunity remains visible.
 
 ### Course-category diversity
 
@@ -143,8 +151,27 @@ completeness, unmet requests, runtime, and process-isolation conditions.
 Parallel CP-SAT runs need not produce identical assignments. Comparisons must
 use hard validity, completeness, objective vectors, and quality distributions.
 
-The current production-scale baseline consists of two complete isolated runs:
-Stage 1 produced the same complete seed and vector in both runs; Stage 2
-retained all soft metrics and only improved the final opaque tie-breaker. The
-measured child runtimes were 2,656.35 seconds and 2,528.00 seconds. These are
-environment-specific observations, not contractual performance limits.
+The pre-semantic-correction production-scale observations (which used the
+older `student_schedule_quality_v2` difficulty interpretation) are historical
+only and must not be used as the current objective baseline. In particular,
+the earlier difficulty and substantive-tier values were `36,073` and `65,273`.
+
+The first post-correction isolated scale run produced this authoritative
+comparison:
+
+```text
+Stage 1: [-10945, 0, 0, 0, 65173, 5669086063387]
+Stage 2: [-10945, 0, 0, 0, 65173, 5669086063311]
+```
+
+The run produced a complete validated seed, completed student assignment
+with 10,635 assignments and zero unmet requests, and fulfilled all 310
+special commitments. Section utilization, semester balance, difficulty, and
+category-diversity metrics were unchanged between stages at `6,875`, `175`,
+`35,973`, and `22,150`; only the opaque final tie-break improved. All
+reconstruction deltas were zero. The student-assignment service time was
+`1,863.978` seconds and the review layer took `352.800` seconds. These are
+environment-specific observations, not contractual performance limits. The
+post-approval controlled-rerun portion of that release-validation child was
+interrupted after the initial schedule completed, so this is not yet evidence
+of a complete repeated rerun validation.

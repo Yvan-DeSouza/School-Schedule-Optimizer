@@ -903,6 +903,18 @@ def _schedule_fingerprint(*, academic_year):
 def _run_controlled_reruns(*, academic_year, approval, counselor_user):
     """Exercise history and lock semantics against approved operational state."""
 
+    def _rerun_step(name, action):
+        """Expose post-approval rerun progress without changing workflow."""
+
+        started = perf_counter()
+        print(f"[production-scale] {name}: starting", flush=True)
+        value = action()
+        print(
+            f"[production-scale] {name}: {perf_counter() - started:.3f}s",
+            flush=True,
+        )
+        return value
+
     # The prior implementation materialized every related field for every
     # active enrollment before selecting one target.  At production scale that
     # made the validation harness spend many minutes transferring objects that
@@ -936,7 +948,7 @@ def _run_controlled_reruns(*, academic_year, approval, counselor_user):
         course=target.course_offering.course,
         staffing_mode=STUDENT_ASSIGNMENT_STAFFING_MODE_FINAL_STAFFING,
     )
-    rerun = create_student_assignment_run(
+    rerun = _rerun_step("rerun_exact_lock", lambda: create_student_assignment_run(
         academic_year=academic_year,
         staffing_mode=STUDENT_ASSIGNMENT_STAFFING_MODE_FINAL_STAFFING,
         soft_constraint_importance=SOFT_IMPORTANCE,
@@ -945,13 +957,13 @@ def _run_controlled_reruns(*, academic_year, approval, counselor_user):
         source_approval=approval,
         scope_student_ids=(target.student_id,),
         schedule_preservation_level="strong",
-    )
-    assert rerun.status == "complete", rerun.result
-    rerun_approval = approve_student_assignment_run(
+    ))
+    rerun_approval = _rerun_step("rerun_exact_lock_approval", lambda: approve_student_assignment_run(
         rerun,
         approved_by=counselor_user,
         reason="Approve one controlled, locked enrollment replacement.",
-    )
+    ))
+    assert rerun.status == "complete", rerun.result
     target.refresh_from_db()
     assert target.lifecycle_status == "historical"
     replacement = StudentAssignmentApprovalEnrollment.objects.get(
@@ -978,7 +990,7 @@ def _run_controlled_reruns(*, academic_year, approval, counselor_user):
         teacher=replacement.section.teacher,
         staffing_mode=STUDENT_ASSIGNMENT_STAFFING_MODE_FINAL_STAFFING,
     )
-    protected_run = create_student_assignment_run(
+    protected_run = _rerun_step("rerun_whole_schedule_lock", lambda: create_student_assignment_run(
         academic_year=academic_year,
         staffing_mode=STUDENT_ASSIGNMENT_STAFFING_MODE_FINAL_STAFFING,
         soft_constraint_importance=SOFT_IMPORTANCE,
@@ -986,7 +998,7 @@ def _run_controlled_reruns(*, academic_year, approval, counselor_user):
         scope_type=STUDENT_ASSIGNMENT_RUN_SCOPE_SCOPED,
         source_approval=rerun_approval,
         scope_student_ids=(target.student_id,),
-    )
+    ))
     assert protected_run.status == "complete", protected_run.result
     assert any(
         item["reason_code"] == "student_assignment_locked_enrollment_blocks_request"
@@ -999,7 +1011,7 @@ def _run_controlled_reruns(*, academic_year, approval, counselor_user):
     )
     # The exact lock remains active.  Releasing a lock is append-only and a
     # fresh run proves its current selection rather than approving stale work.
-    released_run = create_student_assignment_run(
+    released_run = _rerun_step("rerun_released_lock", lambda: create_student_assignment_run(
         academic_year=academic_year,
         staffing_mode=STUDENT_ASSIGNMENT_STAFFING_MODE_FINAL_STAFFING,
         soft_constraint_importance=SOFT_IMPORTANCE,
@@ -1007,7 +1019,7 @@ def _run_controlled_reruns(*, academic_year, approval, counselor_user):
         scope_type=STUDENT_ASSIGNMENT_RUN_SCOPE_SCOPED,
         source_approval=rerun_approval,
         scope_student_ids=(target.student_id,),
-    )
+    ))
     assert released_run.status == "complete", released_run.result
     return {
         "scoped_runs": 3,

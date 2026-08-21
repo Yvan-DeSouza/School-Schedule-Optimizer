@@ -9,6 +9,7 @@ validated Stage 1 seed and the Stage 2 recommendation.
 from __future__ import annotations
 
 from collections import defaultdict
+from dataclasses import replace
 from math import ceil
 
 from ..dto import StudentAssignmentInputDTO
@@ -18,10 +19,9 @@ from .occupancy import (
 )
 
 
-# The version is bumped when the report gains authoritative aggregate values
-# and reconstruction-delta fields, so consumers can distinguish the enriched
-# payload from the initial descriptive-only shape.
-QUALITY_REPORT_VERSION = "student_schedule_quality_v2"
+# The version is bumped when report semantics change, so consumers can
+# distinguish the fixed-context/semester-aligned payload from earlier reports.
+QUALITY_REPORT_VERSION = "student_schedule_quality_v3"
 
 
 def _rounded(value):
@@ -636,6 +636,8 @@ def evaluate_student_assignment_quality(
     sequence_opportunities=None,
     solver_objective_components=None,
     include_entity_metrics=True,
+    fixed_enrollments=None,
+    fixed_schedule_commitments=None,
 ):
     """Evaluate one complete candidate without influencing CP-SAT.
 
@@ -646,23 +648,45 @@ def evaluate_student_assignment_quality(
 
     assignments = tuple(assignments)
     commitment_assignments = tuple(commitment_assignments)
+    # A rerun snapshot contains both fixed context and movable/replaced active
+    # facts.  The solver has already resolved that distinction; accept the
+    # resolved rows so diagnostic reconstruction does not count a movable old
+    # enrollment or commitment alongside its replacement.  The original data
+    # remains available below for schedule-preservation facts, which are about
+    # those movable rows by definition.
+    evaluation_data = data
+    if fixed_enrollments is not None or fixed_schedule_commitments is not None:
+        evaluation_data = replace(
+            data,
+            fixed_enrollments=(
+                tuple(data.fixed_enrollments)
+                if fixed_enrollments is None else tuple(fixed_enrollments)
+            ),
+            fixed_schedule_commitments=(
+                tuple(data.fixed_schedule_commitments)
+                if fixed_schedule_commitments is None
+                else tuple(fixed_schedule_commitments)
+            ),
+        )
     metrics = {
         "version": QUALITY_REPORT_VERSION,
         "request_fulfillment": _request_fulfillment(
-            data, assignments, commitment_assignments,
+            evaluation_data, assignments, commitment_assignments,
         ),
-        "section_utilization_balance": _section_utilization(data, assignments),
+        "section_utilization_balance": _section_utilization(
+            evaluation_data, assignments,
+        ),
         "student_semester_load_balance": _student_loads(
-            data, assignments, commitment_assignments,
+            evaluation_data, assignments, commitment_assignments,
         ),
         "course_sequence_preferences": _sequence_quality(
-            data, assignments, sequence_opportunities,
+            evaluation_data, assignments, sequence_opportunities,
         ),
         "difficulty_balance": _difficulty_loads(
-            data, assignments, commitment_assignments,
+            evaluation_data, assignments, commitment_assignments,
         ),
         "course_category_diversity": _category_diversity(
-            data, assignments, commitment_assignments,
+            evaluation_data, assignments, commitment_assignments,
         ),
         "schedule_preservation": _preservation_quality(data, assignments),
     }

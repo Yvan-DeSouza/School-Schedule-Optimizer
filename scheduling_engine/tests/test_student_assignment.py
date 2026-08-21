@@ -710,6 +710,47 @@ def test_requested_study_occupies_one_block_without_becoming_a_course_assignment
     }
 
 
+def test_study_difficulty_contribution_uses_occupied_timeslot_semester():
+    """A timeslot identity must never be interpreted as a semester value."""
+
+    result = solve_student_assignment(
+        _input(
+            requests=(),
+            sections=(_section(timeslot_id=101, semester=1),),
+            fixed_enrollments=(FixedEnrollmentDTO(
+                enrollment_id=91,
+                student_id=1,
+                section_id=1,
+                course_offering_id=11,
+                course_id=1,
+                semester=1,
+                timeslot_id=101,
+                is_locked=True,
+            ),),
+            timeslots=(
+                TimeSlotDTO(101, 1, 1, "A"),
+                # Deliberately make the Study slot ID unlike either semester.
+                TimeSlotDTO(102, 1, 1, "B"),
+            ),
+            schedule_commitment_requests=(
+                StudentScheduleCommitmentRequestDTO(2, 1, "study"),
+            ),
+            course_difficulties=(
+                CourseDifficultyDTO(1, "math", 100, None, 100, "test"),
+            ),
+            difficulty_balance_importance="important",
+            time_limit_seconds=2.0,
+        ),
+        use_hard_feasibility_bootstrap=False,
+    )
+
+    assert result.status == "complete"
+    assert result.objective_components["difficulty_balance_penalty"] == 101
+    assert result.optimization_facts["quality"]["stage_2"]["difficulty_balance"][
+        "reconstruction_delta"
+    ] == 0
+
+
 def test_study_exact_lock_uses_the_counselor_selected_block():
     slots = _timeslots()
     locked_slot = next(slot for slot in slots if slot.semester == 2 and slot.block == "C")

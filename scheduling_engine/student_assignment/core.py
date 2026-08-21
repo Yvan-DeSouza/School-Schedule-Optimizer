@@ -137,6 +137,28 @@ def _objective_values(solver, objectives):
     )
 
 
+def _candidate_semester_from_occupancy(occupancy, semester_by_timeslot):
+    """Return the semester represented by one commitment occupancy.
+
+    Commitment candidate tuples carry an opaque placement value for historical
+    reasons.  The authoritative semester is the semester of the occupied
+    target-year timeslots, not that overloaded tuple value.  All accepted
+    Study and Co-op candidates occupy one semester; fail closed if that
+    invariant is ever broken while building the objective model.
+    """
+
+    semesters = {
+        semester_by_timeslot[timeslot_id]
+        for timeslot_id, _segment in occupancy
+        if timeslot_id in semester_by_timeslot
+    }
+    if len(semesters) != 1:
+        raise ValueError(
+            "A commitment candidate must occupy exactly one semester."
+        )
+    return next(iter(semesters))
+
+
 def _extract_solver_candidate(
     *, solver, data, request_candidates, commitment_variables,
     commitment_candidates, commitment_metadata, previous_enrollment_by_request,
@@ -831,6 +853,13 @@ def _solve_student_assignment(
         else:
             movable_commitments_by_source[source_key] = commitment
 
+    quality_fixed_schedule_commitments = tuple(
+        commitment
+        for commitment in data.fixed_schedule_commitments
+        if _candidate_source_from_commitment(commitment)
+        in fixed_commitment_sources
+    )
+
     variables = {}
     request_candidates = {}
     request_lock_blockers = defaultdict(set)
@@ -1324,6 +1353,9 @@ def _solve_student_assignment(
                         static=True,
                     )
                     continue
+                # The first tuple value is retained as the candidate's
+                # placement identity, but objective code must derive semester
+                # from occupancy.  A timeslot ID is not a semester ID.
                 choices.append((slot.id, occupancy, None))
             commitment_candidates[source_key] = choices
             commitment_metadata[source_key] = (request.student_id, "study", None, None, None)
@@ -1769,7 +1801,10 @@ def _solve_student_assignment(
         # Co-op carries two credits as one linked academic experience. Study
         # and Focus still reserve time, but they are not academic course load.
         for source_key, index, variable in commitment_variables_by_student[student_id]:
-            candidate_semester, _occupancy, _pair = commitment_candidates[source_key][index]
+            _placement_value, occupancy, _pair = commitment_candidates[source_key][index]
+            candidate_semester = _candidate_semester_from_occupancy(
+                occupancy, semester_by_timeslot,
+            )
             metadata = commitment_metadata[source_key]
             if metadata[1] != "co_op":
                 continue
@@ -1802,6 +1837,49 @@ def _solve_student_assignment(
             if student_id in focus_student_ids:
                 continue
             requested_course_ids = request_course_ids_by_student[student_id]
+            # The penalty domain must be large enough to represent every
+            # legal annual load difference.  The former course-count * 100
+            # bound omitted Study's small contribution and could therefore
+            # force a valid Study choice to zero when it shared a semester
+            # with a high-difficulty course.  Sum the maximum contribution of
+            # each independently selectable source; this is a safe bound, not
+            # a change to the objective expression.
+            difficulty_upper_bound = sum(
+                abs(round(
+                    difficulty_by_course.get(request.course_id, 0)
+                    * request.credit_value
+                ))
+                for request in requests_by_student[student_id]
+                if request.delivery_kind != "co_op"
+            )
+            difficulty_upper_bound += sum(
+                abs(round(
+                    difficulty_by_course.get(row.course_id, 0)
+                    * row.credit_value
+                ))
+                for row in fixed_rows_by_student[student_id]
+            )
+            difficulty_upper_bound += sum(
+                abs(
+                    1
+                    if commitment.commitment_kind == "study"
+                    else round(
+                        difficulty_by_course.get(commitment.course_id, 0)
+                        * commitment.credit_value
+                    )
+                )
+                for commitment in active_commitments_by_student[student_id]
+                if commitment.commitment_kind in {"study", "co_op"}
+            )
+            for source_key, _index, _variable in commitment_variables_by_student[student_id]:
+                metadata = commitment_metadata[source_key]
+                if metadata[1] == "study":
+                    difficulty_upper_bound += 1
+                elif metadata[1] == "co_op":
+                    difficulty_upper_bound += abs(round(
+                        difficulty_by_course.get(metadata[4], 0)
+                        * requests_by_id[metadata[2]].credit_value
+                    ))
             semester_1_difficulty = sum(
                 round(difficulty_by_course.get(course_id, 0) * credit_by_student_course.get((student_id, course_id), 1.0)) * variable
                 for course_id in requested_course_ids
@@ -1837,7 +1915,10 @@ def _solve_student_assignment(
                 if 2 in semesters:
                     semester_2_difficulty += contribution
             for source_key, index, variable in commitment_variables_by_student[student_id]:
-                candidate_semester, _occupancy, _pair = commitment_candidates[source_key][index]
+                _placement_value, occupancy, _pair = commitment_candidates[source_key][index]
+                candidate_semester = _candidate_semester_from_occupancy(
+                    occupancy, semester_by_timeslot,
+                )
                 metadata = commitment_metadata[source_key]
                 if metadata[1] == "co_op":
                     contribution = round(
@@ -1860,7 +1941,7 @@ def _solve_student_assignment(
                     semester_2_difficulty += contribution * variable
             penalty = model.NewIntVar(
                 0,
-                (len(requested_course_ids) + len(fixed_rows)) * 100,
+                max(1, difficulty_upper_bound),
                 f"difficulty_balance_{student_id}",
             )
             model.AddAbsEquality(penalty, semester_1_difficulty - semester_2_difficulty)
@@ -2096,6 +2177,8 @@ def _solve_student_assignment(
             assignments=stage_1_assignments,
             commitment_assignments=stage_1_commitment_assignments,
             sequence_opportunities=sequence_opportunities,
+            fixed_enrollments=fixed_rows,
+            fixed_schedule_commitments=quality_fixed_schedule_commitments,
             solver_objective_components=_solver_objective_components(
                 validated_seed_solver
             ),
@@ -2139,6 +2222,8 @@ def _solve_student_assignment(
                 assignments=pass_assignments,
                 commitment_assignments=pass_commitment_assignments,
                 sequence_opportunities=sequence_opportunities,
+                fixed_enrollments=fixed_rows,
+                fixed_schedule_commitments=quality_fixed_schedule_commitments,
                 solver_objective_components=_solver_objective_components(
                     candidate_solver
                 ),
@@ -2243,6 +2328,8 @@ def _solve_student_assignment(
         assignments=assignments,
         commitment_assignments=commitment_assignments,
         sequence_opportunities=sequence_opportunities,
+        fixed_enrollments=fixed_rows,
+        fixed_schedule_commitments=quality_fixed_schedule_commitments,
         solver_objective_components=_solver_objective_components(solver),
         include_entity_metrics=True,
     )
