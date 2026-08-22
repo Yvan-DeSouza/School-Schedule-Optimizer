@@ -30,6 +30,8 @@ class SubstantiveSoftTierProbeContext:
     candidate_counts: object
     seed_objective_vector: tuple
     source_decision_fingerprint: object
+    source_decision_summary: object
+    source_decision_variable_values: object
 
 
 @dataclass(frozen=True)
@@ -62,6 +64,14 @@ class SubstantiveSoftTierProbeResult:
     minimized_component_value: float | None
     best_bound: float | None
     model_family_variable_counts: dict
+    seed_source_decisions: tuple
+    candidate_source_decisions: tuple
+    seed_summary: dict
+    candidate_summary: dict
+    affected_student_ids: tuple
+    affected_section_ids: tuple
+    section_load_deltas: dict
+    candidate_source_variable_values: dict
 
 
 def _model_family_variable_counts(model):
@@ -178,6 +188,14 @@ def probe_substantive_soft_tier(
             minimized_component_value=None,
             best_bound=None,
             model_family_variable_counts={},
+            seed_source_decisions=(),
+            candidate_source_decisions=(),
+            seed_summary={},
+            candidate_summary={},
+            affected_student_ids=(),
+            affected_section_ids=(),
+            section_load_deltas={},
+            candidate_source_variable_values={},
         )
 
     target_entries = [
@@ -203,6 +221,7 @@ def probe_substantive_soft_tier(
     )
     seed_assignment_count = int(context.candidate_counts(seed_solver))
     seed_source_decisions = dict(context.source_decision_fingerprint(seed_solver))
+    seed_summary = dict(context.source_decision_summary(seed_solver))
 
     probe_model = context.model.Clone()
     for decision_group in context.complete_required_decision_groups:
@@ -287,6 +306,9 @@ def probe_substantive_soft_tier(
     source_decision_deltas = ()
     candidate_objective_vector = ()
     minimized_component_value = None
+    candidate_source_decisions = ()
+    candidate_source_variable_values = {}
+    candidate_summary = {}
     if complete_candidate_found:
         candidate_component_values = dict(context.solver_objective_components(solver))
         candidate_substantive_value = float(
@@ -301,21 +323,26 @@ def probe_substantive_soft_tier(
         candidate_source_decisions = dict(
             context.source_decision_fingerprint(solver)
         )
+        candidate_source_decisions = tuple(sorted(
+            candidate_source_decisions.items(), key=repr,
+        ))
+        candidate_source_variable_values = dict(
+            context.source_decision_variable_values(solver)
+        )
+        candidate_source_decision_map = dict(candidate_source_decisions)
+        source_keys = set(seed_source_decisions) | set(candidate_source_decision_map)
         changed_source_decision_count = sum(
-            seed_source_decisions.get(key) != candidate_source_decisions.get(key)
-            for key in set(seed_source_decisions) | set(candidate_source_decisions)
+            seed_source_decisions.get(key) != candidate_source_decision_map.get(key)
+            for key in source_keys
         )
         source_decision_deltas = tuple(
             {
                 "source_key": key,
                 "before": seed_source_decisions.get(key),
-                "after": candidate_source_decisions.get(key),
+                "after": candidate_source_decision_map.get(key),
             }
-            for key in sorted(
-                set(seed_source_decisions) | set(candidate_source_decisions),
-                key=repr,
-            )
-            if seed_source_decisions.get(key) != candidate_source_decisions.get(key)
+            for key in sorted(source_keys, key=repr)
+            if seed_source_decisions.get(key) != candidate_source_decision_map.get(key)
         )
         candidate_objective_vector = _objective_vector(
             solver, probe_model, context.objective_metadata
@@ -324,6 +351,7 @@ def probe_substantive_soft_tier(
             minimized_component_value = float(
                 solver.Value(component_expressions[minimize_component])
             )
+        candidate_summary = dict(context.source_decision_summary(solver))
 
     component_deltas = (
         {
@@ -333,6 +361,28 @@ def probe_substantive_soft_tier(
         if complete_candidate_found
         else {}
     )
+    affected_students = set()
+    affected_sections = set()
+    if complete_candidate_found:
+        for delta in source_decision_deltas:
+            for value in (delta["before"], delta["after"]):
+                if value is None:
+                    continue
+                if value and isinstance(value, tuple):
+                    affected_students.add(value[0])
+                    if delta["source_key"][0] == "course":
+                        section_id = value[1]
+                        if section_id is not None:
+                            affected_sections.add(section_id)
+        seed_loads = seed_summary.get("section_loads", {})
+        candidate_loads = candidate_summary.get("section_loads", {})
+        section_load_deltas = {
+            section_id: candidate_loads.get(section_id, 0) - seed_loads.get(section_id, 0)
+            for section_id in set(seed_loads) | set(candidate_loads)
+            if candidate_loads.get(section_id, 0) != seed_loads.get(section_id, 0)
+        }
+    else:
+        section_load_deltas = {}
     return SubstantiveSoftTierProbeResult(
         status=outcome_name(status_code),
         seed_solver_outcome=seed_outcome,
@@ -363,4 +413,12 @@ def probe_substantive_soft_tier(
             if minimize_component is not None else None
         ),
         model_family_variable_counts=_model_family_variable_counts(probe_model),
+        seed_source_decisions=tuple(sorted(seed_source_decisions.items(), key=repr)),
+        candidate_source_decisions=candidate_source_decisions,
+        seed_summary=seed_summary,
+        candidate_summary=candidate_summary,
+        affected_student_ids=tuple(sorted(affected_students)),
+        affected_section_ids=tuple(sorted(affected_sections)),
+        section_load_deltas=dict(sorted(section_load_deltas.items())),
+        candidate_source_variable_values=candidate_source_variable_values,
     )

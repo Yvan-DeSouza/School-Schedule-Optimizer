@@ -143,6 +143,45 @@ def validate_complete_hard_feasibility_seed(
     return validator
 
 
+def validate_source_decision_candidate(
+    model,
+    required_decision_groups,
+    source_variable_values,
+    time_limit_seconds,
+    *,
+    worker_count=1,
+):
+    """Validate a semantic source-decision candidate against the full model.
+
+    Diagnostic alternate-incumbent replays use this boundary to convert a
+    source-level candidate back into CP-SAT values.  Every required group is
+    made exactly-one, every source variable in the candidate is fixed by the
+    validator, and all derived constraints remain owned by the unchanged full
+    model.  The returned solver is therefore a valid incumbent, not a
+    heuristic schedule.
+    """
+
+    candidate_model = model.Clone()
+    for decision_group in required_decision_groups:
+        candidate_model.AddExactlyOne(
+            candidate_model.GetIntVarFromProtoIndex(variable.Index())
+            for variable in decision_group
+        )
+    for variable_index, value in source_variable_values.items():
+        # This is validation, not search guidance.  Equality constraints avoid
+        # CP-SAT's ``fix_variables_to_their_hinted_value`` requirement that
+        # every auxiliary variable also carry a hint.
+        candidate_model.Add(
+            candidate_model.GetIntVarFromProtoIndex(variable_index) == int(value)
+        )
+    validator = new_solver(
+        time_limit_seconds,
+        worker_count=worker_count,
+    )
+    status = validator.Solve(candidate_model)
+    return validator if _has_solution(status) else None
+
+
 def validated_initial_hint_solver(
     model,
     assignment_hints,
@@ -186,6 +225,8 @@ def solve_lexicographically(
     pass_facts=None,
     pass_quality_callback=None,
     pass_trace=None,
+    pass_candidate_callback=None,
+    retain_incumbent_on_non_improvement=False,
 ):
     """Optimize ordered objectives while preserving the last valid candidate.
 
@@ -267,9 +308,33 @@ def solve_lexicographically(
                 # optimization pass later reaches UNKNOWN without an incumbent.
                 previous_solver = prepared_solver
 
+        entering_candidate = (
+            pass_candidate_callback(previous_solver)
+            if pass_candidate_callback is not None and previous_solver is not None
+            else None
+        )
         solver = new_solver(pass_time_limit_seconds, worker_count=worker_count)
         trace_started = monotonic()
         status = solver.Solve(model)
+        solver_has_solution = status in {cp_model.OPTIMAL, cp_model.FEASIBLE}
+        raw_solver_candidate = solver if solver_has_solution else None
+        selected_solver = raw_solver_candidate
+        incumbent_retained = False
+        if (
+            retain_incumbent_on_non_improvement
+            and previous_solver is not None
+            and raw_solver_candidate is not None
+            and raw_solver_candidate.Value(objective)
+            >= previous_solver.Value(objective)
+        ):
+            selected_solver = previous_solver
+            incumbent_retained = True
+        returned_candidate_solver = selected_solver or previous_solver
+        returned_candidate = (
+            pass_candidate_callback(returned_candidate_solver)
+            if pass_candidate_callback is not None and returned_candidate_solver is not None
+            else None
+        )
         if pass_trace is not None:
             pass_trace.append({
                 "objective_index": objective_index,
@@ -284,15 +349,23 @@ def solve_lexicographically(
                 "conflicts": solver.NumConflicts(),
                 "branches": solver.NumBranches(),
                 "best_bound": float(solver.BestObjectiveBound()),
+                "entering_candidate": entering_candidate,
+                "returned_candidate": returned_candidate,
+                "solver_candidate_found": solver_has_solution,
+                "raw_solver_candidate": (
+                    pass_candidate_callback(raw_solver_candidate)
+                    if pass_candidate_callback is not None and raw_solver_candidate is not None
+                    else None
+                ),
+                "incumbent_retained": incumbent_retained,
             })
-        solver_has_solution = status in {cp_model.OPTIMAL, cp_model.FEASIBLE}
         ending_value = (
-            float(solver.Value(objective))
-            if solver_has_solution else starting_value
+            float(selected_solver.Value(objective))
+            if selected_solver is not None else starting_value
         )
         ending_quality = (
-            pass_quality_callback(solver)
-            if pass_quality_callback is not None and solver_has_solution
+            pass_quality_callback(selected_solver)
+            if pass_quality_callback is not None and selected_solver is not None
             else starting_quality
         )
         if pass_facts is not None:
@@ -321,8 +394,8 @@ def solve_lexicographically(
             })
         if status not in {cp_model.OPTIMAL, cp_model.FEASIBLE}:
             return previous_solver, status
-        previous_solver = solver
-        model.Add(objective == solver.Value(objective))
+        previous_solver = selected_solver
+        model.Add(objective == selected_solver.Value(objective))
 
     if previous_solver is None:
         # A fully protected rerun can legitimately have no decision variables

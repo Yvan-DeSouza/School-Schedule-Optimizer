@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 from dataclasses import replace
+from hashlib import sha256
+from time import monotonic
 
 from ortools.sat.python import cp_model
 
@@ -90,6 +92,7 @@ from .solver import (
     solve_complete_hard_feasibility_seed as _solve_complete_hard_feasibility_seed,
     solve_lexicographically as _solve_lexicographically,
     validate_complete_hard_feasibility_seed as _validate_complete_hard_feasibility_seed,
+    validate_source_decision_candidate as _validate_source_decision_candidate,
 )
 from .initial_hint import build_initial_assignment_hints as _build_initial_assignment_hints
 from .unmet_diagnostics import diagnostic_for_unmet_request as _diagnostic_for_unmet_request
@@ -256,6 +259,7 @@ def _optimization_facts(
     required_group_count,
     hard_seed_solver,
     validated_seed_solver,
+    stage_2_seed_solver=None,
     final_solver,
     final_outcome,
     objectives,
@@ -269,6 +273,7 @@ def _optimization_facts(
 
     seed_values = _objective_values(validated_seed_solver, objectives)
     final_values = _objective_values(final_solver, objectives)
+    stage_2_seed_solver = stage_2_seed_solver or validated_seed_solver
     improved = bool(seed_values and final_values and final_values < seed_values)
     facts = {
         "stage_1": {
@@ -283,6 +288,10 @@ def _optimization_facts(
             "worker_count": STUDENT_ASSIGNMENT_OPTIMIZATION_WORKER_COUNT,
             "time_limit_seconds": optimization_time_limit_seconds,
             "validated_seed_received": validated_seed_solver is not None,
+            "alternate_validated_seed_received": (
+                stage_2_seed_solver is not None
+                and stage_2_seed_solver is not validated_seed_solver
+            ),
             "objective_values": list(final_values),
             "improved_over_stage_1": improved,
         },
@@ -733,6 +742,8 @@ def run_substantive_soft_tier_probe(
     neighborhood_radius=None,
     component_bounds=None,
     minimize_component=None,
+    alternate_source_decisions=(),
+    alternate_source_variable_values=None,
 ):
     """Run a diagnostic-only satisfiability probe against the full model.
 
@@ -755,11 +766,19 @@ def run_substantive_soft_tier_probe(
             "component_bounds": component_bounds,
             "minimize_component": minimize_component,
         },
+        alternate_source_decisions=alternate_source_decisions,
+        alternate_source_variable_values=alternate_source_variable_values,
     )
 
 
-def run_student_assignment_stage2_diagnostic(data: StudentAssignmentInputDTO):
-    """Run the unchanged solver while returning an internal pass trace."""
+def run_student_assignment_stage2_diagnostic(
+    data: StudentAssignmentInputDTO,
+    *,
+    alternate_source_decisions=(),
+    alternate_source_variable_values=None,
+    total_time_limit_seconds=None,
+):
+    """Run unchanged Stage 2 with optional diagnostic alternate incumbent."""
 
     return _solve_student_assignment(
         data,
@@ -767,6 +786,47 @@ def run_student_assignment_stage2_diagnostic(data: StudentAssignmentInputDTO):
         include_candidate_ledger=False,
         use_hard_feasibility_bootstrap=True,
         collect_stage2_trace=True,
+        alternate_source_decisions=alternate_source_decisions,
+        alternate_source_variable_values=alternate_source_variable_values,
+        stage_2_total_time_limit_seconds=total_time_limit_seconds,
+        retain_incumbent_on_non_improvement=True,
+    )
+
+
+def run_student_assignment_local_bootstrap_diagnostic(
+    data: StudentAssignmentInputDTO,
+    *,
+    neighborhood_radius=2,
+    time_limit_seconds=240.0,
+    total_time_limit_seconds=1800.0,
+    worker_count=8,
+):
+    """Run a bounded local-quality bootstrap before diagnostic Stage 2.
+
+    This is intentionally diagnostic-only.  The bootstrap consumes the
+    supplied Stage 2 budget and hands CP-SAT's validated candidate to the
+    unchanged lexicographic optimizer; it never manufactures or fixes a
+    schedule.  Production callers continue to use ``solve_student_assignment``
+    without this path until target-scale budget and repeatability gates pass.
+    """
+
+    return _solve_student_assignment(
+        data,
+        include_lock_costs=False,
+        include_candidate_ledger=False,
+        use_hard_feasibility_bootstrap=True,
+        collect_stage2_trace=True,
+        stage_2_local_bootstrap={
+            "threshold": None,
+            "time_limit_seconds": time_limit_seconds,
+            "worker_count": worker_count,
+            "target_importance_level": IMPORTANCE_LEVELS["important"],
+            "neighborhood_radius": neighborhood_radius,
+            "component_bounds": None,
+            "minimize_component": None,
+        },
+        stage_2_total_time_limit_seconds=total_time_limit_seconds,
+        retain_incumbent_on_non_improvement=True,
     )
 
 
@@ -778,6 +838,11 @@ def _solve_student_assignment(
     use_hard_feasibility_bootstrap=True,
     substantive_soft_tier_probe=None,
     collect_stage2_trace=False,
+    alternate_source_decisions=(),
+    alternate_source_variable_values=None,
+    stage_2_total_time_limit_seconds=None,
+    retain_incumbent_on_non_improvement=False,
+    stage_2_local_bootstrap=None,
 ):
     if data.scope.scope_type == "scoped":
         # Keep the complete request list in the detached run snapshot, but do
@@ -1678,6 +1743,7 @@ def _solve_student_assignment(
     # requested special commitment.  Fixed context is already an accepted fact,
     # so it is not re-selected by the seed model.
     complete_required_decision_groups = []
+    complete_required_decision_source_keys = []
     for request in data.requests:
         source_key = ("course", request.request_id)
         if request.delivery_kind == "co_op":
@@ -1687,6 +1753,7 @@ def _solve_student_assignment(
                     for (candidate_source_key, _index), variable in commitment_variables.items()
                     if candidate_source_key == source_key
                 ])
+                complete_required_decision_source_keys.append(source_key)
             continue
         if not (request.is_mandatory or request.is_primary):
             continue
@@ -1695,6 +1762,7 @@ def _solve_student_assignment(
         complete_required_decision_groups.append([
             variable for _section, variable in request_candidates[request.request_id]
         ])
+        complete_required_decision_source_keys.append(source_key)
     for source_key in commitment_candidates:
         if source_key[0] == "commitment" and source_key not in fixed_commitment_sources:
             complete_required_decision_groups.append([
@@ -1702,11 +1770,13 @@ def _solve_student_assignment(
                 for (candidate_source_key, _index), variable in commitment_variables.items()
                 if candidate_source_key == source_key
             ])
+            complete_required_decision_source_keys.append(source_key)
     if hard_sequence_impossible:
         # Fixed context already violates a same-year prerequisite. No model can
         # turn that into an approvable complete candidate, so the seed must
         # fail closed instead of acting as if source variables could repair it.
         complete_required_decision_groups.append([])
+        complete_required_decision_source_keys.append(None)
     hard_feasibility_model = model.Clone()
 
     objectives = []
@@ -2287,6 +2357,89 @@ def _solve_student_assignment(
     # bootstrap from doubling the large optimization model's memory footprint.
     hard_feasibility_model = None
     hard_feasibility_seed_model = None
+
+    stage_2_seed_solver = validated_seed_solver
+    alternate_seed_validated = False
+
+    def _source_variable_values(source_decisions):
+        """Translate semantic source decisions back to required variables."""
+
+        decisions = dict(source_decisions or ())
+        values = {}
+        for source_key, decision_group in zip(
+            complete_required_decision_source_keys,
+            complete_required_decision_groups,
+        ):
+            if source_key is None or source_key not in decisions or not decision_group:
+                return None
+            for variable in decision_group:
+                values[variable.Index()] = 0
+            target = decisions[source_key]
+            selected_variable = None
+            if source_key[0] == "course":
+                request = requests_by_id[source_key[1]]
+                if request.delivery_kind == "co_op":
+                    target_occupancy = target[3]
+                    choices = commitment_candidates[source_key]
+                    for index, (_placement, occupancy, _pair) in enumerate(choices):
+                        if occupancy == target_occupancy:
+                            selected_variable = commitment_variables[source_key, index]
+                            break
+                else:
+                    target_section_id = target[1]
+                    if target_section_id is None and target[2] is not None:
+                        target_section_id = -target[2]
+                    for section, variable in request_candidates[source_key[1]]:
+                        if (
+                            section.section_id == target_section_id
+                            and section.semester == target[3]
+                            and section.timeslot_id == target[4]
+                            and (
+                                request.delivery_kind == "online"
+                                or section.half_semester_segment == target[5]
+                            )
+                        ):
+                            selected_variable = variable
+                            break
+            else:
+                target_occupancy = target[3]
+                choices = commitment_candidates[source_key]
+                for index, (_placement, occupancy, _pair) in enumerate(choices):
+                    if occupancy == target_occupancy:
+                        selected_variable = commitment_variables[source_key, index]
+                        break
+            if selected_variable is None:
+                return None
+            values[selected_variable.Index()] = 1
+        return values
+
+    if alternate_source_decisions:
+        alternate_values = (
+            dict(alternate_source_variable_values)
+            if alternate_source_variable_values is not None
+            else _source_variable_values(alternate_source_decisions)
+        )
+        if alternate_values is not None:
+            alternate_validation_time_limit = max(
+                data.time_limit_seconds,
+                STUDENT_ASSIGNMENT_HARD_FEASIBILITY_VALIDATION_TIME_LIMIT_SECONDS,
+            )
+            if stage_2_total_time_limit_seconds is not None:
+                alternate_validation_time_limit = min(
+                    alternate_validation_time_limit,
+                    stage_2_total_time_limit_seconds,
+                )
+            stage_2_seed_solver = _validate_source_decision_candidate(
+                model,
+                complete_required_decision_groups,
+                alternate_values,
+                alternate_validation_time_limit,
+                worker_count=STUDENT_ASSIGNMENT_HARD_FEASIBILITY_VALIDATION_WORKER_COUNT,
+            )
+            alternate_seed_validated = stage_2_seed_solver is not None
+            if not alternate_seed_validated:
+                stage_2_seed_solver = validated_seed_solver
+
     sequence_opportunities = tuple(
         (student_id, preference.earlier_course_id, preference.later_course_id)
         for preference, student_id, _variable in sequence_satisfied
@@ -2368,9 +2521,65 @@ def _solve_student_assignment(
             )
         )
 
-    if substantive_soft_tier_probe is not None:
-        def _candidate_count(candidate_solver):
-            assignments, commitments, *_rest = _extract_solver_candidate(
+    def _source_decision_fingerprint(candidate_solver):
+        assignments, commitments, *_rest = _extract_solver_candidate(
+            solver=candidate_solver,
+            data=data,
+            request_candidates=request_candidates,
+            commitment_variables=commitment_variables,
+            commitment_candidates=commitment_candidates,
+            commitment_metadata=commitment_metadata,
+            previous_enrollment_by_request=previous_enrollment_by_request,
+        )
+        decisions = {}
+        for assignment in assignments:
+            decisions[("course", assignment.request_id)] = (
+                assignment.student_id,
+                assignment.section_id,
+                assignment.online_supervision_session_id,
+                assignment.semester,
+                assignment.timeslot_id,
+                assignment.half_semester_segment,
+            )
+        for commitment in commitments:
+            decisions[("commitment", commitment.request_id)] = (
+                commitment.student_id,
+                commitment.commitment_kind,
+                commitment.course_request_id,
+                commitment.occupancy,
+            )
+        return tuple(sorted(decisions.items(), key=repr))
+
+    def _source_decision_variable_values(candidate_solver):
+        """Return exact required-source values for same-model validation.
+
+        Diagnostic replays in the same DTO/model build can use these values to
+        validate a candidate without guessing which internal variable encoded
+        a source tuple.  The semantic source map remains the diagnostic
+        identity; this mapping is only a same-model validation transport.
+        """
+
+        return {
+            variable.Index(): int(candidate_solver.Value(variable))
+            for decision_group in complete_required_decision_groups
+            for variable in decision_group
+        }
+
+    def _candidate_count(candidate_solver):
+        assignments, commitments, *_rest = _extract_solver_candidate(
+            solver=candidate_solver,
+            data=data,
+            request_candidates=request_candidates,
+            commitment_variables=commitment_variables,
+            commitment_candidates=commitment_candidates,
+            commitment_metadata=commitment_metadata,
+            previous_enrollment_by_request=previous_enrollment_by_request,
+        )
+        return len(assignments) + len(commitments)
+
+    def _source_decision_summary(candidate_solver):
+        assignments, commitments, assigned_request_ids, selected_by_section, _ = (
+            _extract_solver_candidate(
                 solver=candidate_solver,
                 data=data,
                 request_candidates=request_candidates,
@@ -2379,54 +2588,179 @@ def _solve_student_assignment(
                 commitment_metadata=commitment_metadata,
                 previous_enrollment_by_request=previous_enrollment_by_request,
             )
-            return len(assignments) + len(commitments)
+        )
+        section_loads = {
+            section_id: len(fixed_by_section[section_id]) + len(rows)
+            for section_id, rows in selected_by_section.items()
+        }
+        return {
+            "source_decision_count": len(_source_decision_fingerprint(candidate_solver)),
+            "assigned_request_count": len(assigned_request_ids),
+            "required_request_count": sum(
+                request.is_mandatory for request in data.requests
+            ),
+            "special_commitment_count": len(commitments),
+            "section_loads": dict(sorted(section_loads.items())),
+            "hard_valid": True,
+            "fulfillment_complete": all(
+                request.request_id in assigned_request_ids
+                for request in data.requests
+                if request.is_mandatory
+            ),
+        }
 
-        def _source_decision_fingerprint(candidate_solver):
-            assignments, commitments, *_rest = _extract_solver_candidate(
-                solver=candidate_solver,
-                data=data,
-                request_candidates=request_candidates,
-                commitment_variables=commitment_variables,
-                commitment_candidates=commitment_candidates,
-                commitment_metadata=commitment_metadata,
-                previous_enrollment_by_request=previous_enrollment_by_request,
-            )
-            decisions = {}
-            for assignment in assignments:
-                decisions[("course", assignment.request_id)] = (
-                    assignment.student_id,
-                    assignment.section_id,
-                    assignment.online_supervision_session_id,
-                    assignment.semester,
-                    assignment.timeslot_id,
-                    assignment.half_semester_segment,
-                )
-            for commitment in commitments:
-                decisions[("commitment", commitment.request_id)] = (
-                    commitment.student_id,
-                    commitment.commitment_kind,
-                    commitment.course_request_id,
-                    commitment.occupancy,
-                )
-            return tuple(sorted(decisions.items(), key=repr))
-
-        probe_context = SubstantiveSoftTierProbeContext(
+    def _build_probe_context(seed_solver):
+        return SubstantiveSoftTierProbeContext(
             model=model,
             objective_metadata=tuple(objective_metadata),
             complete_required_decision_groups=tuple(
                 tuple(group) for group in complete_required_decision_groups
             ),
-            validated_seed_solver=validated_seed_solver,
+            validated_seed_solver=seed_solver,
             seed_outcome=_hard_feasibility_outcome,
             solver_objective_components=_solver_objective_components,
             candidate_counts=_candidate_count,
             source_decision_fingerprint=_source_decision_fingerprint,
+            source_decision_summary=_source_decision_summary,
+            source_decision_variable_values=_source_decision_variable_values,
             seed_objective_vector=_objective_values(
-                validated_seed_solver, objectives
-            ) if validated_seed_solver is not None else (),
+                seed_solver, objectives
+            ) if seed_solver is not None else (),
         )
+
+    stage_2_budget_seconds = (
+        (
+            stage_2_total_time_limit_seconds
+            or STUDENT_ASSIGNMENT_OPTIMIZATION_TIME_LIMIT_SECONDS
+        )
+        if use_hard_feasibility_bootstrap
+        else None
+    )
+    local_bootstrap_facts = None
+    stage_2_started = monotonic()
+    if stage_2_local_bootstrap is not None and stage_2_seed_solver is not None:
+        local_config = dict(stage_2_local_bootstrap)
+        target_level = local_config.get(
+            "target_importance_level", IMPORTANCE_LEVELS["important"]
+        )
+        target_metadata = next(
+            (
+                metadata
+                for metadata in objective_metadata
+                if metadata.get("kind") == "soft_tier"
+                and metadata.get("importance_level") == target_level
+            ),
+            None,
+        )
+        if target_metadata is None:
+            local_bootstrap_facts = {
+                "status": "not_applicable",
+                "reason": "substantive_tier_not_present",
+            }
+        else:
+            seed_substantive_value = sum(
+                coefficient * stage_2_seed_solver.Value(
+                    model.GetIntVarFromProtoIndex(variable_index)
+                )
+                for variable_index, coefficient in target_metadata["term_specs"]
+            )
+            if local_config.get("threshold") is None:
+                local_config["threshold"] = int(seed_substantive_value) - 1
+            remaining_before_bootstrap = (
+                stage_2_budget_seconds
+                if stage_2_budget_seconds is not None
+                else local_config["time_limit_seconds"]
+            )
+            local_config["time_limit_seconds"] = min(
+                float(local_config["time_limit_seconds"]),
+                max(0.001, float(remaining_before_bootstrap)),
+            )
+            local_result = probe_substantive_soft_tier(
+                _build_probe_context(stage_2_seed_solver),
+                **local_config,
+            )
+            local_bootstrap_facts = {
+                "status": local_result.status,
+                "elapsed_seconds": local_result.elapsed_seconds,
+                "time_limit_seconds": local_config["time_limit_seconds"],
+                "neighborhood_radius": local_result.neighborhood_radius,
+                "baseline_substantive_value": local_result.baseline_substantive_value,
+                "requested_threshold": local_result.requested_threshold,
+                "candidate_substantive_value": local_result.candidate_substantive_value,
+                "changed_source_decision_count": local_result.changed_source_decision_count,
+                "component_values": dict(local_result.candidate_component_values),
+                "component_deltas": dict(local_result.component_deltas),
+                "candidate_found": local_result.complete_candidate_found,
+                "candidate_validated": False,
+            }
+            if (
+                local_result.complete_candidate_found
+                and local_result.candidate_source_variable_values
+            ):
+                remaining_for_validation = (
+                    max(
+                        0.001,
+                        stage_2_budget_seconds
+                        - (monotonic() - stage_2_started),
+                    )
+                    if stage_2_budget_seconds is not None
+                    else data.time_limit_seconds
+                )
+                local_validator = _validate_source_decision_candidate(
+                    model,
+                    complete_required_decision_groups,
+                    local_result.candidate_source_variable_values,
+                    remaining_for_validation,
+                    worker_count=STUDENT_ASSIGNMENT_HARD_FEASIBILITY_VALIDATION_WORKER_COUNT,
+                )
+                if local_validator is not None:
+                    stage_2_seed_solver = local_validator
+                    alternate_seed_validated = True
+                    local_bootstrap_facts["candidate_validated"] = True
+
+    reference_source_decisions = dict(
+        _source_decision_fingerprint(stage_2_seed_solver)
+    ) if stage_2_seed_solver is not None else {}
+
+    def _stage2_candidate_trace(candidate_solver):
+        source_decisions = _source_decision_fingerprint(candidate_solver)
+        source_map = dict(source_decisions)
+        assignments, commitments, assigned_request_ids, _selected, _sources = (
+            _extract_solver_candidate(
+                solver=candidate_solver,
+                data=data,
+                request_candidates=request_candidates,
+                commitment_variables=commitment_variables,
+                commitment_candidates=commitment_candidates,
+                commitment_metadata=commitment_metadata,
+                previous_enrollment_by_request=previous_enrollment_by_request,
+            )
+        )
+        return {
+            "objective_vector": _objective_values(candidate_solver, objectives),
+            "substantive_components": dict(_solver_objective_components(candidate_solver)),
+            "source_decision_fingerprint": sha256(
+                repr(source_decisions).encode()
+            ).hexdigest(),
+            "source_decision_count": len(source_decisions),
+            "changed_source_decision_count": sum(
+                reference_source_decisions.get(key) != source_map.get(key)
+                for key in set(reference_source_decisions) | set(source_map)
+            ),
+            "assigned_request_count": len(assigned_request_ids),
+            "assignment_count": len(assignments),
+            "special_commitment_count": len(commitments),
+            "hard_valid": True,
+            "fulfillment_complete": all(
+                request.request_id in assigned_request_ids
+                for request in data.requests
+                if request.is_mandatory
+            ),
+        }
+
+    if substantive_soft_tier_probe is not None:
         return probe_substantive_soft_tier(
-            probe_context,
+            _build_probe_context(stage_2_seed_solver),
             **substantive_soft_tier_probe,
         )
 
@@ -2435,33 +2769,41 @@ def _solve_student_assignment(
         objectives,
         data.time_limit_seconds,
         initial_assignment_hints=initial_assignment_hints,
-        validated_seed_solver=validated_seed_solver,
+        validated_seed_solver=stage_2_seed_solver,
         worker_count=STUDENT_ASSIGNMENT_OPTIMIZATION_WORKER_COUNT,
         total_time_limit_seconds=(
-            STUDENT_ASSIGNMENT_OPTIMIZATION_TIME_LIMIT_SECONDS
-            if use_hard_feasibility_bootstrap
-            else None
+            max(
+                0.001,
+                stage_2_budget_seconds - (monotonic() - stage_2_started),
+            )
+            if stage_2_local_bootstrap is not None
+            and stage_2_budget_seconds is not None
+            else stage_2_budget_seconds
         ),
         pass_facts=optimization_passes,
         pass_quality_callback=_quality_for_solver,
         pass_trace=optimization_trace if collect_stage2_trace else None,
+        pass_candidate_callback=(
+            _stage2_candidate_trace if collect_stage2_trace else None
+        ),
+        retain_incumbent_on_non_improvement=retain_incumbent_on_non_improvement,
     )
     optimization_facts = _optimization_facts(
         hard_feasibility_outcome=_hard_feasibility_outcome,
         required_group_count=len(complete_required_decision_groups),
         hard_seed_solver=hard_feasibility_seed_solver,
         validated_seed_solver=validated_seed_solver,
+        stage_2_seed_solver=stage_2_seed_solver,
         final_solver=solver,
         final_outcome=outcome,
         objectives=objectives,
-        optimization_time_limit_seconds=(
-            STUDENT_ASSIGNMENT_OPTIMIZATION_TIME_LIMIT_SECONDS
-            if use_hard_feasibility_bootstrap
-            else None
-        ),
+        optimization_time_limit_seconds=stage_2_budget_seconds,
         stage_1_quality=stage_1_quality,
         optimization_passes=optimization_passes,
     )
+    optimization_facts["stage_2"]["alternate_seed_validated"] = alternate_seed_validated
+    if local_bootstrap_facts is not None:
+        optimization_facts["stage_2_local_bootstrap"] = local_bootstrap_facts
     if collect_stage2_trace:
         for trace in optimization_trace:
             metadata = objective_metadata[trace["objective_index"]]

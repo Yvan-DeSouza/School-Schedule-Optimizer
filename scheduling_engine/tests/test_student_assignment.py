@@ -168,6 +168,24 @@ def test_substantive_probe_zero_neighborhood_preserves_seed_source_decisions():
     assert result.source_decision_deltas == ()
 
 
+def test_substantive_probe_records_semantic_candidate_and_impact_facts():
+    result = run_substantive_soft_tier_probe(
+        _substantive_probe_input(),
+        threshold=1,
+        time_limit_seconds=5.0,
+        worker_count=1,
+    )
+
+    assert result.seed_source_decisions
+    assert result.candidate_source_decisions
+    assert result.candidate_source_variable_values
+    assert result.seed_summary["hard_valid"] is True
+    assert result.candidate_summary["hard_valid"] is True
+    assert result.candidate_summary["fulfillment_complete"] is True
+    assert isinstance(result.affected_student_ids, tuple)
+    assert isinstance(result.section_load_deltas, dict)
+
+
 def test_substantive_probe_can_minimize_one_existing_component():
     result = run_substantive_soft_tier_probe(
         _substantive_probe_input(),
@@ -312,6 +330,46 @@ def test_stage2_diagnostic_trace_records_seed_hint_and_objective_metadata():
     assert trace[0]["hint_source"] == "validated_seed"
     assert trace[0]["hinted_variable_count"] > 0
     assert all("objective_name" in item for item in trace)
+
+
+def test_stage2_diagnostic_can_replay_a_validated_alternate_incumbent():
+    data = _substantive_probe_input()
+    probe = run_substantive_soft_tier_probe(
+        data,
+        threshold=1,
+        time_limit_seconds=5.0,
+        worker_count=1,
+    )
+
+    result = student_assignment_module.run_student_assignment_stage2_diagnostic(
+        data,
+        alternate_source_decisions=probe.candidate_source_decisions,
+        alternate_source_variable_values=probe.candidate_source_variable_values,
+    )
+
+    assert result.status == "complete"
+    assert result.optimization_facts["stage_2"]["alternate_seed_validated"] is True
+    first_pass = result.optimization_facts["stage_2_trace"][0]
+    assert first_pass["entering_candidate"]["hard_valid"] is True
+    assert first_pass["entering_candidate"]["fulfillment_complete"] is True
+    assert first_pass["returned_candidate"]["objective_vector"]
+
+
+def test_local_bootstrap_diagnostic_consumes_shared_budget_and_keeps_complete_seed():
+    result = student_assignment_module.run_student_assignment_local_bootstrap_diagnostic(
+        _substantive_probe_input(),
+        neighborhood_radius=0,
+        time_limit_seconds=1.0,
+        total_time_limit_seconds=5.0,
+        worker_count=1,
+    )
+
+    bootstrap = result.optimization_facts["stage_2_local_bootstrap"]
+    assert bootstrap["time_limit_seconds"] == 1.0
+    assert bootstrap["status"] in {"optimal", "feasible", "infeasible", "unknown"}
+    assert result.status == "complete"
+    assert len(result.unmet_requests) == 0
+    assert result.optimization_facts["stage_2"]["validated_seed_received"] is True
 
 
 def test_lexicographic_budget_is_shared_across_objective_passes():
@@ -1386,6 +1444,34 @@ def test_later_lexicographic_timeout_returns_the_prior_valid_incumbent(monkeypat
     assert outcome == cp_model.UNKNOWN
     assert incumbent.solve_calls == 1
     assert timed_out.solve_calls == 1
+
+
+def test_diagnostic_lexicographic_replay_retains_equal_or_worse_incumbent(
+    monkeypatch,
+):
+    model = cp_model.CpModel()
+    objective = model.NewIntVar(0, 2, "objective")
+    incumbent = _ControlledSolver(cp_model.OPTIMAL, value=0)
+    replacement = _ControlledSolver(cp_model.OPTIMAL, value=1)
+    later_replacement = _ControlledSolver(cp_model.OPTIMAL, value=1)
+    solvers = iter((replacement, later_replacement))
+    monkeypatch.setattr(
+        student_assignment_solver,
+        "new_solver",
+        lambda *_args, **_kwargs: next(solvers),
+    )
+
+    returned_solver, outcome = student_assignment_solver.solve_lexicographically(
+        model,
+        (objective, objective),
+        1.0,
+        validated_seed_solver=incumbent,
+        retain_incumbent_on_non_improvement=True,
+    )
+
+    assert returned_solver is incumbent
+    assert outcome == cp_model.FEASIBLE
+    assert replacement.solve_calls == 1
 
 
 def test_lexicographic_solver_skips_constant_objective_slots(monkeypatch):

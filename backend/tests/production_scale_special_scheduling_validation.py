@@ -123,6 +123,10 @@ from backend.apps.scheduling.services.teacher_assignment import (
     create_teacher_assignment_run,
 )
 from scheduling_engine.student_assignment import run_substantive_soft_tier_probe
+from scheduling_engine.student_assignment.core import (
+    run_student_assignment_local_bootstrap_diagnostic,
+    run_student_assignment_stage2_diagnostic,
+)
 
 
 STUDENT_COUNT = 1400
@@ -1191,6 +1195,39 @@ def run_production_scale_special_scheduling_validation(
             staffing_mode=STUDENT_ASSIGNMENT_STAFFING_MODE_FINAL_STAFFING,
             soft_constraint_importance=SOFT_IMPORTANCE,
         )
+        if os.environ.get("SCHEDULING_PRODUCTION_SCALE_LOCAL_BOOTSTRAP"):
+            local_result = run_student_assignment_local_bootstrap_diagnostic(
+                student_input,
+                neighborhood_radius=int(
+                    os.environ.get("SCHEDULING_PRODUCTION_SCALE_PROBE_RADIUS", "2")
+                ),
+                time_limit_seconds=float(
+                    os.environ.get(
+                        "SCHEDULING_PRODUCTION_SCALE_LOCAL_BOOTSTRAP_TIME_LIMIT",
+                        "240",
+                    )
+                ),
+                total_time_limit_seconds=float(
+                    os.environ.get(
+                        "SCHEDULING_PRODUCTION_SCALE_LOCAL_BOOTSTRAP_TOTAL_LIMIT",
+                        "1800",
+                    )
+                ),
+                worker_count=8,
+            )
+            print(
+                "[production-scale] local-bootstrap Stage 2: "
+                f"status={local_result.status} "
+                f"solver_outcome={local_result.solver_outcome} "
+                f"assignments={len(local_result.assignments)} "
+                f"unmet={len(local_result.unmet_requests)} "
+                f"objective_components={local_result.objective_components} "
+                f"stage_2={local_result.optimization_facts.get('stage_2')} "
+                f"bootstrap={local_result.optimization_facts.get('stage_2_local_bootstrap')} "
+                f"passes={local_result.optimization_facts.get('optimization_passes')}",
+                flush=True,
+            )
+            return local_result
         probe = run_substantive_soft_tier_probe(
             student_input,
             threshold=65172,
@@ -1223,13 +1260,40 @@ def run_production_scale_special_scheduling_validation(
             f"seed_assignments={probe.seed_assignment_count} "
             f"candidate_assignments={probe.candidate_assignment_count} "
             f"changed_source_decisions={probe.changed_source_decision_count} "
-            f"source_delta_count={len(probe.source_decision_deltas)} "
-            f"candidate_value={probe.candidate_substantive_value} "
+                f"source_delta_count={len(probe.source_decision_deltas)} "
+                f"source_deltas={probe.source_decision_deltas} "
+                f"affected_students={probe.affected_student_ids} "
+                f"affected_sections={probe.affected_section_ids} "
+                f"section_load_deltas={probe.section_load_deltas} "
+                f"candidate_value={probe.candidate_substantive_value} "
             f"model_families={probe.model_family_variable_counts} "
             f"components={probe.candidate_component_values} "
             f"deltas={probe.component_deltas}",
             flush=True,
         )
+        if os.environ.get("SCHEDULING_PRODUCTION_SCALE_ALTERNATE_REPLAY"):
+            alternate = run_student_assignment_stage2_diagnostic(
+                student_input,
+                alternate_source_decisions=probe.candidate_source_decisions,
+                alternate_source_variable_values=probe.candidate_source_variable_values,
+                total_time_limit_seconds=float(
+                    os.environ.get(
+                        "SCHEDULING_PRODUCTION_SCALE_ALTERNATE_REPLAY_TIME_LIMIT",
+                        "1800",
+                    )
+                ),
+            )
+            print(
+                "[production-scale] alternate-incumbent replay: "
+                f"status={alternate.status} "
+                f"solver_outcome={alternate.solver_outcome} "
+                f"assignments={len(alternate.assignments)} "
+                f"unmet={len(alternate.unmet_requests)} "
+                f"objective_components={alternate.objective_components} "
+                f"stage_2={alternate.optimization_facts.get('stage_2')} "
+                f"trace={alternate.optimization_facts.get('stage_2_trace')}",
+                flush=True,
+            )
         return probe
     student_run = _elapsed(stage_seconds, "student_assignment", lambda: create_student_assignment_run(
         academic_year=academic_year,
@@ -1368,6 +1432,14 @@ def test_production_scale_substantive_soft_tier_probe(counselor_user):
         include_reruns=False,
         diagnostic_only=True,
     )
+    if os.environ.get("SCHEDULING_PRODUCTION_SCALE_LOCAL_BOOTSTRAP"):
+        assert result.status == "complete"
+        assert len(result.unmet_requests) == 0
+        assert len(result.assignments) == 10635
+        assert result.optimization_facts["stage_2"]["time_limit_seconds"] == float(
+            os.environ.get("SCHEDULING_PRODUCTION_SCALE_LOCAL_BOOTSTRAP_TOTAL_LIMIT", "1800")
+        )
+        return
     assert result.seed_validated is True
     assert result.requested_threshold == 65172.0
     assert result.status in {"feasible", "optimal", "infeasible", "unknown"}

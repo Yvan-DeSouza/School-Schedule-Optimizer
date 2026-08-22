@@ -186,14 +186,34 @@ student-assignment workflow and does not change counselor importance labels,
 objective definitions, or the Stage 2 result.
 
 On the representative 1,400-student input, the Stage 1 substantive value was
-`65,173`. A probe requiring a value at most `65,172` found a complete,
-hard-valid candidate at `65,171`; a second probe restricted to at most two
-changed source decisions found `65,163`. The latter changed only the section
-utilization component (`6,875` to `6,865`); semester load, difficulty, and
-category diversity were unchanged. This is evidence that the current Stage 1
-value is not globally established as optimal and that a very local better
-schedule exists. It is diagnostic evidence only: no production Stage 2
+`65,173`. A probe requiring a value at most `65,172` found complete,
+hard-valid candidates below that bound. A source-decision neighborhood probe
+restricted to at most two changed decisions repeatedly found a candidate at
+`65,165` on the current environment (earlier parallel trials found values in
+the `65,163`--`65,165` range). The current representative candidate changed
+two ordinary course source decisions for one student: two same-semester
+courses exchanged their two available blocks, moving sections `75`/`91` to
+`73`/`93`. The affected section loads changed by `+1`, `-1`, `-1`, and `+1`
+respectively. No auxiliary-variable identity is used as the candidate's
+meaningful identity.
+
+The candidate changed only the section-utilization component (`6,875` to
+`6,867`); semester load, difficulty, and category diversity were unchanged.
+It was complete, fulfilled all required source groups, and passed validation
+against the unchanged full model. This is evidence that the current Stage 1
+value is not established as globally optimal and that a very local better
+schedule exists. It remains diagnostic evidence only: no production Stage 2
 objective or search rule was changed as a result.
+
+The diagnostic path can replay that validated candidate through the existing
+lexicographic Stage 2 process. On the target-scale replay, the alternate
+candidate was validated and entered Stage 2 with substantive value `65,165`.
+When the bounded replay exhausted its short shared budget before obtaining a
+new solver candidate, the complete `65,165` incumbent was returned unchanged;
+it was not downgraded to the original `65,173` seed. Medium-fixture traces
+also show the same protection when an equal-current-tier solver result has
+worse future quality. These traces diagnose discovery and incumbent handling;
+they do not by themselves justify changing the production Stage 2 search.
 
 The same-priority component values in that run were:
 
@@ -210,3 +230,27 @@ objectives. Any such change would be a separate product/objective-design
 decision. The probe also reports source-decision deltas and objective-pass
 hint provenance so future search changes can be evaluated against meaningful
 assignment decisions rather than opaque auxiliary variables.
+
+## Diagnostic local-bootstrap evidence
+
+The diagnostic harness can reserve part of the existing Stage 2 budget for a
+radius-limited substantive probe, validate the resulting CP-SAT candidate
+against the unchanged full model, and pass the candidate to the ordinary
+lexicographic optimizer. Bootstrap and validation time are deducted from the
+same shared Stage 2 budget; the budget is not extended. The ordinary
+`solve_student_assignment` entry point does not enable this path.
+
+On the target-scale final-staffing input, a radius-two bootstrap found the
+`65,165` candidate in approximately `126.6` seconds using an `1,800`-second
+total Stage 2 budget. The candidate validated successfully and the remaining
+optimization returned a complete result with `10,635` assignments, zero unmet
+required requests, and all `310` special commitments fulfilled. The final
+substantive components were `6,867`, `175`, `35,973`, and `22,150`.
+
+This is not yet enabled for production scheduling. Three medium-fixture
+baseline trials produced substantive values `1,634`, `1,634`, and `1,618`; the
+three short-bootstrap trials produced `1,658`, `1,622`, and `1,624`. That
+variation does not establish a consistent medium-scale improvement, so the
+bootstrap remains an offline diagnostic until a repeatable shared-budget
+benefit is demonstrated. A target-scale success alone is not sufficient to
+change ordinary counselor-facing scheduling behavior.
