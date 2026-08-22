@@ -250,6 +250,7 @@ def solve_lexicographically(
     pass_trace=None,
     pass_candidate_callback=None,
     retain_incumbent_on_non_improvement=False,
+    deadline=None,
 ):
     """Optimize ordered objectives while preserving the last valid candidate.
 
@@ -287,8 +288,12 @@ def solve_lexicographically(
         pass_time_limit_seconds = time_limit_seconds
         hint_source = "none"
         if total_time_limit_seconds is not None:
-            remaining_budget = total_time_limit_seconds - (
-                monotonic() - optimization_started
+            remaining_budget = (
+                deadline.remaining()
+                if deadline is not None
+                else total_time_limit_seconds - (
+                    monotonic() - optimization_started
+                )
             )
             if remaining_budget <= 0:
                 if pass_facts is not None:
@@ -339,6 +344,7 @@ def solve_lexicographically(
         solver = new_solver(pass_time_limit_seconds, worker_count=worker_count)
         trace_started = monotonic()
         status = solver.Solve(model)
+        external_solve_wall_time = monotonic() - trace_started
         solver_has_solution = status in {cp_model.OPTIMAL, cp_model.FEASIBLE}
         raw_solver_candidate = solver if solver_has_solution else None
         selected_solver = raw_solver_candidate
@@ -370,7 +376,8 @@ def solve_lexicographically(
                 ),
                 "allocated_time_seconds": pass_time_limit_seconds,
                 "wall_time_seconds": solver.WallTime(),
-                "trace_wall_time_seconds": monotonic() - trace_started,
+                "external_solve_wall_time_seconds": external_solve_wall_time,
+                "trace_wall_time_seconds": external_solve_wall_time,
                 "status": outcome_name(status),
                 "conflicts": solver.NumConflicts(),
                 "branches": solver.NumBranches(),
@@ -396,8 +403,16 @@ def solve_lexicographically(
         )
         if pass_facts is not None:
             remaining_after = (
-                max(0.0, total_time_limit_seconds - (monotonic() - optimization_started))
-                if total_time_limit_seconds is not None else None
+                max(
+                    0.0,
+                    deadline.remaining()
+                    if deadline is not None
+                    else total_time_limit_seconds - (
+                        monotonic() - optimization_started
+                    ),
+                )
+                if total_time_limit_seconds is not None or deadline is not None
+                else None
             )
             pass_facts.append({
                 "objective_index": objective_index,

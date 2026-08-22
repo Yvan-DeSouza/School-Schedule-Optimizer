@@ -1152,9 +1152,12 @@ deployment measurement.
   assignment may use parallel CP-SAT workers; identical replay output is not a
   production requirement when independent results are both hard-valid and
   objective-quality checked.
-- Student-assignment optimization currently has a 1,800-second total budget
-  shared across its non-constant lexicographic passes; the remaining budget is
+- Student-assignment optimization accepts a bounded offline horizon shared
+  across its non-constant lexicographic passes; the remaining budget is
   reallocated between passes rather than multiplied by the number of tiers.
+  The current 1,800-second value is a default/historical benchmark, not an
+  immutable product timeout. Diagnostic and deployment configuration may use a
+  longer bounded horizon when measured quality improvement justifies it.
 - Expensive API submissions persist a queued execution and return immediately;
   the worker executes the existing service outside the HTTP request. Direct
   service calls remain synchronous for tests and non-HTTP callers.

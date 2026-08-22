@@ -26,6 +26,10 @@ from scheduling_engine.student_assignment import (
     run_substantive_soft_tier_probe,
     solve_student_assignment,
 )
+from scheduling_engine.student_assignment.runtime import MonotonicDeadline
+from scheduling_engine.student_assignment.runtime import (
+    semantic_student_assignment_input_fingerprint,
+)
 
 
 def _request(request_id=1, **overrides):
@@ -350,6 +354,13 @@ def test_result_records_validated_seed_and_optimization_quality_facts():
         "starting_quality" in item and "ending_quality" in item
         for item in facts["optimization_passes"]
     )
+    assert facts["stage_1"]["timings"]["seed_external_wall_time_seconds"] >= 0
+    assert facts["stage_1"]["timings"]["validation_external_wall_time_seconds"] >= 0
+    assert facts["stage_2"]["operation_wall_time_seconds"] >= 0
+    assert facts["stage_2"]["configured_deadline_seconds"] == 1800.0
+    assert facts["full_model_variable_count"] > 0
+    assert facts["full_model_constraint_count"] > 0
+    assert len(facts["input_semantic_fingerprint"]) == 64
 
 
 def test_stage2_diagnostic_trace_records_seed_hint_and_objective_metadata():
@@ -421,10 +432,62 @@ def test_adaptive_local_bootstrap_restarts_and_records_bounded_iterations():
         item["radius"] in {0, 1}
         and "incumbent_before" in item
         and "candidate_validated" in item
+        and "iteration_requested_time_limit_seconds" in item
+        and "iteration_remaining_seconds" in item
+        and "probe_timings" in item
         for item in facts["iterations"]
     )
     assert result.status == "complete"
     assert len(result.unmet_requests) == 0
+
+
+def test_monotonic_deadline_clamps_nested_allowances(monkeypatch):
+    current = iter((104.0, 107.0, 107.0))
+    monkeypatch.setattr(
+        "scheduling_engine.student_assignment.runtime.monotonic",
+        lambda: next(current),
+    )
+
+    deadline = MonotonicDeadline(10.0, started_at=100.0)
+
+    assert deadline.requested_seconds == 10.0
+    assert deadline.remaining() == 6.0
+    assert deadline.allowance(20.0) == 3.0
+    assert deadline.allowance(1.0) == 1.0
+
+
+def test_semantic_input_fingerprint_ignores_fresh_database_ids():
+    first = _input(
+        timeslots=(TimeSlotDTO(101, 1, 1, "A", True),),
+    )
+    second = _input(
+        academic_year_id=77,
+        requests=(_request(
+            request_id=9001,
+            student_id=700,
+            course_id=500,
+            course_offering_id=5011,
+        ),),
+        sections=(_section(
+            section_id=800,
+            delivery_group_id=400,
+            member_course_offering_ids=(5011,),
+            member_course_ids=(500,),
+            timeslot_id=9101,
+        ),),
+        timeslots=(TimeSlotDTO(9101, 77, 1, "A", True),),
+    )
+
+    assert semantic_student_assignment_input_fingerprint(first) == (
+        semantic_student_assignment_input_fingerprint(second)
+    )
+    changed = _input(
+        timeslots=(TimeSlotDTO(101, 1, 1, "B", True),),
+        sections=(_section(timeslot_id=101),),
+    )
+    assert semantic_student_assignment_input_fingerprint(first) != (
+        semantic_student_assignment_input_fingerprint(changed)
+    )
 
 
 def test_lexicographic_budget_is_shared_across_objective_passes():
@@ -449,6 +512,35 @@ def test_lexicographic_budget_is_shared_across_objective_passes():
             (value, value),
             10.0,
             total_time_limit_seconds=0.2,
+        )
+
+    assert solver is not None
+    assert outcome == cp_model.FEASIBLE
+    assert len(captured_limits) == 2
+    assert all(0 < limit <= 0.2 for limit in captured_limits)
+
+
+def test_lexicographic_solver_honors_one_shared_monotonic_deadline():
+    model = cp_model.CpModel()
+    value = model.NewIntVar(0, 1, "value")
+    captured_limits = []
+    original_new_solver = student_assignment_solver.new_solver
+
+    def capture_new_solver(time_limit_seconds, **kwargs):
+        captured_limits.append(time_limit_seconds)
+        return original_new_solver(time_limit_seconds, **kwargs)
+
+    with patch.object(
+        student_assignment_solver,
+        "new_solver",
+        side_effect=capture_new_solver,
+    ):
+        solver, outcome = student_assignment_solver.solve_lexicographically(
+            model,
+            (value, value),
+            10.0,
+            total_time_limit_seconds=10.0,
+            deadline=MonotonicDeadline.start(0.2),
         )
 
     assert solver is not None

@@ -175,7 +175,9 @@ and validation pass before the existing lexicographic optimization. Both
 stages may use bounded parallel configurations in the offline batch workflow;
 the bootstrap currently uses eight workers for feasibility and validation, and
 the optimization currently uses eight workers for objective improvement and a
-shared 1,800-second global budget across its non-constant passes. The existing
+shared bounded global budget across its non-constant passes. The current
+1,800-second value is the default historical benchmark, not an immutable
+product timeout. The existing
 objective sequence is unchanged, empty tiers are skipped, and no hard
 constraint is relaxed. A validated seed is retained through later
 lower-priority timeouts. Independent runs may produce different valid

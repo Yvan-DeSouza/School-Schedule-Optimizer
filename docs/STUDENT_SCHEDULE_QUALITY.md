@@ -278,13 +278,44 @@ A longer medium diagnostic also failed to find a neighborhood candidate and
 consumed substantially more wall time than its requested probe slice in one
 parallel trial, so the adaptive path is not production-safe yet.
 
-An exact target-scale adaptive replay was also inconclusive: Stage 1 did not
-produce a validated seed in that isolated trial, so the adaptive policy could
-not be evaluated as a complete schedule. This is recorded as diagnostic
-evidence, not as proof of target-scale infeasibility. The previously validated
-one-shot target bootstrap remains the stronger target-scale result, but it is
-still not promoted because the medium repeatability gate is unmet.
+An earlier exact target-scale adaptive replay was inconclusive because Stage 1
+did not produce a validated seed in that isolated trial. The post-hardening
+replay below did produce and validate the seed, so the earlier result is now
+classified as search variation or replay-state variation rather than evidence
+of infeasibility. The adaptive probes still did not find a substantive
+improvement and remain diagnostic-only because the medium repeatability gate
+is unmet.
 
 The current conclusion is to preserve the adaptive and retention diagnostics,
 keep ordinary Stage 2 unchanged, and require a reliable bounded-time policy
 before changing counselor-facing scheduling behavior.
+
+## Diagnostic timing and replay facts
+
+Student-assignment results now expose additive timing facts for the Stage 1
+seed and validation solves, the full model construction, each Stage 2 pass,
+and diagnostic local-bootstrap probes. Each CP-SAT solve reports both the
+solver's `WallTime()` and externally measured `Solve()` wall time. Diagnostic
+bootstrap and validation operations share one monotonic deadline, so a child
+validation solve does not silently receive the complete experiment allowance
+again. These facts are observational and do not change ordinary scheduling
+semantics.
+
+Results also expose a diagnostic semantic input fingerprint. It canonicalizes
+the detached DTO's opaque database identifiers while retaining scheduling
+facts such as requests, sections, timeslots, fixed context, special
+commitments, locks, and objective settings. It is suitable for comparing
+equivalent fixture builds; immutable run snapshots and persisted identifiers
+remain authoritative for application behavior.
+
+The post-hardening target replay used the unchanged mixed final-staffing input
+(`1,400` students, `10,760` requests, `304` normal sections, and `13`
+online-supervision sessions). Stage 1 again produced and validated a complete
+seed. With a `300`-second Stage 2 horizon and two `60`-second local probes,
+the diagnostic result remained complete with `10,635` assignments, zero unmet
+requests, and all `310` special commitments fulfilled. Both probes returned
+`UNKNOWN` without an adopted candidate. Stage 2 measured `306.09` seconds
+externally; the probe operation times were `63.63` and `67.28` seconds, while
+CP-SAT reported `55.95` and `60.82` seconds. This is why diagnostic reports
+distinguish solver time from model preparation, hinting, extraction, and
+native cleanup overhead.

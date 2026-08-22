@@ -155,7 +155,9 @@ eight workers), and its seed-validation solve is also bounded independently
 (currently 60 seconds with eight workers). The optimization pass is also
 allowed to use a bounded parallel configuration (currently eight workers) and
 an independent global optimization budget (currently 1,800 seconds) in this
-offline batch workflow. That budget is shared across the non-constant
+offline batch workflow. The current 1,800-second value is the default
+historical benchmark, not an immutable product timeout. The configured
+horizon is shared across the non-constant
 lexicographic passes rather than multiplied by their count. These settings
 are implementation configuration for obtaining and improving an incumbent;
 they do not change the scheduling contract or objective semantics. The

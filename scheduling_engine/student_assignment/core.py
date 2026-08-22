@@ -115,6 +115,7 @@ from .substantive_probe import (
     SubstantiveSoftTierProbeContext,
     probe_substantive_soft_tier,
 )
+from .runtime import MonotonicDeadline, semantic_student_assignment_input_fingerprint
 
 
 def _candidate_sort_key(candidate):
@@ -268,6 +269,10 @@ def _optimization_facts(
     stage_2_quality=None,
     quality_comparison=None,
     optimization_passes=(),
+    stage_1_timings=None,
+    input_semantic_fingerprint=None,
+    full_model_variable_count=None,
+    full_model_constraint_count=None,
 ):
     """Expose stage handoff and quality facts without changing solver logic."""
 
@@ -276,12 +281,16 @@ def _optimization_facts(
     stage_2_seed_solver = stage_2_seed_solver or validated_seed_solver
     improved = bool(seed_values and final_values and final_values < seed_values)
     facts = {
+        "input_semantic_fingerprint": input_semantic_fingerprint,
+        "full_model_variable_count": full_model_variable_count,
+        "full_model_constraint_count": full_model_constraint_count,
         "stage_1": {
             "solver_outcome": _outcome_name(hard_feasibility_outcome),
             "required_decision_group_count": required_group_count,
             "complete_seed_produced": hard_seed_solver is not None,
             "seed_validated_against_full_model": validated_seed_solver is not None,
             "objective_values": list(seed_values),
+            "timings": dict(stage_1_timings or {}),
         },
         "stage_2": {
             "solver_outcome": _outcome_name(final_outcome),
@@ -294,6 +303,7 @@ def _optimization_facts(
             ),
             "objective_values": list(final_values),
             "improved_over_stage_1": improved,
+            "timings": {},
         },
         "optimization_passes": list(optimization_passes),
     }
@@ -898,7 +908,9 @@ def _solve_student_assignment(
             ),
         )
     offering_sections = _validate_input(data)
+    input_semantic_fingerprint = semantic_student_assignment_input_fingerprint(data)
     model = cp_model.CpModel()
+    model_build_started = monotonic()
     sections = {item.section_id: item for item in data.sections}
     timeslots_by_id = {item.id: item for item in data.timeslots}
     requests_by_id = {item.request_id: item for item in data.requests}
@@ -2355,6 +2367,23 @@ def _solve_student_assignment(
             ),
         }
 
+    stage_1_seed_time_limit = (
+        max(
+            data.time_limit_seconds,
+            STUDENT_ASSIGNMENT_HARD_FEASIBILITY_TIME_LIMIT_SECONDS,
+        )
+        if use_hard_feasibility_bootstrap
+        else data.time_limit_seconds
+    )
+    stage_1_validation_time_limit = (
+        max(
+            data.time_limit_seconds,
+            STUDENT_ASSIGNMENT_HARD_FEASIBILITY_VALIDATION_TIME_LIMIT_SECONDS,
+        )
+        if use_hard_feasibility_bootstrap
+        else data.time_limit_seconds
+    )
+    stage_1_seed_started = monotonic()
     (
         hard_feasibility_seed_model,
         hard_feasibility_seed_solver,
@@ -2363,31 +2392,40 @@ def _solve_student_assignment(
     ) = _solve_complete_hard_feasibility_seed(
         hard_feasibility_model,
         complete_required_decision_groups,
-        (
-            max(
-                data.time_limit_seconds,
-                STUDENT_ASSIGNMENT_HARD_FEASIBILITY_TIME_LIMIT_SECONDS,
-            )
-            if use_hard_feasibility_bootstrap
-            else data.time_limit_seconds
-        ),
+        stage_1_seed_time_limit,
         worker_count=STUDENT_ASSIGNMENT_HARD_FEASIBILITY_WORKER_COUNT,
     )
+    stage_1_seed_elapsed = monotonic() - stage_1_seed_started
+    stage_1_validation_started = monotonic()
     validated_seed_solver = _validate_complete_hard_feasibility_seed(
         model,
         hard_feasibility_seed_model,
         hard_feasibility_seed_solver,
         hard_feasibility_source_variable_indexes,
-        (
-            max(
-                data.time_limit_seconds,
-                STUDENT_ASSIGNMENT_HARD_FEASIBILITY_VALIDATION_TIME_LIMIT_SECONDS,
-            )
-            if use_hard_feasibility_bootstrap
-            else data.time_limit_seconds
-        ),
+        stage_1_validation_time_limit,
         worker_count=STUDENT_ASSIGNMENT_HARD_FEASIBILITY_VALIDATION_WORKER_COUNT,
     )
+    stage_1_validation_elapsed = monotonic() - stage_1_validation_started
+    stage_1_timings = {
+        "model_construction_wall_time_seconds": monotonic() - model_build_started,
+        "seed_requested_time_limit_seconds": float(stage_1_seed_time_limit),
+        "seed_external_wall_time_seconds": stage_1_seed_elapsed,
+        "seed_solver_wall_time_seconds": float(
+            hard_feasibility_seed_solver.WallTime()
+            if hard_feasibility_seed_solver is not None
+            and hasattr(hard_feasibility_seed_solver, "WallTime")
+            else 0.0
+        ),
+        "validation_requested_time_limit_seconds": float(stage_1_validation_time_limit),
+        "validation_external_wall_time_seconds": stage_1_validation_elapsed,
+        "validation_solver_wall_time_seconds": float(
+            validated_seed_solver.WallTime()
+            if validated_seed_solver is not None
+            and hasattr(validated_seed_solver, "WallTime")
+            else 0.0
+        ),
+        "operation_wall_time_seconds": stage_1_seed_elapsed + stage_1_validation_elapsed,
+    }
     # Validation transfers the source values into a solver backed by the full
     # production model. The feasibility clone is no longer part of the
     # handoff, so release it before Stage 2 to keep a failed or successful
@@ -2674,7 +2712,16 @@ def _solve_student_assignment(
         else None
     )
     local_bootstrap_facts = None
-    stage_2_started = monotonic()
+    stage_2_deadline = (
+        MonotonicDeadline.start(stage_2_budget_seconds)
+        if stage_2_budget_seconds is not None
+        else None
+    )
+    stage_2_started = (
+        stage_2_deadline.started_at
+        if stage_2_deadline is not None
+        else monotonic()
+    )
     if stage_2_local_bootstrap is not None and stage_2_seed_solver is not None:
         local_config = dict(stage_2_local_bootstrap)
         target_level = local_config.get(
@@ -2711,14 +2758,11 @@ def _solve_student_assignment(
                 ))
 
             def _remaining_stage2_budget():
-                if stage_2_budget_seconds is None:
+                if stage_2_deadline is None:
                     return float(data.time_limit_seconds)
-                return max(
-                    0.001,
-                    stage_2_budget_seconds - (monotonic() - stage_2_started),
-                )
+                return max(0.001, stage_2_deadline.remaining())
 
-            def _validate_local_result(local_result):
+            def _validate_local_result(local_result, validation_deadline):
                 if (
                     not local_result.complete_candidate_found
                     or not local_result.candidate_source_variable_values
@@ -2729,7 +2773,7 @@ def _solve_student_assignment(
                     model,
                     complete_required_decision_groups,
                     local_result.candidate_source_variable_values,
-                    _remaining_stage2_budget(),
+                    max(0.001, validation_deadline.remaining()),
                     worker_count=STUDENT_ASSIGNMENT_HARD_FEASIBILITY_VALIDATION_WORKER_COUNT,
                 )
                 return validator, monotonic() - started
@@ -2748,7 +2792,10 @@ def _solve_student_assignment(
                 iteration_count = 0
                 while iteration_count < max_iterations and radius_index < len(radii):
                     current_seed_value = _current_substantive_value(stage_2_seed_solver)
-                    probe_limit = min(per_probe_limit, _remaining_stage2_budget())
+                    iteration_deadline = MonotonicDeadline.start(
+                        min(per_probe_limit, _remaining_stage2_budget())
+                    )
+                    probe_limit = max(0.001, iteration_deadline.remaining())
                     local_result = probe_substantive_soft_tier(
                         _build_probe_context(stage_2_seed_solver),
                         target_importance_level=target_level,
@@ -2759,7 +2806,10 @@ def _solve_student_assignment(
                     )
                     last_result = local_result
                     candidate_before_validation = local_result.candidate_substantive_value
-                    local_validator, validation_elapsed = _validate_local_result(local_result)
+                    local_validator, validation_elapsed = _validate_local_result(
+                        local_result,
+                        iteration_deadline,
+                    )
                     candidate_validated = local_validator is not None
                     if candidate_validated:
                         any_candidate_validated = True
@@ -2778,7 +2828,11 @@ def _solve_student_assignment(
                         "status": local_result.status,
                         "elapsed_seconds": local_result.elapsed_seconds,
                         "solver_wall_time_seconds": local_result.solver_wall_time_seconds,
+                        "probe_timings": dict(local_result.timings),
                         "time_limit_seconds": probe_limit,
+                        "iteration_requested_time_limit_seconds": iteration_deadline.requested_seconds,
+                        "iteration_elapsed_seconds": iteration_deadline.elapsed(),
+                        "iteration_remaining_seconds": iteration_deadline.remaining(),
                         "incumbent_before": current_seed_value,
                         "candidate_value": candidate_before_validation,
                         "candidate_validated": candidate_validated,
@@ -2807,10 +2861,17 @@ def _solve_student_assignment(
                     "solver_wall_time_seconds": sum(
                         item["solver_wall_time_seconds"] for item in iterations
                     ),
+                    "probe_operation_wall_time_seconds": sum(
+                        item["probe_timings"].get("operation_total_seconds", 0.0)
+                        for item in iterations
+                    ),
                     "validation_elapsed_seconds": sum(
                         item["validation_elapsed_seconds"] for item in iterations
                     ),
                     "time_limit_seconds": per_probe_limit,
+                    "deadline_requested_time_limit_seconds": stage_2_budget_seconds,
+                    "deadline_elapsed_seconds": stage_2_deadline.elapsed() if stage_2_deadline else None,
+                    "deadline_remaining_seconds": stage_2_deadline.remaining() if stage_2_deadline else None,
                     "neighborhood_radius": iterations[-1]["radius"] if iterations else None,
                     "baseline_substantive_value": iterations[0]["incumbent_before"] if iterations else current_seed_value,
                     "requested_threshold": iterations[0]["incumbent_before"] - 1 if iterations else None,
@@ -2827,16 +2888,23 @@ def _solve_student_assignment(
                 seed_substantive_value = _current_substantive_value(stage_2_seed_solver)
                 if local_config.get("threshold") is None:
                     local_config["threshold"] = int(seed_substantive_value) - 1
+                requested_local_time_limit = float(local_config["time_limit_seconds"])
                 remaining_before_bootstrap = _remaining_stage2_budget()
+                local_deadline = MonotonicDeadline.start(
+                    min(requested_local_time_limit, remaining_before_bootstrap)
+                )
                 local_config["time_limit_seconds"] = min(
                     float(local_config["time_limit_seconds"]),
-                    max(0.001, float(remaining_before_bootstrap)),
+                    max(0.001, local_deadline.remaining()),
                 )
                 local_result = probe_substantive_soft_tier(
                     _build_probe_context(stage_2_seed_solver),
                     **local_config,
                 )
-                local_validator, validation_elapsed = _validate_local_result(local_result)
+                local_validator, validation_elapsed = _validate_local_result(
+                    local_result,
+                    local_deadline,
+                )
                 candidate_validated = local_validator is not None
                 if candidate_validated:
                     stage_2_seed_solver = local_validator
@@ -2846,8 +2914,12 @@ def _solve_student_assignment(
                     "status": local_result.status,
                     "elapsed_seconds": local_result.elapsed_seconds,
                     "solver_wall_time_seconds": local_result.solver_wall_time_seconds,
+                    "probe_timings": dict(local_result.timings),
                     "validation_elapsed_seconds": validation_elapsed,
-                    "time_limit_seconds": local_config["time_limit_seconds"],
+                    "time_limit_seconds": requested_local_time_limit,
+                    "deadline_requested_time_limit_seconds": local_deadline.requested_seconds,
+                    "deadline_elapsed_seconds": local_deadline.elapsed(),
+                    "deadline_remaining_seconds": local_deadline.remaining(),
                     "neighborhood_radius": local_result.neighborhood_radius,
                     "baseline_substantive_value": local_result.baseline_substantive_value,
                     "requested_threshold": local_result.requested_threshold,
@@ -2917,12 +2989,15 @@ def _solve_student_assignment(
         total_time_limit_seconds=(
             max(
                 0.001,
-                stage_2_budget_seconds - (monotonic() - stage_2_started),
+                stage_2_deadline.remaining()
+                if stage_2_deadline is not None
+                else stage_2_budget_seconds - (monotonic() - stage_2_started),
             )
             if stage_2_local_bootstrap is not None
             and stage_2_budget_seconds is not None
             else stage_2_budget_seconds
         ),
+        deadline=stage_2_deadline,
         pass_facts=optimization_passes,
         pass_quality_callback=_quality_for_solver,
         pass_trace=optimization_trace if collect_stage2_trace else None,
@@ -2943,6 +3018,10 @@ def _solve_student_assignment(
         optimization_time_limit_seconds=stage_2_budget_seconds,
         stage_1_quality=stage_1_quality,
         optimization_passes=optimization_passes,
+        stage_1_timings=stage_1_timings,
+        input_semantic_fingerprint=input_semantic_fingerprint,
+        full_model_variable_count=len(model.Proto().variables),
+        full_model_constraint_count=len(model.Proto().constraints),
     )
     optimization_facts["stage_2"]["alternate_seed_validated"] = alternate_seed_validated
     substantive_pass_wall_time = 0.0
@@ -2962,6 +3041,15 @@ def _solve_student_assignment(
     )
     optimization_facts["stage_2"]["tie_break_pass_wall_time_seconds"] = (
         tie_break_pass_wall_time
+    )
+    optimization_facts["stage_2"]["operation_wall_time_seconds"] = (
+        monotonic() - stage_2_started
+    )
+    optimization_facts["stage_2"]["configured_deadline_seconds"] = (
+        stage_2_budget_seconds
+    )
+    optimization_facts["stage_2"]["deadline_remaining_seconds"] = (
+        stage_2_deadline.remaining() if stage_2_deadline is not None else None
     )
     if local_bootstrap_facts is not None:
         optimization_facts["stage_2_local_bootstrap"] = local_bootstrap_facts

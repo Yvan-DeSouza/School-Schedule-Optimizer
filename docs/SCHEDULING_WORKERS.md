@@ -168,7 +168,10 @@ single scheduling task may still use the established internal CP-SAT workers:
 - placement: 4;
 - named teacher assignment: 4;
 - Stage 1 student feasibility: 8;
-- Stage 2 student optimization: 8, with its existing 1,800-second budget.
+- Stage 2 student optimization: 8, with a configurable offline optimization
+  horizon. The current 1,800-second value is the default historical benchmark,
+  not a hard product timeout; longer horizons remain bounded configuration
+  choices when quality measurements justify them.
 
 Increasing Celery concurrency without a memory/CPU capacity review would run
 multiple large CP-SAT models simultaneously and is intentionally not the

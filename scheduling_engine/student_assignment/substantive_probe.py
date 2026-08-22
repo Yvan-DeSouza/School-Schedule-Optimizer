@@ -9,12 +9,13 @@ production solver's constraints, objective ordering, or returned result.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from time import monotonic
 
 from ortools.sat.python import cp_model
 
 from .solver import new_solver, outcome_name, set_solver_hints
+from .runtime import OperationTimer
 
 
 @dataclass(frozen=True)
@@ -73,6 +74,8 @@ class SubstantiveSoftTierProbeResult:
     affected_section_ids: tuple
     section_load_deltas: dict
     candidate_source_variable_values: dict
+    requested_time_limit_seconds: float | None = None
+    timings: dict = field(default_factory=dict)
 
 
 def _model_family_variable_counts(model):
@@ -158,9 +161,11 @@ def probe_substantive_soft_tier(
     rule and higher-priority fulfillment result.
     """
 
+    operation_started = monotonic()
     seed_solver = context.validated_seed_solver
     seed_validated = seed_solver is not None
     seed_outcome = outcome_name(context.seed_outcome)
+    timing = OperationTimer()
     if not seed_validated:
         return SubstantiveSoftTierProbeResult(
             status=("infeasible" if context.seed_outcome == cp_model.INFEASIBLE else "unknown"),
@@ -198,6 +203,11 @@ def probe_substantive_soft_tier(
             affected_section_ids=(),
             section_load_deltas={},
             candidate_source_variable_values={},
+            requested_time_limit_seconds=float(time_limit_seconds),
+            timings={
+                **timing.snapshot(),
+                "operation_total_seconds": monotonic() - operation_started,
+            },
         )
 
     target_entries = [
@@ -225,80 +235,87 @@ def probe_substantive_soft_tier(
     seed_source_decisions = dict(context.source_decision_fingerprint(seed_solver))
     seed_summary = dict(context.source_decision_summary(seed_solver))
 
-    probe_model = context.model.Clone()
-    for decision_group in context.complete_required_decision_groups:
-        probe_model.AddExactlyOne(
-            probe_model.GetIntVarFromProtoIndex(variable.Index())
-            for variable in decision_group
-        )
+    with timing.measure("model_clone_seconds"):
+        probe_model = context.model.Clone()
+    with timing.measure("completion_constraints_seconds"):
+        for decision_group in context.complete_required_decision_groups:
+            probe_model.AddExactlyOne(
+                probe_model.GetIntVarFromProtoIndex(variable.Index())
+                for variable in decision_group
+            )
 
     if neighborhood_radius is not None:
-        changed_group_terms = []
-        for decision_group in context.complete_required_decision_groups:
-            selected_seed_variable = next(
-                (
-                    variable
-                    for variable in decision_group
-                    if seed_solver.Value(
-                        context.model.GetIntVarFromProtoIndex(variable.Index())
-                    )
-                ),
-                None,
-            )
-            if selected_seed_variable is None:
-                probe_model.AddBoolOr(())
-                continue
-            selected_clone_variable = probe_model.GetIntVarFromProtoIndex(
-                selected_seed_variable.Index()
-            )
-            changed_group_terms.append(1 - selected_clone_variable)
-        probe_model.Add(sum(changed_group_terms or [0]) <= neighborhood_radius)
+        with timing.measure("neighborhood_constraints_seconds"):
+            changed_group_terms = []
+            for decision_group in context.complete_required_decision_groups:
+                selected_seed_variable = next(
+                    (
+                        variable
+                        for variable in decision_group
+                        if seed_solver.Value(
+                            context.model.GetIntVarFromProtoIndex(variable.Index())
+                        )
+                    ),
+                    None,
+                )
+                if selected_seed_variable is None:
+                    probe_model.AddBoolOr(())
+                    continue
+                selected_clone_variable = probe_model.GetIntVarFromProtoIndex(
+                    selected_seed_variable.Index()
+                )
+                changed_group_terms.append(1 - selected_clone_variable)
+            probe_model.Add(sum(changed_group_terms or [0]) <= neighborhood_radius)
 
     # Preserve every objective that precedes the target tier. This includes
     # all fulfillment tiers and any more important soft tier present in a
     # caller's input. The production lexicographic ordering is untouched.
-    for index, metadata in enumerate(context.objective_metadata):
-        if index >= target_index:
-            break
-        term_specs = metadata["term_specs"]
-        expression = _expression(probe_model, term_specs)
-        seed_value = sum(
-            coefficient * seed_solver.Value(
-                context.model.GetIntVarFromProtoIndex(variable_index)
+    with timing.measure("objective_and_bound_constraints_seconds"):
+        for index, metadata in enumerate(context.objective_metadata):
+            if index >= target_index:
+                break
+            term_specs = metadata["term_specs"]
+            expression = _expression(probe_model, term_specs)
+            seed_value = sum(
+                coefficient * seed_solver.Value(
+                    context.model.GetIntVarFromProtoIndex(variable_index)
+                )
+                for variable_index, coefficient in term_specs
             )
-            for variable_index, coefficient in term_specs
-        )
-        probe_model.Add(expression == seed_value)
+            probe_model.Add(expression == seed_value)
 
-    target_expression = _expression(probe_model, target_metadata["term_specs"])
-    if threshold is not None:
-        probe_model.Add(target_expression <= int(threshold))
-    component_bounds = component_bounds or {}
-    component_expressions = {}
-    for component_name, bound in component_bounds.items():
-        term_specs = target_metadata["component_specs"].get(component_name)
-        if term_specs is None:
-            raise ValueError(f"Unknown substantive component: {component_name}")
-        expression = _expression(probe_model, term_specs)
-        component_expressions[component_name] = expression
-        probe_model.Add(expression <= int(bound))
-    if minimize_component is not None:
-        term_specs = target_metadata["component_specs"].get(minimize_component)
-        if term_specs is None:
-            raise ValueError(f"Unknown substantive component: {minimize_component}")
-        component_expressions[minimize_component] = _expression(
-            probe_model, term_specs
-        )
-        probe_model.Minimize(component_expressions[minimize_component])
-    set_solver_hints(probe_model, seed_solver)
+        target_expression = _expression(probe_model, target_metadata["term_specs"])
+        if threshold is not None:
+            probe_model.Add(target_expression <= int(threshold))
+        component_bounds = component_bounds or {}
+        component_expressions = {}
+        for component_name, bound in component_bounds.items():
+            term_specs = target_metadata["component_specs"].get(component_name)
+            if term_specs is None:
+                raise ValueError(f"Unknown substantive component: {component_name}")
+            expression = _expression(probe_model, term_specs)
+            component_expressions[component_name] = expression
+            probe_model.Add(expression <= int(bound))
+        if minimize_component is not None:
+            term_specs = target_metadata["component_specs"].get(minimize_component)
+            if term_specs is None:
+                raise ValueError(f"Unknown substantive component: {minimize_component}")
+            component_expressions[minimize_component] = _expression(
+                probe_model, term_specs
+            )
+            probe_model.Minimize(component_expressions[minimize_component])
+    with timing.measure("hint_application_seconds"):
+        set_solver_hints(probe_model, seed_solver)
 
-    solver = new_solver(
-        time_limit_seconds,
-        worker_count=worker_count,
-    )
-    started = monotonic()
-    status_code = solver.Solve(probe_model)
-    elapsed = monotonic() - started
+    with timing.measure("solver_creation_seconds"):
+        solver = new_solver(
+            time_limit_seconds,
+            worker_count=worker_count,
+        )
+    with timing.measure("cp_solver_solve_external_wall_seconds"):
+        started = monotonic()
+        status_code = solver.Solve(probe_model)
+        elapsed = monotonic() - started
     complete_candidate_found = status_code in {cp_model.OPTIMAL, cp_model.FEASIBLE}
 
     candidate_component_values = {}
@@ -312,48 +329,50 @@ def probe_substantive_soft_tier(
     candidate_source_variable_values = {}
     candidate_summary = {}
     if complete_candidate_found:
-        candidate_component_values = dict(context.solver_objective_components(solver))
-        candidate_substantive_value = float(
-            sum(
-                coefficient * solver.Value(
-                    probe_model.GetIntVarFromProtoIndex(variable_index)
+        with timing.measure("candidate_quality_evaluation_seconds"):
+            candidate_component_values = dict(context.solver_objective_components(solver))
+            candidate_substantive_value = float(
+                sum(
+                    coefficient * solver.Value(
+                        probe_model.GetIntVarFromProtoIndex(variable_index)
+                    )
+                    for variable_index, coefficient in target_metadata["term_specs"]
                 )
-                for variable_index, coefficient in target_metadata["term_specs"]
             )
-        )
-        candidate_assignment_count = int(context.candidate_counts(solver))
-        candidate_source_decisions = dict(
-            context.source_decision_fingerprint(solver)
-        )
-        candidate_source_decisions = tuple(sorted(
-            candidate_source_decisions.items(), key=repr,
-        ))
-        candidate_source_variable_values = dict(
-            context.source_decision_variable_values(solver)
-        )
-        candidate_source_decision_map = dict(candidate_source_decisions)
-        source_keys = set(seed_source_decisions) | set(candidate_source_decision_map)
-        changed_source_decision_count = sum(
-            seed_source_decisions.get(key) != candidate_source_decision_map.get(key)
-            for key in source_keys
-        )
-        source_decision_deltas = tuple(
-            {
-                "source_key": key,
-                "before": seed_source_decisions.get(key),
-                "after": candidate_source_decision_map.get(key),
-            }
-            for key in sorted(source_keys, key=repr)
-            if seed_source_decisions.get(key) != candidate_source_decision_map.get(key)
-        )
-        candidate_objective_vector = _objective_vector(
-            solver, probe_model, context.objective_metadata
-        )
-        if minimize_component is not None:
-            minimized_component_value = float(
-                solver.Value(component_expressions[minimize_component])
+            candidate_assignment_count = int(context.candidate_counts(solver))
+            if minimize_component is not None:
+                minimized_component_value = float(
+                    solver.Value(component_expressions[minimize_component])
+                )
+        with timing.measure("semantic_source_decision_extraction_seconds"):
+            candidate_source_decisions = dict(
+                context.source_decision_fingerprint(solver)
             )
-        candidate_summary = dict(context.source_decision_summary(solver))
+            candidate_source_decisions = tuple(sorted(
+                candidate_source_decisions.items(), key=repr,
+            ))
+            candidate_source_variable_values = dict(
+                context.source_decision_variable_values(solver)
+            )
+            candidate_source_decision_map = dict(candidate_source_decisions)
+            source_keys = set(seed_source_decisions) | set(candidate_source_decision_map)
+            changed_source_decision_count = sum(
+                seed_source_decisions.get(key) != candidate_source_decision_map.get(key)
+                for key in source_keys
+            )
+            source_decision_deltas = tuple(
+                {
+                    "source_key": key,
+                    "before": seed_source_decisions.get(key),
+                    "after": candidate_source_decision_map.get(key),
+                }
+                for key in sorted(source_keys, key=repr)
+                if seed_source_decisions.get(key) != candidate_source_decision_map.get(key)
+            )
+            candidate_objective_vector = _objective_vector(
+                solver, probe_model, context.objective_metadata
+            )
+            candidate_summary = dict(context.source_decision_summary(solver))
 
     component_deltas = (
         {
@@ -426,4 +445,12 @@ def probe_substantive_soft_tier(
         affected_section_ids=tuple(sorted(affected_sections)),
         section_load_deltas=dict(sorted(section_load_deltas.items())),
         candidate_source_variable_values=candidate_source_variable_values,
+        requested_time_limit_seconds=float(time_limit_seconds),
+        timings={
+            **timing.snapshot(),
+            "solver_reported_wall_time_seconds": float(
+                solver.WallTime() if hasattr(solver, "WallTime") else elapsed
+            ),
+            "operation_total_seconds": monotonic() - operation_started,
+        },
     )
