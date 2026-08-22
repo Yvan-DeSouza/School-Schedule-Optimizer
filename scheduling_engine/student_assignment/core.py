@@ -830,6 +830,43 @@ def run_student_assignment_local_bootstrap_diagnostic(
     )
 
 
+def run_student_assignment_adaptive_local_bootstrap_diagnostic(
+    data: StudentAssignmentInputDTO,
+    *,
+    neighborhood_radii=(2, 4),
+    max_iterations=3,
+    per_probe_time_limit_seconds=90.0,
+    total_time_limit_seconds=1800.0,
+    worker_count=8,
+):
+    """Run diagnostic strict-improvement neighborhoods with shared budgeting.
+
+    Each probe is a CP-SAT satisfiability search around the strongest validated
+    incumbent found so far.  A validated improvement restarts at the smallest
+    radius; a failed radius may expand once.  This path is deliberately not
+    called by ``solve_student_assignment`` until repeatability and production
+    promotion gates establish that its budget trade-off is useful.
+    """
+
+    return _solve_student_assignment(
+        data,
+        include_lock_costs=False,
+        include_candidate_ledger=False,
+        use_hard_feasibility_bootstrap=True,
+        collect_stage2_trace=True,
+        stage_2_local_bootstrap={
+            "adaptive": True,
+            "neighborhood_radii": tuple(neighborhood_radii),
+            "max_iterations": max_iterations,
+            "per_probe_time_limit_seconds": per_probe_time_limit_seconds,
+            "worker_count": worker_count,
+            "target_importance_level": IMPORTANCE_LEVELS["important"],
+        },
+        stage_2_total_time_limit_seconds=total_time_limit_seconds,
+        retain_incumbent_on_non_improvement=True,
+    )
+
+
 def _solve_student_assignment(
     data,
     *,
@@ -2658,65 +2695,171 @@ def _solve_student_assignment(
                 "reason": "substantive_tier_not_present",
             }
         else:
-            seed_substantive_value = sum(
-                coefficient * stage_2_seed_solver.Value(
-                    model.GetIntVarFromProtoIndex(variable_index)
-                )
-                for variable_index, coefficient in target_metadata["term_specs"]
-            )
-            if local_config.get("threshold") is None:
-                local_config["threshold"] = int(seed_substantive_value) - 1
-            remaining_before_bootstrap = (
-                stage_2_budget_seconds
-                if stage_2_budget_seconds is not None
-                else local_config["time_limit_seconds"]
-            )
-            local_config["time_limit_seconds"] = min(
-                float(local_config["time_limit_seconds"]),
-                max(0.001, float(remaining_before_bootstrap)),
-            )
-            local_result = probe_substantive_soft_tier(
-                _build_probe_context(stage_2_seed_solver),
-                **local_config,
-            )
-            local_bootstrap_facts = {
-                "status": local_result.status,
-                "elapsed_seconds": local_result.elapsed_seconds,
-                "time_limit_seconds": local_config["time_limit_seconds"],
-                "neighborhood_radius": local_result.neighborhood_radius,
-                "baseline_substantive_value": local_result.baseline_substantive_value,
-                "requested_threshold": local_result.requested_threshold,
-                "candidate_substantive_value": local_result.candidate_substantive_value,
-                "changed_source_decision_count": local_result.changed_source_decision_count,
-                "component_values": dict(local_result.candidate_component_values),
-                "component_deltas": dict(local_result.component_deltas),
-                "candidate_found": local_result.complete_candidate_found,
-                "candidate_validated": False,
-            }
-            if (
-                local_result.complete_candidate_found
-                and local_result.candidate_source_variable_values
-            ):
-                remaining_for_validation = (
-                    max(
-                        0.001,
-                        stage_2_budget_seconds
-                        - (monotonic() - stage_2_started),
+            adaptive = bool(local_config.get("adaptive", False))
+            iterations = []
+            current_seed_value = None
+            last_result = None
+            any_candidate_validated = False
+            any_improvement_adopted = False
+
+            def _current_substantive_value(candidate_solver):
+                return int(sum(
+                    coefficient * candidate_solver.Value(
+                        model.GetIntVarFromProtoIndex(variable_index)
                     )
-                    if stage_2_budget_seconds is not None
-                    else data.time_limit_seconds
+                    for variable_index, coefficient in target_metadata["term_specs"]
+                ))
+
+            def _remaining_stage2_budget():
+                if stage_2_budget_seconds is None:
+                    return float(data.time_limit_seconds)
+                return max(
+                    0.001,
+                    stage_2_budget_seconds - (monotonic() - stage_2_started),
                 )
-                local_validator = _validate_source_decision_candidate(
+
+            def _validate_local_result(local_result):
+                if (
+                    not local_result.complete_candidate_found
+                    or not local_result.candidate_source_variable_values
+                ):
+                    return None, 0.0
+                started = monotonic()
+                validator = _validate_source_decision_candidate(
                     model,
                     complete_required_decision_groups,
                     local_result.candidate_source_variable_values,
-                    remaining_for_validation,
+                    _remaining_stage2_budget(),
                     worker_count=STUDENT_ASSIGNMENT_HARD_FEASIBILITY_VALIDATION_WORKER_COUNT,
                 )
-                if local_validator is not None:
+                return validator, monotonic() - started
+
+            if adaptive:
+                radii = tuple(
+                    int(radius)
+                    for radius in local_config.get("neighborhood_radii", (2, 4))
+                    if int(radius) >= 0
+                ) or (2,)
+                max_iterations = max(1, int(local_config.get("max_iterations", 3)))
+                per_probe_limit = float(
+                    local_config.get("per_probe_time_limit_seconds", 90.0)
+                )
+                radius_index = 0
+                iteration_count = 0
+                while iteration_count < max_iterations and radius_index < len(radii):
+                    current_seed_value = _current_substantive_value(stage_2_seed_solver)
+                    probe_limit = min(per_probe_limit, _remaining_stage2_budget())
+                    local_result = probe_substantive_soft_tier(
+                        _build_probe_context(stage_2_seed_solver),
+                        target_importance_level=target_level,
+                        threshold=current_seed_value - 1,
+                        neighborhood_radius=radii[radius_index],
+                        time_limit_seconds=probe_limit,
+                        worker_count=int(local_config.get("worker_count", 8)),
+                    )
+                    last_result = local_result
+                    candidate_before_validation = local_result.candidate_substantive_value
+                    local_validator, validation_elapsed = _validate_local_result(local_result)
+                    candidate_validated = local_validator is not None
+                    if candidate_validated:
+                        any_candidate_validated = True
+                    adopted = bool(
+                        candidate_validated
+                        and candidate_before_validation is not None
+                        and candidate_before_validation < current_seed_value
+                    )
+                    if adopted:
+                        stage_2_seed_solver = local_validator
+                        alternate_seed_validated = True
+                        any_improvement_adopted = True
+                    iterations.append({
+                        "iteration": iteration_count + 1,
+                        "radius": radii[radius_index],
+                        "status": local_result.status,
+                        "elapsed_seconds": local_result.elapsed_seconds,
+                        "solver_wall_time_seconds": local_result.solver_wall_time_seconds,
+                        "time_limit_seconds": probe_limit,
+                        "incumbent_before": current_seed_value,
+                        "candidate_value": candidate_before_validation,
+                        "candidate_validated": candidate_validated,
+                        "adopted": adopted,
+                        "validation_elapsed_seconds": validation_elapsed,
+                        "changed_source_decision_count": local_result.changed_source_decision_count,
+                        "component_values": dict(local_result.candidate_component_values),
+                        "component_deltas": dict(local_result.component_deltas),
+                        "affected_student_ids": tuple(local_result.affected_student_ids),
+                        "affected_section_ids": tuple(local_result.affected_section_ids),
+                        "section_load_deltas": dict(local_result.section_load_deltas),
+                        "best_bound": local_result.best_bound,
+                    })
+                    iteration_count += 1
+                    if adopted:
+                        radius_index = 0
+                        continue
+                    # A failed small neighborhood may justify one larger
+                    # neighborhood, but never an unbounded radius ladder.
+                    radius_index += 1
+                final_value = _current_substantive_value(stage_2_seed_solver)
+                local_bootstrap_facts = {
+                    "adaptive": True,
+                    "status": last_result.status if last_result is not None else "unknown",
+                    "elapsed_seconds": sum(item["elapsed_seconds"] for item in iterations),
+                    "solver_wall_time_seconds": sum(
+                        item["solver_wall_time_seconds"] for item in iterations
+                    ),
+                    "validation_elapsed_seconds": sum(
+                        item["validation_elapsed_seconds"] for item in iterations
+                    ),
+                    "time_limit_seconds": per_probe_limit,
+                    "neighborhood_radius": iterations[-1]["radius"] if iterations else None,
+                    "baseline_substantive_value": iterations[0]["incumbent_before"] if iterations else current_seed_value,
+                    "requested_threshold": iterations[0]["incumbent_before"] - 1 if iterations else None,
+                    "candidate_substantive_value": final_value,
+                    "changed_source_decision_count": iterations[-1]["changed_source_decision_count"] if iterations else 0,
+                    "component_values": dict(last_result.candidate_component_values) if last_result is not None else {},
+                    "component_deltas": dict(last_result.component_deltas) if last_result is not None else {},
+                    "candidate_found": any_candidate_validated,
+                    "candidate_validated": any_candidate_validated,
+                    "improvement_adopted": any_improvement_adopted,
+                    "iterations": tuple(iterations),
+                }
+            else:
+                seed_substantive_value = _current_substantive_value(stage_2_seed_solver)
+                if local_config.get("threshold") is None:
+                    local_config["threshold"] = int(seed_substantive_value) - 1
+                remaining_before_bootstrap = _remaining_stage2_budget()
+                local_config["time_limit_seconds"] = min(
+                    float(local_config["time_limit_seconds"]),
+                    max(0.001, float(remaining_before_bootstrap)),
+                )
+                local_result = probe_substantive_soft_tier(
+                    _build_probe_context(stage_2_seed_solver),
+                    **local_config,
+                )
+                local_validator, validation_elapsed = _validate_local_result(local_result)
+                candidate_validated = local_validator is not None
+                if candidate_validated:
                     stage_2_seed_solver = local_validator
                     alternate_seed_validated = True
-                    local_bootstrap_facts["candidate_validated"] = True
+                local_bootstrap_facts = {
+                    "adaptive": False,
+                    "status": local_result.status,
+                    "elapsed_seconds": local_result.elapsed_seconds,
+                    "solver_wall_time_seconds": local_result.solver_wall_time_seconds,
+                    "validation_elapsed_seconds": validation_elapsed,
+                    "time_limit_seconds": local_config["time_limit_seconds"],
+                    "neighborhood_radius": local_result.neighborhood_radius,
+                    "baseline_substantive_value": local_result.baseline_substantive_value,
+                    "requested_threshold": local_result.requested_threshold,
+                    "candidate_substantive_value": local_result.candidate_substantive_value,
+                    "changed_source_decision_count": local_result.changed_source_decision_count,
+                    "component_values": dict(local_result.candidate_component_values),
+                    "component_deltas": dict(local_result.component_deltas),
+                    "candidate_found": local_result.complete_candidate_found,
+                    "candidate_validated": candidate_validated,
+                    "improvement_adopted": candidate_validated,
+                    "iterations": (),
+                }
 
     reference_source_decisions = dict(
         _source_decision_fingerprint(stage_2_seed_solver)
@@ -2802,6 +2945,24 @@ def _solve_student_assignment(
         optimization_passes=optimization_passes,
     )
     optimization_facts["stage_2"]["alternate_seed_validated"] = alternate_seed_validated
+    substantive_pass_wall_time = 0.0
+    tie_break_pass_wall_time = 0.0
+    substantive_level = IMPORTANCE_LEVELS["important"]
+    for pass_fact in optimization_passes:
+        metadata = objective_metadata[pass_fact["objective_index"]]
+        if (
+            metadata.get("kind") == "soft_tier"
+            and metadata.get("importance_level") == substantive_level
+        ):
+            substantive_pass_wall_time += pass_fact.get("wall_time_seconds", 0.0)
+        elif metadata.get("kind") == "tie_break":
+            tie_break_pass_wall_time += pass_fact.get("wall_time_seconds", 0.0)
+    optimization_facts["stage_2"]["substantive_pass_wall_time_seconds"] = (
+        substantive_pass_wall_time
+    )
+    optimization_facts["stage_2"]["tie_break_pass_wall_time_seconds"] = (
+        tie_break_pass_wall_time
+    )
     if local_bootstrap_facts is not None:
         optimization_facts["stage_2_local_bootstrap"] = local_bootstrap_facts
     if collect_stage2_trace:

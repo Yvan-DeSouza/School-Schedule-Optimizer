@@ -213,6 +213,29 @@ def validated_initial_hint_solver(
     return preparer
 
 
+def _objective_values(solver, objectives):
+    """Read the existing ordered objective vector from a solver candidate."""
+
+    return tuple(
+        float(objective)
+        if isinstance(objective, (int, float))
+        else float(solver.Value(objective))
+        for objective in objectives
+    )
+
+
+def _candidate_is_lexicographically_better(candidate, incumbent, objectives):
+    """Compare complete candidates using the existing objective ordering."""
+
+    if candidate is None:
+        return False
+    if incumbent is None:
+        return True
+    return _objective_values(candidate, objectives) < _objective_values(
+        incumbent, objectives
+    )
+
+
 def solve_lexicographically(
     model,
     objectives,
@@ -324,8 +347,11 @@ def solve_lexicographically(
             retain_incumbent_on_non_improvement
             and previous_solver is not None
             and raw_solver_candidate is not None
-            and raw_solver_candidate.Value(objective)
-            >= previous_solver.Value(objective)
+            and not _candidate_is_lexicographically_better(
+                raw_solver_candidate,
+                previous_solver,
+                objectives,
+            )
         ):
             selected_solver = previous_solver
             incumbent_retained = True

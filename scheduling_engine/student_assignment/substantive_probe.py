@@ -44,6 +44,7 @@ class SubstantiveSoftTierProbeResult:
     baseline_substantive_value: float | None
     requested_threshold: float | None
     elapsed_seconds: float
+    solver_wall_time_seconds: float
     model_variable_count: int
     model_constraint_count: int
     conflicts: int
@@ -168,6 +169,7 @@ def probe_substantive_soft_tier(
             baseline_substantive_value=None,
             requested_threshold=(float(threshold) if threshold is not None else None),
             elapsed_seconds=0.0,
+            solver_wall_time_seconds=0.0,
             model_variable_count=0,
             model_constraint_count=0,
             conflicts=0,
@@ -390,6 +392,9 @@ def probe_substantive_soft_tier(
         baseline_substantive_value=float(seed_objective_value),
         requested_threshold=(float(threshold) if threshold is not None else None),
         elapsed_seconds=elapsed,
+        solver_wall_time_seconds=float(
+            solver.WallTime() if hasattr(solver, "WallTime") else elapsed
+        ),
         model_variable_count=len(probe_model.Proto().variables),
         model_constraint_count=len(probe_model.Proto().constraints),
         conflicts=solver.NumConflicts(),

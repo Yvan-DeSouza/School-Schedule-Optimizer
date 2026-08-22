@@ -124,6 +124,7 @@ from backend.apps.scheduling.services.teacher_assignment import (
 )
 from scheduling_engine.student_assignment import run_substantive_soft_tier_probe
 from scheduling_engine.student_assignment.core import (
+    run_student_assignment_adaptive_local_bootstrap_diagnostic,
     run_student_assignment_local_bootstrap_diagnostic,
     run_student_assignment_stage2_diagnostic,
 )
@@ -1195,6 +1196,40 @@ def run_production_scale_special_scheduling_validation(
             staffing_mode=STUDENT_ASSIGNMENT_STAFFING_MODE_FINAL_STAFFING,
             soft_constraint_importance=SOFT_IMPORTANCE,
         )
+        if os.environ.get("SCHEDULING_PRODUCTION_SCALE_ADAPTIVE_BOOTSTRAP"):
+            adaptive_result = run_student_assignment_adaptive_local_bootstrap_diagnostic(
+                student_input,
+                neighborhood_radii=tuple(
+                    int(value)
+                    for value in os.environ.get(
+                        "SCHEDULING_PRODUCTION_SCALE_ADAPTIVE_RADII", "2,4"
+                    ).split(",")
+                    if value.strip()
+                ),
+                max_iterations=int(
+                    os.environ.get("SCHEDULING_PRODUCTION_SCALE_ADAPTIVE_MAX_ITERATIONS", "3")
+                ),
+                per_probe_time_limit_seconds=float(
+                    os.environ.get("SCHEDULING_PRODUCTION_SCALE_ADAPTIVE_PROBE_LIMIT", "90")
+                ),
+                total_time_limit_seconds=float(
+                    os.environ.get("SCHEDULING_PRODUCTION_SCALE_ADAPTIVE_TOTAL_LIMIT", "1800")
+                ),
+                worker_count=8,
+            )
+            print(
+                "[production-scale] adaptive local-bootstrap Stage 2: "
+                f"status={adaptive_result.status} "
+                f"solver_outcome={adaptive_result.solver_outcome} "
+                f"assignments={len(adaptive_result.assignments)} "
+                f"unmet={len(adaptive_result.unmet_requests)} "
+                f"objective_components={adaptive_result.objective_components} "
+                f"stage_2={adaptive_result.optimization_facts.get('stage_2')} "
+                f"bootstrap={adaptive_result.optimization_facts.get('stage_2_local_bootstrap')} "
+                f"passes={adaptive_result.optimization_facts.get('optimization_passes')}",
+                flush=True,
+            )
+            return adaptive_result
         if os.environ.get("SCHEDULING_PRODUCTION_SCALE_LOCAL_BOOTSTRAP"):
             local_result = run_student_assignment_local_bootstrap_diagnostic(
                 student_input,
@@ -1439,6 +1474,17 @@ def test_production_scale_substantive_soft_tier_probe(counselor_user):
         assert result.optimization_facts["stage_2"]["time_limit_seconds"] == float(
             os.environ.get("SCHEDULING_PRODUCTION_SCALE_LOCAL_BOOTSTRAP_TOTAL_LIMIT", "1800")
         )
+        return
+    if os.environ.get("SCHEDULING_PRODUCTION_SCALE_ADAPTIVE_BOOTSTRAP"):
+        # This is an explicitly diagnostic path.  A missing Stage 1 seed or
+        # an adaptive timeout is evidence to report, not a reason to pretend
+        # that a partial candidate is a successful production schedule.
+        assert result.status in {"complete", "partial", "failed"}
+        assert "stage_2" in result.optimization_facts
+        if result.optimization_facts.get("stage_2_local_bootstrap") is not None:
+            bootstrap = result.optimization_facts["stage_2_local_bootstrap"]
+            assert bootstrap["adaptive"] is True
+            assert bootstrap["iterations"]
         return
     assert result.seed_validated is True
     assert result.requested_threshold == 65172.0

@@ -254,3 +254,37 @@ variation does not establish a consistent medium-scale improvement, so the
 bootstrap remains an offline diagnostic until a repeatable shared-budget
 benefit is demonstrated. A target-scale success alone is not sufficient to
 change ordinary counselor-facing scheduling behavior.
+
+## Adaptive incumbent-safe bootstrap evidence
+
+The diagnostic path also supports an adaptive policy. It starts with a strict
+radius-two improvement query around the current validated incumbent, restarts
+at the smallest radius after an adopted improvement, and may try one larger
+radius only when the smaller neighborhood does not improve. Each probe and its
+full-model validation consume the same Stage 2 budget; the policy never fixes
+the candidate or bypasses CP-SAT.
+
+The optional retention rule now compares the complete existing lexicographic
+objective vector. It can retain a previously validated complete candidate when
+a later FEASIBLE result is equal or worse under the already-defined ordering.
+The ordinary solver entry point does not enable this diagnostic option.
+
+On the reusable 120-student medium fixture, three ordinary diagnostic runs
+returned substantive values `1,616`, `1,634`, and `1,700`. Three adaptive runs
+with two- and four-decision neighborhoods and short five-second probe slices
+returned `1,694`, `1,646`, and `1,650`; none adopted a bootstrap candidate.
+The adaptive policy therefore did not outperform ordinary Stage 2 repeatably.
+A longer medium diagnostic also failed to find a neighborhood candidate and
+consumed substantially more wall time than its requested probe slice in one
+parallel trial, so the adaptive path is not production-safe yet.
+
+An exact target-scale adaptive replay was also inconclusive: Stage 1 did not
+produce a validated seed in that isolated trial, so the adaptive policy could
+not be evaluated as a complete schedule. This is recorded as diagnostic
+evidence, not as proof of target-scale infeasibility. The previously validated
+one-shot target bootstrap remains the stronger target-scale result, but it is
+still not promoted because the medium repeatability gate is unmet.
+
+The current conclusion is to preserve the adaptive and retention diagnostics,
+keep ordinary Stage 2 unchanged, and require a reliable bounded-time policy
+before changing counselor-facing scheduling behavior.

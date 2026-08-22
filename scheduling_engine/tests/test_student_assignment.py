@@ -231,6 +231,38 @@ def test_substantive_probe_preserves_special_commitment_completion():
     assert result.candidate_assignment_count == 1
 
 
+def test_adaptive_bootstrap_preserves_special_commitment_completion():
+    study_slot = TimeSlotDTO(301, 1, 1, "B", True)
+    result = student_assignment_module.run_student_assignment_adaptive_local_bootstrap_diagnostic(
+        _input(
+            requests=(),
+            sections=(),
+            timeslots=(study_slot,),
+            schedule_commitment_requests=(
+                StudentScheduleCommitmentRequestDTO(
+                    request_id=92,
+                    student_id=1,
+                    commitment_type="study",
+                ),
+            ),
+            section_utilization_balance_importance="not_important",
+            student_semester_balance_importance="important",
+            course_sequence_preferences_importance="not_important",
+            difficulty_balance_importance="not_important",
+            course_category_diversity_importance="not_important",
+        ),
+        neighborhood_radii=(0,),
+        max_iterations=1,
+        per_probe_time_limit_seconds=0.5,
+        total_time_limit_seconds=5.0,
+        worker_count=1,
+    )
+
+    assert result.status == "complete"
+    assert len(result.unmet_requests) == 0
+    assert len(result.commitment_assignments) == 1
+
+
 def test_substantive_probe_reports_unknown_as_inconclusive(monkeypatch):
     class UnknownSolver:
         def Solve(self, _model):
@@ -372,6 +404,29 @@ def test_local_bootstrap_diagnostic_consumes_shared_budget_and_keeps_complete_se
     assert result.optimization_facts["stage_2"]["validated_seed_received"] is True
 
 
+def test_adaptive_local_bootstrap_restarts_and_records_bounded_iterations():
+    result = student_assignment_module.run_student_assignment_adaptive_local_bootstrap_diagnostic(
+        _substantive_probe_input(),
+        neighborhood_radii=(0, 1),
+        max_iterations=2,
+        per_probe_time_limit_seconds=0.5,
+        total_time_limit_seconds=5.0,
+        worker_count=1,
+    )
+
+    facts = result.optimization_facts["stage_2_local_bootstrap"]
+    assert facts["adaptive"] is True
+    assert 1 <= len(facts["iterations"]) <= 2
+    assert all(
+        item["radius"] in {0, 1}
+        and "incumbent_before" in item
+        and "candidate_validated" in item
+        for item in facts["iterations"]
+    )
+    assert result.status == "complete"
+    assert len(result.unmet_requests) == 0
+
+
 def test_lexicographic_budget_is_shared_across_objective_passes():
     """A global offline budget cannot be multiplied by objective-tier count."""
 
@@ -400,6 +455,42 @@ def test_lexicographic_budget_is_shared_across_objective_passes():
     assert outcome == cp_model.FEASIBLE
     assert len(captured_limits) == 2
     assert all(0 < limit <= 0.2 for limit in captured_limits)
+
+
+def test_optional_incumbent_retention_uses_the_full_existing_objective_vector():
+    """Retention never prefers a candidate that is lexicographically worse."""
+
+    class Candidate:
+        def __init__(self, values):
+            self.values = values
+
+        def Value(self, objective):
+            return self.values[objective]
+
+    objectives = ("fulfillment", "substantive", "tie_break")
+    incumbent = Candidate({"fulfillment": 0, "substantive": 100, "tie_break": 5})
+
+    # A strictly better active/lower-priority vector is safe to adopt.
+    assert student_assignment_solver._candidate_is_lexicographically_better(
+        Candidate({"fulfillment": 0, "substantive": 99, "tie_break": 999}),
+        incumbent,
+        objectives,
+    ) is True
+
+    # Equal current-tier values may still use a measured lower-tier
+    # improvement; no invented aggregate score is involved.
+    assert student_assignment_solver._candidate_is_lexicographically_better(
+        Candidate({"fulfillment": 0, "substantive": 100, "tie_break": 4}),
+        incumbent,
+        objectives,
+    ) is True
+
+    # A lower-priority improvement cannot compensate for a worse higher tier.
+    assert student_assignment_solver._candidate_is_lexicographically_better(
+        Candidate({"fulfillment": 0, "substantive": 101, "tie_break": 0}),
+        incumbent,
+        objectives,
+    ) is False
 
 
 def _difficulty(course_id, score, category="math"):
