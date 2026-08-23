@@ -176,6 +176,19 @@ post-approval controlled-rerun portion of that release-validation child was
 interrupted after the initial schedule completed, so this is not yet evidence
 of a complete repeated rerun validation.
 
+A subsequent clean full acceptance run completed the entire workflow, including
+review, approval, and the controlled exact-lock, whole-schedule-lock, and
+released-lock reruns. It used the same `1,400`-student final-staffing fixture,
+completed student assignment in `1,855.224` seconds, completed review in
+`208.943` seconds, and finished the full child process in `2,672.83` seconds.
+The ordinary result was complete with `10,635` assignments, zero unmet
+requests, all `310` special commitments fulfilled, and substantive tier
+`65,173`; only the opaque tie-break improved. During this run, the student
+assignment process reached a sampled peak of approximately `7.2 GB` working
+set and later recycled down to approximately `3.6 GB`. The memory sample did
+not show monotonic growth, but this remains an important laptop-capacity
+constraint for multi-hour operation.
+
 ## Diagnostic substantive-tier discovery
 
 The engine also contains a diagnostic-only probe for the existing substantive
@@ -204,6 +217,19 @@ against the unchanged full model. This is evidence that the current Stage 1
 value is not established as globally optimal and that a very local better
 schedule exists. It remains diagnostic evidence only: no production Stage 2
 objective or search rule was changed as a result.
+
+A later clean target-scale strict-improvement probe used the same
+final-staffing input and asked CP-SAT to satisfy the existing higher-priority
+values while requiring the substantive tier to be at most `65,172`. The probe
+returned `OPTIMAL` in `113.780` seconds with a complete candidate at `65,171`,
+after validating the Stage 1 seed. The candidate retained all `10,945`
+required source decisions and changed `258` meaningful source decisions. Its
+component values were section utilization `6,873`, semester balance `175`,
+difficulty balance `35,973`, and category diversity `22,150`; therefore the
+improvement was entirely a two-point section-utilization improvement. The
+diagnostic model contained `110,917` variables and `175,894` constraints. This
+is stronger evidence that a better substantive schedule exists, but it does
+not authorize changing the ordinary Stage 2 search or objective semantics.
 
 The diagnostic path can replay that validated candidate through the existing
 lexicographic Stage 2 process. On the target-scale replay, the alternate
@@ -245,7 +271,8 @@ On the target-scale final-staffing input, a radius-two bootstrap found the
 total Stage 2 budget. The candidate validated successfully and the remaining
 optimization returned a complete result with `10,635` assignments, zero unmet
 required requests, and all `310` special commitments fulfilled. The final
-substantive components were `6,867`, `175`, `35,973`, and `22,150`.
+substantive components in that replay were `6,863`, `175`, `35,973`, and
+`22,150`; the bootstrap candidate itself had section-utilization `6,867`.
 
 This is not yet enabled for production scheduling. Three medium-fixture
 baseline trials produced substantive values `1,634`, `1,634`, and `1,618`; the
@@ -290,6 +317,24 @@ The current conclusion is to preserve the adaptive and retention diagnostics,
 keep ordinary Stage 2 unchanged, and require a reliable bounded-time policy
 before changing counselor-facing scheduling behavior.
 
+The production-shaped 80-student medium fixture now has a stable semantic
+fingerprint (`4ac904a01a2c43dcf00505969c539dc8bacf9606e01aad67da5ab171b373f66b`)
+and is used for lower-cost curve experiments. With four CP-SAT workers and
+Stage 1 limits of 10 seconds plus 5 seconds for validation, ordinary Stage 2
+trials produced substantive values of `25,143`, `25,139`, `24,964`, and
+`24,475` at 5-, 10-, 20-, and 40-second Stage 2 horizons respectively. Each
+trial was complete with 510 assignments and zero unmet requests. This supports
+the conclusion that additional search time can matter on a production-shaped
+problem, while the values remain subject to parallel CP-SAT variation.
+
+At a matched 20-second horizon, a same-Stage-1-seed ordinary/retention pair
+also completed with zero unmet requests. The pair returned `25,072` and
+`25,109` respectively; neither retention pass had to reject a candidate in
+that trial. The difference is not evidence that retention improves quality,
+because the subsequent CP-SAT searches are parallel and nondeterministic. The
+full-vector retention rule remains mathematically safe and diagnostic-only;
+additional repeated paired trials are required before any production decision.
+
 ## Diagnostic timing and replay facts
 
 Student-assignment results now expose additive timing facts for the Stage 1
@@ -308,6 +353,12 @@ commitments, locks, and objective settings. It is suitable for comparing
 equivalent fixture builds; immutable run snapshots and persisted identifiers
 remain authoritative for application behavior.
 
+Diagnostic optimization facts also expose bounded incumbent timelines,
+objective metadata grouped by counselor importance level, and observational
+model-family variable counts. These fields support later search and
+formulation experiments without exposing auxiliary CP-SAT identities as
+schedule meaning and without changing the ordinary production solve.
+
 The post-hardening target replay used the unchanged mixed final-staffing input
 (`1,400` students, `10,760` requests, `304` normal sections, and `13`
 online-supervision sessions). Stage 1 again produced and validated a complete
@@ -319,3 +370,43 @@ externally; the probe operation times were `63.63` and `67.28` seconds, while
 CP-SAT reported `55.95` and `60.82` seconds. This is why diagnostic reports
 distinguish solver time from model preparation, hinting, extraction, and
 native cleanup overhead.
+
+## Target-scale ordinary-horizon comparison
+
+The target-scale diagnostic harness also ran a clean ordinary Stage 2 replay
+with a `3,600`-second Stage 2 horizon. The run used the same final-staffing
+fixture shape and the explicit Stage 1 configuration needed to obtain a
+validated seed. It completed with `10,635` assignments, zero unmet required
+requests, and all `310` special commitments fulfilled.
+
+The one-hour ordinary result remained at substantive tier `65,173`:
+
+```text
+Stage 1: [-10945, 0, 0, 0, 65173, ...]
+Stage 2: [-10945, 0, 0, 0, 65173, 5669086063307]
+```
+
+Section utilization, semester balance, difficulty, and category diversity
+remained `6,875`, `175`, `35,973`, and `22,150`. The additional ordinary
+search improved only the opaque final tie-break. The complete child process
+took `3,988.97` seconds, including upstream preparation; this is an
+experimental observation, not a new production timeout.
+
+The target-scale diagnostic comparison currently supports these frontier
+observations:
+
+| Strategy | Stage 2 horizon | Substantive tier | Result |
+| --- | ---: | ---: | --- |
+| Ordinary | 1,800 s | 65,173 | Complete; substantive metrics unchanged |
+| Ordinary | 3,600 s | 65,173 | Complete; only the opaque tie-break improved |
+| Radius-two local bootstrap + ordinary | 1,800 s | 65,161 | Complete; diagnostic-only; utilization improved |
+| Full-vector retention | 1,800 s | 65,173 | Complete; no substantive improvement in this trial |
+| Strict substantive probe | bounded diagnostic | 65,171 candidate | Feasibility evidence, not ordinary production behavior |
+
+The local-bootstrap result is promising because it found a materially better
+validated schedule within the existing total budget, but it has not yet passed
+the repeated target-scale promotion gate. The ordinary one-hour replay did
+not improve the substantive tier, so a longer ordinary horizon should only be
+run if a separate diagnostic question justifies its cost. No ordinary solver
+objective, production horizon, or counselor-facing behavior was changed by
+these experiments.

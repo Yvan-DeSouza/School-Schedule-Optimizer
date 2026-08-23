@@ -3,11 +3,13 @@
 from collections import Counter, defaultdict
 
 from scheduling_engine.realistic_student_assignment_validation import (
+    build_production_shaped_medium_fixture,
     build_realistic_scale_fixture,
     build_realistic_scoped_rerun_fixture,
     build_realistic_quality_tradeoff_fixture,
     build_realistic_validation_fixture,
     summarize_realistic_fixture,
+    summarize_production_shaped_medium_fixture,
 )
 from scheduling_engine.student_assignment import solve_student_assignment
 
@@ -97,6 +99,51 @@ def test_realistic_scale_fixture_has_uneven_but_sufficient_course_capacity():
     assert {capacity_by_course[course_id] for course_id in range(1, 11)} == {336}
     assert {capacity_by_course[course_id] for course_id in range(11, 31)} == {216}
     assert {capacity_by_course[course_id] for course_id in range(31, 51)} == {141}
+
+
+def test_production_shaped_medium_fixture_preserves_mixed_search_structure():
+    data = build_production_shaped_medium_fixture(student_count=120)
+    summary = summarize_production_shaped_medium_fixture(data)
+
+    assert summary["student_count"] == 120
+    assert summary["section_count"] == 308
+    assert summary["online_request_count"] > 0
+    assert summary["co_op_request_count"] > 0
+    assert summary["half_semester_request_count"] > 0
+    assert summary["study_request_count"] > 0
+    assert summary["focus_request_count"] > 0
+    assert summary["online_supervision_session_count"] == 4
+    assert summary["special_lock_count"] > 0
+    assert {
+        request.delivery_kind for request in data.requests
+    } >= {"normal_instruction", "online", "co_op"}
+    assert {
+        request.commitment_type
+        for request in data.schedule_commitment_requests
+    } >= {"study", "focus"}
+
+
+def test_production_shaped_medium_fixture_is_hard_feasible_with_diagnostic_limits(monkeypatch):
+    """The mixed benchmark is valid before any quality curve is measured."""
+
+    import scheduling_engine.student_assignment.core as core
+
+    monkeypatch.setattr(core, "STUDENT_ASSIGNMENT_HARD_FEASIBILITY_TIME_LIMIT_SECONDS", 60.0)
+    monkeypatch.setattr(core, "STUDENT_ASSIGNMENT_HARD_FEASIBILITY_VALIDATION_TIME_LIMIT_SECONDS", 30.0)
+    monkeypatch.setattr(core, "STUDENT_ASSIGNMENT_HARD_FEASIBILITY_WORKER_COUNT", 8)
+    monkeypatch.setattr(core, "STUDENT_ASSIGNMENT_HARD_FEASIBILITY_VALIDATION_WORKER_COUNT", 8)
+    monkeypatch.setattr(core, "STUDENT_ASSIGNMENT_OPTIMIZATION_TIME_LIMIT_SECONDS", 15.0)
+    monkeypatch.setattr(core, "STUDENT_ASSIGNMENT_OPTIMIZATION_WORKER_COUNT", 8)
+
+    data = build_production_shaped_medium_fixture(student_count=80)
+    result = solve_student_assignment(data)
+
+    assert result.status == "complete"
+    assert result.solver_outcome in {"optimal", "feasible"}
+    assert not result.unmet_requests
+    assert result.optimization_facts["stage_1"]["complete_seed_produced"] is True
+    assert result.optimization_facts["stage_1"]["seed_validated_against_full_model"] is True
+    assert len(result.commitment_assignments) == 9
 
 
 def test_realistic_quality_fixture_respects_counselor_soft_priority_order():

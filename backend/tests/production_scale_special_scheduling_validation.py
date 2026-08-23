@@ -1263,6 +1263,65 @@ def run_production_scale_special_scheduling_validation(
                 flush=True,
             )
             return local_result
+        if os.environ.get("SCHEDULING_PRODUCTION_SCALE_RETENTION"):
+            retention_result = run_student_assignment_stage2_diagnostic(
+                student_input,
+                total_time_limit_seconds=float(
+                    os.environ.get(
+                        "SCHEDULING_PRODUCTION_SCALE_RETENTION_TOTAL_LIMIT",
+                        "1800",
+                    )
+                ),
+                retain_incumbent_on_non_improvement=True,
+                collect_incumbent_timeline=True,
+            )
+            print(
+                "[production-scale] retention Stage 2: "
+                f"status={retention_result.status} "
+                f"solver_outcome={retention_result.solver_outcome} "
+                f"assignments={len(retention_result.assignments)} "
+                f"unmet={len(retention_result.unmet_requests)} "
+                f"objective_components={retention_result.objective_components} "
+                f"stage_2={retention_result.optimization_facts.get('stage_2')} "
+                f"passes={retention_result.optimization_facts.get('optimization_passes')}",
+                flush=True,
+            )
+            return retention_result
+        if os.environ.get("SCHEDULING_PRODUCTION_SCALE_STAGE2_HORIZON"):
+            horizon_result = run_student_assignment_stage2_diagnostic(
+                student_input,
+                total_time_limit_seconds=float(
+                    os.environ["SCHEDULING_PRODUCTION_SCALE_STAGE2_HORIZON"]
+                ),
+                hard_feasibility_time_limit_seconds=float(
+                    os.environ.get(
+                        "SCHEDULING_PRODUCTION_SCALE_HORIZON_STAGE1_LIMIT",
+                        "300",
+                    )
+                ),
+                hard_feasibility_validation_time_limit_seconds=float(
+                    os.environ.get(
+                        "SCHEDULING_PRODUCTION_SCALE_HORIZON_STAGE1_VALIDATION_LIMIT",
+                        "60",
+                    )
+                ),
+                hard_feasibility_worker_count=8,
+                hard_feasibility_validation_worker_count=8,
+                optimization_worker_count=8,
+                collect_incumbent_timeline=True,
+            )
+            print(
+                "[production-scale] ordinary horizon Stage 2: "
+                f"status={horizon_result.status} "
+                f"solver_outcome={horizon_result.solver_outcome} "
+                f"assignments={len(horizon_result.assignments)} "
+                f"unmet={len(horizon_result.unmet_requests)} "
+                f"objective_components={horizon_result.objective_components} "
+                f"stage_2={horizon_result.optimization_facts.get('stage_2')} "
+                f"passes={horizon_result.optimization_facts.get('optimization_passes')}",
+                flush=True,
+            )
+            return horizon_result
         probe = run_substantive_soft_tier_probe(
             student_input,
             threshold=65172,
@@ -1473,6 +1532,22 @@ def test_production_scale_substantive_soft_tier_probe(counselor_user):
         assert len(result.assignments) == 10635
         assert result.optimization_facts["stage_2"]["time_limit_seconds"] == float(
             os.environ.get("SCHEDULING_PRODUCTION_SCALE_LOCAL_BOOTSTRAP_TOTAL_LIMIT", "1800")
+        )
+        return
+    if os.environ.get("SCHEDULING_PRODUCTION_SCALE_RETENTION"):
+        assert result.status == "complete"
+        assert len(result.unmet_requests) == 0
+        assert len(result.assignments) == 10635
+        assert result.optimization_facts["stage_2"]["time_limit_seconds"] == float(
+            os.environ.get("SCHEDULING_PRODUCTION_SCALE_RETENTION_TOTAL_LIMIT", "1800")
+        )
+        return
+    if os.environ.get("SCHEDULING_PRODUCTION_SCALE_STAGE2_HORIZON"):
+        assert result.status == "complete"
+        assert len(result.unmet_requests) == 0
+        assert len(result.assignments) == 10635
+        assert result.optimization_facts["stage_2"]["time_limit_seconds"] == float(
+            os.environ["SCHEDULING_PRODUCTION_SCALE_STAGE2_HORIZON"]
         )
         return
     if os.environ.get("SCHEDULING_PRODUCTION_SCALE_ADAPTIVE_BOOTSTRAP"):

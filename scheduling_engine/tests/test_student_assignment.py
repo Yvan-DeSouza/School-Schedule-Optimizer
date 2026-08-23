@@ -157,6 +157,19 @@ def test_substantive_probe_reports_infeasible_threshold_without_partial_seed():
     assert result.candidate_substantive_value is None
 
 
+def test_substantive_probe_can_derive_strict_threshold_from_seed():
+    result = run_substantive_soft_tier_probe(
+        _substantive_probe_input(),
+        threshold=None,
+        strict_improvement=True,
+        time_limit_seconds=5.0,
+        worker_count=1,
+    )
+
+    assert result.seed_validated is True
+    assert result.requested_threshold == result.baseline_substantive_value - 1
+
+
 def test_substantive_probe_zero_neighborhood_preserves_seed_source_decisions():
     result = run_substantive_soft_tier_probe(
         _substantive_probe_input(),
@@ -181,6 +194,7 @@ def test_substantive_probe_records_semantic_candidate_and_impact_facts():
     )
 
     assert result.seed_source_decisions
+    assert result.seed_source_variable_values
     assert result.candidate_source_decisions
     assert result.candidate_source_variable_values
     assert result.seed_summary["hard_valid"] is True
@@ -360,6 +374,11 @@ def test_result_records_validated_seed_and_optimization_quality_facts():
     assert facts["stage_2"]["configured_deadline_seconds"] == 1800.0
     assert facts["full_model_variable_count"] > 0
     assert facts["full_model_constraint_count"] > 0
+    assert facts["model_family_variable_counts"]
+    assert any(
+        item["kind"] == "soft_tier"
+        for item in facts["objective_metadata"]
+    )
     assert len(facts["input_semantic_fingerprint"]) == 64
 
 
@@ -373,6 +392,26 @@ def test_stage2_diagnostic_trace_records_seed_hint_and_objective_metadata():
     assert trace[0]["hint_source"] == "validated_seed"
     assert trace[0]["hinted_variable_count"] > 0
     assert all("objective_name" in item for item in trace)
+
+
+def test_stage2_diagnostic_records_bounded_incumbent_timeline():
+    result = student_assignment_module.run_student_assignment_stage2_diagnostic(
+        _substantive_probe_input(),
+        total_time_limit_seconds=5.0,
+        timeline_max_events=16,
+    )
+
+    timeline = result.optimization_facts["stage_2"]["incumbent_timeline"]
+    assert len(timeline) <= 16
+    assert timeline
+    assert all(
+        "objective_index" in item
+        and "elapsed_solver_seconds" in item
+        and "elapsed_stage_2_wall_seconds" in item
+        and "objective_vector" in item
+        and "best_bound" in item
+        for item in timeline
+    )
 
 
 def test_stage2_diagnostic_can_replay_a_validated_alternate_incumbent():

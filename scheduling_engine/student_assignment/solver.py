@@ -236,6 +236,60 @@ def _candidate_is_lexicographically_better(candidate, incumbent, objectives):
     )
 
 
+class _IncumbentTimelineCallback(cp_model.CpSolverSolutionCallback):
+    """Bounded diagnostic trace of meaningful CP-SAT incumbents.
+
+    This callback is opt-in.  The ordinary student-assignment path does not
+    install it, so recording a timeline cannot affect production search.  A
+    diagnostic caller may additionally provide a candidate callback when it
+    needs source-decision deltas; that richer extraction is deliberately
+    bounded because it is more expensive than reading objective values.
+    """
+
+    def __init__(
+        self,
+        *,
+        objective_index,
+        objectives,
+        sink,
+        max_events,
+        candidate_callback=None,
+        stage_started_at=None,
+    ):
+        super().__init__()
+        self.objective_index = objective_index
+        self.objectives = objectives
+        self.sink = sink
+        self.max_events = max(1, int(max_events))
+        self.candidate_callback = candidate_callback
+        self.stage_started_at = stage_started_at
+        self._last_vector = None
+
+    def on_solution_callback(self):
+        if len(self.sink) >= self.max_events:
+            return
+        vector = _objective_values(self, self.objectives)
+        if self._last_vector is not None and vector >= self._last_vector:
+            return
+        self._last_vector = vector
+        event = {
+            "objective_index": self.objective_index,
+            "elapsed_solver_seconds": float(self.WallTime()),
+            "elapsed_stage_2_wall_seconds": (
+                float(monotonic() - self.stage_started_at)
+                if self.stage_started_at is not None else None
+            ),
+            "objective_vector": vector,
+            "best_bound": float(self.BestObjectiveBound()),
+        }
+        if self.candidate_callback is not None:
+            try:
+                event["candidate"] = self.candidate_callback(self)
+            except Exception as error:  # pragma: no cover - defensive diagnostics
+                event["candidate_error"] = type(error).__name__
+        self.sink.append(event)
+
+
 def solve_lexicographically(
     model,
     objectives,
@@ -251,6 +305,9 @@ def solve_lexicographically(
     pass_candidate_callback=None,
     retain_incumbent_on_non_improvement=False,
     deadline=None,
+    incumbent_timeline=None,
+    timeline_candidate_callback=None,
+    timeline_max_events=128,
 ):
     """Optimize ordered objectives while preserving the last valid candidate.
 
@@ -343,7 +400,21 @@ def solve_lexicographically(
         )
         solver = new_solver(pass_time_limit_seconds, worker_count=worker_count)
         trace_started = monotonic()
-        status = solver.Solve(model)
+        timeline_callback = None
+        if incumbent_timeline is not None:
+            timeline_callback = _IncumbentTimelineCallback(
+                objective_index=objective_index,
+                objectives=objectives,
+                sink=incumbent_timeline,
+                max_events=timeline_max_events,
+                candidate_callback=timeline_candidate_callback,
+                stage_started_at=trace_started,
+            )
+        status = (
+            solver.Solve(model, timeline_callback)
+            if timeline_callback is not None
+            else solver.Solve(model)
+        )
         external_solve_wall_time = monotonic() - trace_started
         solver_has_solution = status in {cp_model.OPTIMAL, cp_model.FEASIBLE}
         raw_solver_candidate = solver if solver_has_solution else None

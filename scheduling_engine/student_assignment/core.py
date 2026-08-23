@@ -113,6 +113,7 @@ from .quality import (
 )
 from .substantive_probe import (
     SubstantiveSoftTierProbeContext,
+    _model_family_variable_counts,
     probe_substantive_soft_tier,
 )
 from .runtime import MonotonicDeadline, semantic_student_assignment_input_fingerprint
@@ -273,6 +274,9 @@ def _optimization_facts(
     input_semantic_fingerprint=None,
     full_model_variable_count=None,
     full_model_constraint_count=None,
+    optimization_worker_count=None,
+    model_family_variable_counts=None,
+    objective_metadata_summary=(),
 ):
     """Expose stage handoff and quality facts without changing solver logic."""
 
@@ -284,6 +288,8 @@ def _optimization_facts(
         "input_semantic_fingerprint": input_semantic_fingerprint,
         "full_model_variable_count": full_model_variable_count,
         "full_model_constraint_count": full_model_constraint_count,
+        "model_family_variable_counts": dict(model_family_variable_counts or {}),
+        "objective_metadata": list(objective_metadata_summary),
         "stage_1": {
             "solver_outcome": _outcome_name(hard_feasibility_outcome),
             "required_decision_group_count": required_group_count,
@@ -294,7 +300,11 @@ def _optimization_facts(
         },
         "stage_2": {
             "solver_outcome": _outcome_name(final_outcome),
-            "worker_count": STUDENT_ASSIGNMENT_OPTIMIZATION_WORKER_COUNT,
+            "worker_count": (
+                optimization_worker_count
+                if optimization_worker_count is not None
+                else STUDENT_ASSIGNMENT_OPTIMIZATION_WORKER_COUNT
+            ),
             "time_limit_seconds": optimization_time_limit_seconds,
             "validated_seed_received": validated_seed_solver is not None,
             "alternate_validated_seed_received": (
@@ -754,6 +764,11 @@ def run_substantive_soft_tier_probe(
     minimize_component=None,
     alternate_source_decisions=(),
     alternate_source_variable_values=None,
+    strict_improvement=False,
+    hard_feasibility_time_limit_seconds=None,
+    hard_feasibility_validation_time_limit_seconds=None,
+    hard_feasibility_worker_count=None,
+    hard_feasibility_validation_worker_count=None,
 ):
     """Run a diagnostic-only satisfiability probe against the full model.
 
@@ -775,9 +790,16 @@ def run_substantive_soft_tier_probe(
             "neighborhood_radius": neighborhood_radius,
             "component_bounds": component_bounds,
             "minimize_component": minimize_component,
+            "strict_improvement": strict_improvement,
         },
         alternate_source_decisions=alternate_source_decisions,
         alternate_source_variable_values=alternate_source_variable_values,
+        hard_feasibility_time_limit_seconds=hard_feasibility_time_limit_seconds,
+        hard_feasibility_validation_time_limit_seconds=(
+            hard_feasibility_validation_time_limit_seconds
+        ),
+        hard_feasibility_worker_count=hard_feasibility_worker_count,
+        hard_feasibility_validation_worker_count=hard_feasibility_validation_worker_count,
     )
 
 
@@ -787,6 +809,14 @@ def run_student_assignment_stage2_diagnostic(
     alternate_source_decisions=(),
     alternate_source_variable_values=None,
     total_time_limit_seconds=None,
+    collect_incumbent_timeline=True,
+    timeline_max_events=128,
+    hard_feasibility_time_limit_seconds=None,
+    hard_feasibility_validation_time_limit_seconds=None,
+    hard_feasibility_worker_count=None,
+    hard_feasibility_validation_worker_count=None,
+    optimization_worker_count=None,
+    retain_incumbent_on_non_improvement=True,
 ):
     """Run unchanged Stage 2 with optional diagnostic alternate incumbent."""
 
@@ -799,7 +829,16 @@ def run_student_assignment_stage2_diagnostic(
         alternate_source_decisions=alternate_source_decisions,
         alternate_source_variable_values=alternate_source_variable_values,
         stage_2_total_time_limit_seconds=total_time_limit_seconds,
-        retain_incumbent_on_non_improvement=True,
+        retain_incumbent_on_non_improvement=retain_incumbent_on_non_improvement,
+        collect_incumbent_timeline=collect_incumbent_timeline,
+        timeline_max_events=timeline_max_events,
+        hard_feasibility_time_limit_seconds=hard_feasibility_time_limit_seconds,
+        hard_feasibility_validation_time_limit_seconds=(
+            hard_feasibility_validation_time_limit_seconds
+        ),
+        hard_feasibility_worker_count=hard_feasibility_worker_count,
+        hard_feasibility_validation_worker_count=hard_feasibility_validation_worker_count,
+        optimization_worker_count=optimization_worker_count,
     )
 
 
@@ -810,6 +849,12 @@ def run_student_assignment_local_bootstrap_diagnostic(
     time_limit_seconds=240.0,
     total_time_limit_seconds=1800.0,
     worker_count=8,
+    hard_feasibility_time_limit_seconds=None,
+    hard_feasibility_validation_time_limit_seconds=None,
+    hard_feasibility_worker_count=None,
+    hard_feasibility_validation_worker_count=None,
+    collect_incumbent_timeline=True,
+    timeline_max_events=128,
 ):
     """Run a bounded local-quality bootstrap before diagnostic Stage 2.
 
@@ -837,6 +882,14 @@ def run_student_assignment_local_bootstrap_diagnostic(
         },
         stage_2_total_time_limit_seconds=total_time_limit_seconds,
         retain_incumbent_on_non_improvement=True,
+        hard_feasibility_time_limit_seconds=hard_feasibility_time_limit_seconds,
+        hard_feasibility_validation_time_limit_seconds=(
+            hard_feasibility_validation_time_limit_seconds
+        ),
+        hard_feasibility_worker_count=hard_feasibility_worker_count,
+        hard_feasibility_validation_worker_count=hard_feasibility_validation_worker_count,
+        collect_incumbent_timeline=collect_incumbent_timeline,
+        timeline_max_events=timeline_max_events,
     )
 
 
@@ -848,6 +901,12 @@ def run_student_assignment_adaptive_local_bootstrap_diagnostic(
     per_probe_time_limit_seconds=90.0,
     total_time_limit_seconds=1800.0,
     worker_count=8,
+    hard_feasibility_time_limit_seconds=None,
+    hard_feasibility_validation_time_limit_seconds=None,
+    hard_feasibility_worker_count=None,
+    hard_feasibility_validation_worker_count=None,
+    collect_incumbent_timeline=True,
+    timeline_max_events=128,
 ):
     """Run diagnostic strict-improvement neighborhoods with shared budgeting.
 
@@ -874,6 +933,14 @@ def run_student_assignment_adaptive_local_bootstrap_diagnostic(
         },
         stage_2_total_time_limit_seconds=total_time_limit_seconds,
         retain_incumbent_on_non_improvement=True,
+        hard_feasibility_time_limit_seconds=hard_feasibility_time_limit_seconds,
+        hard_feasibility_validation_time_limit_seconds=(
+            hard_feasibility_validation_time_limit_seconds
+        ),
+        hard_feasibility_worker_count=hard_feasibility_worker_count,
+        hard_feasibility_validation_worker_count=hard_feasibility_validation_worker_count,
+        collect_incumbent_timeline=collect_incumbent_timeline,
+        timeline_max_events=timeline_max_events,
     )
 
 
@@ -890,6 +957,13 @@ def _solve_student_assignment(
     stage_2_total_time_limit_seconds=None,
     retain_incumbent_on_non_improvement=False,
     stage_2_local_bootstrap=None,
+    collect_incumbent_timeline=False,
+    timeline_max_events=128,
+    hard_feasibility_time_limit_seconds=None,
+    hard_feasibility_validation_time_limit_seconds=None,
+    hard_feasibility_worker_count=None,
+    hard_feasibility_validation_worker_count=None,
+    optimization_worker_count=None,
 ):
     if data.scope.scope_type == "scoped":
         # Keep the complete request list in the detached run snapshot, but do
@@ -2370,7 +2444,11 @@ def _solve_student_assignment(
     stage_1_seed_time_limit = (
         max(
             data.time_limit_seconds,
-            STUDENT_ASSIGNMENT_HARD_FEASIBILITY_TIME_LIMIT_SECONDS,
+            (
+                hard_feasibility_time_limit_seconds
+                if hard_feasibility_time_limit_seconds is not None
+                else STUDENT_ASSIGNMENT_HARD_FEASIBILITY_TIME_LIMIT_SECONDS
+            ),
         )
         if use_hard_feasibility_bootstrap
         else data.time_limit_seconds
@@ -2378,7 +2456,11 @@ def _solve_student_assignment(
     stage_1_validation_time_limit = (
         max(
             data.time_limit_seconds,
-            STUDENT_ASSIGNMENT_HARD_FEASIBILITY_VALIDATION_TIME_LIMIT_SECONDS,
+            (
+                hard_feasibility_validation_time_limit_seconds
+                if hard_feasibility_validation_time_limit_seconds is not None
+                else STUDENT_ASSIGNMENT_HARD_FEASIBILITY_VALIDATION_TIME_LIMIT_SECONDS
+            ),
         )
         if use_hard_feasibility_bootstrap
         else data.time_limit_seconds
@@ -2393,7 +2475,11 @@ def _solve_student_assignment(
         hard_feasibility_model,
         complete_required_decision_groups,
         stage_1_seed_time_limit,
-        worker_count=STUDENT_ASSIGNMENT_HARD_FEASIBILITY_WORKER_COUNT,
+        worker_count=(
+            hard_feasibility_worker_count
+            if hard_feasibility_worker_count is not None
+            else STUDENT_ASSIGNMENT_HARD_FEASIBILITY_WORKER_COUNT
+        ),
     )
     stage_1_seed_elapsed = monotonic() - stage_1_seed_started
     stage_1_validation_started = monotonic()
@@ -2403,12 +2489,21 @@ def _solve_student_assignment(
         hard_feasibility_seed_solver,
         hard_feasibility_source_variable_indexes,
         stage_1_validation_time_limit,
-        worker_count=STUDENT_ASSIGNMENT_HARD_FEASIBILITY_VALIDATION_WORKER_COUNT,
+        worker_count=(
+            hard_feasibility_validation_worker_count
+            if hard_feasibility_validation_worker_count is not None
+            else STUDENT_ASSIGNMENT_HARD_FEASIBILITY_VALIDATION_WORKER_COUNT
+        ),
     )
     stage_1_validation_elapsed = monotonic() - stage_1_validation_started
     stage_1_timings = {
         "model_construction_wall_time_seconds": monotonic() - model_build_started,
         "seed_requested_time_limit_seconds": float(stage_1_seed_time_limit),
+        "seed_worker_count": int(
+            hard_feasibility_worker_count
+            if hard_feasibility_worker_count is not None
+            else STUDENT_ASSIGNMENT_HARD_FEASIBILITY_WORKER_COUNT
+        ),
         "seed_external_wall_time_seconds": stage_1_seed_elapsed,
         "seed_solver_wall_time_seconds": float(
             hard_feasibility_seed_solver.WallTime()
@@ -2417,6 +2512,11 @@ def _solve_student_assignment(
             else 0.0
         ),
         "validation_requested_time_limit_seconds": float(stage_1_validation_time_limit),
+        "validation_worker_count": int(
+            hard_feasibility_validation_worker_count
+            if hard_feasibility_validation_worker_count is not None
+            else STUDENT_ASSIGNMENT_HARD_FEASIBILITY_VALIDATION_WORKER_COUNT
+        ),
         "validation_external_wall_time_seconds": stage_1_validation_elapsed,
         "validation_solver_wall_time_seconds": float(
             validated_seed_solver.WallTime()
@@ -2497,7 +2597,11 @@ def _solve_student_assignment(
         if alternate_values is not None:
             alternate_validation_time_limit = max(
                 data.time_limit_seconds,
-                STUDENT_ASSIGNMENT_HARD_FEASIBILITY_VALIDATION_TIME_LIMIT_SECONDS,
+                (
+                    hard_feasibility_validation_time_limit_seconds
+                    if hard_feasibility_validation_time_limit_seconds is not None
+                    else STUDENT_ASSIGNMENT_HARD_FEASIBILITY_VALIDATION_TIME_LIMIT_SECONDS
+                ),
             )
             if stage_2_total_time_limit_seconds is not None:
                 alternate_validation_time_limit = min(
@@ -2509,7 +2613,11 @@ def _solve_student_assignment(
                 complete_required_decision_groups,
                 alternate_values,
                 alternate_validation_time_limit,
-                worker_count=STUDENT_ASSIGNMENT_HARD_FEASIBILITY_VALIDATION_WORKER_COUNT,
+                worker_count=(
+                    hard_feasibility_validation_worker_count
+                    if hard_feasibility_validation_worker_count is not None
+                    else STUDENT_ASSIGNMENT_HARD_FEASIBILITY_VALIDATION_WORKER_COUNT
+                ),
             )
             alternate_seed_validated = stage_2_seed_solver is not None
             if not alternate_seed_validated:
@@ -2562,6 +2670,7 @@ def _solve_student_assignment(
     )
     optimization_passes = []
     optimization_trace = []
+    incumbent_timeline = []
 
     def _quality_for_solver(candidate_solver):
         """Return bounded quality facts for one completed optimization pass."""
@@ -2698,6 +2807,7 @@ def _solve_student_assignment(
             source_decision_fingerprint=_source_decision_fingerprint,
             source_decision_summary=_source_decision_summary,
             source_decision_variable_values=_source_decision_variable_values,
+            seed_source_decision_variable_values=_source_decision_variable_values,
             seed_objective_vector=_objective_values(
                 seed_solver, objectives
             ) if seed_solver is not None else (),
@@ -2774,7 +2884,11 @@ def _solve_student_assignment(
                     complete_required_decision_groups,
                     local_result.candidate_source_variable_values,
                     max(0.001, validation_deadline.remaining()),
-                    worker_count=STUDENT_ASSIGNMENT_HARD_FEASIBILITY_VALIDATION_WORKER_COUNT,
+                    worker_count=(
+                        hard_feasibility_validation_worker_count
+                        if hard_feasibility_validation_worker_count is not None
+                        else STUDENT_ASSIGNMENT_HARD_FEASIBILITY_VALIDATION_WORKER_COUNT
+                    ),
                 )
                 return validator, monotonic() - started
 
@@ -2940,6 +3054,23 @@ def _solve_student_assignment(
     def _stage2_candidate_trace(candidate_solver):
         source_decisions = _source_decision_fingerprint(candidate_solver)
         source_map = dict(source_decisions)
+        changed_source_keys = {
+            key
+            for key in set(reference_source_decisions) | set(source_map)
+            if reference_source_decisions.get(key) != source_map.get(key)
+        }
+        affected_student_ids = set()
+        affected_section_ids = set()
+        for key in changed_source_keys:
+            for value in (
+                reference_source_decisions.get(key),
+                source_map.get(key),
+            ):
+                if not value or not isinstance(value, tuple):
+                    continue
+                affected_student_ids.add(value[0])
+                if key[0] == "course" and value[1] is not None:
+                    affected_section_ids.add(value[1])
         assignments, commitments, assigned_request_ids, _selected, _sources = (
             _extract_solver_candidate(
                 solver=candidate_solver,
@@ -2958,10 +3089,9 @@ def _solve_student_assignment(
                 repr(source_decisions).encode()
             ).hexdigest(),
             "source_decision_count": len(source_decisions),
-            "changed_source_decision_count": sum(
-                reference_source_decisions.get(key) != source_map.get(key)
-                for key in set(reference_source_decisions) | set(source_map)
-            ),
+            "changed_source_decision_count": len(changed_source_keys),
+            "affected_student_ids": tuple(sorted(affected_student_ids)),
+            "affected_section_ids": tuple(sorted(affected_section_ids)),
             "assigned_request_count": len(assigned_request_ids),
             "assignment_count": len(assignments),
             "special_commitment_count": len(commitments),
@@ -2985,7 +3115,11 @@ def _solve_student_assignment(
         data.time_limit_seconds,
         initial_assignment_hints=initial_assignment_hints,
         validated_seed_solver=stage_2_seed_solver,
-        worker_count=STUDENT_ASSIGNMENT_OPTIMIZATION_WORKER_COUNT,
+        worker_count=(
+            optimization_worker_count
+            if optimization_worker_count is not None
+            else STUDENT_ASSIGNMENT_OPTIMIZATION_WORKER_COUNT
+        ),
         total_time_limit_seconds=(
             max(
                 0.001,
@@ -3005,6 +3139,13 @@ def _solve_student_assignment(
             _stage2_candidate_trace if collect_stage2_trace else None
         ),
         retain_incumbent_on_non_improvement=retain_incumbent_on_non_improvement,
+        incumbent_timeline=(
+            incumbent_timeline if collect_incumbent_timeline else None
+        ),
+        timeline_candidate_callback=(
+            _stage2_candidate_trace if collect_incumbent_timeline else None
+        ),
+        timeline_max_events=timeline_max_events,
     )
     optimization_facts = _optimization_facts(
         hard_feasibility_outcome=_hard_feasibility_outcome,
@@ -3022,7 +3163,33 @@ def _solve_student_assignment(
         input_semantic_fingerprint=input_semantic_fingerprint,
         full_model_variable_count=len(model.Proto().variables),
         full_model_constraint_count=len(model.Proto().constraints),
+        optimization_worker_count=(
+            optimization_worker_count
+            if optimization_worker_count is not None
+            else STUDENT_ASSIGNMENT_OPTIMIZATION_WORKER_COUNT
+        ),
+        model_family_variable_counts=_model_family_variable_counts(model),
+        objective_metadata_summary=tuple(
+            {
+                "index": index,
+                "kind": metadata.get("kind"),
+                "name": metadata.get("name"),
+                "importance_level": metadata.get("importance_level"),
+                "term_count": len(metadata.get("term_specs", ())),
+                "component_term_counts": {
+                    name: len(term_specs)
+                    for name, term_specs in metadata.get(
+                        "component_specs", {}
+                    ).items()
+                },
+            }
+            for index, metadata in enumerate(objective_metadata)
+        ),
     )
+    if collect_incumbent_timeline:
+        optimization_facts["stage_2"]["incumbent_timeline"] = tuple(
+            incumbent_timeline
+        )
     optimization_facts["stage_2"]["alternate_seed_validated"] = alternate_seed_validated
     substantive_pass_wall_time = 0.0
     tie_break_pass_wall_time = 0.0

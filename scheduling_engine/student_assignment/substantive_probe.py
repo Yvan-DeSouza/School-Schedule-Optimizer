@@ -33,6 +33,7 @@ class SubstantiveSoftTierProbeContext:
     source_decision_fingerprint: object
     source_decision_summary: object
     source_decision_variable_values: object
+    seed_source_decision_variable_values: object
 
 
 @dataclass(frozen=True)
@@ -74,6 +75,7 @@ class SubstantiveSoftTierProbeResult:
     affected_section_ids: tuple
     section_load_deltas: dict
     candidate_source_variable_values: dict
+    seed_source_variable_values: dict
     requested_time_limit_seconds: float | None = None
     timings: dict = field(default_factory=dict)
 
@@ -150,6 +152,7 @@ def probe_substantive_soft_tier(
     neighborhood_radius: int | None = None,
     component_bounds=None,
     minimize_component: str | None = None,
+    strict_improvement: bool = False,
 ) -> SubstantiveSoftTierProbeResult:
     """Ask whether the unchanged full model can beat one soft tier.
 
@@ -159,6 +162,10 @@ def probe_substantive_soft_tier(
     bounded, but not minimized: this is a satisfiability question, so CP-SAT
     remains free to change any source decision while preserving every hard
     rule and higher-priority fulfillment result.
+    ``strict_improvement=True`` means a strict-improvement query against the
+    validated seed's existing substantive value.  This keeps diagnostic
+    callers from depending on an objective-vector index while preserving the
+    existing ``threshold=None`` meaning of an unconstrained component probe.
     """
 
     operation_started = monotonic()
@@ -203,6 +210,7 @@ def probe_substantive_soft_tier(
             affected_section_ids=(),
             section_load_deltas={},
             candidate_source_variable_values={},
+            seed_source_variable_values={},
             requested_time_limit_seconds=float(time_limit_seconds),
             timings={
                 **timing.snapshot(),
@@ -231,8 +239,16 @@ def probe_substantive_soft_tier(
         )
         for variable_index, coefficient in target_metadata["term_specs"]
     )
+    effective_threshold = (
+        int(seed_objective_value) - 1
+        if strict_improvement and threshold is None
+        else (int(threshold) if threshold is not None else None)
+    )
     seed_assignment_count = int(context.candidate_counts(seed_solver))
     seed_source_decisions = dict(context.source_decision_fingerprint(seed_solver))
+    seed_source_variable_values = dict(
+        context.seed_source_decision_variable_values(seed_solver)
+    )
     seed_summary = dict(context.source_decision_summary(seed_solver))
 
     with timing.measure("model_clone_seconds"):
@@ -285,8 +301,8 @@ def probe_substantive_soft_tier(
             probe_model.Add(expression == seed_value)
 
         target_expression = _expression(probe_model, target_metadata["term_specs"])
-        if threshold is not None:
-            probe_model.Add(target_expression <= int(threshold))
+        if effective_threshold is not None:
+            probe_model.Add(target_expression <= effective_threshold)
         component_bounds = component_bounds or {}
         component_expressions = {}
         for component_name, bound in component_bounds.items():
@@ -409,7 +425,10 @@ def probe_substantive_soft_tier(
         seed_solver_outcome=seed_outcome,
         seed_validated=True,
         baseline_substantive_value=float(seed_objective_value),
-        requested_threshold=(float(threshold) if threshold is not None else None),
+        requested_threshold=(
+            float(effective_threshold)
+            if effective_threshold is not None else None
+        ),
         elapsed_seconds=elapsed,
         solver_wall_time_seconds=float(
             solver.WallTime() if hasattr(solver, "WallTime") else elapsed
@@ -445,6 +464,7 @@ def probe_substantive_soft_tier(
         affected_section_ids=tuple(sorted(affected_sections)),
         section_load_deltas=dict(sorted(section_load_deltas.items())),
         candidate_source_variable_values=candidate_source_variable_values,
+        seed_source_variable_values=seed_source_variable_values,
         requested_time_limit_seconds=float(time_limit_seconds),
         timings={
             **timing.snapshot(),

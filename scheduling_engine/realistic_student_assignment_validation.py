@@ -9,17 +9,24 @@ demand.
 from __future__ import annotations
 
 from collections import Counter
+from statistics import mean, median
 from time import perf_counter
 
 from .dto import (
+    CourseCategoryRelationshipDTO,
     CourseDifficultyDTO,
     CoursePrerequisiteDTO,
+    CourseSequencePreferenceDTO,
     FixedEnrollmentDTO,
+    OnlineSupervisionSessionDTO,
     StudentAssignmentInputDTO,
     StudentAssignmentLockDTO,
     StudentAssignmentRequestDTO,
     StudentAssignmentScopeDTO,
     StudentAssignmentSectionDTO,
+    StudentScheduleCommitmentRequestDTO,
+    StudentSpecialCommitmentLockDTO,
+    TimeSlotDTO,
 )
 from .student_assignment import solve_student_assignment
 
@@ -42,7 +49,9 @@ def _section(
 def _request(
     request_id, student_id, course_id, *, is_mandatory=False,
     is_primary=True, priority_tier=4, assignment_basis="primary_request",
-    current_enrollment_id=None, is_in_scope=True,
+    current_enrollment_id=None, is_in_scope=True, delivery_kind="normal_instruction",
+    duration="full_semester", credit_value=1.0, half_semester_segment=None,
+    paired_half_course_id=None,
 ):
     return StudentAssignmentRequestDTO(
         request_id=request_id,
@@ -55,6 +64,11 @@ def _request(
         assignment_basis=assignment_basis,
         current_enrollment_id=current_enrollment_id,
         is_in_scope=is_in_scope,
+        delivery_kind=delivery_kind,
+        duration=duration,
+        credit_value=credit_value,
+        half_semester_segment=half_semester_segment,
+        paired_half_course_id=paired_half_course_id,
     )
 
 
@@ -235,6 +249,364 @@ def build_realistic_scale_fixture(*, student_count=1400) -> StudentAssignmentInp
         course_sequence_preferences_importance="not_important",
         time_limit_seconds=30.0,
     )
+
+
+def build_production_shaped_medium_fixture(*, student_count=240) -> StudentAssignmentInputDTO:
+    """Build a practical mixed fixture shaped from the school-scale input.
+
+    This is intentionally a DTO-level diagnostic fixture rather than a second
+    scheduling engine.  Its normal sections and request distribution start
+    from ``build_realistic_scale_fixture``; a small deterministic cohort is
+    then given the special commitment patterns that matter at production
+    scale.  The special cohort uses fewer ordinary requests so Focus and
+    Co-op remain legitimate commitments instead of creating an intentionally
+    contradictory fixture.
+
+    The fixture is used for comparative Stage 2 experiments only.  It does
+    not change the production-scale Django fixture or ordinary scheduling
+    defaults.
+    """
+
+    if student_count < 80:
+        raise ValueError("The production-shaped medium fixture needs at least 80 students.")
+
+    base = build_realistic_scale_fixture(student_count=student_count)
+    requests_by_student = {}
+    for request in base.requests:
+        requests_by_student.setdefault(request.student_id, []).append(request)
+
+    requests = []
+    commitment_requests = []
+    special_locks = []
+    next_request_id = 1
+    next_commitment_id = 100000
+
+    def add_commitment(student_id, commitment_type, *, exact_semester=None,
+                       excluded_timeslot=None, co_op_pair=None):
+        nonlocal next_commitment_id
+        commitment_id = next_commitment_id
+        next_commitment_id += 1
+        commitment_requests.append(
+            StudentScheduleCommitmentRequestDTO(
+                request_id=commitment_id,
+                student_id=student_id,
+                commitment_type=commitment_type,
+            )
+        )
+        if exact_semester is not None:
+            special_locks.append(StudentSpecialCommitmentLockDTO(
+                lock_id=200000 + commitment_id,
+                lock_type=("focus_semester" if commitment_type == "focus" else "study_time"),
+                lock_mode="exact",
+                schedule_commitment_request_id=commitment_id,
+                semester=exact_semester,
+            ))
+        if excluded_timeslot is not None:
+            special_locks.append(StudentSpecialCommitmentLockDTO(
+                lock_id=200000 + commitment_id,
+                lock_type="study_time",
+                lock_mode="exclude",
+                schedule_commitment_request_id=commitment_id,
+                timeslot_id=excluded_timeslot,
+            ))
+        if co_op_pair is not None:
+            special_locks.append(StudentSpecialCommitmentLockDTO(
+                lock_id=200000 + commitment_id,
+                lock_type="co_op_time",
+                lock_mode="exact",
+                course_request_id=commitment_id,
+                co_op_block_pair=co_op_pair,
+            ))
+        return commitment_id
+
+    def add_course(student_id, course_id, *, mandatory=True, delivery_kind="normal_instruction",
+                   duration="full_semester", credit_value=1.0,
+                   half_semester_segment=None, paired_half_course_id=None):
+        nonlocal next_request_id
+        requests.append(_request(
+            next_request_id,
+            student_id,
+            course_id,
+            is_mandatory=mandatory,
+            priority_tier=1 if mandatory else 4,
+            delivery_kind=delivery_kind,
+            duration=duration,
+            credit_value=credit_value,
+            half_semester_segment=half_semester_segment,
+            paired_half_course_id=paired_half_course_id,
+        ))
+        next_request_id += 1
+        return next_request_id - 1
+
+    for student_id in range(1, student_count + 1):
+        base_rows = requests_by_student[student_id]
+        profile = student_id % 100
+        # Most students preserve the full uneven seven-request pattern from
+        # the existing realistic scale fixture.  The special cohorts retain
+        # enough ordinary demand to create real collisions without making a
+        # mandatory Focus or Co-op decision contradictory by construction.
+        if profile in {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}:
+            ordinary_rows = base_rows[:2]
+        else:
+            ordinary_rows = base_rows
+        for row in ordinary_rows:
+            add_course(
+                student_id,
+                row.course_id,
+                mandatory=row.is_mandatory,
+            )
+
+        if profile == 0:
+            add_commitment(student_id, "focus", exact_semester=2)
+        elif profile == 1:
+            course_request_id = add_course(
+                student_id, 56, delivery_kind="co_op", credit_value=2.0,
+            )
+            # The lock targets the Co-op course request, not the separate
+            # schedule-commitment request namespace.
+            special_locks.append(StudentSpecialCommitmentLockDTO(
+                lock_id=300000 + student_id,
+                lock_type="co_op_time",
+                lock_mode="exact",
+                course_request_id=course_request_id,
+                semester=2,
+                co_op_block_pair="c_d",
+            ))
+        elif profile == 2:
+            add_commitment(student_id, "study", excluded_timeslot=1)
+        elif profile == 3:
+            add_course(student_id, 53, delivery_kind="online")
+            add_course(student_id, 54, delivery_kind="online")
+        elif profile == 4:
+            add_course(
+                student_id, 51, duration="half_semester",
+                half_semester_segment="first_half", paired_half_course_id=52,
+            )
+            add_course(
+                student_id, 52, duration="half_semester",
+                half_semester_segment="second_half", paired_half_course_id=51,
+            )
+        elif profile == 5:
+            add_course(
+                student_id, 51, duration="half_semester",
+                half_semester_segment="first_half", paired_half_course_id=52,
+            )
+        elif profile == 6:
+            course_request_id = add_course(
+                student_id, 56, delivery_kind="co_op", credit_value=2.0,
+            )
+            add_course(student_id, 53, delivery_kind="online")
+            special_locks.append(StudentSpecialCommitmentLockDTO(
+                lock_id=300000 + student_id,
+                lock_type="co_op_time",
+                lock_mode="exclude",
+                course_request_id=course_request_id,
+                semester=1,
+                co_op_block_pair="a_b",
+            ))
+        elif profile == 7:
+            add_commitment(student_id, "study")
+            add_course(student_id, 53, delivery_kind="online")
+        elif profile == 8:
+            add_commitment(student_id, "focus", exact_semester=2)
+            add_course(student_id, 53, delivery_kind="online")
+        elif profile == 9:
+            add_course(
+                student_id, 55, delivery_kind="online",
+                duration="half_semester", half_semester_segment="first_half",
+            )
+        elif profile == 10:
+            add_commitment(student_id, "study")
+            add_commitment(student_id, "study")
+        elif profile == 11:
+            add_commitment(student_id, "study")
+            add_course(student_id, 56, delivery_kind="co_op", credit_value=2.0)
+        elif profile == 12:
+            add_course(student_id, 53, delivery_kind="online")
+
+    sections = list(base.sections)
+    sections.extend((
+        StudentAssignmentSectionDTO(
+            section_id=301,
+            delivery_group_id=51,
+            member_course_offering_ids=(1051,),
+            member_course_ids=(51,),
+            semester=1,
+            timeslot_id=1,
+            capacity_max=max(80, student_count // 3),
+            target_capacity=max(70, student_count // 4),
+            half_semester_segment="first_half",
+            half_semester_pair_key="medium-half-s1",
+        ),
+        StudentAssignmentSectionDTO(
+            section_id=302,
+            delivery_group_id=52,
+            member_course_offering_ids=(1052,),
+            member_course_ids=(52,),
+            semester=1,
+            timeslot_id=1,
+            capacity_max=max(80, student_count // 3),
+            target_capacity=max(70, student_count // 4),
+            half_semester_segment="second_half",
+            half_semester_pair_key="medium-half-s1",
+        ),
+        StudentAssignmentSectionDTO(
+            section_id=303,
+            delivery_group_id=51,
+            member_course_offering_ids=(1051,),
+            member_course_ids=(51,),
+            semester=2,
+            timeslot_id=5,
+            capacity_max=max(80, student_count // 3),
+            target_capacity=max(70, student_count // 4),
+            half_semester_segment="first_half",
+            half_semester_pair_key="medium-half-s2",
+        ),
+        StudentAssignmentSectionDTO(
+            section_id=304,
+            delivery_group_id=52,
+            member_course_offering_ids=(1052,),
+            member_course_ids=(52,),
+            semester=2,
+            timeslot_id=5,
+            capacity_max=max(80, student_count // 3),
+            target_capacity=max(70, student_count // 4),
+            half_semester_segment="second_half",
+            half_semester_pair_key="medium-half-s2",
+        ),
+    ))
+
+    online_sessions = []
+    for index, (session_id, semester, timeslot_id) in enumerate(
+        ((1, 1, 2), (2, 1, 3), (3, 2, 6), (4, 2, 7)),
+        start=1,
+    ):
+        online_sessions.append(OnlineSupervisionSessionDTO(
+            session_id=session_id,
+            semester=semester,
+            timeslot_id=timeslot_id,
+            capacity_max=max(60, student_count // 3),
+            target_capacity=max(50, student_count // 4),
+        ))
+        sections.append(StudentAssignmentSectionDTO(
+            section_id=-session_id,
+            delivery_group_id=-session_id,
+            member_course_offering_ids=(1053, 1054, 1055),
+            member_course_ids=(53, 54, 55),
+            semester=semester,
+            timeslot_id=timeslot_id,
+            capacity_max=max(60, student_count // 3),
+            target_capacity=max(50, student_count // 4),
+        ))
+
+    timeslots = tuple(
+        TimeSlotDTO(
+            id=slot_id,
+            academic_year_id=1,
+            semester=1 if slot_id <= 4 else 2,
+            block=("A", "B", "C", "D")[(slot_id - 1) % 4],
+        )
+        for slot_id in range(1, 9)
+    )
+    difficulties = tuple(
+        CourseDifficultyDTO(
+            course_id=course_id,
+            category=("math", "science", "english", "arts")[course_id % 4],
+            calculated_difficulty=20 + ((course_id * 17) % 81),
+            manual_difficulty_override=None,
+            effective_difficulty=20 + ((course_id * 17) % 81),
+            calculation_version="production_shaped_medium_v1",
+        )
+        for course_id in range(1, 57)
+    )
+
+    return StudentAssignmentInputDTO(
+        academic_year_id=1,
+        requests=tuple(requests),
+        sections=tuple(sections),
+        fixed_enrollments=(),
+        hard_prerequisites=(CoursePrerequisiteDTO(course_id=11, prerequisite_id=1),),
+        soft_sequence_preferences=(CourseSequencePreferenceDTO(1, 11),),
+        section_utilization_balance_importance="important",
+        student_semester_balance_importance="important",
+        course_sequence_preferences_importance="important",
+        difficulty_balance_importance="important",
+        course_category_diversity_importance="important",
+        time_limit_seconds=30.0,
+        course_difficulties=difficulties,
+        course_category_relationships=(
+            CourseCategoryRelationshipDTO("math", "science", 45),
+            CourseCategoryRelationshipDTO("english", "arts", 30),
+        ),
+        online_supervision_sessions=tuple(online_sessions),
+        schedule_commitment_requests=tuple(commitment_requests),
+        special_commitment_locks=tuple(special_locks),
+        timeslots=timeslots,
+    )
+
+
+def summarize_production_shaped_medium_fixture(data, result=None):
+    """Return structural facts used by the Stage 2 experiment report."""
+
+    summary = summarize_realistic_fixture(data, result)
+    requests_by_student = {}
+    for request in data.requests:
+        requests_by_student.setdefault(request.student_id, []).append(request)
+    sections_by_group = {}
+    for section in data.sections:
+        sections_by_group.setdefault(section.delivery_group_id, []).append(section)
+    candidate_domain_sizes = []
+    for request in data.requests:
+        if request.delivery_kind == "co_op":
+            candidate_domain_sizes.append(0)
+            continue
+        candidate_domain_sizes.append(sum(
+            request.course_offering_id in section.member_course_offering_ids
+            for section in data.sections
+        ))
+    request_counts = [len(rows) for rows in requests_by_student.values()]
+    section_counts = [len(rows) for rows in sections_by_group.values()]
+    summary.update({
+        "requests_per_student_mean": round(mean(request_counts), 3),
+        "requests_per_student_median": median(request_counts),
+        "sections_per_delivery_group_mean": round(mean(section_counts), 3),
+        "sections_per_delivery_group_median": median(section_counts),
+        "candidate_domain_mean": round(mean(candidate_domain_sizes), 3),
+        "candidate_domain_median": median(candidate_domain_sizes),
+        "candidate_domain_maximum": max(candidate_domain_sizes, default=0),
+        "capacity_to_demand_by_course": {
+            str(course_id): {
+                "demand": sum(request.course_id == course_id for request in data.requests),
+                "capacity": sum(
+                    section.capacity_max
+                    for section in data.sections
+                    if course_id in section.member_course_ids
+                ),
+            }
+            for course_id in sorted({request.course_id for request in data.requests})
+        },
+        "online_request_count": sum(
+            request.delivery_kind == "online" for request in data.requests
+        ),
+        "co_op_request_count": sum(
+            request.delivery_kind == "co_op" for request in data.requests
+        ),
+        "half_semester_request_count": sum(
+            request.duration == "half_semester" for request in data.requests
+        ),
+        "study_request_count": sum(
+            request.commitment_type == "study"
+            for request in data.schedule_commitment_requests
+        ),
+        "focus_request_count": sum(
+            request.commitment_type == "focus"
+            for request in data.schedule_commitment_requests
+        ),
+        "online_supervision_session_count": len(data.online_supervision_sessions),
+        "special_lock_count": len(data.special_commitment_locks),
+        "course_difficulty_count": len(data.course_difficulties),
+    })
+    return summary
 
 
 def build_realistic_scoped_rerun_fixture(*, schedule_preservation_level="strong"):
