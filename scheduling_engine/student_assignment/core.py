@@ -2765,8 +2765,8 @@ def _solve_student_assignment(
     optimization_trace = []
     incumbent_timeline = []
 
-    def _quality_for_solver(candidate_solver):
-        """Return bounded quality facts for one completed optimization pass."""
+    def _full_quality_for_solver(candidate_solver):
+        """Evaluate one complete candidate without influencing CP-SAT."""
 
         (
             pass_assignments,
@@ -2783,20 +2783,41 @@ def _solve_student_assignment(
             commitment_metadata=commitment_metadata,
             previous_enrollment_by_request=previous_enrollment_by_request,
         )
-        return _compact_student_assignment_quality(
-            _evaluate_student_assignment_quality(
-                data,
-                assignments=pass_assignments,
-                commitment_assignments=pass_commitment_assignments,
-                sequence_opportunities=sequence_opportunities,
-                fixed_enrollments=fixed_rows,
-                fixed_schedule_commitments=quality_fixed_schedule_commitments,
-                solver_objective_components=_solver_objective_components(
-                    candidate_solver
-                ),
-                include_entity_metrics=True,
-            )
+        return _evaluate_student_assignment_quality(
+            data,
+            assignments=pass_assignments,
+            commitment_assignments=pass_commitment_assignments,
+            sequence_opportunities=sequence_opportunities,
+            fixed_enrollments=fixed_rows,
+            fixed_schedule_commitments=quality_fixed_schedule_commitments,
+            solver_objective_components=_solver_objective_components(
+                candidate_solver
+            ),
+            include_entity_metrics=True,
         )
+
+    def _quality_for_solver(candidate_solver):
+        """Return bounded quality facts for one completed optimization pass."""
+
+        return _compact_student_assignment_quality(
+            _full_quality_for_solver(candidate_solver)
+        )
+
+    def _candidate_quality_facts(candidate_solver):
+        """Return compact evaluator facts for one diagnostic candidate."""
+
+        candidate_quality = _full_quality_for_solver(candidate_solver)
+        # Diagnostic replays may supply a detached alternate seed. Compare
+        # against the actual seed used by this probe, not an independently
+        # generated equal-objective Stage 1 solver.
+        baseline_quality = _full_quality_for_solver(stage_2_seed_solver)
+        return {
+            "summary": _compact_student_assignment_quality(candidate_quality),
+            "comparison": _compare_student_assignment_quality(
+                baseline_quality,
+                candidate_quality,
+            ),
+        }
 
     def _source_decision_fingerprint(candidate_solver):
         assignments, commitments, *_rest = _extract_solver_candidate(
@@ -2901,6 +2922,7 @@ def _solve_student_assignment(
             source_decision_summary=_source_decision_summary,
             source_decision_variable_values=_source_decision_variable_values,
             seed_source_decision_variable_values=_source_decision_variable_values,
+            candidate_quality_facts=_candidate_quality_facts,
             seed_objective_vector=_objective_values(
                 seed_solver, objectives
             ) if seed_solver is not None else (),

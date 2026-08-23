@@ -34,6 +34,7 @@ class SubstantiveSoftTierProbeContext:
     source_decision_summary: object
     source_decision_variable_values: object
     seed_source_decision_variable_values: object
+    candidate_quality_facts: object | None = None
 
 
 @dataclass(frozen=True)
@@ -78,6 +79,8 @@ class SubstantiveSoftTierProbeResult:
     seed_source_variable_values: dict
     requested_time_limit_seconds: float | None = None
     timings: dict = field(default_factory=dict)
+    candidate_quality_summary: dict = field(default_factory=dict)
+    quality_comparison: dict = field(default_factory=dict)
 
 
 def _model_family_variable_counts(model):
@@ -344,6 +347,8 @@ def probe_substantive_soft_tier(
     candidate_source_decisions = ()
     candidate_source_variable_values = {}
     candidate_summary = {}
+    candidate_quality_summary = {}
+    quality_comparison = {}
     if complete_candidate_found:
         with timing.measure("candidate_quality_evaluation_seconds"):
             candidate_component_values = dict(context.solver_objective_components(solver))
@@ -389,6 +394,14 @@ def probe_substantive_soft_tier(
                 solver, probe_model, context.objective_metadata
             )
             candidate_summary = dict(context.source_decision_summary(solver))
+            if context.candidate_quality_facts is not None:
+                quality_facts = context.candidate_quality_facts(solver)
+                candidate_quality_summary = dict(
+                    quality_facts.get("summary", {})
+                )
+                quality_comparison = dict(
+                    quality_facts.get("comparison", {})
+                )
 
     component_deltas = (
         {
@@ -473,4 +486,6 @@ def probe_substantive_soft_tier(
             ),
             "operation_total_seconds": monotonic() - operation_started,
         },
+        candidate_quality_summary=candidate_quality_summary,
+        quality_comparison=quality_comparison,
     )

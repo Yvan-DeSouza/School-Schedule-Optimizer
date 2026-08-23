@@ -1092,6 +1092,67 @@ def run_strict_substantive_probe(data, config: Stage2ExperimentConfig):
     }
 
 
+def compact_substantive_probe_record(
+    result,
+    *,
+    experiment_id,
+    input_semantic_fingerprint,
+    seed_source_decision_fingerprint,
+    radius=None,
+    configured_time_limit_seconds=None,
+    configured_worker_count=None,
+    representative_memory_bytes=None,
+    peak_memory_bytes=None,
+):
+    """Return bounded JSON facts for one diagnostic strict-improvement probe."""
+
+    return {
+        "experiment_id": experiment_id,
+        "input_semantic_fingerprint": input_semantic_fingerprint,
+        "seed_source_decision_fingerprint": seed_source_decision_fingerprint,
+        "radius": radius,
+        "configured_time_limit_seconds": configured_time_limit_seconds,
+        "configured_worker_count": configured_worker_count,
+        "start_substantive_value": result.baseline_substantive_value,
+        "strict_threshold": result.requested_threshold,
+        "status": result.status,
+        "solver_outcome": result.status,
+        "candidate_substantive_value": result.candidate_substantive_value,
+        "candidate_component_values": dict(result.candidate_component_values),
+        "candidate_validation_result": bool(result.complete_candidate_found),
+        "candidate_adopted": False,
+        "source_decision_hamming_distance": result.changed_source_decision_count,
+        "affected_student_count": len(result.affected_student_ids),
+        "affected_student_ids": list(result.affected_student_ids),
+        "affected_section_count": len(result.affected_section_ids),
+        "affected_section_ids": list(result.affected_section_ids),
+        "best_bound": result.best_bound,
+        "conflicts": result.conflicts,
+        "branches": result.branches,
+        "solver_wall_time_seconds": result.solver_wall_time_seconds,
+        "operation_wall_time_seconds": result.timings.get(
+            "operation_total_seconds", result.elapsed_seconds
+        ),
+        "representative_memory_bytes": representative_memory_bytes,
+        "peak_memory_bytes": peak_memory_bytes,
+        "model_variable_count": result.model_variable_count,
+        "model_constraint_count": result.model_constraint_count,
+        "component_deltas": dict(result.component_deltas),
+        "candidate_quality_summary": dict(result.candidate_quality_summary),
+        "quality_comparison": dict(result.quality_comparison),
+        "timings": dict(result.timings),
+    }
+
+
+def append_experiment_record(path, record):
+    """Append one compact diagnostic record as a transparent JSONL row."""
+
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps(record, sort_keys=True, default=str) + "\n")
+
+
 def run_component_minimum_probe(data, config: Stage2ExperimentConfig, component_name):
     """Minimize one existing substantive component for diagnosis only."""
 

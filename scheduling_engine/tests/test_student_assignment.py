@@ -31,6 +31,8 @@ from scheduling_engine.student_assignment.runtime import (
     semantic_student_assignment_input_fingerprint,
 )
 from scheduling_engine.student_assignment.stage2_benchmark import (
+    append_experiment_record,
+    compact_substantive_probe_record,
     read_durable_stage2_benchmark,
     read_stage1_seed_snapshot,
     read_student_assignment_input_snapshot,
@@ -206,12 +208,40 @@ def test_substantive_probe_records_semantic_candidate_and_impact_facts():
     assert result.seed_source_decisions
     assert result.seed_source_variable_values
     assert result.candidate_source_decisions
-    assert result.candidate_source_variable_values
+    assert result.candidate_quality_summary["difficulty_balance"]["solver_aligned_penalty"] == 0
+    assert result.quality_comparison["difficulty_balance"]["unchanged"] >= 1
     assert result.seed_summary["hard_valid"] is True
     assert result.candidate_summary["hard_valid"] is True
     assert result.candidate_summary["fulfillment_complete"] is True
     assert isinstance(result.affected_student_ids, tuple)
     assert isinstance(result.section_load_deltas, dict)
+
+
+def test_substantive_probe_quality_comparison_uses_detached_seed_context():
+    """Diagnostic quality deltas are relative to the supplied seed, not a new bootstrap."""
+
+    data = _substantive_probe_input()
+    seed = run_substantive_soft_tier_probe(
+        data,
+        threshold=1,
+        time_limit_seconds=5.0,
+        worker_count=1,
+    )
+    replay = run_substantive_soft_tier_probe(
+        data,
+        threshold=1,
+        time_limit_seconds=5.0,
+        worker_count=1,
+        alternate_source_decisions=seed.seed_source_decisions,
+        alternate_source_variable_values=seed.seed_source_variable_values,
+        hard_feasibility_time_limit_seconds=0.1,
+        hard_feasibility_validation_time_limit_seconds=5.0,
+        hard_feasibility_worker_count=1,
+        hard_feasibility_validation_worker_count=1,
+    )
+
+    assert replay.complete_candidate_found is True
+    assert replay.quality_comparison["request_fulfillment"]["worsened"] == 0
 
 
 def test_substantive_probe_can_minimize_one_existing_component():
@@ -613,6 +643,34 @@ def test_durable_stage2_benchmark_round_trip_verifies_manifest_and_gzip_artifact
     )
     assert replay["status"] == "complete"
     assert replay["seed_validated_against_full_model"] is True
+
+
+def test_compact_substantive_probe_record_is_bounded_and_jsonl_persisted(tmp_path):
+    data = _substantive_probe_input()
+    probe = run_substantive_soft_tier_probe(
+        data,
+        threshold=None,
+        strict_improvement=True,
+        time_limit_seconds=5.0,
+        worker_count=1,
+    )
+    record = compact_substantive_probe_record(
+        probe,
+        experiment_id="test-r2",
+        input_semantic_fingerprint=semantic_student_assignment_input_fingerprint(data),
+        seed_source_decision_fingerprint="seed-test",
+        radius=2,
+        configured_time_limit_seconds=5.0,
+        configured_worker_count=1,
+    )
+    path = tmp_path / "experiments.jsonl"
+    append_experiment_record(path, record)
+
+    stored = path.read_text(encoding="utf-8").strip()
+    assert stored.count("\n") == 0
+    assert '"experiment_id": "test-r2"' in stored
+    assert record["candidate_adopted"] is False
+    assert "raw_solver_candidate" not in stored
 
 
 def test_local_bootstrap_diagnostic_consumes_shared_budget_and_keeps_complete_seed():

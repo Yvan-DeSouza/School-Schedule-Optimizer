@@ -416,6 +416,97 @@ because the subsequent CP-SAT searches are parallel and nondeterministic. The
 full-vector retention rule remains mathematically safe and diagnostic-only;
 additional repeated paired trials are required before any production decision.
 
+## Current frozen-benchmark search-landscape study
+
+The durable `production_scale_v1` benchmark was subsequently tested without
+rerunning placement or named-teacher assignment. Every probe loaded the same
+verified input fingerprint
+`1c4843ac33fccabd76218c63d8818c94a0a8dd8ab2886e3f5718ca1cd9576a11` and the
+same validated Stage 1 source-decision seed
+`00889b7f4110dc19c6cdcb413b44fe77ab9598cb0fde25de6ea618ddb27325e7`.
+The Stage 1 substantive baseline was `65,173`.
+
+The first unrestricted strict-improvement probe asked whether any complete
+schedule could satisfy `substantive_soft_tier <= 65,172`. With eight workers
+and a 600-second diagnostic limit, CP-SAT returned a complete candidate at
+`65,171`. The candidate changed `258` meaningful source decisions, affected
+`191` students and `46` sections, and improved only section utilization from
+`6,875` to `6,873`. The solver-reported search time was `301.08` seconds and
+the probe operation time was `330.47` seconds. The clone contained `110,917`
+variables and `175,894` constraints.
+
+The probe is a satisfiability query, not a minimization query. CP-SAT reports
+`OPTIMAL` when it proves the threshold-constrained satisfiability model has a
+solution; that status does not prove that `65,171` is the global minimum.
+
+Matched radius experiments then used the same Stage 1 seed and eight workers:
+
+| Radius | Limit | Trials | Result | Best candidate | Distance |
+| --- | ---: | ---: | --- | ---: | ---: |
+| R2 | 240 s | 3 | `UNKNOWN` in every trial | none | unresolved |
+| R2 | 600 s | 1 plus quality replay | complete candidates | `65,165` | 2 |
+| R4 | 240 s | 3 | `UNKNOWN` in every trial | none | unresolved |
+| R4 | 600 s | 2 successful trials | complete candidates | `65,171` | 3--4 |
+| R8 | 240 s | 3 | `UNKNOWN` in every trial | none | unresolved |
+| R8 | 600 s | 2 successful trials | complete candidates | `65,171` | 7 |
+
+Every successful candidate retained all `10,760` mandatory requests and all
+`310` special commitments. No candidate was adopted into the production
+result. The short-horizon `UNKNOWN` results do not prove neighborhood
+infeasibility: a valid R2 witness was found when the same radius received a
+600-second horizon. The known distance-two witness is also mathematically
+inside R4 and R8, so their short-horizon `UNKNOWN` results represent search
+difficulty rather than a lack of an improving schedule.
+
+The existing quality evaluator was invoked in-process for representative
+successful candidates and its per-entity detail was reduced to bounded
+diagnostic facts. The strongest R2 candidate had utilization `6,867`, one
+delivery group improved, `54` were unchanged, and none worsened. Semester
+balance, difficulty, category diversity, fulfillment, special commitments,
+and preservation were unchanged. A representative R4 candidate at `6,873`
+showed one utilization entity worsen and `54` unchanged despite the
+solver-authoritative aggregate improving by two points; this is reported as a
+trade-off rather than hidden. A representative R8 candidate had no evaluator
+entity changes while the solver-authoritative utilization aggregate improved
+by two points. The solver aggregate remains authoritative, while the
+per-entity evaluator facts explain the practical distribution.
+
+The probe records are compact JSONL diagnostics in the temporary experiment
+results location. They include fingerprints, radius, configured limits,
+status, candidate values, source-decision distance, affected entities,
+solver branches/conflicts, model size, timings, and bounded quality facts.
+Peak memory was not available for this study because the environment did not
+have `psutil`; the prior accepted full-pipeline replay remains the source of
+the available laptop-memory observation.
+
+After the radius study, the existing adaptive diagnostic VNS entry point was
+run once with radii `(2, 4, 8)`, a 600-second per-probe allowance, an
+1,800-second shared diagnostic budget, and the same frozen seed. Each of its
+three iterations improved R2 and therefore restarted at R2 before reaching
+R4 or R8:
+
+```text
+65,173 -> 65,165 -> 65,159 -> 65,153
+```
+
+All three candidates were CP-SAT-generated, full-model-validated, and
+adopted only inside the diagnostic run. The final diagnostic result remained
+complete with `10,635` assignments, zero unmet requests, and `310` special
+commitments. The diagnostic wrapper reported `UNKNOWN` for the later ordinary
+optimization portion after its bounded budget, but it retained the complete
+`65,153` candidate. No production Stage 2 result or persisted schedule was
+changed.
+
+The current frozen-benchmark classification is therefore: **nearby
+substantive improvements exist and local CP-SAT search can find them when
+given a sufficiently long bounded horizon; the strongest observed path is
+R2, while global substantive optimality remains unproven**. The 240-second
+radius probes are too short to establish local optimality. Iterative VNS is
+justified as a diagnostic investigation, but it is not promoted into ordinary
+production scheduling until repeated runs establish a stable policy, resource
+envelope, and counselor-relevant benefit. No objective definition, counselor
+priority, hard constraint, or ordinary Stage 2 behavior was changed.
+
 ## Diagnostic timing and replay facts
 
 Student-assignment results now expose additive timing facts for the Stage 1
