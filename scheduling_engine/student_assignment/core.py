@@ -2602,6 +2602,7 @@ def _solve_student_assignment(
 
     stage_2_seed_solver = validated_seed_solver
     alternate_seed_validated = False
+    alternate_seed_resolution_failure = None
 
     def _source_variable_values(source_decisions):
         """Translate semantic source decisions back to required variables."""
@@ -2612,11 +2613,31 @@ def _solve_student_assignment(
             complete_required_decision_source_keys,
             complete_required_decision_groups,
         ):
-            if source_key is None or source_key not in decisions or not decision_group:
-                return None
+            if source_key is None or not decision_group:
+                return None, {
+                    "reason": "missing_required_source_decision",
+                    "source_key": source_key,
+                    "decision_group_size": len(decision_group),
+                }
+            decision_key = source_key
+            if source_key[0] == "course":
+                request = requests_by_id[source_key[1]]
+                if request.delivery_kind == "co_op":
+                    # Co-op is requested through a CourseRequest but is
+                    # extracted into the commitment namespace. Preserve the
+                    # semantic distinction when a detached seed is mapped
+                    # back to this model's source variables.
+                    decision_key = ("commitment", source_key[1])
+            if decision_key not in decisions:
+                return None, {
+                    "reason": "missing_required_source_decision",
+                    "source_key": decision_key,
+                    "model_source_key": source_key,
+                    "decision_group_size": len(decision_group),
+                }
             for variable in decision_group:
                 values[variable.Index()] = 0
-            target = decisions[source_key]
+            target = decisions[decision_key]
             selected_variable = None
             if source_key[0] == "course":
                 request = requests_by_id[source_key[1]]
@@ -2651,16 +2672,21 @@ def _solve_student_assignment(
                         selected_variable = commitment_variables[source_key, index]
                         break
             if selected_variable is None:
-                return None
+                return None, {
+                    "reason": "source_decision_does_not_match_candidate",
+                    "source_key": source_key,
+                    "target": target,
+                }
             values[selected_variable.Index()] = 1
-        return values
+        return values, None
 
     if alternate_source_decisions:
-        alternate_values = (
-            dict(alternate_source_variable_values)
-            if alternate_source_variable_values is not None
-            else _source_variable_values(alternate_source_decisions)
-        )
+        if alternate_source_variable_values is not None:
+            alternate_values = dict(alternate_source_variable_values)
+        else:
+            alternate_values, alternate_seed_resolution_failure = (
+                _source_variable_values(alternate_source_decisions)
+            )
         if alternate_values is not None:
             alternate_validation_time_limit = max(
                 data.time_limit_seconds,
@@ -3330,6 +3356,9 @@ def _solve_student_assignment(
             incumbent_timeline
         )
     optimization_facts["stage_2"]["alternate_seed_validated"] = alternate_seed_validated
+    optimization_facts["stage_2"]["alternate_seed_resolution_failure"] = (
+        alternate_seed_resolution_failure
+    )
     substantive_pass_wall_time = 0.0
     tie_break_pass_wall_time = 0.0
     substantive_level = IMPORTANCE_LEVELS["important"]

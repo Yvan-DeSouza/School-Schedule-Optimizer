@@ -31,9 +31,12 @@ from scheduling_engine.student_assignment.runtime import (
     semantic_student_assignment_input_fingerprint,
 )
 from scheduling_engine.student_assignment.stage2_benchmark import (
+    read_durable_stage2_benchmark,
     read_stage1_seed_snapshot,
     read_student_assignment_input_snapshot,
+    replay_durable_stage1_seed,
     semantic_stage1_seed_source_fingerprint,
+    write_durable_stage2_benchmark,
     write_student_assignment_input_snapshot,
     write_stage1_seed_snapshot,
 )
@@ -535,6 +538,18 @@ def test_stage1_seed_snapshot_preserves_co_op_commitment_source_namespace(tmp_pa
     )
 
     assert loaded["seed_source_decisions"] == tuple(probe.seed_source_decisions)
+    replay = student_assignment_module.run_student_assignment_stage2_diagnostic(
+        data,
+        alternate_source_decisions=loaded["seed_source_decisions"],
+        total_time_limit_seconds=5.0,
+        optimization_worker_count=1,
+        hard_feasibility_time_limit_seconds=5.0,
+        hard_feasibility_validation_time_limit_seconds=5.0,
+        hard_feasibility_worker_count=1,
+        hard_feasibility_validation_worker_count=1,
+        collect_incumbent_timeline=False,
+    )
+    assert replay.optimization_facts["stage_2"]["alternate_seed_validated"] is True
 
 
 def test_student_assignment_input_snapshot_is_versioned_and_fingerprint_bound(tmp_path):
@@ -555,6 +570,49 @@ def test_student_assignment_input_snapshot_is_versioned_and_fingerprint_bound(tm
     assert payload["schema"] == "student_assignment_input_v1"
     assert loaded["data"] == data
     assert loaded["input_semantic_fingerprint"] == fingerprint
+
+
+def test_durable_stage2_benchmark_round_trip_verifies_manifest_and_gzip_artifacts(tmp_path):
+    data = _substantive_probe_input()
+    probe = run_substantive_soft_tier_probe(
+        data,
+        threshold=None,
+        time_limit_seconds=5.0,
+        worker_count=1,
+    )
+    benchmark_dir = tmp_path / "production-scale-v1"
+    manifest = write_durable_stage2_benchmark(
+        benchmark_dir,
+        data=data,
+        seed={
+            "input_semantic_fingerprint": semantic_student_assignment_input_fingerprint(data),
+            "seed_objective_vector": probe.seed_objective_vector,
+            "seed_component_values": probe.seed_component_values,
+            "seed_assignment_count": probe.seed_assignment_count,
+            "seed_validated": probe.seed_validated,
+            "seed_source_decisions": probe.seed_source_decisions,
+            "seed_summary": probe.seed_summary,
+        },
+        metadata={"benchmark_name": "test-production-scale-v1"},
+    )
+
+    loaded = read_durable_stage2_benchmark(benchmark_dir)
+
+    assert manifest["benchmark_schema"] == "student_assignment_stage2_benchmark_v1"
+    assert loaded["data"] == data
+    assert loaded["seed"]["seed_source_decisions"] == tuple(
+        probe.seed_source_decisions
+    )
+    assert loaded["manifest"]["counts"]["student_count"] == 1
+    assert (benchmark_dir / "input.json.gz").read_bytes()[:2] == b"\x1f\x8b"
+    assert (benchmark_dir / "stage1_seed.json.gz").read_bytes()[:2] == b"\x1f\x8b"
+    replay = replay_durable_stage1_seed(
+        benchmark_dir,
+        validation_time_limit_seconds=5.0,
+        validation_worker_count=1,
+    )
+    assert replay["status"] == "complete"
+    assert replay["seed_validated_against_full_model"] is True
 
 
 def test_local_bootstrap_diagnostic_consumes_shared_budget_and_keeps_complete_seed():

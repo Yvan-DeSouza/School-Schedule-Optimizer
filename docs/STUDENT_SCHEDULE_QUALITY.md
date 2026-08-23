@@ -345,9 +345,58 @@ entry point for bounded `R2/R4/R8` descent. It uses the same CP-SAT probe and
 full-model validation as the adaptive bootstrap, returns to radius two after
 each adopted improvement, records per-radius attempts and stopping reasons,
 and distinguishes a proven infeasible neighborhood from an unresolved
-`UNKNOWN` search. This entry point has been covered on the small engine
-fixtures, but no target-scale `R2/R4/R8` result is claimed here until the
-authoritative detached input and Stage 1 seed are available again.
+`UNKNOWN` search.
+
+The target-scale replay is now durable rather than dependent on disposable
+temporary files. The authoritative synthetic benchmark is stored under
+`scheduling_engine/benchmarks/student_assignment/production_scale_v1/` as a
+manifest plus two deterministic gzip-compressed, versioned JSON artifacts:
+`input.json.gz` contains the complete final-staffing
+`StudentAssignmentInputDTO`, and `stage1_seed.json.gz` contains the semantic
+Stage 1 source-decision seed. The manifest records the artifact hashes,
+semantic fingerprints, counts, Stage 1 objective vector, substantive
+components, and solver metadata. The artifacts are canonicalized by semantic
+ordering and do not depend on database primary keys or Python pickle state.
+Future replay work must verify the manifest and both artifact hashes before
+solving; it must not regenerate the upstream placement/staffing workflow for
+ordinary Stage 2 comparisons. If the benchmark must be regenerated in a
+future deliberate refresh, the old directory must be retained as historical
+evidence until the replacement has passed the clean-process replay gates.
+
+The lost detached benchmark with input fingerprint
+`14cfe8f...` and historical trajectory `65,173 -> 65,135` remains historical
+evidence only; its raw objective values must not be compared with a different
+input as though they were the same optimization problem. The current durable
+benchmark has input fingerprint
+`1c4843ac33fccabd76218c63d8818c94a0a8dd8ab2886e3f5718ca1cd9576a11`, Stage 1
+seed fingerprint
+`00889b7f4110dc19c6cdcb413b44fe77ab9598cb0fde25de6ea618ddb27325e7`, and
+the same-scale counts of `1,400` students, `10,760` requests, `10,945`
+required source-decision groups, `304` normal sections, `13` online
+supervision sessions, and `310` fulfilled special commitments. Its Stage 1
+baseline is substantive `65,173` with components `6,875` section
+utilization, `175` semester balance, `35,973` difficulty, and `22,150`
+category diversity.
+
+Two independent clean-process replays loaded the exact artifacts, verified
+their hashes and semantic fingerprints, validated the semantic Stage 1 seed
+against the unchanged full model, and reproduced the exact Stage 1 objective
+vector. The validation CP-SAT query itself is reported separately as
+`UNKNOWN` because replay uses a short post-validation query; that status is
+not used to reject the already validated seed.
+
+The first full target-scale variable-neighborhood run used radii `2, 4, 8`,
+the frozen Stage 1 seed, eight workers, one `1,800`-second bounded Stage 2
+horizon, and bounded per-radius attempts. It completed with `10,635`
+assignments, zero unmet requests, and all `310` special commitments fulfilled,
+but did not adopt a substantive improvement: the final substantive tier
+remained `65,173`. A compact follow-up using one attempt at each radius and a
+`300`-second total horizon produced `UNKNOWN` for `R2`, `R4`, and `R8`; no
+radius was proven infeasible and no candidate was validated or adopted. The
+follow-up therefore provides no evidence that the new benchmark is locally
+optimal; it establishes that the tested neighborhoods remain search-inconclusive
+under those bounded probes. R8 is not promoted, and no production solver
+behavior has changed.
 
 The production-shaped 80-student medium fixture now has a stable semantic
 fingerprint (`4ac904a01a2c43dcf00505969c539dc8bacf9606e01aad67da5ab171b373f66b`)

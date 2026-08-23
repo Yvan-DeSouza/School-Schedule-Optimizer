@@ -9,9 +9,14 @@ the production entry point, objective definitions, or persisted workflow.
 from __future__ import annotations
 
 from dataclasses import dataclass, fields, is_dataclass, replace
+from datetime import datetime, timezone
+import gzip
 import hashlib
+import io
 import json
 from pathlib import Path
+import platform
+import sys
 from time import perf_counter
 
 from .. import dto as _dto_module
@@ -32,6 +37,10 @@ from .core import (
 
 STAGE1_SEED_SNAPSHOT_SCHEMA = "student_assignment_stage1_seed_v1"
 STUDENT_ASSIGNMENT_INPUT_SNAPSHOT_SCHEMA = "student_assignment_input_v1"
+DURABLE_STAGE2_BENCHMARK_SCHEMA = "student_assignment_stage2_benchmark_v1"
+DURABLE_STAGE2_BENCHMARK_MANIFEST_SCHEMA = (
+    "student_assignment_stage2_benchmark_manifest_v1"
+)
 
 
 def _dto_dataclass_types():
@@ -162,6 +171,318 @@ def read_student_assignment_input_snapshot(path, *, expected_input_fingerprint=N
     return {
         "input_semantic_fingerprint": actual_fingerprint,
         "data": data,
+    }
+
+
+def _json_bytes(payload):
+    return json.dumps(payload, indent=2, sort_keys=True).encode("utf-8") + b"\n"
+
+
+def _gzip_bytes(payload):
+    """Return deterministic gzip bytes for one transparent JSON payload."""
+
+    output = io.BytesIO()
+    with gzip.GzipFile(
+        fileobj=output,
+        mode="wb",
+        filename="",
+        mtime=0,
+    ) as compressed:
+        compressed.write(_json_bytes(payload))
+    return output.getvalue()
+
+
+def _artifact_metadata(relative_path, compressed_bytes, uncompressed_bytes):
+    return {
+        "path": relative_path,
+        "sha256_compressed": hashlib.sha256(compressed_bytes).hexdigest(),
+        "sha256_uncompressed": hashlib.sha256(uncompressed_bytes).hexdigest(),
+        "compressed_bytes": len(compressed_bytes),
+        "uncompressed_bytes": len(uncompressed_bytes),
+    }
+
+
+def _student_ids(data):
+    return {
+        item.student_id
+        for item in (
+            *data.requests,
+            *data.fixed_enrollments,
+            *data.schedule_commitment_requests,
+            *data.fixed_schedule_commitments,
+        )
+    } | set(data.student_ids_with_alternate_requests)
+
+
+def _input_snapshot_payload(data, input_fingerprint):
+    return {
+        "schema": STUDENT_ASSIGNMENT_INPUT_SNAPSHOT_SCHEMA,
+        "input_semantic_fingerprint": input_fingerprint,
+        "dto": _encode_snapshot_value(data),
+    }
+
+
+def _seed_snapshot_payload(data, input_fingerprint, seed):
+    source_decisions = _canonical_seed_source_decisions(
+        data,
+        tuple(seed["seed_source_decisions"]),
+    )
+    return {
+        "schema": STAGE1_SEED_SNAPSHOT_SCHEMA,
+        "input_semantic_fingerprint": input_fingerprint,
+        "seed_objective_vector": list(seed.get("seed_objective_vector", ())),
+        "seed_source_decision_fingerprint": stage1_seed_source_fingerprint(
+            source_decisions
+        ),
+        "seed_source_decisions": _encode_snapshot_value(source_decisions),
+    }
+
+
+def _read_input_snapshot_payload(payload, *, expected_input_fingerprint=None):
+    if payload.get("schema") != STUDENT_ASSIGNMENT_INPUT_SNAPSHOT_SCHEMA:
+        raise ValueError("Unsupported student-assignment input snapshot schema")
+    stored_fingerprint = payload.get("input_semantic_fingerprint")
+    if (
+        expected_input_fingerprint is not None
+        and stored_fingerprint != expected_input_fingerprint
+    ):
+        raise ValueError("Student-assignment input snapshot fingerprint does not match")
+    data = _decode_snapshot_value(payload.get("dto"))
+    if not isinstance(data, StudentAssignmentInputDTO):
+        raise ValueError(
+            "Student-assignment input snapshot does not contain the expected DTO"
+        )
+    actual_fingerprint = semantic_student_assignment_input_fingerprint(data)
+    if actual_fingerprint != stored_fingerprint:
+        raise ValueError("Student-assignment input snapshot fingerprint is invalid")
+    return {
+        "input_semantic_fingerprint": actual_fingerprint,
+        "data": data,
+    }
+
+
+def _read_seed_snapshot_payload(payload, *, data, expected_input_fingerprint):
+    if payload.get("schema") != STAGE1_SEED_SNAPSHOT_SCHEMA:
+        raise ValueError("Unsupported Stage 1 seed snapshot schema")
+    if payload.get("input_semantic_fingerprint") != expected_input_fingerprint:
+        raise ValueError("Stage 1 seed snapshot input fingerprint does not match")
+    canonical_source_decisions = tuple(
+        _decode_snapshot_value(payload.get("seed_source_decisions"))
+    )
+    actual_fingerprint = stage1_seed_source_fingerprint(canonical_source_decisions)
+    if actual_fingerprint != payload.get("seed_source_decision_fingerprint"):
+        raise ValueError("Stage 1 seed snapshot source fingerprint is invalid")
+    return {
+        "input_semantic_fingerprint": expected_input_fingerprint,
+        "seed_objective_vector": tuple(payload.get("seed_objective_vector", ())),
+        "seed_source_decisions": _materialize_seed_source_decisions(
+            data,
+            canonical_source_decisions,
+        ),
+        "seed_source_decision_fingerprint": actual_fingerprint,
+    }
+
+
+def write_durable_stage2_benchmark(directory, *, data, seed, metadata=None):
+    """Write one durable, transparent target-scale benchmark.
+
+    The detached input and semantic Stage 1 seed remain separate artifacts so
+    either can be inspected or validated independently.  Gzip is used only
+    for storage efficiency; the payloads remain versioned JSON and never
+    depend on ORM IDs or Python pickle state.
+    """
+
+    directory = Path(directory)
+    directory.mkdir(parents=True, exist_ok=True)
+    input_fingerprint = semantic_student_assignment_input_fingerprint(data)
+    if seed.get("input_semantic_fingerprint") not in (None, input_fingerprint):
+        raise ValueError("Stage 1 seed belongs to a different input fingerprint")
+    input_payload = _input_snapshot_payload(data, input_fingerprint)
+    seed_payload = _seed_snapshot_payload(data, input_fingerprint, seed)
+    input_uncompressed = _json_bytes(input_payload)
+    seed_uncompressed = _json_bytes(seed_payload)
+    input_compressed = _gzip_bytes(input_payload)
+    seed_compressed = _gzip_bytes(seed_payload)
+    input_path = directory / "input.json.gz"
+    seed_path = directory / "stage1_seed.json.gz"
+    manifest_path = directory / "manifest.json"
+    input_path.write_bytes(input_compressed)
+    seed_path.write_bytes(seed_compressed)
+
+    seed_summary = dict(seed.get("seed_summary") or {})
+    seed_components = dict(seed.get("seed_component_values") or {})
+    source_decision_count = len(tuple(seed["seed_source_decisions"]))
+    special_commitment_request_count = len(data.schedule_commitment_requests)
+    special_commitment_count = special_commitment_request_count + sum(
+        item.delivery_kind == "co_op" for item in data.requests
+    )
+    try:
+        from ortools import __version__ as ortools_version
+    except ImportError:  # pragma: no cover - only defensive metadata handling
+        ortools_version = "unknown"
+    manifest = {
+        "schema": DURABLE_STAGE2_BENCHMARK_MANIFEST_SCHEMA,
+        "benchmark_schema": DURABLE_STAGE2_BENCHMARK_SCHEMA,
+        "benchmark_name": metadata.get("benchmark_name", directory.name)
+        if metadata else directory.name,
+        "input_semantic_fingerprint": input_fingerprint,
+        "seed_source_decision_fingerprint": seed_payload[
+            "seed_source_decision_fingerprint"
+        ],
+        "artifacts": {
+            "input": _artifact_metadata(
+                "input.json.gz", input_compressed, input_uncompressed
+            ),
+            "stage1_seed": _artifact_metadata(
+                "stage1_seed.json.gz", seed_compressed, seed_uncompressed
+            ),
+        },
+        "counts": {
+            "student_count": len(_student_ids(data)),
+            "request_count": len(data.requests),
+            "required_source_decision_group_count": seed_summary.get(
+                "source_decision_count", source_decision_count
+            ),
+            "normal_section_count": sum(
+                item.section_id > 0 for item in data.sections
+            ),
+            "student_assignment_section_record_count": len(data.sections),
+            "online_supervision_session_count": len(
+                data.online_supervision_sessions
+            ),
+            "special_commitment_count": special_commitment_count,
+            "special_commitment_request_count": special_commitment_request_count,
+        },
+        "stage1": {
+            "objective_vector": list(seed.get("seed_objective_vector", ())),
+            "substantive_components": seed_components,
+            "source_decision_count": seed.get(
+                "seed_assignment_count", source_decision_count
+            ),
+            "complete": bool(
+                seed_summary.get("fulfillment_complete", seed.get("seed_validated"))
+            ),
+            "validated": bool(seed.get("seed_validated", True)),
+        },
+        "source": (metadata or {}).get("source", "synthetic production-scale fixture"),
+        "solver": {
+            "python": sys.version.split()[0],
+            "platform": platform.platform(),
+            "ortools": ortools_version,
+        },
+        "created_at_utc": datetime.now(timezone.utc).isoformat(),
+    }
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return manifest
+
+
+def _read_gzip_json_artifact(directory, artifact_name, artifact_metadata):
+    path = Path(directory) / artifact_metadata["path"]
+    compressed = path.read_bytes()
+    if hashlib.sha256(compressed).hexdigest() != artifact_metadata["sha256_compressed"]:
+        raise ValueError(f"Durable benchmark artifact hash mismatch: {artifact_name}")
+    with gzip.GzipFile(fileobj=io.BytesIO(compressed), mode="rb") as source:
+        uncompressed = source.read()
+    if hashlib.sha256(uncompressed).hexdigest() != artifact_metadata["sha256_uncompressed"]:
+        raise ValueError(
+            f"Durable benchmark uncompressed hash mismatch: {artifact_name}"
+        )
+    return json.loads(uncompressed.decode("utf-8"))
+
+
+def read_durable_stage2_benchmark(directory):
+    """Read and verify one durable benchmark and return ``manifest/data/seed``."""
+
+    directory = Path(directory)
+    manifest = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
+    if manifest.get("schema") != DURABLE_STAGE2_BENCHMARK_MANIFEST_SCHEMA:
+        raise ValueError("Unsupported durable Stage 2 benchmark manifest schema")
+    if manifest.get("benchmark_schema") != DURABLE_STAGE2_BENCHMARK_SCHEMA:
+        raise ValueError("Unsupported durable Stage 2 benchmark schema")
+    input_payload = _read_gzip_json_artifact(
+        directory, "input", manifest["artifacts"]["input"]
+    )
+    input_snapshot = _read_input_snapshot_payload(
+        input_payload,
+        expected_input_fingerprint=manifest["input_semantic_fingerprint"],
+    )
+    seed_payload = _read_gzip_json_artifact(
+        directory, "stage1_seed", manifest["artifacts"]["stage1_seed"]
+    )
+    seed = _read_seed_snapshot_payload(
+        seed_payload,
+        data=input_snapshot["data"],
+        expected_input_fingerprint=input_snapshot["input_semantic_fingerprint"],
+    )
+    if seed["seed_source_decision_fingerprint"] != manifest[
+        "seed_source_decision_fingerprint"
+    ]:
+        raise ValueError("Durable benchmark Stage 1 seed fingerprint does not match")
+    return {
+        "manifest": manifest,
+        "input_semantic_fingerprint": input_snapshot["input_semantic_fingerprint"],
+        "data": input_snapshot["data"],
+        "seed": seed,
+    }
+
+
+def replay_durable_stage1_seed(
+    directory,
+    *,
+    validation_time_limit_seconds=120.0,
+    validation_worker_count=8,
+):
+    """Validate a frozen semantic seed against the current full model.
+
+    The short feasibility allowance is intentional: this replay is checking
+    the supplied seed, not creating a replacement seed.  CP-SAT still proves
+    acceptance through the unchanged full model and its hard constraints.
+    """
+
+    benchmark = read_durable_stage2_benchmark(directory)
+    seed = benchmark["seed"]
+    probe = run_substantive_soft_tier_probe(
+        benchmark["data"],
+        threshold=None,
+        time_limit_seconds=0.1,
+        worker_count=1,
+        alternate_source_decisions=seed["seed_source_decisions"],
+        hard_feasibility_time_limit_seconds=0.1,
+        hard_feasibility_validation_time_limit_seconds=(
+            validation_time_limit_seconds
+        ),
+        hard_feasibility_worker_count=1,
+        hard_feasibility_validation_worker_count=validation_worker_count,
+    )
+    materialized_seed_fingerprint = semantic_stage1_seed_source_fingerprint(
+        benchmark["data"],
+        probe.seed_source_decisions,
+    ) if probe.seed_validated else None
+    objective_matches = tuple(probe.seed_objective_vector) == tuple(
+        seed["seed_objective_vector"]
+    )
+    fingerprint_matches = (
+        materialized_seed_fingerprint
+        == benchmark["manifest"]["seed_source_decision_fingerprint"]
+    )
+    return {
+        "input_semantic_fingerprint": benchmark["input_semantic_fingerprint"],
+        "seed_source_decision_fingerprint": materialized_seed_fingerprint,
+        "seed_validated_against_full_model": bool(probe.seed_validated),
+        "objective_vector": tuple(probe.seed_objective_vector),
+        "objective_matches_manifest": objective_matches,
+        "seed_fingerprint_matches_manifest": fingerprint_matches,
+        "status": (
+            "complete"
+            if probe.seed_validated and objective_matches and fingerprint_matches
+            else "failed"
+        ),
+        "probe_status": probe.status,
+        "probe_seed_solver_outcome": probe.seed_solver_outcome,
+        "validation_timings": dict(probe.timings),
     }
 
 
@@ -699,6 +1020,9 @@ def prepare_validated_stage1_seed(data, config: Stage2ExperimentConfig):
     return {
         "input_semantic_fingerprint": semantic_student_assignment_input_fingerprint(data),
         "seed_objective_vector": result.seed_objective_vector,
+        "seed_component_values": result.seed_component_values,
+        "seed_assignment_count": result.seed_assignment_count,
+        "seed_validated": result.seed_validated,
         "seed_source_decisions": result.seed_source_decisions,
         "seed_source_variable_values": result.seed_source_variable_values,
         "seed_source_decision_fingerprint": semantic_stage1_seed_source_fingerprint(

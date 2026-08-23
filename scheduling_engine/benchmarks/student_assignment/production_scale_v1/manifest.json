@@ -1,0 +1,61 @@
+{
+  "artifacts": {
+    "input": {
+      "compressed_bytes": 103871,
+      "path": "input.json.gz",
+      "sha256_compressed": "5c875598d8943c80ad8cadb671d237534d88d88c2a589b46cbd55bbe3b63760a",
+      "sha256_uncompressed": "5cbe8aeeb4d4c1e3f6e07d7c77bcc09afb69bf96dea2b648982caae6b25a0bd3",
+      "uncompressed_bytes": 8896950
+    },
+    "stage1_seed": {
+      "compressed_bytes": 86616,
+      "path": "stage1_seed.json.gz",
+      "sha256_compressed": "9928efe08cc6ff69c41d75e983ad1de9ee6a88b7653301abe20a2430cc6bfa0e",
+      "sha256_uncompressed": "b82ee46838f2d4a2269a913716c96a03a9b729564881cbe63c3be19b7baa8d08",
+      "uncompressed_bytes": 4699942
+    }
+  },
+  "benchmark_name": "production-scale-v1",
+  "benchmark_schema": "student_assignment_stage2_benchmark_v1",
+  "counts": {
+    "normal_section_count": 304,
+    "online_supervision_session_count": 13,
+    "request_count": 10760,
+    "required_source_decision_group_count": 10945,
+    "special_commitment_count": 310,
+    "special_commitment_request_count": 185,
+    "student_assignment_section_record_count": 317,
+    "student_count": 1400
+  },
+  "created_at_utc": "2026-08-23T17:15:11.541513+00:00",
+  "input_semantic_fingerprint": "1c4843ac33fccabd76218c63d8818c94a0a8dd8ab2886e3f5718ca1cd9576a11",
+  "schema": "student_assignment_stage2_benchmark_manifest_v1",
+  "seed_source_decision_fingerprint": "00889b7f4110dc19c6cdcb413b44fe77ab9598cb0fde25de6ea618ddb27325e7",
+  "solver": {
+    "ortools": "9.15.6755",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python": "3.14.5"
+  },
+  "source": "backend/tests/production_scale_special_scheduling_validation.py; freshly generated final-staffing replay",
+  "stage1": {
+    "complete": true,
+    "objective_vector": [
+      -10945.0,
+      0.0,
+      0.0,
+      0.0,
+      65173.0,
+      5669086063387.0
+    ],
+    "source_decision_count": 10945,
+    "substantive_components": {
+      "course_category_diversity_penalty": 22150.0,
+      "difficulty_balance_penalty": 35973.0,
+      "schedule_preservation_move_penalty": 0.0,
+      "section_utilization_balance_penalty": 6875.0,
+      "soft_sequence_preferences_satisfied": 0.0,
+      "student_semester_balance_penalty": 175.0
+    },
+    "validated": true
+  }
+}
