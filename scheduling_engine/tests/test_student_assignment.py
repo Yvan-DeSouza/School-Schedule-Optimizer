@@ -628,6 +628,32 @@ def test_adaptive_local_bootstrap_accepts_alternate_semantic_seed():
     assert len(result.unmet_requests) == 0
 
 
+def test_variable_neighborhood_diagnostic_records_bounded_radius_transitions():
+    result = student_assignment_module.run_student_assignment_variable_neighborhood_diagnostic(
+        _substantive_probe_input(),
+        neighborhood_radii=(0, 1),
+        max_iterations=2,
+        max_attempts_by_radius={0: 1, 1: 1},
+        per_probe_time_limit_seconds=0.5,
+        total_time_limit_seconds=5.0,
+        worker_count=1,
+    )
+
+    facts = result.optimization_facts["stage_2_local_bootstrap"]
+    assert facts["adaptive"] is True
+    assert facts["variable_neighborhood"] is True
+    assert 1 <= len(facts["iterations"]) <= 2
+    assert facts["stopping_reason"] in {
+        "neighborhood_sequence_exhausted",
+        "iteration_budget_exhausted",
+        "shared_budget_exhausted",
+    }
+    assert facts["radius_attempts"]
+    assert all("transition_reason" in item for item in facts["iterations"])
+    assert result.status == "complete"
+    assert len(result.unmet_requests) == 0
+
+
 def test_monotonic_deadline_clamps_nested_allowances(monkeypatch):
     current = iter((104.0, 107.0, 107.0))
     monkeypatch.setattr(

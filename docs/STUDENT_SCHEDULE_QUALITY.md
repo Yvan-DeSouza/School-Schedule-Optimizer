@@ -340,6 +340,15 @@ scheduling behavior. The `7,200`-second horizon was not run: the regular
 result, and the adaptive `1,800`-second run showed no need for more ordinary
 search after reaching that value.
 
+The engine now also exposes a separate diagnostic-only variable-neighborhood
+entry point for bounded `R2/R4/R8` descent. It uses the same CP-SAT probe and
+full-model validation as the adaptive bootstrap, returns to radius two after
+each adopted improvement, records per-radius attempts and stopping reasons,
+and distinguishes a proven infeasible neighborhood from an unresolved
+`UNKNOWN` search. This entry point has been covered on the small engine
+fixtures, but no target-scale `R2/R4/R8` result is claimed here until the
+authoritative detached input and Stage 1 seed are available again.
+
 The production-shaped 80-student medium fixture now has a stable semantic
 fingerprint (`4ac904a01a2c43dcf00505969c539dc8bacf9606e01aad67da5ab171b373f66b`)
 and is used for lower-cost curve experiments. With four CP-SAT workers and

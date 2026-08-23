@@ -952,6 +952,65 @@ def run_student_assignment_adaptive_local_bootstrap_diagnostic(
     )
 
 
+def run_student_assignment_variable_neighborhood_diagnostic(
+    data: StudentAssignmentInputDTO,
+    *,
+    neighborhood_radii=(2, 4, 8),
+    max_iterations=12,
+    max_attempts_by_radius=None,
+    per_probe_time_limit_seconds=90.0,
+    total_time_limit_seconds=1800.0,
+    worker_count=8,
+    hard_feasibility_time_limit_seconds=None,
+    hard_feasibility_validation_time_limit_seconds=None,
+    hard_feasibility_worker_count=None,
+    hard_feasibility_validation_worker_count=None,
+    alternate_source_decisions=(),
+    alternate_source_variable_values=None,
+    collect_incumbent_timeline=True,
+    timeline_max_events=128,
+):
+    """Run bounded R2/R4/R8 CP-SAT local descent for diagnostics only.
+
+    The variable-neighborhood policy is deliberately separate from ordinary
+    Stage 2.  It adopts only complete candidates that pass the unchanged full
+    model validation, returns to the smallest radius after every adoption, and
+    records UNKNOWN separately from a proven infeasible neighborhood.  The
+    default attempt limits keep an inconclusive parallel search bounded while
+    allowing a target-scale experiment to request a larger explicit budget.
+    """
+
+    return _solve_student_assignment(
+        data,
+        include_lock_costs=False,
+        include_candidate_ledger=False,
+        use_hard_feasibility_bootstrap=True,
+        collect_stage2_trace=True,
+        stage_2_local_bootstrap={
+            "adaptive": True,
+            "variable_neighborhood": True,
+            "neighborhood_radii": tuple(neighborhood_radii),
+            "max_iterations": max_iterations,
+            "max_attempts_by_radius": dict(max_attempts_by_radius or {}),
+            "per_probe_time_limit_seconds": per_probe_time_limit_seconds,
+            "worker_count": worker_count,
+            "target_importance_level": IMPORTANCE_LEVELS["important"],
+        },
+        stage_2_total_time_limit_seconds=total_time_limit_seconds,
+        retain_incumbent_on_non_improvement=True,
+        alternate_source_decisions=alternate_source_decisions,
+        alternate_source_variable_values=alternate_source_variable_values,
+        hard_feasibility_time_limit_seconds=hard_feasibility_time_limit_seconds,
+        hard_feasibility_validation_time_limit_seconds=(
+            hard_feasibility_validation_time_limit_seconds
+        ),
+        hard_feasibility_worker_count=hard_feasibility_worker_count,
+        hard_feasibility_validation_worker_count=hard_feasibility_validation_worker_count,
+        collect_incumbent_timeline=collect_incumbent_timeline,
+        timeline_max_events=timeline_max_events,
+    )
+
+
 def _solve_student_assignment(
     data,
     *,
@@ -2866,6 +2925,15 @@ def _solve_student_assignment(
             last_result = None
             any_candidate_validated = False
             any_improvement_adopted = False
+            variable_neighborhood = bool(
+                local_config.get("variable_neighborhood", False)
+            )
+            max_attempts_by_radius = dict(
+                local_config.get("max_attempts_by_radius", {})
+            )
+            radius_attempts = {}
+            radius_stop_reasons = []
+            stopping_reason = None
 
             def _current_substantive_value(candidate_solver):
                 return int(sum(
@@ -2913,6 +2981,16 @@ def _solve_student_assignment(
                 radius_index = 0
                 iteration_count = 0
                 while iteration_count < max_iterations and radius_index < len(radii):
+                    if (
+                        stage_2_deadline is not None
+                        and stage_2_deadline.remaining() <= 0.001
+                    ):
+                        stopping_reason = "shared_budget_exhausted"
+                        break
+                    current_radius = radii[radius_index]
+                    radius_attempts[current_radius] = (
+                        radius_attempts.get(current_radius, 0) + 1
+                    )
                     current_seed_value = _current_substantive_value(stage_2_seed_solver)
                     iteration_deadline = MonotonicDeadline.start(
                         min(per_probe_limit, _remaining_stage2_budget())
@@ -2967,17 +3045,64 @@ def _solve_student_assignment(
                         "affected_section_ids": tuple(local_result.affected_section_ids),
                         "section_load_deltas": dict(local_result.section_load_deltas),
                         "best_bound": local_result.best_bound,
+                        "attempt_number_for_radius": radius_attempts[current_radius],
                     })
                     iteration_count += 1
                     if adopted:
+                        iterations[-1]["transition_reason"] = "adopted_restart_radius_two"
                         radius_index = 0
                         continue
-                    # A failed small neighborhood may justify one larger
-                    # neighborhood, but never an unbounded radius ladder.
-                    radius_index += 1
+                    if variable_neighborhood:
+                        if local_result.status == "infeasible":
+                            radius_stop_reasons.append({
+                                "radius": current_radius,
+                                "reason": "proven_infeasible",
+                                "attempts": radius_attempts[current_radius],
+                            })
+                            iterations[-1]["transition_reason"] = (
+                                "neighborhood_proven_exhausted"
+                            )
+                            radius_index += 1
+                        elif local_result.status == "unknown":
+                            configured_attempts = max_attempts_by_radius.get(
+                                current_radius,
+                                max_attempts_by_radius.get(str(current_radius), 1),
+                            )
+                            max_attempts = max(1, int(configured_attempts))
+                            if radius_attempts[current_radius] < max_attempts:
+                                iterations[-1]["transition_reason"] = (
+                                    "retry_unknown_neighborhood"
+                                )
+                            else:
+                                radius_stop_reasons.append({
+                                    "radius": current_radius,
+                                    "reason": "unresolved_unknown",
+                                    "attempts": radius_attempts[current_radius],
+                                })
+                                iterations[-1]["transition_reason"] = (
+                                    "neighborhood_unresolved_expand"
+                                )
+                                radius_index += 1
+                        else:
+                            iterations[-1]["transition_reason"] = (
+                                "no_improvement_expand"
+                            )
+                            radius_index += 1
+                    else:
+                        # The original adaptive diagnostic expands once after
+                        # a failed radius and keeps its historical bounded
+                        # iteration semantics unchanged.
+                        iterations[-1]["transition_reason"] = "no_improvement_expand"
+                        radius_index += 1
+                if stopping_reason is None:
+                    if iteration_count >= max_iterations:
+                        stopping_reason = "iteration_budget_exhausted"
+                    elif radius_index >= len(radii):
+                        stopping_reason = "neighborhood_sequence_exhausted"
                 final_value = _current_substantive_value(stage_2_seed_solver)
                 local_bootstrap_facts = {
                     "adaptive": True,
+                    "variable_neighborhood": variable_neighborhood,
                     "status": last_result.status if last_result is not None else "unknown",
                     "elapsed_seconds": sum(item["elapsed_seconds"] for item in iterations),
                     "solver_wall_time_seconds": sum(
@@ -3004,6 +3129,9 @@ def _solve_student_assignment(
                     "candidate_found": any_candidate_validated,
                     "candidate_validated": any_candidate_validated,
                     "improvement_adopted": any_improvement_adopted,
+                    "radius_attempts": dict(radius_attempts),
+                    "radius_stop_reasons": tuple(radius_stop_reasons),
+                    "stopping_reason": stopping_reason,
                     "iterations": tuple(iterations),
                 }
             else:

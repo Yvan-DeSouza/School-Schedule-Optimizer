@@ -128,6 +128,7 @@ from scheduling_engine.student_assignment.core import (
     run_student_assignment_adaptive_local_bootstrap_diagnostic,
     run_student_assignment_local_bootstrap_diagnostic,
     run_student_assignment_stage2_diagnostic,
+    run_student_assignment_variable_neighborhood_diagnostic,
 )
 from scheduling_engine.student_assignment.runtime import (
     semantic_student_assignment_input_fingerprint,
@@ -1377,6 +1378,101 @@ def _run_detached_adaptive_local_bootstrap_diagnostic(student_input):
     return result
 
 
+def _run_detached_variable_neighborhood_diagnostic(student_input):
+    """Run bounded R2/R4/R8 descent from one exact DTO snapshot."""
+
+    input_fingerprint, replay_seed = _load_detached_stage1_replay_seed(
+        student_input
+    )
+    _print_matched_stage1_seed(input_fingerprint, replay_seed)
+    radii = tuple(
+        int(value)
+        for value in os.environ.get(
+            "SCHEDULING_PRODUCTION_SCALE_VNS_RADII", "2,4,8"
+        ).split(",")
+        if value.strip()
+    )
+    result = run_student_assignment_variable_neighborhood_diagnostic(
+        student_input,
+        neighborhood_radii=radii,
+        max_iterations=int(
+            os.environ.get("SCHEDULING_PRODUCTION_SCALE_VNS_MAX_ITERATIONS", "12")
+        ),
+        max_attempts_by_radius={
+            radius: int(
+                os.environ.get(
+                    f"SCHEDULING_PRODUCTION_SCALE_VNS_MAX_ATTEMPTS_R{radius}",
+                    "1",
+                )
+            )
+            for radius in radii
+        },
+        per_probe_time_limit_seconds=float(
+            os.environ.get("SCHEDULING_PRODUCTION_SCALE_VNS_PROBE_LIMIT", "90")
+        ),
+        total_time_limit_seconds=float(
+            os.environ.get("SCHEDULING_PRODUCTION_SCALE_VNS_TOTAL_LIMIT", "1800")
+        ),
+        hard_feasibility_time_limit_seconds=float(
+            os.environ.get("SCHEDULING_PRODUCTION_SCALE_LOCAL_STAGE1_LIMIT", "300")
+        ),
+        hard_feasibility_validation_time_limit_seconds=float(
+            os.environ.get(
+                "SCHEDULING_PRODUCTION_SCALE_LOCAL_STAGE1_VALIDATION_LIMIT", "60"
+            )
+        ),
+        hard_feasibility_worker_count=8,
+        hard_feasibility_validation_worker_count=8,
+        alternate_source_decisions=replay_seed["seed_source_decisions"],
+        worker_count=8,
+        collect_incumbent_timeline=True,
+    )
+    stage_2_facts = result.optimization_facts.get("stage_2", {})
+    bootstrap_facts = result.optimization_facts.get(
+        "stage_2_local_bootstrap", {}
+    )
+    print(
+        "[production-scale] variable-neighborhood Stage 2: "
+        f"summary={json.dumps({
+            'status': result.status,
+            'solver_outcome': result.solver_outcome,
+            'assignment_count': len(result.assignments),
+            'unmet_count': len(result.unmet_requests),
+            'objective_components': result.objective_components,
+            'alternate_seed_validated': stage_2_facts.get('alternate_seed_validated'),
+            'bootstrap': {
+                key: bootstrap_facts.get(key)
+                for key in (
+                    'variable_neighborhood',
+                    'status',
+                    'candidate_substantive_value',
+                    'candidate_found',
+                    'candidate_validated',
+                    'improvement_adopted',
+                    'stopping_reason',
+                    'radius_attempts',
+                    'radius_stop_reasons',
+                    'elapsed_seconds',
+                    'iterations',
+                )
+            },
+            'stage_2': {
+                key: stage_2_facts.get(key)
+                for key in (
+                    'solver_outcome',
+                    'time_limit_seconds',
+                    'worker_count',
+                    'operation_wall_time_seconds',
+                    'substantive_pass_wall_time_seconds',
+                    'tie_break_pass_wall_time_seconds',
+                )
+            },
+        }, sort_keys=True, default=str)}",
+        flush=True,
+    )
+    return result
+
+
 def run_production_scale_special_scheduling_validation(
     *, counselor_user, prefix, include_reruns, diagnostic_only=False,
 ):
@@ -1391,6 +1487,7 @@ def run_production_scale_special_scheduling_validation(
         and (
             os.environ.get("SCHEDULING_PRODUCTION_SCALE_LOCAL_BOOTSTRAP")
             or os.environ.get("SCHEDULING_PRODUCTION_SCALE_ADAPTIVE_BOOTSTRAP")
+            or os.environ.get("SCHEDULING_PRODUCTION_SCALE_VNS_BOOTSTRAP")
         )
         and input_snapshot_path
         and os.path.exists(input_snapshot_path)
@@ -1408,6 +1505,8 @@ def run_production_scale_special_scheduling_validation(
         )
         if os.environ.get("SCHEDULING_PRODUCTION_SCALE_ADAPTIVE_BOOTSTRAP"):
             return _run_detached_adaptive_local_bootstrap_diagnostic(student_input)
+        if os.environ.get("SCHEDULING_PRODUCTION_SCALE_VNS_BOOTSTRAP"):
+            return _run_detached_variable_neighborhood_diagnostic(student_input)
         return _run_detached_local_bootstrap_diagnostic(student_input)
     # Demand forecasting deliberately accepts only the real ``YYYY-YYYY``
     # school-year label.  Two valid years make the repeatability replay
@@ -1592,6 +1691,8 @@ def run_production_scale_special_scheduling_validation(
                 flush=True,
             )
             return adaptive_result
+        if os.environ.get("SCHEDULING_PRODUCTION_SCALE_VNS_BOOTSTRAP"):
+            return _run_detached_variable_neighborhood_diagnostic(student_input)
         if os.environ.get("SCHEDULING_PRODUCTION_SCALE_LOCAL_BOOTSTRAP"):
             input_fingerprint = semantic_student_assignment_input_fingerprint(
                 student_input
@@ -1901,6 +2002,16 @@ def test_production_scale_substantive_soft_tier_probe(counselor_user):
         assert result.optimization_facts["stage_2"]["time_limit_seconds"] == float(
             os.environ["SCHEDULING_PRODUCTION_SCALE_STAGE2_HORIZON"]
         )
+        return
+    if os.environ.get("SCHEDULING_PRODUCTION_SCALE_VNS_BOOTSTRAP"):
+        assert result.status in {"complete", "partial", "failed"}
+        assert "stage_2" in result.optimization_facts
+        bootstrap = result.optimization_facts.get("stage_2_local_bootstrap")
+        if bootstrap is not None:
+            assert bootstrap["adaptive"] is True
+            assert bootstrap["variable_neighborhood"] is True
+            assert bootstrap["iterations"]
+            assert bootstrap["stopping_reason"]
         return
     if os.environ.get("SCHEDULING_PRODUCTION_SCALE_ADAPTIVE_BOOTSTRAP"):
         # This is an explicitly diagnostic path.  A missing Stage 1 seed or
