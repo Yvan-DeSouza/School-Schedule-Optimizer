@@ -408,7 +408,10 @@ def solve_lexicographically(
                 sink=incumbent_timeline,
                 max_events=timeline_max_events,
                 candidate_callback=timeline_candidate_callback,
-                stage_started_at=trace_started,
+                # Keep this clock anchored to the whole Stage 2 operation.
+                # ``elapsed_solver_seconds`` remains pass-local, while the
+                # stage wall-clock field must be comparable across passes.
+                stage_started_at=optimization_started,
             )
         status = (
             solver.Solve(model, timeline_callback)

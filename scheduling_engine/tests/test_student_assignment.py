@@ -30,6 +30,13 @@ from scheduling_engine.student_assignment.runtime import MonotonicDeadline
 from scheduling_engine.student_assignment.runtime import (
     semantic_student_assignment_input_fingerprint,
 )
+from scheduling_engine.student_assignment.stage2_benchmark import (
+    read_stage1_seed_snapshot,
+    read_student_assignment_input_snapshot,
+    semantic_stage1_seed_source_fingerprint,
+    write_student_assignment_input_snapshot,
+    write_stage1_seed_snapshot,
+)
 
 
 def _request(request_id=1, **overrides):
@@ -412,6 +419,11 @@ def test_stage2_diagnostic_records_bounded_incumbent_timeline():
         and "best_bound" in item
         for item in timeline
     )
+    stage_elapsed = [
+        item["elapsed_stage_2_wall_seconds"]
+        for item in timeline
+    ]
+    assert stage_elapsed == sorted(stage_elapsed)
 
 
 def test_stage2_diagnostic_can_replay_a_validated_alternate_incumbent():
@@ -437,6 +449,114 @@ def test_stage2_diagnostic_can_replay_a_validated_alternate_incumbent():
     assert first_pass["returned_candidate"]["objective_vector"]
 
 
+def test_stage1_seed_snapshot_round_trip_is_versioned_and_input_bound(tmp_path):
+    data = _substantive_probe_input()
+    probe = run_substantive_soft_tier_probe(
+        data,
+        threshold=None,
+        time_limit_seconds=5.0,
+        worker_count=1,
+    )
+    assert probe.seed_validated is True
+
+    seed = {
+        "seed_objective_vector": probe.seed_objective_vector,
+        "seed_source_decisions": probe.seed_source_decisions,
+    }
+    path = tmp_path / "stage1-seed.json"
+    payload = write_stage1_seed_snapshot(
+        path,
+        data=data,
+        input_fingerprint=semantic_student_assignment_input_fingerprint(data),
+        seed=seed,
+    )
+    loaded = read_stage1_seed_snapshot(
+        path,
+        data=data,
+        expected_input_fingerprint=semantic_student_assignment_input_fingerprint(data),
+    )
+
+    assert payload["schema"] == "student_assignment_stage1_seed_v1"
+    assert loaded["seed_objective_vector"] == tuple(probe.seed_objective_vector)
+    assert loaded["seed_source_decisions"] == tuple(probe.seed_source_decisions)
+    assert loaded["seed_source_decision_fingerprint"] == (
+        semantic_stage1_seed_source_fingerprint(data, probe.seed_source_decisions)
+    )
+
+
+def test_stage1_seed_snapshot_preserves_co_op_commitment_source_namespace(tmp_path):
+    data = _input(
+        requests=(_request(
+            74,
+            course_id=9,
+            course_offering_id=99,
+            delivery_kind="co_op",
+            credit_value=2.0,
+        ),),
+        sections=(),
+        timeslots=_timeslots(),
+        special_commitment_locks=(StudentSpecialCommitmentLockDTO(
+            lock_id=3,
+            lock_type="co_op_time",
+            lock_mode="exact",
+            course_request_id=74,
+            semester=1,
+            co_op_block_pair="a_b",
+        ),),
+    )
+    probe = run_substantive_soft_tier_probe(
+        data,
+        threshold=None,
+        time_limit_seconds=5.0,
+        worker_count=1,
+    )
+    assert probe.seed_validated is True
+    assert any(
+        key == ("commitment", 74)
+        and value[1] == "co_op"
+        and value[2] == 74
+        for key, value in probe.seed_source_decisions
+    )
+
+    path = tmp_path / "co-op-stage1-seed.json"
+    write_stage1_seed_snapshot(
+        path,
+        data=data,
+        input_fingerprint=semantic_student_assignment_input_fingerprint(data),
+        seed={
+            "seed_objective_vector": probe.seed_objective_vector,
+            "seed_source_decisions": probe.seed_source_decisions,
+        },
+    )
+    loaded = read_stage1_seed_snapshot(
+        path,
+        data=data,
+        expected_input_fingerprint=semantic_student_assignment_input_fingerprint(data),
+    )
+
+    assert loaded["seed_source_decisions"] == tuple(probe.seed_source_decisions)
+
+
+def test_student_assignment_input_snapshot_is_versioned_and_fingerprint_bound(tmp_path):
+    data = _substantive_probe_input()
+    fingerprint = semantic_student_assignment_input_fingerprint(data)
+    path = tmp_path / "student-assignment-input.json"
+
+    payload = write_student_assignment_input_snapshot(
+        path,
+        data=data,
+        input_fingerprint=fingerprint,
+    )
+    loaded = read_student_assignment_input_snapshot(
+        path,
+        expected_input_fingerprint=fingerprint,
+    )
+
+    assert payload["schema"] == "student_assignment_input_v1"
+    assert loaded["data"] == data
+    assert loaded["input_semantic_fingerprint"] == fingerprint
+
+
 def test_local_bootstrap_diagnostic_consumes_shared_budget_and_keeps_complete_seed():
     result = student_assignment_module.run_student_assignment_local_bootstrap_diagnostic(
         _substantive_probe_input(),
@@ -449,6 +569,9 @@ def test_local_bootstrap_diagnostic_consumes_shared_budget_and_keeps_complete_se
     bootstrap = result.optimization_facts["stage_2_local_bootstrap"]
     assert bootstrap["time_limit_seconds"] == 1.0
     assert bootstrap["status"] in {"optimal", "feasible", "infeasible", "unknown"}
+    assert "affected_student_ids" in bootstrap
+    assert "affected_section_ids" in bootstrap
+    assert "section_load_deltas" in bootstrap
     assert result.status == "complete"
     assert len(result.unmet_requests) == 0
     assert result.optimization_facts["stage_2"]["validated_seed_received"] is True
@@ -476,6 +599,31 @@ def test_adaptive_local_bootstrap_restarts_and_records_bounded_iterations():
         and "probe_timings" in item
         for item in facts["iterations"]
     )
+    assert result.status == "complete"
+    assert len(result.unmet_requests) == 0
+
+
+def test_adaptive_local_bootstrap_accepts_alternate_semantic_seed():
+    data = _substantive_probe_input()
+    seed = run_substantive_soft_tier_probe(
+        data,
+        threshold=1,
+        time_limit_seconds=5.0,
+        worker_count=1,
+    )
+
+    result = student_assignment_module.run_student_assignment_adaptive_local_bootstrap_diagnostic(
+        data,
+        neighborhood_radii=(0,),
+        max_iterations=1,
+        per_probe_time_limit_seconds=0.5,
+        total_time_limit_seconds=5.0,
+        worker_count=1,
+        alternate_source_decisions=seed.seed_source_decisions,
+        alternate_source_variable_values=seed.seed_source_variable_values,
+    )
+
+    assert result.optimization_facts["stage_2"]["alternate_seed_validated"] is True
     assert result.status == "complete"
     assert len(result.unmet_requests) == 0
 

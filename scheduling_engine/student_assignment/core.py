@@ -853,6 +853,8 @@ def run_student_assignment_local_bootstrap_diagnostic(
     hard_feasibility_validation_time_limit_seconds=None,
     hard_feasibility_worker_count=None,
     hard_feasibility_validation_worker_count=None,
+    alternate_source_decisions=(),
+    alternate_source_variable_values=None,
     collect_incumbent_timeline=True,
     timeline_max_events=128,
 ):
@@ -881,6 +883,8 @@ def run_student_assignment_local_bootstrap_diagnostic(
             "minimize_component": None,
         },
         stage_2_total_time_limit_seconds=total_time_limit_seconds,
+        alternate_source_decisions=alternate_source_decisions,
+        alternate_source_variable_values=alternate_source_variable_values,
         retain_incumbent_on_non_improvement=True,
         hard_feasibility_time_limit_seconds=hard_feasibility_time_limit_seconds,
         hard_feasibility_validation_time_limit_seconds=(
@@ -905,6 +909,8 @@ def run_student_assignment_adaptive_local_bootstrap_diagnostic(
     hard_feasibility_validation_time_limit_seconds=None,
     hard_feasibility_worker_count=None,
     hard_feasibility_validation_worker_count=None,
+    alternate_source_decisions=(),
+    alternate_source_variable_values=None,
     collect_incumbent_timeline=True,
     timeline_max_events=128,
 ):
@@ -933,6 +939,8 @@ def run_student_assignment_adaptive_local_bootstrap_diagnostic(
         },
         stage_2_total_time_limit_seconds=total_time_limit_seconds,
         retain_incumbent_on_non_improvement=True,
+        alternate_source_decisions=alternate_source_decisions,
+        alternate_source_variable_values=alternate_source_variable_values,
         hard_feasibility_time_limit_seconds=hard_feasibility_time_limit_seconds,
         hard_feasibility_validation_time_limit_seconds=(
             hard_feasibility_validation_time_limit_seconds
@@ -3041,6 +3049,9 @@ def _solve_student_assignment(
                     "changed_source_decision_count": local_result.changed_source_decision_count,
                     "component_values": dict(local_result.candidate_component_values),
                     "component_deltas": dict(local_result.component_deltas),
+                    "affected_student_ids": tuple(local_result.affected_student_ids),
+                    "affected_section_ids": tuple(local_result.affected_section_ids),
+                    "section_load_deltas": dict(local_result.section_load_deltas),
                     "candidate_found": local_result.complete_candidate_found,
                     "candidate_validated": candidate_validated,
                     "improvement_adopted": candidate_validated,

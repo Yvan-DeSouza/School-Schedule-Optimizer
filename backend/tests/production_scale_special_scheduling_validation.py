@@ -19,6 +19,7 @@ from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass
 from decimal import Decimal
 from itertools import permutations
+import json
 import os
 import subprocess
 import sys
@@ -127,6 +128,17 @@ from scheduling_engine.student_assignment.core import (
     run_student_assignment_adaptive_local_bootstrap_diagnostic,
     run_student_assignment_local_bootstrap_diagnostic,
     run_student_assignment_stage2_diagnostic,
+)
+from scheduling_engine.student_assignment.runtime import (
+    semantic_student_assignment_input_fingerprint,
+)
+from scheduling_engine.student_assignment.stage2_benchmark import (
+    Stage2ExperimentConfig,
+    prepare_validated_stage1_seed,
+    read_stage1_seed_snapshot,
+    read_student_assignment_input_snapshot,
+    write_stage1_seed_snapshot,
+    write_student_assignment_input_snapshot,
 )
 
 
@@ -1041,12 +1053,362 @@ def _run_controlled_reruns(*, academic_year, approval, counselor_user):
     }
 
 
+def _load_detached_stage1_replay_seed(student_input):
+    """Load or create the semantic Stage 1 seed for a detached replay."""
+
+    replay_seed_path = os.environ.get(
+        "SCHEDULING_PRODUCTION_SCALE_LOCAL_REPLAY_SEED_PATH"
+    )
+    if not replay_seed_path:
+        raise RuntimeError(
+            "A matched local-bootstrap run requires a Stage 1 replay seed path."
+        )
+    input_fingerprint = semantic_student_assignment_input_fingerprint(student_input)
+    replay_seed = None
+    if os.path.exists(replay_seed_path):
+        replay_seed = read_stage1_seed_snapshot(
+            replay_seed_path,
+            data=student_input,
+            expected_input_fingerprint=input_fingerprint,
+        )
+    else:
+        seed_config = Stage2ExperimentConfig(
+            stage1_time_limit_seconds=float(
+                os.environ.get("SCHEDULING_PRODUCTION_SCALE_LOCAL_STAGE1_LIMIT", "300")
+            ),
+            stage1_validation_time_limit_seconds=float(
+                os.environ.get(
+                    "SCHEDULING_PRODUCTION_SCALE_LOCAL_STAGE1_VALIDATION_LIMIT", "60"
+                )
+            ),
+            stage1_worker_count=8,
+            stage1_validation_worker_count=8,
+        )
+        seed = prepare_validated_stage1_seed(student_input, seed_config)
+        write_stage1_seed_snapshot(
+            replay_seed_path,
+            data=student_input,
+            input_fingerprint=input_fingerprint,
+            seed=seed,
+        )
+        replay_seed = read_stage1_seed_snapshot(
+            replay_seed_path,
+            data=student_input,
+            expected_input_fingerprint=input_fingerprint,
+        )
+    return input_fingerprint, replay_seed
+
+
+def _run_detached_local_bootstrap_diagnostic(student_input):
+    """Run the local Stage 2 diagnostic from one exact DTO snapshot."""
+
+    input_fingerprint, replay_seed = _load_detached_stage1_replay_seed(
+        student_input
+    )
+    _print_matched_stage1_seed(input_fingerprint, replay_seed)
+    local_result = run_student_assignment_local_bootstrap_diagnostic(
+        student_input,
+        neighborhood_radius=int(
+            os.environ.get("SCHEDULING_PRODUCTION_SCALE_PROBE_RADIUS", "2")
+        ),
+        time_limit_seconds=float(
+            os.environ.get(
+                "SCHEDULING_PRODUCTION_SCALE_LOCAL_BOOTSTRAP_TIME_LIMIT", "240"
+            )
+        ),
+        total_time_limit_seconds=float(
+            os.environ.get(
+                "SCHEDULING_PRODUCTION_SCALE_LOCAL_BOOTSTRAP_TOTAL_LIMIT", "1800"
+            )
+        ),
+        hard_feasibility_time_limit_seconds=float(
+            os.environ.get(
+                "SCHEDULING_PRODUCTION_SCALE_LOCAL_STAGE1_LIMIT", "300"
+            )
+        ),
+        hard_feasibility_validation_time_limit_seconds=float(
+            os.environ.get(
+                "SCHEDULING_PRODUCTION_SCALE_LOCAL_STAGE1_VALIDATION_LIMIT", "60"
+            )
+        ),
+        hard_feasibility_worker_count=8,
+        hard_feasibility_validation_worker_count=8,
+        alternate_source_decisions=replay_seed["seed_source_decisions"],
+        worker_count=8,
+    )
+    assert local_result.optimization_facts["stage_2"]["alternate_seed_validated"] is True
+    stage_2_facts = local_result.optimization_facts.get("stage_2", {})
+    bootstrap_facts = local_result.optimization_facts.get(
+        "stage_2_local_bootstrap", {}
+    )
+    compact_passes = tuple(
+        {
+            key: pass_fact.get(key)
+            for key in (
+                "objective_index",
+                "status",
+                "allocated_time_seconds",
+                "wall_time_seconds",
+                "starting_objective_value",
+                "ending_objective_value",
+                "best_bound",
+                "incumbent_improved",
+            )
+        }
+        for pass_fact in local_result.optimization_facts.get(
+            "optimization_passes", ()
+        )
+    )
+    compact_timeline = tuple(
+        {
+            "objective_index": event.get("objective_index"),
+            "elapsed_solver_seconds": event.get("elapsed_solver_seconds"),
+            "elapsed_stage_2_wall_seconds": event.get(
+                "elapsed_stage_2_wall_seconds"
+            ),
+            "objective_vector": event.get("objective_vector"),
+            "best_bound": event.get("best_bound"),
+            "candidate": (
+                {
+                    "changed_source_decision_count": event["candidate"].get(
+                        "changed_source_decision_count"
+                    ),
+                    "affected_student_count": len(
+                        event["candidate"].get("affected_student_ids", ())
+                    ),
+                    "affected_section_count": len(
+                        event["candidate"].get("affected_section_ids", ())
+                    ),
+                    "assignment_count": event["candidate"].get(
+                        "assignment_count"
+                    ),
+                    "special_commitment_count": event["candidate"].get(
+                        "special_commitment_count"
+                    ),
+                    "hard_valid": event["candidate"].get("hard_valid"),
+                    "fulfillment_complete": event["candidate"].get(
+                        "fulfillment_complete"
+                    ),
+                }
+                if isinstance(event.get("candidate"), dict)
+                else None
+            ),
+        }
+        for event in stage_2_facts.get("incumbent_timeline", ())
+    )
+    compact_summary = {
+        "status": local_result.status,
+        "solver_outcome": local_result.solver_outcome,
+        "assignment_count": len(local_result.assignments),
+        "unmet_count": len(local_result.unmet_requests),
+        "objective_components": local_result.objective_components,
+        "stage_2": {
+            key: stage_2_facts.get(key)
+            for key in (
+                "solver_outcome",
+                "time_limit_seconds",
+                "worker_count",
+                "alternate_seed_validated",
+                "substantive_pass_wall_time_seconds",
+                "tie_break_pass_wall_time_seconds",
+                "operation_wall_time_seconds",
+                "configured_deadline_seconds",
+            )
+        },
+        "bootstrap": {
+            key: bootstrap_facts.get(key)
+            for key in (
+                "adaptive",
+                "status",
+                "elapsed_seconds",
+                "solver_wall_time_seconds",
+                "validation_elapsed_seconds",
+                "time_limit_seconds",
+                "baseline_substantive_value",
+                "requested_threshold",
+                "candidate_substantive_value",
+                "changed_source_decision_count",
+                "component_values",
+                "component_deltas",
+                "candidate_found",
+                "candidate_validated",
+                "improvement_adopted",
+            )
+        }
+        | {
+            "affected_student_count": len(
+                bootstrap_facts.get("affected_student_ids", ())
+            ),
+            "affected_student_sample": tuple(
+                bootstrap_facts.get("affected_student_ids", ())[:20]
+            ),
+            "affected_section_ids": tuple(
+                bootstrap_facts.get("affected_section_ids", ())
+            ),
+            "section_load_deltas": dict(
+                bootstrap_facts.get("section_load_deltas", {})
+            ),
+        },
+        "passes": compact_passes,
+        "timeline": compact_timeline,
+    }
+    print(
+        "[production-scale] local-bootstrap Stage 2: "
+        f"summary={json.dumps(compact_summary, sort_keys=True, default=str)}",
+        flush=True,
+    )
+    return local_result
+
+
+def _print_matched_stage1_seed(input_fingerprint, replay_seed):
+    print(
+        "[production-scale] matched Stage 1 seed: "
+        f"input_fingerprint={input_fingerprint} "
+        f"seed_fingerprint={replay_seed['seed_source_decision_fingerprint']} "
+        f"seed_objective_vector={replay_seed['seed_objective_vector']}",
+        flush=True,
+    )
+
+
+def _run_detached_adaptive_local_bootstrap_diagnostic(student_input):
+    """Run the bounded adaptive local diagnostic from one DTO snapshot."""
+
+    input_fingerprint, replay_seed = _load_detached_stage1_replay_seed(
+        student_input
+    )
+    _print_matched_stage1_seed(input_fingerprint, replay_seed)
+    result = run_student_assignment_adaptive_local_bootstrap_diagnostic(
+        student_input,
+        neighborhood_radii=tuple(
+            int(value)
+            for value in os.environ.get(
+                "SCHEDULING_PRODUCTION_SCALE_ADAPTIVE_RADII", "2,4"
+            ).split(",")
+            if value.strip()
+        ),
+        max_iterations=int(
+            os.environ.get(
+                "SCHEDULING_PRODUCTION_SCALE_ADAPTIVE_MAX_ITERATIONS", "3"
+            )
+        ),
+        per_probe_time_limit_seconds=float(
+            os.environ.get(
+                "SCHEDULING_PRODUCTION_SCALE_ADAPTIVE_PROBE_LIMIT", "90"
+            )
+        ),
+        total_time_limit_seconds=float(
+            os.environ.get(
+                "SCHEDULING_PRODUCTION_SCALE_ADAPTIVE_TOTAL_LIMIT", "1800"
+            )
+        ),
+        hard_feasibility_time_limit_seconds=float(
+            os.environ.get(
+                "SCHEDULING_PRODUCTION_SCALE_LOCAL_STAGE1_LIMIT", "300"
+            )
+        ),
+        hard_feasibility_validation_time_limit_seconds=float(
+            os.environ.get(
+                "SCHEDULING_PRODUCTION_SCALE_LOCAL_STAGE1_VALIDATION_LIMIT", "60"
+            )
+        ),
+        hard_feasibility_worker_count=8,
+        hard_feasibility_validation_worker_count=8,
+        alternate_source_decisions=replay_seed["seed_source_decisions"],
+        worker_count=8,
+        collect_incumbent_timeline=True,
+    )
+    stage_2_facts = result.optimization_facts.get("stage_2", {})
+    bootstrap_facts = result.optimization_facts.get(
+        "stage_2_local_bootstrap", {}
+    )
+    iterations = tuple(
+        {
+            key: item.get(key)
+            for key in (
+                "iteration",
+                "radius",
+                "status",
+                "incumbent_before",
+                "candidate_value",
+                "candidate_validated",
+                "adopted",
+                "changed_source_decision_count",
+                "component_values",
+                "component_deltas",
+                "best_bound",
+                "elapsed_seconds",
+                "validation_elapsed_seconds",
+            )
+        }
+        for item in bootstrap_facts.get("iterations", ())
+    )
+    print(
+        "[production-scale] adaptive local-bootstrap Stage 2: "
+        f"summary={json.dumps({
+            'status': result.status,
+            'solver_outcome': result.solver_outcome,
+            'assignment_count': len(result.assignments),
+            'unmet_count': len(result.unmet_requests),
+            'objective_components': result.objective_components,
+            'alternate_seed_validated': stage_2_facts.get('alternate_seed_validated'),
+            'bootstrap': {
+                'status': bootstrap_facts.get('status'),
+                'candidate_substantive_value': bootstrap_facts.get('candidate_substantive_value'),
+                'candidate_found': bootstrap_facts.get('candidate_found'),
+                'candidate_validated': bootstrap_facts.get('candidate_validated'),
+                'improvement_adopted': bootstrap_facts.get('improvement_adopted'),
+                'elapsed_seconds': bootstrap_facts.get('elapsed_seconds'),
+                'iterations': iterations,
+            },
+            'stage_2': {
+                key: stage_2_facts.get(key)
+                for key in (
+                    'solver_outcome',
+                    'time_limit_seconds',
+                    'worker_count',
+                    'operation_wall_time_seconds',
+                    'substantive_pass_wall_time_seconds',
+                    'tie_break_pass_wall_time_seconds',
+                )
+            },
+        }, sort_keys=True, default=str)}",
+        flush=True,
+    )
+    return result
+
+
 def run_production_scale_special_scheduling_validation(
     *, counselor_user, prefix, include_reruns, diagnostic_only=False,
 ):
     """Create one 1,400-student complete pipeline scenario and validate it."""
 
     stage_seconds = {}
+    input_snapshot_path = os.environ.get(
+        "SCHEDULING_PRODUCTION_SCALE_LOCAL_INPUT_SNAPSHOT_PATH"
+    )
+    if (
+        diagnostic_only
+        and (
+            os.environ.get("SCHEDULING_PRODUCTION_SCALE_LOCAL_BOOTSTRAP")
+            or os.environ.get("SCHEDULING_PRODUCTION_SCALE_ADAPTIVE_BOOTSTRAP")
+        )
+        and input_snapshot_path
+        and os.path.exists(input_snapshot_path)
+    ):
+        snapshot = read_student_assignment_input_snapshot(input_snapshot_path)
+        student_input = snapshot["data"]
+        print(
+            "[production-scale] loaded detached final-staffing input: "
+            f"fingerprint={snapshot['input_semantic_fingerprint']} "
+            f"students={len({item.student_id for item in student_input.requests})} "
+            f"requests={len(student_input.requests)} "
+            f"sections={len(student_input.sections)} "
+            f"online_sessions={len(student_input.online_supervision_sessions)}",
+            flush=True,
+        )
+        if os.environ.get("SCHEDULING_PRODUCTION_SCALE_ADAPTIVE_BOOTSTRAP"):
+            return _run_detached_adaptive_local_bootstrap_diagnostic(student_input)
+        return _run_detached_local_bootstrap_diagnostic(student_input)
     # Demand forecasting deliberately accepts only the real ``YYYY-YYYY``
     # school-year label.  Two valid years make the repeatability replay
     # independent without weakening that production input contract.
@@ -1231,38 +1593,26 @@ def run_production_scale_special_scheduling_validation(
             )
             return adaptive_result
         if os.environ.get("SCHEDULING_PRODUCTION_SCALE_LOCAL_BOOTSTRAP"):
-            local_result = run_student_assignment_local_bootstrap_diagnostic(
-                student_input,
-                neighborhood_radius=int(
-                    os.environ.get("SCHEDULING_PRODUCTION_SCALE_PROBE_RADIUS", "2")
-                ),
-                time_limit_seconds=float(
-                    os.environ.get(
-                        "SCHEDULING_PRODUCTION_SCALE_LOCAL_BOOTSTRAP_TIME_LIMIT",
-                        "240",
-                    )
-                ),
-                total_time_limit_seconds=float(
-                    os.environ.get(
-                        "SCHEDULING_PRODUCTION_SCALE_LOCAL_BOOTSTRAP_TOTAL_LIMIT",
-                        "1800",
-                    )
-                ),
-                worker_count=8,
+            input_fingerprint = semantic_student_assignment_input_fingerprint(
+                student_input
             )
             print(
-                "[production-scale] local-bootstrap Stage 2: "
-                f"status={local_result.status} "
-                f"solver_outcome={local_result.solver_outcome} "
-                f"assignments={len(local_result.assignments)} "
-                f"unmet={len(local_result.unmet_requests)} "
-                f"objective_components={local_result.objective_components} "
-                f"stage_2={local_result.optimization_facts.get('stage_2')} "
-                f"bootstrap={local_result.optimization_facts.get('stage_2_local_bootstrap')} "
-                f"passes={local_result.optimization_facts.get('optimization_passes')}",
+                "[production-scale] final-staffing input fingerprint: "
+                f"{input_fingerprint}",
                 flush=True,
             )
-            return local_result
+            if input_snapshot_path and not os.path.exists(input_snapshot_path):
+                write_student_assignment_input_snapshot(
+                    input_snapshot_path,
+                    data=student_input,
+                    input_fingerprint=input_fingerprint,
+                )
+                print(
+                    "[production-scale] wrote detached final-staffing input: "
+                    f"path={input_snapshot_path}",
+                    flush=True,
+                )
+            return _run_detached_local_bootstrap_diagnostic(student_input)
         if os.environ.get("SCHEDULING_PRODUCTION_SCALE_RETENTION"):
             retention_result = run_student_assignment_stage2_diagnostic(
                 student_input,
@@ -1530,6 +1880,8 @@ def test_production_scale_substantive_soft_tier_probe(counselor_user):
         assert result.status == "complete"
         assert len(result.unmet_requests) == 0
         assert len(result.assignments) == 10635
+        if os.environ.get("SCHEDULING_PRODUCTION_SCALE_LOCAL_REPLAY_SEED_PATH"):
+            assert result.optimization_facts["stage_2"]["alternate_seed_validated"] is True
         assert result.optimization_facts["stage_2"]["time_limit_seconds"] == float(
             os.environ.get("SCHEDULING_PRODUCTION_SCALE_LOCAL_BOOTSTRAP_TOTAL_LIMIT", "1800")
         )

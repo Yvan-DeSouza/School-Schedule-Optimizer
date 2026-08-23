@@ -266,13 +266,24 @@ lexicographic optimizer. Bootstrap and validation time are deducted from the
 same shared Stage 2 budget; the budget is not extended. The ordinary
 `solve_student_assignment` entry point does not enable this path.
 
-On the target-scale final-staffing input, a radius-two bootstrap found the
-`65,165` candidate in approximately `126.6` seconds using an `1,800`-second
-total Stage 2 budget. The candidate validated successfully and the remaining
-optimization returned a complete result with `10,635` assignments, zero unmet
-required requests, and all `310` special commitments fulfilled. The final
-substantive components in that replay were `6,863`, `175`, `35,973`, and
-`22,150`; the bootstrap candidate itself had section-utilization `6,867`.
+On the matched target-scale final-staffing input, four independent radius-two
+replays using the same semantic Stage 1 seed all found and validated a
+strictly better complete candidate within the existing `1,800`-second Stage 2
+budget. The local candidate values were `65,165`, `65,165`, `65,163`, and
+`65,165`; every replay returned `10,635` assignments, zero unmet required
+requests, and all `310` special commitments fulfilled. The `65,163` replay
+provides the clearest human-readable example: one student's course request
+moved between two parallel sections, changing section loads by `-1` and `+1`
+and improving only section utilization from `6,875` to `6,865`.
+
+The ordinary optimizer did not consistently improve the local candidate's
+substantive tier in the `1,800`-second replays. The final substantive values
+therefore remained `65,165`, `65,165`, `65,163`, and `65,165` in those four
+runs, while all retained candidates remained complete and hard-valid. A
+separate `3,600`-second local-seeded replay began from `65,165` and ended at
+`65,161` after Stage 2, showing that additional ordinary search can sometimes
+improve a locally seeded candidate, but did not outperform the later adaptive
+bootstrap result described below.
 
 This is not yet enabled for production scheduling. Three medium-fixture
 baseline trials produced substantive values `1,634`, `1,634`, and `1,618`; the
@@ -306,16 +317,28 @@ consumed substantially more wall time than its requested probe slice in one
 parallel trial, so the adaptive path is not production-safe yet.
 
 An earlier exact target-scale adaptive replay was inconclusive because Stage 1
-did not produce a validated seed in that isolated trial. The post-hardening
-replay below did produce and validate the seed, so the earlier result is now
-classified as search variation or replay-state variation rather than evidence
-of infeasibility. The adaptive probes still did not find a substantive
-improvement and remain diagnostic-only because the medium repeatability gate
-is unmet.
+did not produce a validated seed in that isolated trial. The matched
+post-hardening replay did produce and validate the seed. Three radius-two
+iterations then returned `OPTIMAL` and were each validated and adopted,
+progressing the substantive tier from `65,173` to `65,163`, then `65,143`,
+then `65,135`. The bootstrap consumed approximately `365.7` seconds in
+total, and the subsequent ordinary `1,800`-second Stage 2 run remained
+complete at `65,135` with section utilization `6,857`, difficulty balance
+`35,953`, semester balance `175`, and category diversity `22,150`.
+
+This is strong target-scale evidence that a bounded local improvement policy
+can expose better complete schedules that ordinary Stage 2 search did not
+find from the original seed. It is still one adaptive target-scale trial, so
+it does not by itself establish repeatability or authorize changing ordinary
+production behavior.
 
 The current conclusion is to preserve the adaptive and retention diagnostics,
-keep ordinary Stage 2 unchanged, and require a reliable bounded-time policy
-before changing counselor-facing scheduling behavior.
+keep ordinary Stage 2 unchanged, and require repeated target-scale adaptive
+trials plus a documented operational policy before changing counselor-facing
+scheduling behavior. The `7,200`-second horizon was not run: the regular
+`3,600`-second local-seeded trial did not outperform the adaptive `65,135`
+result, and the adaptive `1,800`-second run showed no need for more ordinary
+search after reaching that value.
 
 The production-shaped 80-student medium fixture now has a stable semantic
 fingerprint (`4ac904a01a2c43dcf00505969c539dc8bacf9606e01aad67da5ab171b373f66b`)
@@ -399,14 +422,19 @@ observations:
 | --- | ---: | ---: | --- |
 | Ordinary | 1,800 s | 65,173 | Complete; substantive metrics unchanged |
 | Ordinary | 3,600 s | 65,173 | Complete; only the opaque tie-break improved |
-| Radius-two local bootstrap + ordinary | 1,800 s | 65,161 | Complete; diagnostic-only; utilization improved |
+| Radius-two local bootstrap + ordinary | 1,800 s | 65,163--65,165 | Complete across four matched trials; diagnostic-only |
+| Adaptive radius-two bootstrap + ordinary | 1,800 s | 65,135 | Complete; one matched target trial; diagnostic-only |
+| Radius-two local bootstrap + ordinary | 3,600 s | 65,161 | Complete; one matched trial; diagnostic-only |
 | Full-vector retention | 1,800 s | 65,173 | Complete; no substantive improvement in this trial |
 | Strict substantive probe | bounded diagnostic | 65,171 candidate | Feasibility evidence, not ordinary production behavior |
 
-The local-bootstrap result is promising because it found a materially better
-validated schedule within the existing total budget, but it has not yet passed
-the repeated target-scale promotion gate. The ordinary one-hour replay did
-not improve the substantive tier, so a longer ordinary horizon should only be
-run if a separate diagnostic question justifies its cost. No ordinary solver
-objective, production horizon, or counselor-facing behavior was changed by
-these experiments.
+The local-bootstrap results are promising because they found materially better
+validated schedules within the existing total budget, and the adaptive trial
+reached `65,135`, a `38`-point improvement over the Stage 1 substantive value.
+The result has not yet passed a repeated adaptive target-scale promotion gate,
+so the bootstrap remains diagnostic-only. The ordinary one-hour replay from
+the original seed did not improve the substantive tier, while the regular
+local-seeded one-hour replay reached `65,161`; neither result justifies
+changing the ordinary production horizon or objective semantics. No ordinary
+solver objective, production horizon, or counselor-facing behavior was
+changed by these experiments.

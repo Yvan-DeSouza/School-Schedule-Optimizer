@@ -139,7 +139,10 @@ def test_production_shaped_medium_fixture_is_hard_feasible_with_diagnostic_limit
     result = solve_student_assignment(data)
 
     assert result.status == "complete"
-    assert result.solver_outcome in {"optimal", "feasible"}
+    # The bounded optimization pass may time out after retaining the complete
+    # validated seed.  In that contractually valid case the public outcome is
+    # ``unknown`` even though the returned recommendation is complete.
+    assert result.solver_outcome in {"optimal", "feasible", "unknown"}
     assert not result.unmet_requests
     assert result.optimization_facts["stage_1"]["complete_seed_produced"] is True
     assert result.optimization_facts["stage_1"]["seed_validated_against_full_model"] is True
