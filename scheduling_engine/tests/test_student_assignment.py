@@ -833,6 +833,46 @@ def test_adaptive_local_bootstrap_accepts_alternate_semantic_seed():
     assert len(result.unmet_requests) == 0
 
 
+def test_mature_local_session_validates_checkpoint_and_skips_ordinary_stage2(
+    monkeypatch,
+):
+    data = _substantive_probe_input()
+    seed = run_substantive_soft_tier_probe(
+        data,
+        threshold=1,
+        time_limit_seconds=5.0,
+        worker_count=1,
+    )
+
+    original_lexicographic_solver = student_assignment_module._solve_lexicographically
+
+    def mature_local_lexicographic_guard(*args, **kwargs):
+        assert kwargs["skip_optimization"] is True
+        return original_lexicographic_solver(*args, **kwargs)
+
+    monkeypatch.setattr(
+        student_assignment_module,
+        "_solve_lexicographically",
+        mature_local_lexicographic_guard,
+    )
+    result = student_assignment_module.run_student_assignment_mature_local_search_diagnostic(
+        data,
+        mature_source_decisions=seed.seed_source_decisions,
+        max_iterations=1,
+        per_probe_time_limit_seconds=0.5,
+        total_time_limit_seconds=2.0,
+        worker_count=1,
+        hard_feasibility_validation_time_limit_seconds=5.0,
+        collect_resource_telemetry=False,
+    )
+
+    assert result.status == "complete"
+    assert result.optimization_facts["stage_1"]["timings"]["seed_skipped"] is True
+    assert result.optimization_facts["optimization_passes"] == []
+    assert result.optimization_facts["stage_2"]["alternate_seed_validated"] is True
+    assert len(result.unmet_requests) == 0
+
+
 def test_variable_neighborhood_diagnostic_records_bounded_radius_transitions():
     result = student_assignment_module.run_student_assignment_variable_neighborhood_diagnostic(
         _substantive_probe_input(),

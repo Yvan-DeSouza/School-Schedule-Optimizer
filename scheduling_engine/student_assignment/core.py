@@ -977,6 +977,65 @@ def run_student_assignment_adaptive_local_bootstrap_diagnostic(
     )
 
 
+def run_student_assignment_mature_local_search_diagnostic(
+    data: StudentAssignmentInputDTO,
+    *,
+    mature_source_decisions=(),
+    mature_source_variable_values=None,
+    max_iterations=12,
+    per_probe_time_limit_seconds=600.0,
+    total_time_limit_seconds=3600.0,
+    worker_count=8,
+    hard_feasibility_validation_time_limit_seconds=None,
+    hard_feasibility_validation_worker_count=None,
+    capture_final_source_decisions=True,
+    collect_resource_telemetry=True,
+):
+    """Continue a validated mature incumbent through R2 without Stage 2.
+
+    This diagnostic-only path treats the supplied mature checkpoint as the
+    starting incumbent, validates it once against the unchanged full model,
+    performs repeated radius-two local probes in one engine operation, and
+    returns the strongest complete validated incumbent. The ordinary
+    lexicographic optimizer is intentionally skipped here; callers that need
+    production Stage 2 must continue using the existing diagnostic/production
+    entry points.
+    """
+
+    if not mature_source_decisions and mature_source_variable_values is None:
+        raise ValueError("mature_source_decisions is required")
+    return _solve_student_assignment(
+        data,
+        include_lock_costs=False,
+        include_candidate_ledger=False,
+        use_hard_feasibility_bootstrap=True,
+        collect_stage2_trace=False,
+        stage_2_local_bootstrap={
+            "adaptive": True,
+            "neighborhood_radii": (2,),
+            "max_iterations": max_iterations,
+            "per_probe_time_limit_seconds": per_probe_time_limit_seconds,
+            "worker_count": worker_count,
+            "target_importance_level": IMPORTANCE_LEVELS["important"],
+        },
+        stage_2_total_time_limit_seconds=total_time_limit_seconds,
+        retain_incumbent_on_non_improvement=True,
+        alternate_source_decisions=mature_source_decisions,
+        alternate_source_variable_values=mature_source_variable_values,
+        mature_checkpoint_only=True,
+        local_only=True,
+        hard_feasibility_validation_time_limit_seconds=(
+            hard_feasibility_validation_time_limit_seconds
+        ),
+        hard_feasibility_validation_worker_count=(
+            hard_feasibility_validation_worker_count
+        ),
+        collect_incumbent_timeline=False,
+        capture_final_source_decisions=capture_final_source_decisions,
+        collect_resource_telemetry=collect_resource_telemetry,
+    )
+
+
 def run_student_assignment_variable_neighborhood_diagnostic(
     data: StudentAssignmentInputDTO,
     *,
@@ -1052,6 +1111,8 @@ def _solve_student_assignment(
     collect_stage2_trace=False,
     alternate_source_decisions=(),
     alternate_source_variable_values=None,
+    mature_checkpoint_only=False,
+    local_only=False,
     stage_2_total_time_limit_seconds=None,
     retain_incumbent_on_non_improvement=False,
     stage_2_local_bootstrap=None,
@@ -2008,7 +2069,9 @@ def _solve_student_assignment(
         # fail closed instead of acting as if source variables could repair it.
         complete_required_decision_groups.append([])
         complete_required_decision_source_keys.append(None)
-    hard_feasibility_model = model.Clone()
+    hard_feasibility_model = (
+        None if mature_checkpoint_only else model.Clone()
+    )
 
     objectives = []
     # Keep a parallel, engine-internal description of each objective's source
@@ -2549,102 +2612,6 @@ def _solve_student_assignment(
             ),
         }
 
-    stage_1_seed_time_limit = (
-        max(
-            data.time_limit_seconds,
-            (
-                hard_feasibility_time_limit_seconds
-                if hard_feasibility_time_limit_seconds is not None
-                else STUDENT_ASSIGNMENT_HARD_FEASIBILITY_TIME_LIMIT_SECONDS
-            ),
-        )
-        if use_hard_feasibility_bootstrap
-        else data.time_limit_seconds
-    )
-    stage_1_validation_time_limit = (
-        max(
-            data.time_limit_seconds,
-            (
-                hard_feasibility_validation_time_limit_seconds
-                if hard_feasibility_validation_time_limit_seconds is not None
-                else STUDENT_ASSIGNMENT_HARD_FEASIBILITY_VALIDATION_TIME_LIMIT_SECONDS
-            ),
-        )
-        if use_hard_feasibility_bootstrap
-        else data.time_limit_seconds
-    )
-    stage_1_seed_started = monotonic()
-    (
-        hard_feasibility_seed_model,
-        hard_feasibility_seed_solver,
-        hard_feasibility_source_variable_indexes,
-        _hard_feasibility_outcome,
-    ) = _solve_complete_hard_feasibility_seed(
-        hard_feasibility_model,
-        complete_required_decision_groups,
-        stage_1_seed_time_limit,
-        worker_count=(
-            hard_feasibility_worker_count
-            if hard_feasibility_worker_count is not None
-            else STUDENT_ASSIGNMENT_HARD_FEASIBILITY_WORKER_COUNT
-        ),
-    )
-    stage_1_seed_elapsed = monotonic() - stage_1_seed_started
-    stage_1_validation_started = monotonic()
-    validated_seed_solver = _validate_complete_hard_feasibility_seed(
-        model,
-        hard_feasibility_seed_model,
-        hard_feasibility_seed_solver,
-        hard_feasibility_source_variable_indexes,
-        stage_1_validation_time_limit,
-        worker_count=(
-            hard_feasibility_validation_worker_count
-            if hard_feasibility_validation_worker_count is not None
-            else STUDENT_ASSIGNMENT_HARD_FEASIBILITY_VALIDATION_WORKER_COUNT
-        ),
-    )
-    stage_1_validation_elapsed = monotonic() - stage_1_validation_started
-    stage_1_timings = {
-        "model_construction_wall_time_seconds": monotonic() - model_build_started,
-        "seed_requested_time_limit_seconds": float(stage_1_seed_time_limit),
-        "seed_worker_count": int(
-            hard_feasibility_worker_count
-            if hard_feasibility_worker_count is not None
-            else STUDENT_ASSIGNMENT_HARD_FEASIBILITY_WORKER_COUNT
-        ),
-        "seed_external_wall_time_seconds": stage_1_seed_elapsed,
-        "seed_solver_wall_time_seconds": float(
-            hard_feasibility_seed_solver.WallTime()
-            if hard_feasibility_seed_solver is not None
-            and hasattr(hard_feasibility_seed_solver, "WallTime")
-            else 0.0
-        ),
-        "validation_requested_time_limit_seconds": float(stage_1_validation_time_limit),
-        "validation_worker_count": int(
-            hard_feasibility_validation_worker_count
-            if hard_feasibility_validation_worker_count is not None
-            else STUDENT_ASSIGNMENT_HARD_FEASIBILITY_VALIDATION_WORKER_COUNT
-        ),
-        "validation_external_wall_time_seconds": stage_1_validation_elapsed,
-        "validation_solver_wall_time_seconds": float(
-            validated_seed_solver.WallTime()
-            if validated_seed_solver is not None
-            and hasattr(validated_seed_solver, "WallTime")
-            else 0.0
-        ),
-        "operation_wall_time_seconds": stage_1_seed_elapsed + stage_1_validation_elapsed,
-    }
-    # Validation transfers the source values into a solver backed by the full
-    # production model. The feasibility clone is no longer part of the
-    # handoff, so release it before Stage 2 to keep a failed or successful
-    # bootstrap from doubling the large optimization model's memory footprint.
-    hard_feasibility_model = None
-    hard_feasibility_seed_model = None
-
-    stage_2_seed_solver = validated_seed_solver
-    alternate_seed_validated = False
-    alternate_seed_resolution_failure = None
-
     def _source_variable_values(source_decisions):
         """Translate semantic source decisions back to required variables."""
 
@@ -2721,12 +2688,131 @@ def _solve_student_assignment(
             values[selected_variable.Index()] = 1
         return values, None
 
+    stage_1_seed_time_limit = (
+        max(
+            data.time_limit_seconds,
+            (
+                hard_feasibility_time_limit_seconds
+                if hard_feasibility_time_limit_seconds is not None
+                else STUDENT_ASSIGNMENT_HARD_FEASIBILITY_TIME_LIMIT_SECONDS
+            ),
+        )
+        if use_hard_feasibility_bootstrap
+        else data.time_limit_seconds
+    )
+    stage_1_validation_time_limit = (
+        max(
+            data.time_limit_seconds,
+            (
+                hard_feasibility_validation_time_limit_seconds
+                if hard_feasibility_validation_time_limit_seconds is not None
+                else STUDENT_ASSIGNMENT_HARD_FEASIBILITY_VALIDATION_TIME_LIMIT_SECONDS
+            ),
+        )
+        if use_hard_feasibility_bootstrap
+        else data.time_limit_seconds
+    )
+    if mature_checkpoint_only:
+        if not alternate_source_decisions and alternate_source_variable_values is None:
+            raise ValueError(
+                "mature_checkpoint_only requires a supplied semantic checkpoint"
+            )
+        hard_feasibility_seed_model = None
+        hard_feasibility_seed_solver = None
+        hard_feasibility_source_variable_indexes = ()
+        _hard_feasibility_outcome = cp_model.FEASIBLE
+        validated_seed_solver = None
+        stage_1_timings = {
+            "model_construction_wall_time_seconds": monotonic() - model_build_started,
+            "seed_skipped": True,
+            "validation_skipped": True,
+            "operation_wall_time_seconds": 0.0,
+        }
+    else:
+        stage_1_seed_started = monotonic()
+        (
+            hard_feasibility_seed_model,
+            hard_feasibility_seed_solver,
+            hard_feasibility_source_variable_indexes,
+            _hard_feasibility_outcome,
+        ) = _solve_complete_hard_feasibility_seed(
+            hard_feasibility_model,
+            complete_required_decision_groups,
+            stage_1_seed_time_limit,
+            worker_count=(
+                hard_feasibility_worker_count
+                if hard_feasibility_worker_count is not None
+                else STUDENT_ASSIGNMENT_HARD_FEASIBILITY_WORKER_COUNT
+            ),
+        )
+        stage_1_seed_elapsed = monotonic() - stage_1_seed_started
+        stage_1_validation_started = monotonic()
+        validated_seed_solver = _validate_complete_hard_feasibility_seed(
+            model,
+            hard_feasibility_seed_model,
+            hard_feasibility_seed_solver,
+            hard_feasibility_source_variable_indexes,
+            stage_1_validation_time_limit,
+            worker_count=(
+                hard_feasibility_validation_worker_count
+                if hard_feasibility_validation_worker_count is not None
+                else STUDENT_ASSIGNMENT_HARD_FEASIBILITY_VALIDATION_WORKER_COUNT
+            ),
+        )
+        stage_1_validation_elapsed = monotonic() - stage_1_validation_started
+        stage_1_timings = {
+            "model_construction_wall_time_seconds": monotonic() - model_build_started,
+            "seed_requested_time_limit_seconds": float(stage_1_seed_time_limit),
+            "seed_worker_count": int(
+                hard_feasibility_worker_count
+                if hard_feasibility_worker_count is not None
+                else STUDENT_ASSIGNMENT_HARD_FEASIBILITY_WORKER_COUNT
+            ),
+            "seed_external_wall_time_seconds": stage_1_seed_elapsed,
+            "seed_solver_wall_time_seconds": float(
+                hard_feasibility_seed_solver.WallTime()
+                if hard_feasibility_seed_solver is not None
+                and hasattr(hard_feasibility_seed_solver, "WallTime")
+                else 0.0
+            ),
+            "validation_requested_time_limit_seconds": float(stage_1_validation_time_limit),
+            "validation_worker_count": int(
+                hard_feasibility_validation_worker_count
+                if hard_feasibility_validation_worker_count is not None
+                else STUDENT_ASSIGNMENT_HARD_FEASIBILITY_VALIDATION_WORKER_COUNT
+            ),
+            "validation_external_wall_time_seconds": stage_1_validation_elapsed,
+            "validation_solver_wall_time_seconds": float(
+                validated_seed_solver.WallTime()
+                if validated_seed_solver is not None
+                and hasattr(validated_seed_solver, "WallTime")
+                else 0.0
+            ),
+            "operation_wall_time_seconds": stage_1_seed_elapsed + stage_1_validation_elapsed,
+        }
+    # Validation transfers the source values into a solver backed by the full
+    # production model. The feasibility clone is no longer part of the
+    # handoff, so release it before Stage 2 to keep a failed or successful
+    # bootstrap from doubling the large optimization model's memory footprint.
+    hard_feasibility_model = None
+    hard_feasibility_seed_model = None
+
+    stage_2_seed_solver = validated_seed_solver
+    alternate_seed_validated = False
+    alternate_seed_resolution_failure = None
+    alternate_seed_materialization_elapsed = 0.0
+    alternate_seed_validation_elapsed = 0.0
+
     if alternate_source_decisions:
         if alternate_source_variable_values is not None:
             alternate_values = dict(alternate_source_variable_values)
         else:
+            alternate_materialization_started = monotonic()
             alternate_values, alternate_seed_resolution_failure = (
                 _source_variable_values(alternate_source_decisions)
+            )
+            alternate_seed_materialization_elapsed = (
+                monotonic() - alternate_materialization_started
             )
         if alternate_values is not None:
             alternate_validation_time_limit = max(
@@ -2742,6 +2828,7 @@ def _solve_student_assignment(
                     alternate_validation_time_limit,
                     stage_2_total_time_limit_seconds,
                 )
+            alternate_validation_started = monotonic()
             stage_2_seed_solver = _validate_source_decision_candidate(
                 model,
                 complete_required_decision_groups,
@@ -2753,16 +2840,43 @@ def _solve_student_assignment(
                     else STUDENT_ASSIGNMENT_HARD_FEASIBILITY_VALIDATION_WORKER_COUNT
                 ),
             )
+            alternate_seed_validation_elapsed = (
+                monotonic() - alternate_validation_started
+            )
             alternate_seed_validated = stage_2_seed_solver is not None
             if not alternate_seed_validated:
                 stage_2_seed_solver = validated_seed_solver
+
+    if mature_checkpoint_only:
+        if not alternate_seed_validated:
+            raise ValueError(
+                "The supplied mature checkpoint failed full-model validation"
+            )
+        # The checkpoint is now the validated incumbent for every downstream
+        # diagnostic step. It deliberately does not masquerade as a newly
+        # generated Stage 1 seed in ordinary scheduling facts.
+        validated_seed_solver = stage_2_seed_solver
+        stage_1_timings.update({
+            "mature_seed_materialization_wall_time_seconds": (
+                alternate_seed_materialization_elapsed
+            ),
+            "mature_seed_validation_wall_time_seconds": (
+                alternate_seed_validation_elapsed
+            ),
+            "operation_wall_time_seconds": (
+                alternate_seed_materialization_elapsed
+                + alternate_seed_validation_elapsed
+            ),
+        })
 
     sequence_opportunities = tuple(
         (student_id, preference.earlier_course_id, preference.later_course_id)
         for preference, student_id, _variable in sequence_satisfied
     )
     stage_1_quality = None
+    stage_1_quality_elapsed = 0.0
     if validated_seed_solver is not None:
+        stage_1_quality_started = monotonic()
         (
             stage_1_assignments,
             stage_1_commitment_assignments,
@@ -2790,6 +2904,8 @@ def _solve_student_assignment(
             ),
             include_entity_metrics=True,
         )
+        stage_1_quality_elapsed = monotonic() - stage_1_quality_started
+    stage_1_timings["quality_extraction_wall_time_seconds"] = stage_1_quality_elapsed
     # Retain the existing independent-request hint as the documented fallback
     # when CP-SAT cannot produce a complete hard-feasibility seed in its
     # bounded stage.  A validated CP-SAT seed always takes precedence.
@@ -3411,6 +3527,7 @@ def _solve_student_assignment(
             _stage2_candidate_trace if collect_incumbent_timeline else None
         ),
         timeline_max_events=timeline_max_events,
+        skip_optimization=local_only,
     )
     optimization_facts = _optimization_facts(
         hard_feasibility_outcome=_hard_feasibility_outcome,
@@ -3492,6 +3609,18 @@ def _solve_student_assignment(
         )
     if local_bootstrap_facts is not None:
         optimization_facts["stage_2_local_bootstrap"] = local_bootstrap_facts
+        # The shared Stage 2 deadline is started immediately before the local
+        # bootstrap, so its elapsed value already includes probe setup,
+        # CP-SAT, candidate extraction, and candidate validation.
+        local_session_wall_time = local_bootstrap_facts.get(
+            "deadline_elapsed_seconds",
+            local_bootstrap_facts.get("elapsed_seconds", 0.0),
+        )
+        optimization_facts["stage_2"]["post_local_optimization_wall_time_seconds"] = max(
+            0.0,
+            optimization_facts["stage_2"].get("operation_wall_time_seconds", 0.0)
+            - local_session_wall_time,
+        )
     if collect_stage2_trace:
         for trace in optimization_trace:
             metadata = objective_metadata[trace["objective_index"]]
@@ -3553,6 +3682,7 @@ def _solve_student_assignment(
             )
         return result
 
+    final_candidate_extraction_started = monotonic()
     (
         assignments,
         commitment_assignments,
@@ -3568,6 +3698,8 @@ def _solve_student_assignment(
         commitment_metadata=commitment_metadata,
         previous_enrollment_by_request=previous_enrollment_by_request,
     )
+    final_candidate_extraction_elapsed = monotonic() - final_candidate_extraction_started
+    final_quality_started = monotonic()
     stage_2_quality = _evaluate_student_assignment_quality(
         data,
         assignments=assignments,
@@ -3578,6 +3710,7 @@ def _solve_student_assignment(
         solver_objective_components=_solver_objective_components(solver),
         include_entity_metrics=True,
     )
+    final_quality_elapsed = monotonic() - final_quality_started
     if stage_1_quality is not None:
         optimization_facts["quality"] = {
             "stage_1": _compact_student_assignment_quality(stage_1_quality),
@@ -3586,6 +3719,7 @@ def _solve_student_assignment(
                 stage_1_quality, stage_2_quality,
             ),
         }
+    review_started = monotonic()
     review_items = []
 
     # A half-semester course can be a legitimate unpaired request. The engine
@@ -3804,6 +3938,8 @@ def _solve_student_assignment(
             diagnostic_code=balance_code,
         ))
 
+    review_diagnostics_elapsed = monotonic() - review_started
+    result_reconstruction_started = monotonic()
     result = StudentAssignmentResultDTO(
         status=(
             "complete"
@@ -3858,6 +3994,13 @@ def _solve_student_assignment(
             if include_candidate_ledger else ()
         ),
     )
+    result_reconstruction_elapsed = monotonic() - result_reconstruction_started
+    optimization_facts["finalization_timings"] = {
+        "candidate_extraction_wall_time_seconds": final_candidate_extraction_elapsed,
+        "quality_evaluation_wall_time_seconds": final_quality_elapsed,
+        "review_diagnostics_wall_time_seconds": review_diagnostics_elapsed,
+        "result_reconstruction_wall_time_seconds": result_reconstruction_elapsed,
+    }
     optimization_facts["operation_resource_monitor"] = (
         operation_resource_monitor.stop()
     )

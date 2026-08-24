@@ -308,6 +308,7 @@ def solve_lexicographically(
     incumbent_timeline=None,
     timeline_candidate_callback=None,
     timeline_max_events=128,
+    skip_optimization=False,
 ):
     """Optimize ordered objectives while preserving the last valid candidate.
 
@@ -324,6 +325,15 @@ def solve_lexicographically(
     previous_solver = validated_seed_solver
     initial_assignment_hints = initial_assignment_hints or {}
     optimization_started = monotonic()
+    if skip_optimization:
+        # Diagnostic mature-local sessions return the already validated
+        # incumbent after their explicit neighborhood phase. This preserves
+        # the ordinary optimizer unchanged while preventing an unnecessary
+        # post-probe lexicographic pass in that diagnostic path.
+        return (
+            previous_solver,
+            cp_model.FEASIBLE if previous_solver is not None else cp_model.UNKNOWN,
+        )
     remaining_objective_count = sum(
         not isinstance(objective, int) for objective in objectives
     )

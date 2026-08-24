@@ -81,6 +81,33 @@ Student assignment keeps two intentionally distinct views:
 The local report must not be mistaken for total process cost. A future phase
 instrumentation change should preserve this distinction.
 
+The mature-R2 diagnostic also records bounded phase timings for benchmark
+loading, checkpoint verification/materialization, model construction, mature
+seed validation, neighborhood setup, CP-SAT Solve, candidate validation,
+quality/review finalization, and ordinary Stage 2 pass facts when ordinary
+Stage 2 is intentionally invoked. The mature-local-only diagnostic path does
+not invoke ordinary Stage 2 passes. These timings are compact diagnostic
+facts; they are not persisted as scheduling decisions.
+
+On the current Windows target-scale host, the resource monitor samples every
+`0.25` seconds (with a minimum interval of `0.05` seconds). A representative
+mature-local profile collected `749` whole-operation samples over roughly
+`310` seconds and `603` local-phase samples over roughly `257` seconds. The
+profile's peak process-tree working set was approximately `3.12 GB`; the
+monitor lifetime is reported, but psutil call CPU overhead is not inferred
+from that lifetime. Resource sampling remains observational and must be
+measured on/off before being treated as a performance cost.
+
+An isolated Windows micro-measurement called the same snapshot routine `120`
+times in `2.761` seconds (`23.0` ms per snapshot). Calling it through the
+monitor's manual sampling method took `3.801` seconds (`31.7` ms per sample),
+and starting/stopping the daemon monitor itself took `0.073` seconds. A paired
+medium solver run with telemetry disabled/enabled measured `34.83`/`32.55`
+seconds, respectively; because CP-SAT took a different search path, that pair
+does not establish a solver-scale on/off speedup. The direct micro-measurement
+does establish that sampling is measurable per call but is not evidence that it
+explains the historical hundreds-of-seconds remainder.
+
 ## Worker and process-tree expectations
 
 The Celery scheduling worker remains process-based with one heavy task per

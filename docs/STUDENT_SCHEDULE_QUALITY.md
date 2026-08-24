@@ -732,3 +732,78 @@ not run: the agreed gate is to investigate wider student-bounded
 neighborhoods only after R2 has actually stalled. The current checkpoint and
 compact frontier records are diagnostic artifacts, not ordinary scheduling
 inputs or production decisions.
+
+### Mature-local session profiling
+
+The diagnostic path now has a mature-local-only mode. It validates the supplied
+checkpoint once, performs the R2 probe, validates the candidate against the
+unchanged full model, and returns without launching ordinary lexicographic
+Stage 2. Ordinary scheduling and ordinary Stage 2 behavior are unchanged.
+
+One target-scale profile started from `65,149` and produced a complete,
+full-model-valid `65,143` candidate in `314.541` seconds. It retained
+`10,635` assignments, zero unmet requests, and all `310` special commitments.
+The R2 solve consumed `211.054` seconds externally (`210.902` seconds as
+reported by CP-SAT); candidate validation consumed `11.025` seconds. The
+profile also measured approximately `25.118` seconds of model construction,
+`7.633` seconds of mature-checkpoint validation, and `15.191` seconds of
+review/diagnostic construction. The local probe's setup timings were:
+`0.443` seconds model clone, `2.545` completion constraints, `1.999`
+neighborhood constraints, `5.037` objective/bound setup, and `6.953` hint
+application.
+
+The local-only path recorded no ordinary lexicographic optimization passes.
+Compared with the historical `651.042`-second continuation that started from
+`65,151`, this profile completed in roughly half the wall time while also
+finding a stronger incumbent. That comparison includes different CP-SAT
+search outcomes and is not a controlled same-incumbent A/B test; it is
+profiling evidence, not a universal speedup claim. The checkpoint now stores
+the `65,143` source decisions with fingerprint
+`5e58aecf29b0c269ddab60b61a32cf493e7b9e02562fed6dea7696c3f7fb46c2`.
+
+That was the checkpoint immediately after the profile; the current durable
+checkpoint is the subsequently validated `65,133` result described below.
+
+Checkpoint serialization is not a material contributor at this scale: encoding
+and compressing all `10,945` source decisions took `0.371` seconds and
+produced an `88,304`-byte gzip artifact in an isolated measurement. This is a
+file-only measurement and does not include filesystem contention or a full
+checkpoint-save transaction.
+
+A current checkpoint-write micro-measurement, including canonicalization,
+fingerprinting, JSON encoding, gzip compression, and a temporary-file write,
+took `0.791` seconds for the same `10,945` decisions. Its measured substeps
+were `0.059` seconds for materialization, `0.195` seconds for fingerprinting,
+`0.022` seconds for JSON encoding, and `0.061` seconds for compression. The
+temporary artifact was removed after measurement.
+
+The durable local-only continuation was then extended from `65,143` to
+`65,133`. That session took `359.030` seconds total, including `229.177`
+seconds of CP-SAT R2 solver wall time and `10.065` seconds of full-model
+candidate validation. It retained `10,635` assignments, zero unmet requests,
+and all `310` special commitments. The resulting checkpoint has source
+fingerprint
+`67131d41aeb39e53248fbc3d9f81c907d7e30d9d589d30dd8ff633cb0e1e0e84`.
+
+A bounded target-scale replay of the old post-local path, starting from the
+same `65,143` checkpoint, measured `25.270` seconds for the local probe and
+then `23.425` seconds of ordinary Stage 2 work after the local probe. That
+ordinary work produced no substantive improvement; its first objective pass
+used `13.543` seconds and returned `UNKNOWN`, while the already complete
+incumbent remained valid. This confirms the orchestration cost observed in the
+historical frontier rather than merely inferring it from total elapsed time.
+
+On the medium 120-student fixture, the generic benchmark wrapper separately
+spent `0.012` seconds reconstructing quality and `0.035` seconds constructing
+the production-shaped summary after a `34.8`-second engine run. These are
+small at medium scale, but the mature-local path avoids the duplicate quality
+reconstruction because its engine result already contains the required compact
+quality facts.
+
+A bounded target replay with the normal Stage 1 bootstrap enabled measured
+`27.693` seconds for model construction, `15.658` seconds for the CP-SAT seed
+solve, `3.621` seconds for full-model seed validation, and `0.512` seconds for
+Stage 1 quality extraction. This gives a direct representative bootstrap
+measurement. The generic replay did not accept its supplied mature alternate
+as the Stage 2 seed in that trial, so this result is used only to quantify
+normal bootstrap cost, not as a matched old-versus-new quality comparison.

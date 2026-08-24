@@ -30,6 +30,7 @@ from ..student_assignment.runtime import semantic_student_assignment_input_finge
 from .core import (
     run_student_assignment_adaptive_local_bootstrap_diagnostic,
     run_student_assignment_local_bootstrap_diagnostic,
+    run_student_assignment_mature_local_search_diagnostic,
     run_student_assignment_stage2_diagnostic,
     run_substantive_soft_tier_probe,
 )
@@ -552,6 +553,185 @@ def replay_mature_r2_checkpoint(data, checkpoint, config):
     )
 
 
+def run_mature_r2_local_session(
+    directory,
+    *,
+    checkpoint_path=None,
+    max_iterations=12,
+    per_probe_time_limit_seconds=600.0,
+    total_time_limit_seconds=3600.0,
+    worker_count=8,
+    validation_time_limit_seconds=30.0,
+    validation_worker_count=1,
+    collect_resource_telemetry=True,
+):
+    """Run one mature-R2 session without ordinary Stage 2 afterward.
+
+    This is a diagnostic-only clean-process boundary. It loads and verifies
+    the frozen benchmark/checkpoint once, performs one in-memory R2 descent,
+    and returns bounded phase timings alongside the engine result. The
+    ordinary lexicographic optimizer remains unchanged and is not invoked by
+    this session.
+    """
+
+    timings = {}
+    operation_started = perf_counter()
+
+    started = perf_counter()
+    benchmark = read_durable_stage2_benchmark(directory)
+    timings["benchmark_load_seconds"] = perf_counter() - started
+
+    started = perf_counter()
+    checkpoint = read_mature_r2_checkpoint(
+        checkpoint_path
+        or Path(directory) / "mature_r2_checkpoint.json.gz",
+        expected_input_fingerprint=benchmark["input_semantic_fingerprint"],
+    )
+    timings["checkpoint_load_seconds"] = perf_counter() - started
+
+    started = perf_counter()
+    source_decisions = _materialize_seed_source_decisions(
+        benchmark["data"], tuple(checkpoint["source_decisions"])
+    )
+    timings["checkpoint_materialization_seconds"] = perf_counter() - started
+
+    started = perf_counter()
+    materialized_fingerprint = semantic_stage1_seed_source_fingerprint(
+        benchmark["data"], source_decisions
+    )
+    timings["checkpoint_fingerprint_seconds"] = perf_counter() - started
+    if materialized_fingerprint != checkpoint["source_decision_fingerprint"]:
+        raise ValueError("Mature checkpoint fingerprint failed after materialization")
+
+    started = perf_counter()
+    result = run_student_assignment_mature_local_search_diagnostic(
+        benchmark["data"],
+        mature_source_decisions=source_decisions,
+        max_iterations=max_iterations,
+        per_probe_time_limit_seconds=per_probe_time_limit_seconds,
+        total_time_limit_seconds=total_time_limit_seconds,
+        worker_count=worker_count,
+        hard_feasibility_validation_time_limit_seconds=validation_time_limit_seconds,
+        hard_feasibility_validation_worker_count=validation_worker_count,
+        capture_final_source_decisions=True,
+        collect_resource_telemetry=collect_resource_telemetry,
+    )
+    timings["engine_local_session_seconds"] = perf_counter() - started
+
+    started = perf_counter()
+    quality = result.optimization_facts.get("quality", {})
+    stage_2_facts = result.optimization_facts.get("stage_2", {})
+    local_facts = result.optimization_facts.get("stage_2_local_bootstrap", {})
+    final_source_decisions = stage_2_facts.get("final_source_decisions", ())
+    timings["result_reconstruction_seconds"] = perf_counter() - started
+
+    facts = {
+        "strategy": "mature_local_only",
+        "input_semantic_fingerprint": benchmark["input_semantic_fingerprint"],
+        "checkpoint_source_decision_fingerprint": checkpoint[
+            "source_decision_fingerprint"
+        ],
+        "final_source_decisions": final_source_decisions,
+        "status": result.status,
+        "solver_outcome": result.solver_outcome,
+        "assignment_count": len(result.assignments),
+        "unmet_request_count": len(result.unmet_requests),
+        "special_commitment_count": len(result.commitment_assignments),
+        "objective_vector": stage_2_facts.get("objective_values", ()),
+        "quality": quality,
+        "stage_1": dict(
+            result.optimization_facts.get("stage_1", {})
+        ),
+        "stage_2": stage_2_facts,
+        "local_bootstrap": local_facts,
+        "timings": {
+            **timings,
+            "total_operation_seconds": perf_counter() - operation_started,
+        },
+        "result": result,
+    }
+    return facts
+
+
+def compact_mature_r2_session_record(
+    facts,
+    *,
+    experiment_id,
+    parent_checkpoint_source_fingerprint,
+):
+    """Return bounded durable telemetry for one mature-local session."""
+
+    result = facts["result"]
+    local = dict(facts.get("local_bootstrap", {}))
+    stage_1 = dict(facts.get("stage_1", {}))
+    stage_2 = dict(facts.get("stage_2", {}))
+    local_iterations = tuple(local.get("iterations", ()))
+    final_source_decisions = tuple(facts.get("final_source_decisions", ()))
+    final_substantive_value = (
+        stage_2.get("objective_values", [None] * 5)[4]
+        if stage_2.get("objective_values")
+        else None
+    )
+    first_value = local.get("baseline_substantive_value")
+    changed_students = local.get("changed_student_count", 0)
+    return {
+        "schema": "student_assignment_mature_r2_session_v1",
+        "experiment_id": experiment_id,
+        "parent_checkpoint_source_fingerprint": parent_checkpoint_source_fingerprint,
+        "input_semantic_fingerprint": facts["input_semantic_fingerprint"],
+        "start_substantive_value": first_value,
+        "final_substantive_value": final_substantive_value,
+        "status": result.status,
+        "solver_outcome": result.solver_outcome,
+        "candidate_validated": bool(
+            local.get("candidate_validated", False)
+            or result.status == "complete"
+        ),
+        "assignment_count": len(result.assignments),
+        "unmet_request_count": len(result.unmet_requests),
+        "special_commitment_count": len(result.commitment_assignments),
+        "source_decision_count": len(final_source_decisions),
+        "changed_source_decision_count": local.get(
+            "changed_source_decision_count", 0
+        ),
+        "changed_student_count": changed_students,
+        "iterations": local_iterations,
+        "stage_1_timings": stage_1.get("timings", {}),
+        "stage_2_timings": {
+            "operation_wall_time_seconds": stage_2.get(
+                "operation_wall_time_seconds"
+            ),
+            "post_local_optimization_wall_time_seconds": stage_2.get(
+                "post_local_optimization_wall_time_seconds"
+            ),
+            "configured_deadline_seconds": stage_2.get(
+                "configured_deadline_seconds"
+            ),
+            "deadline_remaining_seconds": stage_2.get(
+                "deadline_remaining_seconds"
+            ),
+        },
+        "optimization_passes": facts.get("result").optimization_facts.get(
+            "optimization_passes", []
+        ),
+        "finalization_timings": facts.get("result").optimization_facts.get(
+            "finalization_timings", {}
+        ),
+        "phase_timings": facts.get("timings", {}),
+        "resource_monitor": facts.get("result").optimization_facts.get(
+            "operation_resource_monitor", {}
+        ),
+        "local_resource_monitor": local.get("memory", {}),
+        "objective_vector": stage_2.get("objective_values", ()),
+        "component_values": dict(
+            local.get("component_values", {})
+            or facts.get("quality", {}).get("stage_2", {}).get(
+                "substantive_components", {}
+            )
+        ),
+    }
+
+
 def replay_durable_stage1_seed(
     directory,
     *,
@@ -1036,6 +1216,7 @@ def _run_stage2_experiment(
         "alternate_source_decisions": alternate_source_decisions,
         "alternate_source_variable_values": alternate_source_variable_values,
     }
+    engine_started = perf_counter()
     if config.strategy == "ordinary":
         result = run_student_assignment_stage2_diagnostic(
             data,
@@ -1095,17 +1276,27 @@ def _run_stage2_experiment(
         )
     else:
         raise ValueError(f"Unknown Stage 2 diagnostic strategy: {config.strategy}")
+    engine_elapsed = perf_counter() - engine_started
 
+    wrapper_quality_started = perf_counter()
     final_quality = evaluate_student_assignment_quality(
         data,
         assignments=result.assignments,
         commitment_assignments=result.commitment_assignments,
     )
+    wrapper_quality_elapsed = perf_counter() - wrapper_quality_started
+    wrapper_summary_started = perf_counter()
     facts = summarize_production_shaped_medium_fixture(data, result)
+    wrapper_summary_elapsed = perf_counter() - wrapper_summary_started
+    wrapper_packaging_started = perf_counter()
     facts.update({
         "strategy": config.strategy,
         "input_semantic_fingerprint": input_fingerprint,
-        "elapsed_seconds": perf_counter() - started,
+        "elapsed_seconds": (
+            engine_elapsed
+            + wrapper_quality_elapsed
+            + wrapper_summary_elapsed
+        ),
         "objective_vector": list(
             result.optimization_facts.get("stage_2", {}).get(
                 "objective_values", ()
@@ -1117,6 +1308,14 @@ def _run_stage2_experiment(
             item.diagnostic_code for item in result.unmet_requests
         }),
     })
+    wrapper_packaging_elapsed = perf_counter() - wrapper_packaging_started
+    facts["wrapper_timings"] = {
+        "engine_result_seconds": engine_elapsed,
+        "duplicate_quality_evaluation_seconds": wrapper_quality_elapsed,
+        "production_shaped_summary_seconds": wrapper_summary_elapsed,
+        "fact_packaging_seconds": wrapper_packaging_elapsed,
+        "total_wrapper_seconds": perf_counter() - started,
+    }
     return facts
 
 
