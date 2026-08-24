@@ -896,3 +896,190 @@ Stage 1 quality extraction. This gives a direct representative bootstrap
 measurement. The generic replay did not accept its supplied mature alternate
 as the Stage 2 seed in that trial, so this result is used only to quantify
 normal bootstrap cost, not as a matched old-versus-new quality comparison.
+
+## Objective Semantics / Search Evidence v1 closeout
+
+The current objective and search-mechanics study is now closed as historical
+v1 evidence. The durable production-scale input remains the
+`production_scale_v1` benchmark with input fingerprint
+`1c4843ac33fccabd76218c63d8818c94a0a8dd8ab2886e3f5718ca1cd9576a11` and
+`1,400` students, `10,760` requests, `10,945` required source groups,
+`10,635` assignments, zero unmet required requests, and `310` special
+commitments. The canonical comparison checkpoint was not changed: its source
+fingerprint is
+`d5036a44e71d5a3b2a94eebe51d645bb4034179a0dd29537492ea81feda2e900`, with
+substantive value `65,025` and components `6,727` section utilization,
+`175` semester balance, `35,973` difficulty, and `22,150` category diversity.
+
+### R8/S2 repeatability
+
+R8/S2 means radius `8`, `max_changed_students=2`, eight CP-SAT workers, a
+bounded approximately `600`-second probe, strict substantive improvement, and
+mandatory full-model validation. All three valid trials started from the same
+canonical semantic incumbent and produced the same complete candidate:
+
+| Trial | Substantive | Direct gain | Changed decisions / students | Affected students | CP-SAT wall | Validation | Local operation |
+|---|---:|---:|---:|---|---:|---:|---:|
+| Accepted first run | `65,005` | `20` | `8 / 2` | `22, 478` | `187.0 s` | `9.8 s` | `229.6 s` |
+| Repeat 2 | `65,005` | `20` | `8 / 2` | `22, 478` | `134.7 s` | `3.8 s` | `151.9 s` |
+| Repeat 3 | `65,005` | `20` | `8 / 2` | `22, 478` | `132.4 s` | `5.2 s` | `152.4 s` |
+
+Every candidate was complete, full-model valid, retained `10,635`
+assignments, retained zero unmet requests, and fulfilled all `310` special
+commitments. The affected section set was identical in all three valid trials:
+`1, 7, 19, 20, 100, 101, 122, 126, 203, 204, 211, 216, 281, 284, 294,
+296`. Each substantive improvement was section-utilization only: utilization
+changed from `6,727` to `6,707`; semester balance, difficulty, category
+diversity, sequence, and preservation were unchanged. The three trials are
+therefore classified as **strong exact repeatability** at the source-decision
+and quality-result level. CP-SAT status was `UNKNOWN` after finding a
+validated candidate in the reported R8/S2 trials; `UNKNOWN` remains a bounded
+search outcome, not a proof that the neighborhood is exhausted.
+
+One additional process was intentionally excluded from this repeatability
+sample because its temporary wrapper accidentally reran the hard-feasibility
+bootstrap instead of using the frozen mature checkpoint. It produced no
+usable R8/S2 comparison candidate after spending time outside the local probe;
+it was a harness configuration error, not contradictory search evidence.
+
+### Matched R4/S2 versus R8/S2 scorecard
+
+The R4/S2 comparison consists of the original run plus two clean repeats. The
+R8/S2 comparison consists of the three valid trials above. The R4/S2 and R8/S2
+candidate qualities were exact and repeatable, while solver wall time varied
+substantially with the parallel CP-SAT search. Branch and conflict counts were
+not exposed by the bounded diagnostic result and are therefore not inferred.
+
+| Measure | R4/S2 | R8/S2 |
+|---|---:|---:|
+| Radius / student bound | `4 / 2` | `8 / 2` |
+| Valid candidate success | `3 / 3` | `3 / 3` |
+| Median substantive candidate | `65,007` | `65,005` |
+| Best substantive candidate | `65,007` | `65,005` |
+| Direct gain | `18` | `20` |
+| Median CP-SAT wall | `186.3 s` | `134.7 s` |
+| Median full validation | `10.0 s` | `5.2 s` |
+| Median local operation | `229.3 s` | `152.4 s` |
+| Changed decisions | `4` | `8` |
+| Changed students | `2` | `2` |
+| Affected-result repeatability | exact across three runs | exact across three runs |
+| Branches / conflicts | not exposed | not exposed |
+| Comparable memory telemetry | not retained for the earlier R4/S2 set | peak process-tree working set approximately `4.04–4.11 GB` |
+
+The extra radius produced a stable two-point stronger direct escape without
+changing the number of affected students, and it was not slower in these
+three measured R8/S2 trials. That makes R8/S2 a **useful escape candidate**.
+It does not, by itself, make R8/S2 the production optimizer: the comparison
+must also include the downstream R2 basin and the cost/complexity of retaining
+the wider neighborhood.
+
+### Temporary R8/S2 branch and matched R2 follow-on
+
+One validated temporary branch was captured without modifying
+`mature_r2_checkpoint.json.gz`:
+
+- parent source fingerprint: `d5036a44e71d5a3b2a94eebe51d645bb4034179a0dd29537492ea81feda2e900`;
+- branch source fingerprint: `3d6dd6c714513dfe50c35cb72b30dfc2ef8828b91615327117c1ea1bb8473132`;
+- objective vector: `[-10945, 0, 0, 0, 65005, 5669086063326]`;
+- components: `6,707` utilization, `175` semester balance, `35,973`
+  difficulty, `22,150` category diversity;
+- validation: complete, seed validated, full-model validated;
+- counts: `10,635` assignments, zero unmet, `310` special commitments.
+
+The matched continuous R2 session from that temporary branch used the same
+diagnostic policy as the earlier R4/S2 follow-on: radius `2`, no student bound,
+eight workers, up to `600` seconds per probe, a `3,600`-second total horizon,
+full validation after each candidate, and no ordinary Stage 2 between
+iterations. It produced this compact trajectory:
+
+```text
+65,005 -> 65,003 -> 65,001 -> 64,997 -> 64,987 -> 64,985 -> 64,983
+        -> 64,981 -> final UNKNOWN
+```
+
+Seven improvements were adopted in eight probes. Every adopted candidate was
+complete and full-model validated; the final retained result had `10,635`
+assignments, zero unmet requests, and all `310` special commitments. The
+session used approximately `3,136.65` seconds of CP-SAT wall time and
+`3,201.37` seconds in the engine local session (`3,203.60` seconds including
+benchmark/checkpoint loading and reconstruction). Its final probe returned
+`UNKNOWN`, so `64,981` is an unresolved bounded incumbent, not a proof of an
+R2 local optimum. The final components were `6,683` utilization, `175`
+semester balance, `35,973` difficulty, and `22,150` category diversity.
+
+### Complete escape-path comparison
+
+| Path | Direct escape | R2 endpoint | Total gain vs `65,025` | R2 adopted improvements | Approx. diagnostic runtime |
+|---|---:|---:|---:|---:|---:|
+| R4/S2 -> R2 | `65,007` | `64,929` | `96` | `20` | escape plus `3,652.9 s` R2 session |
+| R8/S2 -> R2 | `65,005` | `64,981` | `44` | `7` | escape plus `3,203.6 s` R2 session |
+
+On this single matched downstream comparison, R4/S2 reached the stronger
+endpoint by `52` substantive points and produced the larger downstream R2
+descent. R8/S2 therefore has a stable direct advantage, but R4/S2 is the
+better complete escape path observed in this study because the R4/S2 branch
+opened a materially stronger R2 basin. This conclusion is about the measured
+v1 experiments, not a proof that every future incumbent will behave the same
+way.
+
+### v1 operator classification and closeout
+
+The current evidence classifies the operators as follows:
+
+- **R2 — core retained operator:** repeatedly productive and the primary local
+  descent mechanism;
+- **R4 — useful escape candidate:** validated wider escape, but weaker than
+  the bounded R4/S2 direct result in the matched matrix;
+- **R4/S1 — diagnostic/reference only:** valid and informative, but weaker than
+  R4/S2 and not supported as a retained default;
+- **R4/S2 — core retained operator:** exact three-run repeatability and the
+  strongest complete downstream path observed;
+- **R8 — diagnostic/reference only:** valid direct escape evidence, but not
+  repeated in the matched bound/student matrix;
+- **R8/S1 — diagnostic/reference only:** valid but weaker direct result;
+- **R8/S2 — useful escape candidate:** exact three-run direct repeatability and
+  the strongest direct escape, but downstream R2 was weaker than R4/S2.
+
+The current v1 characterization is complete enough to stop open-ended endpoint
+shaving. No canonical checkpoint was changed and no current objective or
+importance semantics were altered. The next work should address the objective
+contract rather than continue accumulating isolated v1 endpoint evidence.
+
+### Frozen roadmap after v1
+
+The planned next research order is explicitly deferred and is not implemented
+by this study:
+
+1. Design principled, input/metric-aware normalization of soft objectives.
+2. Introduce one canonical counselor importance score from `0` through `10`.
+3. Represent simple labels as presets over that canonical scale, not as a
+   second objective system.
+4. Establish an Objective Semantics v2 baseline and revalidate only the search
+   operators that remain relevant under v2.
+5. Investigate student-targeted repair using counselor importance and current
+   per-student opportunity as search guidance only; CP-SAT and full validation
+   remain authoritative.
+6. Investigate adaptive allocation across targeted repair, R2, R4/S1, R4/S2,
+   R8/S1, R8/S2, and unrestricted variants where evidence justifies them.
+7. Investigate grade-bounded unrestricted escape only after normalization and
+   targeted/adaptive studies. A selected grade changes source decisions only
+   for students in that grade; the full model still applies, including frozen
+   students, mixed-grade sections, capacity, conflicts, prerequisites, locks,
+   and special commitments.
+8. Return to faster local operators after a successful grade-scoped escape;
+   consider full-school unrestricted escape only as a later evidence-gated
+   escalation.
+9. Run a final production-policy and promotion study only after those
+   prerequisites.
+
+Objective v2 must preserve this invariant: if multiple soft preferences have
+the same counselor importance, their practical influence should be
+approximately comparable rather than being dominated by raw metric magnitude.
+The current v1 observed raw contribution shares were approximately `10%`
+section utilization, `0.3%` semester balance, `55%` difficulty, and `34%`
+category diversity. These values are evidence for the future design problem,
+not normalization constants. The future adaptive-search policy must also keep
+the distinction between **what** is better (the normalized counselor-weighted
+objective) and **how** to search (operator selection); heuristics may choose a
+student, pair, neighborhood, or grade to explore, but never authorize a
+candidate.
