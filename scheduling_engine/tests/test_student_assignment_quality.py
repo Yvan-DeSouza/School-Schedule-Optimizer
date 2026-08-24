@@ -26,6 +26,7 @@ def test_quality_reconstructs_solver_penalties_and_records_stage_comparison():
         data,
         assignments=result.assignments,
         commitment_assignments=result.commitment_assignments,
+        solver_objective_components=result.objective_components,
     )
 
     assert report["section_utilization_balance"]["solver_aligned_penalty"] == result.objective_components[
@@ -41,6 +42,12 @@ def test_quality_reconstructs_solver_penalties_and_records_stage_comparison():
         "course_category_diversity_penalty"
     ]
     section = report["section_utilization_balance"]
+    assert sum(
+        item["pairwise_absolute_difference"]
+        for item in section["entities"].values()
+    ) == section["reconstructed_penalty"]
+    assert section["reconstruction_delta"] == 0
+    assert "pairwise_imbalance_distribution" in section
     assert "average_section_deviation_distribution" in section
     assert "perfectly_balanced_group_count" in section
     assert "within_one_enrollment_group_percentage" in section
@@ -266,7 +273,9 @@ def test_quality_comparison_reports_entity_level_tradeoffs():
     stage_1 = {
         "difficulty_balance": {"entities": {"1": {"absolute_difference": 20}}},
         "course_category_diversity": {"entities": {"1": 40}},
-        "section_utilization_balance": {"entities": {"1": {"range": 3}}},
+        "section_utilization_balance": {"entities": {"1": {
+            "range": 3, "pairwise_absolute_difference": 6,
+        }}},
         "student_semester_load_balance": {"entities": {"1": {"absolute_difference": 2}}},
         "course_sequence_preferences": {"entities": {"1:1:2": 0}},
         "schedule_preservation": {"entities": {"1": 1}},
@@ -274,7 +283,9 @@ def test_quality_comparison_reports_entity_level_tradeoffs():
     stage_2 = {
         "difficulty_balance": {"entities": {"1": {"absolute_difference": 0}}},
         "course_category_diversity": {"entities": {"1": 60}},
-        "section_utilization_balance": {"entities": {"1": {"range": 3}}},
+        "section_utilization_balance": {"entities": {"1": {
+            "range": 3, "pairwise_absolute_difference": 2,
+        }}},
         "student_semester_load_balance": {"entities": {"1": {"absolute_difference": 4}}},
         "course_sequence_preferences": {"entities": {"1:1:2": 1}},
         "schedule_preservation": {"entities": {"1": 0}},
@@ -283,6 +294,8 @@ def test_quality_comparison_reports_entity_level_tradeoffs():
     comparison = compare_student_assignment_quality(stage_1, stage_2)
 
     assert comparison["difficulty_balance"]["improved"] == 1
+    assert comparison["section_utilization_balance"]["improved"] == 1
+    assert comparison["section_utilization_balance"]["range_comparison"]["unchanged"] == 1
     assert comparison["difficulty_balance"]["change"]["mean_improvement"] == 20
     assert comparison["course_category_diversity"]["worsened"] == 1
     assert comparison["course_category_diversity"]["change"]["mean_worsening"] == 20

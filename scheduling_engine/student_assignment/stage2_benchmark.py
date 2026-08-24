@@ -1106,6 +1106,21 @@ def compact_substantive_probe_record(
 ):
     """Return bounded JSON facts for one diagnostic strict-improvement probe."""
 
+    local_facts = getattr(result, "optimization_facts", {}).get(
+        "stage_2_local_bootstrap", {}
+    )
+    memory = dict(local_facts.get("memory", {}))
+    representative_memory_bytes = (
+        representative_memory_bytes
+        if representative_memory_bytes is not None
+        else memory.get("representative_working_set_bytes")
+    )
+    peak_memory_bytes = (
+        peak_memory_bytes
+        if peak_memory_bytes is not None
+        else memory.get("peak_working_set_bytes")
+    )
+
     return {
         "experiment_id": experiment_id,
         "input_semantic_fingerprint": input_semantic_fingerprint,
@@ -1135,6 +1150,7 @@ def compact_substantive_probe_record(
         ),
         "representative_memory_bytes": representative_memory_bytes,
         "peak_memory_bytes": peak_memory_bytes,
+        "memory": memory,
         "model_variable_count": result.model_variable_count,
         "model_constraint_count": result.model_constraint_count,
         "component_deltas": dict(result.component_deltas),

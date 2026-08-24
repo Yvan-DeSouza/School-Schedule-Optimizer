@@ -26,7 +26,10 @@ from scheduling_engine.student_assignment import (
     run_substantive_soft_tier_probe,
     solve_student_assignment,
 )
-from scheduling_engine.student_assignment.runtime import MonotonicDeadline
+from scheduling_engine.student_assignment.runtime import (
+    MonotonicDeadline,
+    ProcessMemoryMonitor,
+)
 from scheduling_engine.student_assignment.runtime import (
     semantic_student_assignment_input_fingerprint,
 )
@@ -713,8 +716,14 @@ def test_adaptive_local_bootstrap_restarts_and_records_bounded_iterations():
         and "iteration_requested_time_limit_seconds" in item
         and "iteration_remaining_seconds" in item
         and "probe_timings" in item
+        and "memory" in item
         for item in facts["iterations"]
     )
+    assert "memory" in facts
+    for item in facts["iterations"]:
+        if item["candidate_validated"]:
+            assert "candidate_quality_summary" in item
+            assert "quality_comparison" in item
     assert result.status == "complete"
     assert len(result.unmet_requests) == 0
 
@@ -783,6 +792,21 @@ def test_monotonic_deadline_clamps_nested_allowances(monkeypatch):
     assert deadline.remaining() == 6.0
     assert deadline.allowance(20.0) == 3.0
     assert deadline.allowance(1.0) == 1.0
+
+
+def test_process_memory_monitor_is_bounded_and_json_compatible():
+    report = ProcessMemoryMonitor(interval_seconds=0.05).start().stop()
+
+    assert set(report) >= {
+        "available",
+        "source",
+        "sample_count",
+        "starting_working_set_bytes",
+        "representative_working_set_bytes",
+        "peak_working_set_bytes",
+        "ending_working_set_bytes",
+    }
+    assert report["sample_count"] >= 2
 
 
 def test_semantic_input_fingerprint_ignores_fresh_database_ids():

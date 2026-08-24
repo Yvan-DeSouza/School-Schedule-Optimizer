@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from hashlib import sha256
 import json
+import os
+import threading
 from time import monotonic
 
 
@@ -69,6 +71,172 @@ class OperationTimer:
 
     def snapshot(self):
         return dict(sorted(self._values.items()))
+
+
+def _process_memory_snapshot():
+    """Read process memory using an available standard/native mechanism.
+
+    Diagnostic experiments must not require ``psutil`` just to observe memory.
+    Windows' process API exposes both current and peak working set directly;
+    the Unix fallback uses the standard-library resource module where
+    available.  ``None`` values mean that this host does not expose a safe
+    measurement through these mechanisms.
+    """
+
+    if os.name == "nt":
+        try:
+            import ctypes
+
+            class _ProcessMemoryCounters(ctypes.Structure):
+                _fields_ = (
+                    ("cb", ctypes.c_ulong),
+                    ("PageFaultCount", ctypes.c_ulong),
+                    ("PeakWorkingSetSize", ctypes.c_size_t),
+                    ("WorkingSetSize", ctypes.c_size_t),
+                    ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                    ("PagefileUsage", ctypes.c_size_t),
+                    ("PeakPagefileUsage", ctypes.c_size_t),
+                )
+
+            counters = _ProcessMemoryCounters()
+            counters.cb = ctypes.sizeof(counters)
+            process_api = ctypes.windll.kernel32.GetCurrentProcess
+            process_api.restype = ctypes.c_void_p
+            process = process_api()
+            memory_api = ctypes.windll.psapi.GetProcessMemoryInfo
+            memory_api.argtypes = (
+                ctypes.c_void_p,
+                ctypes.POINTER(_ProcessMemoryCounters),
+                ctypes.c_ulong,
+            )
+            memory_api.restype = ctypes.c_int
+            success = memory_api(
+                process,
+                ctypes.byref(counters),
+                counters.cb,
+            )
+            if success:
+                return {
+                    "available": True,
+                    "source": "windows_process_memory_counters",
+                    "working_set_bytes": int(counters.WorkingSetSize),
+                    "peak_working_set_bytes": int(counters.PeakWorkingSetSize),
+                    "pagefile_bytes": int(counters.PagefileUsage),
+                    "peak_pagefile_bytes": int(counters.PeakPagefileUsage),
+                }
+        except (AttributeError, OSError, TypeError, ValueError):
+            pass
+        return {
+            "available": False,
+            "source": "unavailable",
+            "working_set_bytes": None,
+            "peak_working_set_bytes": None,
+            "pagefile_bytes": None,
+            "peak_pagefile_bytes": None,
+        }
+
+    try:
+        import resource
+
+        peak = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+        # Linux reports KiB; macOS reports bytes.  This fallback is only used
+        # where the platform convention is known and remains diagnostic.
+        if os.uname().sysname == "Linux":
+            peak *= 1024
+        return {
+            "available": True,
+            "source": "resource_maxrss",
+            "working_set_bytes": None,
+            "peak_working_set_bytes": peak,
+            "pagefile_bytes": None,
+            "peak_pagefile_bytes": None,
+        }
+    except (AttributeError, ImportError, OSError, ValueError):
+        return {
+            "available": False,
+            "source": "unavailable",
+            "working_set_bytes": None,
+            "peak_working_set_bytes": None,
+            "pagefile_bytes": None,
+            "peak_pagefile_bytes": None,
+        }
+
+
+class ProcessMemoryMonitor:
+    """Bounded, dependency-free memory sampling for diagnostic operations."""
+
+    def __init__(self, interval_seconds=0.25):
+        self.interval_seconds = max(0.05, float(interval_seconds))
+        self._stop_event = threading.Event()
+        self._thread = None
+        self._samples = []
+
+    def sample(self):
+        snapshot = _process_memory_snapshot()
+        self._samples.append(snapshot)
+        return dict(snapshot)
+
+    def _sample_loop(self):
+        while not self._stop_event.wait(self.interval_seconds):
+            self.sample()
+
+    def start(self):
+        self.sample()
+        self._thread = threading.Thread(
+            target=self._sample_loop,
+            name="student-assignment-memory-monitor",
+            daemon=True,
+        )
+        self._thread.start()
+        return self
+
+    def stop(self):
+        self._stop_event.set()
+        if self._thread is not None:
+            self._thread.join(timeout=max(1.0, self.interval_seconds * 4))
+        self.sample()
+        samples = tuple(self._samples)
+        available_samples = [
+            item for item in samples if item.get("available")
+        ]
+        current_values = [
+            item["working_set_bytes"]
+            for item in available_samples
+            if item.get("working_set_bytes") is not None
+        ]
+        peak_values = [
+            item["peak_working_set_bytes"]
+            for item in available_samples
+            if item.get("peak_working_set_bytes") is not None
+        ]
+        first = samples[0] if samples else _process_memory_snapshot()
+        last = samples[-1] if samples else first
+        return {
+            "available": bool(available_samples),
+            "source": last.get("source", first.get("source")),
+            "sample_count": len(samples),
+            "starting_working_set_bytes": first.get("working_set_bytes"),
+            "representative_working_set_bytes": (
+                max(current_values) if current_values else None
+            ),
+            "peak_working_set_bytes": max(
+                peak_values + current_values, default=None
+            ),
+            "ending_working_set_bytes": last.get("working_set_bytes"),
+            "starting_pagefile_bytes": first.get("pagefile_bytes"),
+            "ending_pagefile_bytes": last.get("pagefile_bytes"),
+            "peak_pagefile_bytes": max(
+                [
+                    item["peak_pagefile_bytes"]
+                    for item in available_samples
+                    if item.get("peak_pagefile_bytes") is not None
+                ],
+                default=None,
+            ),
+        }
 
 
 def semantic_student_assignment_input_fingerprint(data):

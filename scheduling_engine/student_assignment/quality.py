@@ -207,6 +207,14 @@ def _section_utilization(data, assignments):
     return {
         "solver_aligned_penalty": pairwise_penalty,
         "delivery_group_count": len(group_metrics),
+        # The solver objective is the sum of these per-group pairwise
+        # contributions.  Keep their distribution so diagnostic comparisons
+        # can reconcile exactly to the authoritative aggregate; ``range`` is
+        # still retained below as a counselor-readable shape descriptor.
+        "pairwise_imbalance_distribution": _distribution(
+            metric["pairwise_absolute_difference"]
+            for metric in group_metrics.values()
+        ),
         "delivery_group_imbalance_distribution": _distribution(ranges),
         "average_section_deviation_distribution": _distribution(average_deviations),
         "perfectly_balanced_group_count": perfectly_balanced_count,
@@ -779,7 +787,10 @@ def compare_student_assignment_quality(stage_1, stage_2):
 
     mappings = (
         ("request_fulfillment", "fulfilled", False),
-        ("section_utilization_balance", "range", True),
+        # Section utilization is optimized as pairwise absolute difference,
+        # not max-minus-min range.  Comparing the same per-group contribution
+        # is required for aggregate/entity parity.
+        ("section_utilization_balance", "pairwise_absolute_difference", True),
         ("student_semester_load_balance", "absolute_difference", True),
         ("difficulty_balance", "absolute_difference", True),
         ("course_category_diversity", None, True),
@@ -796,6 +807,22 @@ def compare_student_assignment_quality(stage_1, stage_2):
         comparison[metric_name] = _compare_maps(
             before, after, lower_is_better=lower_is_better,
         )
+        if metric_name == "section_utilization_balance":
+            # Preserve the range-based view as descriptive context without
+            # confusing it with the solver-aligned improvement count.
+            before_ranges = stage_1.get(metric_name, {}).get("entities", {})
+            after_ranges = stage_2.get(metric_name, {}).get("entities", {})
+            comparison[metric_name]["range_comparison"] = _compare_maps(
+                {
+                    key: value.get("range", 0)
+                    for key, value in before_ranges.items()
+                },
+                {
+                    key: value.get("range", 0)
+                    for key, value in after_ranges.items()
+                },
+                lower_is_better=True,
+            )
     return comparison
 
 

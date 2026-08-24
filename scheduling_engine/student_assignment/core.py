@@ -116,7 +116,11 @@ from .substantive_probe import (
     _model_family_variable_counts,
     probe_substantive_soft_tier,
 )
-from .runtime import MonotonicDeadline, semantic_student_assignment_input_fingerprint
+from .runtime import (
+    MonotonicDeadline,
+    ProcessMemoryMonitor,
+    semantic_student_assignment_input_fingerprint,
+)
 
 
 def _candidate_sort_key(candidate):
@@ -2937,6 +2941,7 @@ def _solve_student_assignment(
         else None
     )
     local_bootstrap_facts = None
+    local_memory_monitor = None
     stage_2_deadline = (
         MonotonicDeadline.start(stage_2_budget_seconds)
         if stage_2_budget_seconds is not None
@@ -2967,6 +2972,11 @@ def _solve_student_assignment(
                 "reason": "substantive_tier_not_present",
             }
         else:
+            # Local/VNS probes can run for many minutes.  Keep lightweight
+            # native process-memory telemetry beside the diagnostic facts so a
+            # promotion decision can distinguish solver behavior from host
+            # pressure without adding a runtime dependency.
+            local_memory_monitor = ProcessMemoryMonitor().start()
             adaptive = bool(local_config.get("adaptive", False))
             iterations = []
             current_seed_value = None
@@ -3089,11 +3099,22 @@ def _solve_student_assignment(
                         "changed_source_decision_count": local_result.changed_source_decision_count,
                         "component_values": dict(local_result.candidate_component_values),
                         "component_deltas": dict(local_result.component_deltas),
+                        # These are compact, bounded evaluator facts: no raw
+                        # per-entity payload is persisted, but each adopted
+                        # candidate still carries the counselor-readable
+                        # aggregate and improved/unchanged/worsened counts.
+                        "candidate_quality_summary": dict(
+                            local_result.candidate_quality_summary
+                        ),
+                        "quality_comparison": dict(
+                            local_result.quality_comparison
+                        ),
                         "affected_student_ids": tuple(local_result.affected_student_ids),
                         "affected_section_ids": tuple(local_result.affected_section_ids),
                         "section_load_deltas": dict(local_result.section_load_deltas),
                         "best_bound": local_result.best_bound,
                         "attempt_number_for_radius": radius_attempts[current_radius],
+                        "memory": local_memory_monitor.sample(),
                     })
                     iteration_count += 1
                     if adopted:
@@ -3181,6 +3202,7 @@ def _solve_student_assignment(
                     "radius_stop_reasons": tuple(radius_stop_reasons),
                     "stopping_reason": stopping_reason,
                     "iterations": tuple(iterations),
+                    "memory": local_memory_monitor.stop(),
                 }
             else:
                 seed_substantive_value = _current_substantive_value(stage_2_seed_solver)
@@ -3232,6 +3254,7 @@ def _solve_student_assignment(
                     "candidate_validated": candidate_validated,
                     "improvement_adopted": candidate_validated,
                     "iterations": (),
+                    "memory": local_memory_monitor.stop(),
                 }
 
     reference_source_decisions = dict(
