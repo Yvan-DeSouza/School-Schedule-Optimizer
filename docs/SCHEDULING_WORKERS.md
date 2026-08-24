@@ -4,6 +4,12 @@ This document describes the asynchronous scheduling execution architecture
 implemented in the repository. It is intentionally operational documentation,
 not an aspirational deployment diagram.
 
+Resource measurement for long-running worker and diagnostic operations is
+defined in [Observability and Monitoring](OBSERVABILITY_AND_MONITORING.md).
+That document is the canonical source for psutil-backed process/system
+telemetry, fallback behavior, sampling, and the rule that measurements never
+override CP-SAT or immutable run results.
+
 ## Why scheduling runs in a worker
 
 Placement, named-teacher assignment, and student assignment are offline CP-SAT
@@ -176,6 +182,12 @@ single scheduling task may still use the established internal CP-SAT workers:
 Increasing Celery concurrency without a memory/CPU capacity review would run
 multiple large CP-SAT models simultaneously and is intentionally not the
 default.
+
+The student-assignment diagnostic paths expose compact operation and local
+probe resource facts when measurement is enabled. These facts can include RSS,
+USS/private memory where supported, VMS, CPU, thread/process-tree, and host
+memory context. They are intended to validate worker capacity and process
+recycling; they are not progress signals, solver decisions, or approval facts.
 
 ## Windows and WSL development
 

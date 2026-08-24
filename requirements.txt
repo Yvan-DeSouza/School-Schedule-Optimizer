@@ -18,3 +18,4 @@ pytest-django==4.11.1
 ortools>=9.10,<10
 celery==5.5.3
 redis==6.4.0
+psutil>=5.9,<8

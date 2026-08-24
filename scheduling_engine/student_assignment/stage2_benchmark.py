@@ -41,6 +41,7 @@ DURABLE_STAGE2_BENCHMARK_SCHEMA = "student_assignment_stage2_benchmark_v1"
 DURABLE_STAGE2_BENCHMARK_MANIFEST_SCHEMA = (
     "student_assignment_stage2_benchmark_manifest_v1"
 )
+MATURE_R2_CHECKPOINT_SCHEMA = "student_assignment_mature_r2_checkpoint_v1"
 
 
 def _dto_dataclass_types():
@@ -427,6 +428,128 @@ def read_durable_stage2_benchmark(directory):
         "data": input_snapshot["data"],
         "seed": seed,
     }
+
+
+def write_mature_r2_checkpoint(
+    path,
+    *,
+    data,
+    source_decisions,
+    result_facts,
+    experiment_id,
+    parent_benchmark_fingerprint=None,
+):
+    """Write one transparent, versioned mature-R2 source-decision checkpoint.
+
+    This is a diagnostic artifact, not a replacement for the immutable run
+    snapshot.  It stores semantic source decisions rather than solver objects
+    or pickle state, so a later clean process can validate the checkpoint
+    against the current detached DTO before using it as a diagnostic seed.
+    """
+
+    input_fingerprint = semantic_student_assignment_input_fingerprint(data)
+    canonical = _canonical_seed_source_decisions(data, tuple(source_decisions))
+    source_fingerprint = stage1_seed_source_fingerprint(canonical)
+    facts = dict(result_facts or {})
+    optimization = dict(facts.get("optimization_facts", {}))
+    stage_2 = dict(optimization.get("stage_2", {}))
+    local_bootstrap = dict(optimization.get("stage_2_local_bootstrap", {}))
+    quality = dict(facts.get("quality", {}))
+    substantive_components = dict(
+        facts.get("substantive_components")
+        or local_bootstrap.get("component_values")
+        or stage_2.get("substantive_components", {})
+    )
+    complete = facts.get("status") == "complete"
+    validated = bool(
+        facts.get("seed_validated")
+        or stage_2.get("alternate_seed_validated")
+        or local_bootstrap.get("candidate_validated")
+        or complete
+    )
+    payload = {
+        "schema": MATURE_R2_CHECKPOINT_SCHEMA,
+        "experiment_id": str(experiment_id),
+        "created_at_utc": datetime.now(timezone.utc).isoformat(),
+        "input_semantic_fingerprint": input_fingerprint,
+        "parent_benchmark_fingerprint": parent_benchmark_fingerprint,
+        "source_decision_fingerprint": source_fingerprint,
+        "source_decisions": _encode_snapshot_value(canonical),
+        "objective_vector": list(facts.get("objective_vector", stage_2.get("objective_values", ()))),
+        "substantive_components": substantive_components,
+        "quality": quality,
+        "counts": {
+            "assigned_request_count": facts.get("assignment_count"),
+            "unmet_request_count": facts.get("unmet_request_count"),
+            "special_commitment_count": facts.get(
+                "special_commitment_count",
+                (quality.get("request_fulfillment", {})
+                 .get("special_commitments", {})
+                 .get("fulfilled_count")),
+            ),
+            "source_decision_count": len(canonical),
+        },
+        "validation": {
+            "seed_validated": validated,
+            "complete": complete,
+            "full_model_validation": validated,
+        },
+    }
+    encoded = _json_bytes(payload)
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.suffix == ".gz":
+        path.write_bytes(_gzip_bytes(payload))
+    else:
+        path.write_bytes(encoded)
+    return payload
+
+
+def read_mature_r2_checkpoint(path, *, expected_input_fingerprint=None):
+    """Read and verify a mature-R2 checkpoint without trusting opaque state."""
+
+    path = Path(path)
+    if path.suffix == ".gz":
+        with gzip.GzipFile(fileobj=io.BytesIO(path.read_bytes()), mode="rb") as source:
+            payload = json.loads(source.read().decode("utf-8"))
+    else:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    if payload.get("schema") != MATURE_R2_CHECKPOINT_SCHEMA:
+        raise ValueError("Unsupported mature R2 checkpoint schema")
+    if (
+        expected_input_fingerprint is not None
+        and payload.get("input_semantic_fingerprint") != expected_input_fingerprint
+    ):
+        raise ValueError("Mature R2 checkpoint input fingerprint does not match")
+    canonical = tuple(_decode_snapshot_value(payload.get("source_decisions")))
+    actual_fingerprint = stage1_seed_source_fingerprint(canonical)
+    if actual_fingerprint != payload.get("source_decision_fingerprint"):
+        raise ValueError("Mature R2 checkpoint source fingerprint is invalid")
+    return {
+        **payload,
+        "source_decisions": canonical,
+        "source_decision_fingerprint": actual_fingerprint,
+    }
+
+
+def replay_mature_r2_checkpoint(data, checkpoint, config):
+    """Run a diagnostic Stage-2 replay from a validated checkpoint seed."""
+
+    input_fingerprint = semantic_student_assignment_input_fingerprint(data)
+    if checkpoint.get("input_semantic_fingerprint") != input_fingerprint:
+        raise ValueError("Mature R2 checkpoint belongs to a different input")
+    source_decisions = _materialize_seed_source_decisions(
+        data, tuple(checkpoint["source_decisions"])
+    )
+    if semantic_stage1_seed_source_fingerprint(data, source_decisions) != checkpoint[
+        "source_decision_fingerprint"
+    ]:
+        raise ValueError("Mature R2 checkpoint cannot be materialized for this input")
+    return run_stage2_experiment(
+        data,
+        config,
+        alternate_source_decisions=source_decisions,
+    )
 
 
 def replay_durable_stage1_seed(
@@ -855,6 +978,9 @@ class Stage2ExperimentConfig:
     max_iterations: int = 2
     per_probe_time_limit_seconds: float = 15.0
     timeline_max_events: int = 128
+    max_changed_students: int | None = None
+    collect_resource_telemetry: bool = True
+    capture_final_source_decisions: bool = False
 
 
 def run_stage2_experiment(
@@ -905,6 +1031,8 @@ def _run_stage2_experiment(
         ),
         "optimization_worker_count": config.stage2_worker_count,
         "timeline_max_events": config.timeline_max_events,
+        "collect_resource_telemetry": config.collect_resource_telemetry,
+        "capture_final_source_decisions": config.capture_final_source_decisions,
         "alternate_source_decisions": alternate_source_decisions,
         "alternate_source_variable_values": alternate_source_variable_values,
     }
@@ -940,6 +1068,9 @@ def _run_stage2_experiment(
             alternate_source_decisions=alternate_source_decisions,
             alternate_source_variable_values=alternate_source_variable_values,
             timeline_max_events=config.timeline_max_events,
+            max_changed_students=config.max_changed_students,
+            collect_resource_telemetry=config.collect_resource_telemetry,
+            capture_final_source_decisions=config.capture_final_source_decisions,
         )
     elif config.strategy == "adaptive":
         result = run_student_assignment_adaptive_local_bootstrap_diagnostic(
@@ -958,6 +1089,9 @@ def _run_stage2_experiment(
                 config.stage1_validation_worker_count
             ),
             timeline_max_events=config.timeline_max_events,
+            max_changed_students=config.max_changed_students,
+            collect_resource_telemetry=config.collect_resource_telemetry,
+            capture_final_source_decisions=config.capture_final_source_decisions,
         )
     else:
         raise ValueError(f"Unknown Stage 2 diagnostic strategy: {config.strategy}")
@@ -1079,6 +1213,8 @@ def run_strict_substantive_probe(data, config: Stage2ExperimentConfig):
         "seed_assignment_count": result.seed_assignment_count,
         "candidate_assignment_count": result.candidate_assignment_count,
         "changed_source_decision_count": result.changed_source_decision_count,
+        "changed_student_count": result.changed_student_count,
+        "max_changed_students": result.max_changed_students,
         "seed_component_values": result.seed_component_values,
         "candidate_component_values": result.candidate_component_values,
         "component_deltas": result.component_deltas,

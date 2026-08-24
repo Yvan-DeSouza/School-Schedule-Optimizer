@@ -25,6 +25,7 @@ class SubstantiveSoftTierProbeContext:
     model: object
     objective_metadata: tuple
     complete_required_decision_groups: tuple
+    source_decision_owners: tuple
     validated_seed_solver: object | None
     seed_outcome: int
     solver_objective_components: object
@@ -81,6 +82,8 @@ class SubstantiveSoftTierProbeResult:
     timings: dict = field(default_factory=dict)
     candidate_quality_summary: dict = field(default_factory=dict)
     quality_comparison: dict = field(default_factory=dict)
+    changed_student_count: int = 0
+    max_changed_students: int | None = None
 
 
 def _model_family_variable_counts(model):
@@ -156,6 +159,7 @@ def probe_substantive_soft_tier(
     component_bounds=None,
     minimize_component: str | None = None,
     strict_improvement: bool = False,
+    max_changed_students: int | None = None,
 ) -> SubstantiveSoftTierProbeResult:
     """Ask whether the unchanged full model can beat one soft tier.
 
@@ -219,6 +223,7 @@ def probe_substantive_soft_tier(
                 **timing.snapshot(),
                 "operation_total_seconds": monotonic() - operation_started,
             },
+            max_changed_students=max_changed_students,
         )
 
     target_entries = [
@@ -266,7 +271,10 @@ def probe_substantive_soft_tier(
     if neighborhood_radius is not None:
         with timing.measure("neighborhood_constraints_seconds"):
             changed_group_terms = []
-            for decision_group in context.complete_required_decision_groups:
+            changed_literals_by_student = {}
+            for group_index, decision_group in enumerate(
+                context.complete_required_decision_groups
+            ):
                 selected_seed_variable = next(
                     (
                         variable
@@ -284,7 +292,39 @@ def probe_substantive_soft_tier(
                     selected_seed_variable.Index()
                 )
                 changed_group_terms.append(1 - selected_clone_variable)
+                owner = (
+                    context.source_decision_owners[group_index]
+                    if group_index < len(context.source_decision_owners)
+                    else None
+                )
+                if owner is not None:
+                    changed_literals_by_student.setdefault(owner, []).append(
+                        selected_clone_variable.Not()
+                    )
             probe_model.Add(sum(changed_group_terms or [0]) <= neighborhood_radius)
+            if max_changed_students is not None:
+                changed_student_variables = []
+                for student_id, literals in sorted(
+                    changed_literals_by_student.items(), key=repr
+                ):
+                    indicator = probe_model.NewBoolVar(
+                        f"changed_student_{student_id}"
+                    )
+                    changed_student_variables.append(indicator)
+                    for literal in literals:
+                        probe_model.AddImplication(literal, indicator)
+                    probe_model.AddBoolOr(literals).OnlyEnforceIf(indicator)
+                    probe_model.AddBoolAnd(
+                        [literal.Not() for literal in literals]
+                    ).OnlyEnforceIf(indicator.Not())
+                probe_model.Add(
+                    sum(changed_student_variables or [0])
+                    <= max(0, int(max_changed_students))
+                )
+    elif max_changed_students is not None:
+        raise ValueError(
+            "max_changed_students requires a source-decision neighborhood radius"
+        )
 
     # Preserve every objective that precedes the target tier. This includes
     # all fulfillment tiers and any more important soft tier present in a
@@ -341,6 +381,7 @@ def probe_substantive_soft_tier(
     candidate_substantive_value = None
     candidate_assignment_count = 0
     changed_source_decision_count = 0
+    changed_student_count = 0
     source_decision_deltas = ()
     candidate_objective_vector = ()
     minimized_component_value = None
@@ -390,6 +431,12 @@ def probe_substantive_soft_tier(
                 for key in sorted(source_keys, key=repr)
                 if seed_source_decisions.get(key) != candidate_source_decision_map.get(key)
             )
+            changed_student_count = len({
+                value[0]
+                for delta in source_decision_deltas
+                for value in (delta["before"], delta["after"])
+                if isinstance(value, tuple) and value
+            })
             candidate_objective_vector = _objective_vector(
                 solver, probe_model, context.objective_metadata
             )
@@ -488,4 +535,6 @@ def probe_substantive_soft_tier(
         },
         candidate_quality_summary=candidate_quality_summary,
         quality_comparison=quality_comparison,
+        changed_student_count=changed_student_count,
+        max_changed_students=max_changed_students,
     )

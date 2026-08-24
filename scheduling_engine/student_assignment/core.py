@@ -119,6 +119,7 @@ from .substantive_probe import (
 from .runtime import (
     MonotonicDeadline,
     ProcessMemoryMonitor,
+    ProcessResourceMonitor,
     semantic_student_assignment_input_fingerprint,
 )
 
@@ -769,10 +770,12 @@ def run_substantive_soft_tier_probe(
     alternate_source_decisions=(),
     alternate_source_variable_values=None,
     strict_improvement=False,
+    max_changed_students=None,
     hard_feasibility_time_limit_seconds=None,
     hard_feasibility_validation_time_limit_seconds=None,
     hard_feasibility_worker_count=None,
     hard_feasibility_validation_worker_count=None,
+    collect_resource_telemetry=False,
 ):
     """Run a diagnostic-only satisfiability probe against the full model.
 
@@ -795,6 +798,7 @@ def run_substantive_soft_tier_probe(
             "component_bounds": component_bounds,
             "minimize_component": minimize_component,
             "strict_improvement": strict_improvement,
+            "max_changed_students": max_changed_students,
         },
         alternate_source_decisions=alternate_source_decisions,
         alternate_source_variable_values=alternate_source_variable_values,
@@ -804,6 +808,7 @@ def run_substantive_soft_tier_probe(
         ),
         hard_feasibility_worker_count=hard_feasibility_worker_count,
         hard_feasibility_validation_worker_count=hard_feasibility_validation_worker_count,
+        collect_resource_telemetry=collect_resource_telemetry,
     )
 
 
@@ -815,12 +820,14 @@ def run_student_assignment_stage2_diagnostic(
     total_time_limit_seconds=None,
     collect_incumbent_timeline=True,
     timeline_max_events=128,
+    capture_final_source_decisions=False,
     hard_feasibility_time_limit_seconds=None,
     hard_feasibility_validation_time_limit_seconds=None,
     hard_feasibility_worker_count=None,
     hard_feasibility_validation_worker_count=None,
     optimization_worker_count=None,
     retain_incumbent_on_non_improvement=True,
+    collect_resource_telemetry=False,
 ):
     """Run unchanged Stage 2 with optional diagnostic alternate incumbent."""
 
@@ -836,6 +843,7 @@ def run_student_assignment_stage2_diagnostic(
         retain_incumbent_on_non_improvement=retain_incumbent_on_non_improvement,
         collect_incumbent_timeline=collect_incumbent_timeline,
         timeline_max_events=timeline_max_events,
+        capture_final_source_decisions=capture_final_source_decisions,
         hard_feasibility_time_limit_seconds=hard_feasibility_time_limit_seconds,
         hard_feasibility_validation_time_limit_seconds=(
             hard_feasibility_validation_time_limit_seconds
@@ -843,6 +851,7 @@ def run_student_assignment_stage2_diagnostic(
         hard_feasibility_worker_count=hard_feasibility_worker_count,
         hard_feasibility_validation_worker_count=hard_feasibility_validation_worker_count,
         optimization_worker_count=optimization_worker_count,
+        collect_resource_telemetry=collect_resource_telemetry,
     )
 
 
@@ -861,6 +870,9 @@ def run_student_assignment_local_bootstrap_diagnostic(
     alternate_source_variable_values=None,
     collect_incumbent_timeline=True,
     timeline_max_events=128,
+    max_changed_students=None,
+    capture_final_source_decisions=False,
+    collect_resource_telemetry=False,
 ):
     """Run a bounded local-quality bootstrap before diagnostic Stage 2.
 
@@ -883,6 +895,7 @@ def run_student_assignment_local_bootstrap_diagnostic(
             "worker_count": worker_count,
             "target_importance_level": IMPORTANCE_LEVELS["important"],
             "neighborhood_radius": neighborhood_radius,
+            "max_changed_students": max_changed_students,
             "component_bounds": None,
             "minimize_component": None,
         },
@@ -898,6 +911,8 @@ def run_student_assignment_local_bootstrap_diagnostic(
         hard_feasibility_validation_worker_count=hard_feasibility_validation_worker_count,
         collect_incumbent_timeline=collect_incumbent_timeline,
         timeline_max_events=timeline_max_events,
+        capture_final_source_decisions=capture_final_source_decisions,
+        collect_resource_telemetry=collect_resource_telemetry,
     )
 
 
@@ -917,6 +932,9 @@ def run_student_assignment_adaptive_local_bootstrap_diagnostic(
     alternate_source_variable_values=None,
     collect_incumbent_timeline=True,
     timeline_max_events=128,
+    max_changed_students=None,
+    capture_final_source_decisions=False,
+    collect_resource_telemetry=False,
 ):
     """Run diagnostic strict-improvement neighborhoods with shared budgeting.
 
@@ -940,6 +958,7 @@ def run_student_assignment_adaptive_local_bootstrap_diagnostic(
             "per_probe_time_limit_seconds": per_probe_time_limit_seconds,
             "worker_count": worker_count,
             "target_importance_level": IMPORTANCE_LEVELS["important"],
+            "max_changed_students": max_changed_students,
         },
         stage_2_total_time_limit_seconds=total_time_limit_seconds,
         retain_incumbent_on_non_improvement=True,
@@ -953,6 +972,8 @@ def run_student_assignment_adaptive_local_bootstrap_diagnostic(
         hard_feasibility_validation_worker_count=hard_feasibility_validation_worker_count,
         collect_incumbent_timeline=collect_incumbent_timeline,
         timeline_max_events=timeline_max_events,
+        capture_final_source_decisions=capture_final_source_decisions,
+        collect_resource_telemetry=collect_resource_telemetry,
     )
 
 
@@ -973,6 +994,9 @@ def run_student_assignment_variable_neighborhood_diagnostic(
     alternate_source_variable_values=None,
     collect_incumbent_timeline=True,
     timeline_max_events=128,
+    max_changed_students=None,
+    capture_final_source_decisions=False,
+    collect_resource_telemetry=False,
 ):
     """Run bounded R2/R4/R8 CP-SAT local descent for diagnostics only.
 
@@ -999,6 +1023,7 @@ def run_student_assignment_variable_neighborhood_diagnostic(
             "per_probe_time_limit_seconds": per_probe_time_limit_seconds,
             "worker_count": worker_count,
             "target_importance_level": IMPORTANCE_LEVELS["important"],
+            "max_changed_students": max_changed_students,
         },
         stage_2_total_time_limit_seconds=total_time_limit_seconds,
         retain_incumbent_on_non_improvement=True,
@@ -1012,6 +1037,8 @@ def run_student_assignment_variable_neighborhood_diagnostic(
         hard_feasibility_validation_worker_count=hard_feasibility_validation_worker_count,
         collect_incumbent_timeline=collect_incumbent_timeline,
         timeline_max_events=timeline_max_events,
+        capture_final_source_decisions=capture_final_source_decisions,
+        collect_resource_telemetry=collect_resource_telemetry,
     )
 
 
@@ -1035,7 +1062,17 @@ def _solve_student_assignment(
     hard_feasibility_worker_count=None,
     hard_feasibility_validation_worker_count=None,
     optimization_worker_count=None,
+    capture_final_source_decisions=False,
+    collect_resource_telemetry=False,
 ):
+    # This monitor covers the complete diagnostic/engine operation, including
+    # input validation, model construction, Stage 1, Stage 2, extraction, and
+    # quality facts.  The existing local monitor remains intentionally
+    # separate so local-probe memory can still be compared with whole-operation
+    # resource use.  Resource telemetry is observational only.
+    operation_resource_monitor = ProcessResourceMonitor(
+        enabled=collect_resource_telemetry
+    ).start()
     if data.scope.scope_type == "scoped":
         # Keep the complete request list in the detached run snapshot, but do
         # not let a partial rerun silently rewrite demand outside its approved
@@ -2912,12 +2949,25 @@ def _solve_student_assignment(
         }
 
     def _build_probe_context(seed_solver):
+        source_decision_owners = []
+        for source_key in complete_required_decision_source_keys:
+            if source_key is None:
+                source_decision_owners.append(None)
+            elif source_key[0] == "course":
+                source_decision_owners.append(
+                    requests_by_id[source_key[1]].student_id
+                )
+            else:
+                source_decision_owners.append(
+                    commitment_metadata.get(source_key, (None,))[0]
+                )
         return SubstantiveSoftTierProbeContext(
             model=model,
             objective_metadata=tuple(objective_metadata),
             complete_required_decision_groups=tuple(
                 tuple(group) for group in complete_required_decision_groups
             ),
+            source_decision_owners=tuple(source_decision_owners),
             validated_seed_solver=seed_solver,
             seed_outcome=_hard_feasibility_outcome,
             solver_objective_components=_solver_objective_components,
@@ -3097,6 +3147,7 @@ def _solve_student_assignment(
                         "adopted": adopted,
                         "validation_elapsed_seconds": validation_elapsed,
                         "changed_source_decision_count": local_result.changed_source_decision_count,
+                        "changed_student_count": local_result.changed_student_count,
                         "component_values": dict(local_result.candidate_component_values),
                         "component_deltas": dict(local_result.component_deltas),
                         # These are compact, bounded evaluator facts: no raw
@@ -3193,6 +3244,8 @@ def _solve_student_assignment(
                     "requested_threshold": iterations[0]["incumbent_before"] - 1 if iterations else None,
                     "candidate_substantive_value": final_value,
                     "changed_source_decision_count": iterations[-1]["changed_source_decision_count"] if iterations else 0,
+                    "changed_student_count": iterations[-1].get("changed_student_count") if iterations else 0,
+                    "max_changed_students": local_config.get("max_changed_students"),
                     "component_values": dict(last_result.candidate_component_values) if last_result is not None else {},
                     "component_deltas": dict(last_result.component_deltas) if last_result is not None else {},
                     "candidate_found": any_candidate_validated,
@@ -3245,6 +3298,8 @@ def _solve_student_assignment(
                     "requested_threshold": local_result.requested_threshold,
                     "candidate_substantive_value": local_result.candidate_substantive_value,
                     "changed_source_decision_count": local_result.changed_source_decision_count,
+                    "changed_student_count": local_result.changed_student_count,
+                    "max_changed_students": local_config.get("max_changed_students"),
                     "component_values": dict(local_result.candidate_component_values),
                     "component_deltas": dict(local_result.component_deltas),
                     "affected_student_ids": tuple(local_result.affected_student_ids),
@@ -3431,6 +3486,10 @@ def _solve_student_assignment(
     optimization_facts["stage_2"]["deadline_remaining_seconds"] = (
         stage_2_deadline.remaining() if stage_2_deadline is not None else None
     )
+    if capture_final_source_decisions and solver is not None:
+        optimization_facts["stage_2"]["final_source_decisions"] = (
+            _source_decision_fingerprint(solver)
+        )
     if local_bootstrap_facts is not None:
         optimization_facts["stage_2_local_bootstrap"] = local_bootstrap_facts
     if collect_stage2_trace:
@@ -3484,7 +3543,15 @@ def _solve_student_assignment(
                 if include_candidate_ledger else ()
             ),
         )
-        return replace(result, lock_costs=_build_lock_costs(data, result)) if include_lock_costs else result
+        optimization_facts["operation_resource_monitor"] = (
+            operation_resource_monitor.stop()
+        )
+        if include_lock_costs:
+            result = replace(result, lock_costs=_build_lock_costs(data, result))
+            optimization_facts["operation_resource_monitor"] = (
+                operation_resource_monitor.stop()
+            )
+        return result
 
     (
         assignments,
@@ -3791,4 +3858,12 @@ def _solve_student_assignment(
             if include_candidate_ledger else ()
         ),
     )
-    return replace(result, lock_costs=_build_lock_costs(data, result)) if include_lock_costs else result
+    optimization_facts["operation_resource_monitor"] = (
+        operation_resource_monitor.stop()
+    )
+    if include_lock_costs:
+        result = replace(result, lock_costs=_build_lock_costs(data, result))
+        optimization_facts["operation_resource_monitor"] = (
+            operation_resource_monitor.stop()
+        )
+    return result

@@ -7,7 +7,7 @@ from hashlib import sha256
 import json
 import os
 import threading
-from time import monotonic
+from time import monotonic, monotonic as _resource_monotonic
 
 
 @dataclass(frozen=True)
@@ -73,109 +73,213 @@ class OperationTimer:
         return dict(sorted(self._values.items()))
 
 
-def _process_memory_snapshot():
-    """Read process memory using an available standard/native mechanism.
+def _unavailable_resource_snapshot(source="unavailable"):
+    """Return a JSON-safe snapshot when a host metric cannot be read."""
 
-    Diagnostic experiments must not require ``psutil`` just to observe memory.
-    Windows' process API exposes both current and peak working set directly;
-    the Unix fallback uses the standard-library resource module where
-    available.  ``None`` values mean that this host does not expose a safe
-    measurement through these mechanisms.
+    return {
+        "available": False,
+        "source": source,
+        "pid": os.getpid(),
+        "working_set_bytes": None,
+        "peak_working_set_bytes": None,
+        "uss_bytes": None,
+        "vms_bytes": None,
+        "pagefile_bytes": None,
+        "peak_pagefile_bytes": None,
+        "cpu_user_seconds": None,
+        "cpu_system_seconds": None,
+        "process_cpu_percent": None,
+        "thread_count": None,
+        "child_process_count": None,
+        "child_working_set_bytes": None,
+        "child_uss_bytes": None,
+        "tree_working_set_bytes": None,
+        "tree_uss_bytes": None,
+        "system_total_memory_bytes": None,
+        "system_available_memory_bytes": None,
+        "system_memory_percent": None,
+        "logical_cpu_count": None,
+    }
+
+
+def _windows_process_memory_fallback():
+    """Preserve the pre-psutil Windows working-set fallback."""
+
+    if os.name != "nt":
+        return None
+    try:
+        import ctypes
+
+        class _ProcessMemoryCounters(ctypes.Structure):
+            _fields_ = (
+                ("cb", ctypes.c_ulong),
+                ("PageFaultCount", ctypes.c_ulong),
+                ("PeakWorkingSetSize", ctypes.c_size_t),
+                ("WorkingSetSize", ctypes.c_size_t),
+                ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                ("PagefileUsage", ctypes.c_size_t),
+                ("PeakPagefileUsage", ctypes.c_size_t),
+            )
+
+        counters = _ProcessMemoryCounters()
+        counters.cb = ctypes.sizeof(counters)
+        process_api = ctypes.windll.kernel32.GetCurrentProcess
+        process_api.restype = ctypes.c_void_p
+        memory_api = ctypes.windll.psapi.GetProcessMemoryInfo
+        memory_api.argtypes = (
+            ctypes.c_void_p,
+            ctypes.POINTER(_ProcessMemoryCounters),
+            ctypes.c_ulong,
+        )
+        memory_api.restype = ctypes.c_int
+        if memory_api(process_api(), ctypes.byref(counters), counters.cb):
+            snapshot = _unavailable_resource_snapshot(
+                "windows_process_memory_counters"
+            )
+            snapshot.update({
+                "available": True,
+                "working_set_bytes": int(counters.WorkingSetSize),
+                "peak_working_set_bytes": int(counters.PeakWorkingSetSize),
+                "pagefile_bytes": int(counters.PagefileUsage),
+                "peak_pagefile_bytes": int(counters.PeakPagefileUsage),
+            })
+            return snapshot
+    except Exception:
+        return None
+    return None
+
+
+def _process_memory_snapshot():
+    """Read one resource snapshot, preferring psutil with safe fallbacks.
+
+    This function is deliberately best-effort.  It is called from a daemon
+    monitor thread and must never turn an unavailable or disappearing process
+    metric into a scheduling failure.
     """
 
-    if os.name == "nt":
+    try:
+        import psutil
+
+        process = psutil.Process(os.getpid())
+        memory = process.memory_info()
         try:
-            import ctypes
-
-            class _ProcessMemoryCounters(ctypes.Structure):
-                _fields_ = (
-                    ("cb", ctypes.c_ulong),
-                    ("PageFaultCount", ctypes.c_ulong),
-                    ("PeakWorkingSetSize", ctypes.c_size_t),
-                    ("WorkingSetSize", ctypes.c_size_t),
-                    ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
-                    ("QuotaPagedPoolUsage", ctypes.c_size_t),
-                    ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
-                    ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
-                    ("PagefileUsage", ctypes.c_size_t),
-                    ("PeakPagefileUsage", ctypes.c_size_t),
-                )
-
-            counters = _ProcessMemoryCounters()
-            counters.cb = ctypes.sizeof(counters)
-            process_api = ctypes.windll.kernel32.GetCurrentProcess
-            process_api.restype = ctypes.c_void_p
-            process = process_api()
-            memory_api = ctypes.windll.psapi.GetProcessMemoryInfo
-            memory_api.argtypes = (
-                ctypes.c_void_p,
-                ctypes.POINTER(_ProcessMemoryCounters),
-                ctypes.c_ulong,
-            )
-            memory_api.restype = ctypes.c_int
-            success = memory_api(
-                process,
-                ctypes.byref(counters),
-                counters.cb,
-            )
-            if success:
-                return {
-                    "available": True,
-                    "source": "windows_process_memory_counters",
-                    "working_set_bytes": int(counters.WorkingSetSize),
-                    "peak_working_set_bytes": int(counters.PeakWorkingSetSize),
-                    "pagefile_bytes": int(counters.PagefileUsage),
-                    "peak_pagefile_bytes": int(counters.PeakPagefileUsage),
-                }
-        except (AttributeError, OSError, TypeError, ValueError):
-            pass
+            full_memory = process.memory_full_info()
+        except (AttributeError, psutil.Error, OSError):
+            full_memory = None
+        try:
+            children = process.children(recursive=True)
+        except (psutil.Error, OSError):
+            children = []
+        child_working_set = 0
+        child_uss = 0
+        live_children = 0
+        for child in children:
+            try:
+                child_memory = child.memory_info()
+                child_working_set += int(getattr(child_memory, "rss", 0) or 0)
+                if full_memory is not None:
+                    child_full = child.memory_full_info()
+                    child_uss += int(getattr(child_full, "uss", 0) or 0)
+                live_children += 1
+            except (psutil.Error, OSError):
+                continue
+        try:
+            cpu_times = process.cpu_times()
+            cpu_user = float(getattr(cpu_times, "user", 0.0))
+            cpu_system = float(getattr(cpu_times, "system", 0.0))
+        except (psutil.Error, OSError):
+            cpu_user = cpu_system = None
+        try:
+            cpu_percent = float(process.cpu_percent(interval=None))
+        except (psutil.Error, OSError):
+            cpu_percent = None
+        try:
+            system_memory = psutil.virtual_memory()
+            system_total = int(system_memory.total)
+            system_available = int(system_memory.available)
+            system_percent = float(system_memory.percent)
+        except (psutil.Error, OSError, AttributeError):
+            system_total = system_available = system_percent = None
         return {
-            "available": False,
-            "source": "unavailable",
-            "working_set_bytes": None,
-            "peak_working_set_bytes": None,
-            "pagefile_bytes": None,
-            "peak_pagefile_bytes": None,
+            "available": True,
+            "source": "psutil",
+            "pid": os.getpid(),
+            "working_set_bytes": int(memory.rss),
+            "peak_working_set_bytes": int(memory.rss),
+            "uss_bytes": (
+                int(getattr(full_memory, "uss"))
+                if full_memory is not None and getattr(full_memory, "uss", None) is not None
+                else None
+            ),
+            "vms_bytes": int(memory.vms),
+            "pagefile_bytes": int(memory.vms),
+            "peak_pagefile_bytes": int(memory.vms),
+            "cpu_user_seconds": cpu_user,
+            "cpu_system_seconds": cpu_system,
+            "process_cpu_percent": cpu_percent,
+            "thread_count": int(process.num_threads()),
+            "child_process_count": live_children,
+            "child_working_set_bytes": child_working_set,
+            "child_uss_bytes": child_uss if full_memory is not None else None,
+            "tree_working_set_bytes": int(memory.rss) + child_working_set,
+            "tree_uss_bytes": (
+                int(getattr(full_memory, "uss", 0) or 0) + child_uss
+                if full_memory is not None else None
+            ),
+            "system_total_memory_bytes": system_total,
+            "system_available_memory_bytes": system_available,
+            "system_memory_percent": system_percent,
+            "logical_cpu_count": psutil.cpu_count(logical=True),
         }
+    except Exception:
+        native_fallback = _windows_process_memory_fallback()
+        if native_fallback is not None:
+            return native_fallback
 
     try:
         import resource
 
         peak = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
-        # Linux reports KiB; macOS reports bytes.  This fallback is only used
-        # where the platform convention is known and remains diagnostic.
-        if os.uname().sysname == "Linux":
+        if os.name != "nt" and getattr(os, "uname", lambda: None)().sysname == "Linux":
             peak *= 1024
-        return {
+        snapshot = _unavailable_resource_snapshot("resource_maxrss")
+        snapshot.update({
             "available": True,
-            "source": "resource_maxrss",
-            "working_set_bytes": None,
             "peak_working_set_bytes": peak,
-            "pagefile_bytes": None,
-            "peak_pagefile_bytes": None,
-        }
+        })
+        return snapshot
     except (AttributeError, ImportError, OSError, ValueError):
-        return {
-            "available": False,
-            "source": "unavailable",
-            "working_set_bytes": None,
-            "peak_working_set_bytes": None,
-            "pagefile_bytes": None,
-            "peak_pagefile_bytes": None,
-        }
+        return _unavailable_resource_snapshot()
 
 
-class ProcessMemoryMonitor:
-    """Bounded, dependency-free memory sampling for diagnostic operations."""
+class ProcessResourceMonitor:
+    """Best-effort process/system observability for diagnostic operations.
 
-    def __init__(self, interval_seconds=0.25):
+    The monitor samples at a bounded interval and returns only compact
+    aggregates.  It is intentionally non-authoritative: psutil errors,
+    unsupported metrics, and disappearing child processes become ``None`` or
+    zero-valued facts and never affect CP-SAT control flow.
+    """
+
+    def __init__(self, interval_seconds=0.25, *, enabled=True):
         self.interval_seconds = max(0.05, float(interval_seconds))
+        self.enabled = bool(enabled)
         self._stop_event = threading.Event()
         self._thread = None
         self._samples = []
+        self._started_at = None
 
     def sample(self):
-        snapshot = _process_memory_snapshot()
+        if not self.enabled:
+            return {"available": False, "source": "disabled", "sample_count": 0}
+        try:
+            snapshot = _process_memory_snapshot()
+        except Exception:  # pragma: no cover - defensive observability boundary
+            snapshot = _unavailable_resource_snapshot("monitor_error")
+        snapshot["sampled_at_monotonic"] = _resource_monotonic()
         self._samples.append(snapshot)
         return dict(snapshot)
 
@@ -184,59 +288,94 @@ class ProcessMemoryMonitor:
             self.sample()
 
     def start(self):
+        if not self.enabled:
+            return self
+        if self._stop_event.is_set():
+            self._stop_event = threading.Event()
+            self._samples = []
+        self._started_at = _resource_monotonic()
         self.sample()
         self._thread = threading.Thread(
             target=self._sample_loop,
-            name="student-assignment-memory-monitor",
+            name="student-assignment-resource-monitor",
             daemon=True,
         )
         self._thread.start()
         return self
 
     def stop(self):
+        if not self.enabled:
+            return {
+                "available": False,
+                "source": "disabled",
+                "sample_count": 0,
+                "elapsed_seconds": 0.0,
+            }
         self._stop_event.set()
         if self._thread is not None:
             self._thread.join(timeout=max(1.0, self.interval_seconds * 4))
         self.sample()
         samples = tuple(self._samples)
-        available_samples = [
-            item for item in samples if item.get("available")
-        ]
-        current_values = [
-            item["working_set_bytes"]
-            for item in available_samples
-            if item.get("working_set_bytes") is not None
-        ]
-        peak_values = [
-            item["peak_working_set_bytes"]
-            for item in available_samples
-            if item.get("peak_working_set_bytes") is not None
-        ]
-        first = samples[0] if samples else _process_memory_snapshot()
+        first = samples[0] if samples else _unavailable_resource_snapshot()
         last = samples[-1] if samples else first
-        return {
-            "available": bool(available_samples),
+
+        def values(key):
+            return [item[key] for item in samples if item.get(key) is not None]
+
+        working_set = values("working_set_bytes")
+        uss = values("uss_bytes")
+        tree_working_set = values("tree_working_set_bytes")
+        tree_uss = values("tree_uss_bytes")
+        cpu_percent = values("process_cpu_percent")
+        peak_working_set = values("peak_working_set_bytes") + working_set
+        peak_pagefile = values("peak_pagefile_bytes")
+        peak_timestamp = None
+        if peak_working_set:
+            peak_value = max(peak_working_set)
+            for sample in samples:
+                if sample.get("working_set_bytes") == peak_value:
+                    peak_timestamp = sample.get("sampled_at_monotonic")
+                    break
+        report = {
+            "available": any(item.get("available") for item in samples),
             "source": last.get("source", first.get("source")),
+            "pid": os.getpid(),
             "sample_count": len(samples),
+            "elapsed_seconds": max(
+                0.0,
+                _resource_monotonic()
+                - (self._started_at or _resource_monotonic()),
+            ),
             "starting_working_set_bytes": first.get("working_set_bytes"),
-            "representative_working_set_bytes": (
-                max(current_values) if current_values else None
-            ),
-            "peak_working_set_bytes": max(
-                peak_values + current_values, default=None
-            ),
+            "representative_working_set_bytes": max(working_set, default=None),
+            "peak_working_set_bytes": max(peak_working_set, default=None),
+            "peak_working_set_timestamp_monotonic": peak_timestamp,
             "ending_working_set_bytes": last.get("working_set_bytes"),
+            "starting_uss_bytes": first.get("uss_bytes"),
+            "peak_uss_bytes": max(uss, default=None),
+            "ending_uss_bytes": last.get("uss_bytes"),
+            "peak_tree_working_set_bytes": max(tree_working_set, default=None),
+            "peak_tree_uss_bytes": max(tree_uss, default=None),
             "starting_pagefile_bytes": first.get("pagefile_bytes"),
             "ending_pagefile_bytes": last.get("pagefile_bytes"),
-            "peak_pagefile_bytes": max(
-                [
-                    item["peak_pagefile_bytes"]
-                    for item in available_samples
-                    if item.get("peak_pagefile_bytes") is not None
-                ],
-                default=None,
-            ),
+            "peak_pagefile_bytes": max(peak_pagefile, default=None),
+            "starting_cpu_user_seconds": first.get("cpu_user_seconds"),
+            "ending_cpu_user_seconds": last.get("cpu_user_seconds"),
+            "starting_cpu_system_seconds": first.get("cpu_system_seconds"),
+            "ending_cpu_system_seconds": last.get("cpu_system_seconds"),
+            "representative_process_cpu_percent": max(cpu_percent, default=None),
+            "peak_thread_count": max(values("thread_count"), default=None),
+            "peak_child_process_count": max(values("child_process_count"), default=0),
+            "system_total_memory_bytes": last.get("system_total_memory_bytes"),
+            "system_available_memory_bytes": last.get("system_available_memory_bytes"),
+            "system_memory_percent": last.get("system_memory_percent"),
+            "logical_cpu_count": last.get("logical_cpu_count"),
         }
+        return report
+
+
+class ProcessMemoryMonitor(ProcessResourceMonitor):
+    """Backward-compatible name for the richer resource monitor."""
 
 
 def semantic_student_assignment_input_fingerprint(data):

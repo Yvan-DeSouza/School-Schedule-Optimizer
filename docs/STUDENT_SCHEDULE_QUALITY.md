@@ -665,3 +665,70 @@ late-horizon improvements, and the need for a longer operational safety study
 mean that no bounded production policy can yet be selected responsibly.
 Ordinary Stage 2, objective definitions, hard constraints, approval behavior,
 and fixture data remain unchanged.
+
+## Mature-R2 checkpoint and student-bounded neighborhood diagnostics
+
+Continuation work uses a transparent, versioned
+`student_assignment_mature_r2_checkpoint_v1` JSON/JSON-Gzip artifact. A
+checkpoint stores the parent input fingerprint, semantic source decisions,
+source fingerprint, objective/component facts, completeness, and validation
+facts. It never stores a solver object or pickle state. Replay must
+re-materialize the source decisions against the current DTO and validate them
+against the unchanged full model before using them as a diagnostic seed.
+
+The bounded-neighborhood diagnostic may additionally limit the number of
+students whose meaningful source decisions differ from the incumbent. This is
+an experimental constraint layered on the existing source-decision Hamming
+radius; it is not a production counselor control and does not change ordinary
+Stage 2. A student counts once even when several of that student's courses or
+special commitments move. `None` preserves source-radius-only behavior.
+
+Long-running continuation and neighborhood experiments record compact process
+and system resource facts under the canonical contract in
+`docs/OBSERVABILITY_AND_MONITORING.md`. Resource telemetry is diagnostic and
+cannot establish feasibility, improve an objective, or authorize a candidate.
+
+The first durable continuation checkpoint was created from a clean target-scale
+R2 descent with eight workers and a 600-second neighborhood allowance. It
+reached `65,165` from the frozen Stage 1 value of `65,173`, remained complete
+with `10,635` assignments and zero unmet requests, and stored all `10,945`
+semantic source decisions. Its source fingerprint is
+`2a038e67e9047af3541dacc413d68506deccd2e379fd050bc8113f94b3f083a9`.
+Two independent clean-process replays materialized and validated that
+checkpoint against the unchanged full model and returned the same complete
+`65,165` objective vector. This is checkpoint/replay evidence, not proof that
+the R2 neighborhood is globally exhausted; continuation beyond this incumbent
+still requires an explicit stop classification based on additional bounded
+descent results.
+
+The mature checkpoint was subsequently continued from the incumbent rather
+than restarting from Stage 1. Five clean bounded R2 continuations produced
+the following validated descent:
+
+```text
+65173 -> 65165 -> 65159 -> 65155 -> 65153 -> 65151 -> 65149
+```
+
+Each adoption changed two semantic source decisions, remained complete and
+full-model-valid, retained `10,635` assignments, fulfilled all `10,945`
+required decision groups, and left the `310` special commitments fulfilled.
+The measured continuation elapsed times were approximately `674`, `484`,
+`794`, `728`, and `651` seconds; CP-SAT solver wall times were approximately
+`146`, `121`, `212`, `119`, and `124` seconds respectively. The observed
+substantive improvement came from section-utilization balance, which moved
+from `6,875` at Stage 1 to `6,851` at the current `65,149` checkpoint; the
+semester, difficulty, and category components remained `175`, `35,973`, and
+`22,150`.
+
+The five mature continuations consumed approximately `3,331` seconds of
+bounded diagnostic descent, close to the planned longer-frontier horizon.
+Because the final bounded probe still improved the incumbent, this is an
+explicit experiment-horizon stop, not evidence of an R2 plateau.
+
+This continuation is evidence that the mature R2 incumbent was still locally
+improvable under the tested bounded searches. It is not a proof of global
+optimality or of a stable production policy. R4/R8 promotion was therefore
+not run: the agreed gate is to investigate wider student-bounded
+neighborhoods only after R2 has actually stalled. The current checkpoint and
+compact frontier records are diagnostic artifacts, not ordinary scheduling
+inputs or production decisions.

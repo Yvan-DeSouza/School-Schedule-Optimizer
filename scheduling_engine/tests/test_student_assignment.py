@@ -1,6 +1,12 @@
 """Contracts for pure student-to-section assignment; no Django dependency."""
 
+import json
+import subprocess
+import sys
+import time
 from unittest.mock import patch
+
+import pytest
 
 from ortools.sat.python import cp_model
 
@@ -29,6 +35,7 @@ from scheduling_engine.student_assignment import (
 from scheduling_engine.student_assignment.runtime import (
     MonotonicDeadline,
     ProcessMemoryMonitor,
+    ProcessResourceMonitor,
 )
 from scheduling_engine.student_assignment.runtime import (
     semantic_student_assignment_input_fingerprint,
@@ -44,6 +51,8 @@ from scheduling_engine.student_assignment.stage2_benchmark import (
     write_durable_stage2_benchmark,
     write_student_assignment_input_snapshot,
     write_stage1_seed_snapshot,
+    read_mature_r2_checkpoint,
+    write_mature_r2_checkpoint,
 )
 
 
@@ -200,6 +209,41 @@ def test_substantive_probe_zero_neighborhood_preserves_seed_source_decisions():
     assert result.source_decision_deltas == ()
 
 
+@pytest.mark.parametrize(
+    ("neighborhood_radius", "max_changed_students"),
+    ((4, 1), (8, 1), (4, 2), (8, 2)),
+)
+def test_substantive_probe_student_neighborhood_bounds_are_recorded(
+    neighborhood_radius,
+    max_changed_students,
+):
+    result = run_substantive_soft_tier_probe(
+        _substantive_probe_input(),
+        threshold=1,
+        time_limit_seconds=5.0,
+        worker_count=1,
+        neighborhood_radius=neighborhood_radius,
+        max_changed_students=max_changed_students,
+    )
+
+    assert result.status in {"feasible", "optimal", "unknown", "infeasible"}
+    assert result.neighborhood_radius == neighborhood_radius
+    assert result.max_changed_students == max_changed_students
+    if result.complete_candidate_found:
+        assert result.changed_student_count <= max_changed_students
+
+
+def test_substantive_probe_rejects_student_bound_without_source_neighborhood():
+    with pytest.raises(ValueError, match="max_changed_students"):
+        run_substantive_soft_tier_probe(
+            _substantive_probe_input(),
+            threshold=1,
+            time_limit_seconds=5.0,
+            worker_count=1,
+            max_changed_students=1,
+        )
+
+
 def test_substantive_probe_records_semantic_candidate_and_impact_facts():
     result = run_substantive_soft_tier_probe(
         _substantive_probe_input(),
@@ -245,6 +289,39 @@ def test_substantive_probe_quality_comparison_uses_detached_seed_context():
 
     assert replay.complete_candidate_found is True
     assert replay.quality_comparison["request_fulfillment"]["worsened"] == 0
+
+
+def test_mature_r2_checkpoint_round_trips_semantic_source_decisions(tmp_path):
+    data = _substantive_probe_input()
+    probe = run_substantive_soft_tier_probe(
+        data,
+        threshold=1,
+        time_limit_seconds=5.0,
+        worker_count=1,
+    )
+    path = tmp_path / "mature_r2_checkpoint.json.gz"
+    write_mature_r2_checkpoint(
+        path,
+        data=data,
+        source_decisions=probe.seed_source_decisions,
+        result_facts={
+            "status": "complete",
+            "objective_vector": probe.seed_objective_vector,
+            "substantive_components": probe.seed_component_values,
+            "seed_validated": True,
+        },
+        experiment_id="test-r2",
+    )
+
+    loaded = read_mature_r2_checkpoint(
+        path,
+        expected_input_fingerprint=semantic_student_assignment_input_fingerprint(data),
+    )
+
+    assert loaded["schema"] == "student_assignment_mature_r2_checkpoint_v1"
+    assert loaded["experiment_id"] == "test-r2"
+    assert loaded["source_decisions"]
+    assert loaded["source_decision_fingerprint"]
 
 
 def test_substantive_probe_can_minimize_one_existing_component():
@@ -691,6 +768,8 @@ def test_local_bootstrap_diagnostic_consumes_shared_budget_and_keeps_complete_se
     assert "affected_student_ids" in bootstrap
     assert "affected_section_ids" in bootstrap
     assert "section_load_deltas" in bootstrap
+    assert "changed_student_count" in bootstrap
+    assert "max_changed_students" in bootstrap
     assert result.status == "complete"
     assert len(result.unmet_requests) == 0
     assert result.optimization_facts["stage_2"]["validated_seed_received"] is True
@@ -716,6 +795,7 @@ def test_adaptive_local_bootstrap_restarts_and_records_bounded_iterations():
         and "iteration_requested_time_limit_seconds" in item
         and "iteration_remaining_seconds" in item
         and "probe_timings" in item
+        and "changed_student_count" in item
         and "memory" in item
         for item in facts["iterations"]
     )
@@ -807,6 +887,64 @@ def test_process_memory_monitor_is_bounded_and_json_compatible():
         "ending_working_set_bytes",
     }
     assert report["sample_count"] >= 2
+
+
+def test_process_resource_monitor_reports_compact_json_safe_facts():
+    report = ProcessResourceMonitor(interval_seconds=0.05).start().stop()
+
+    assert report["sample_count"] >= 2
+    assert report["elapsed_seconds"] >= 0
+    assert report["peak_child_process_count"] >= 0
+    json.dumps(report)
+
+
+def test_process_resource_monitor_failure_is_non_authoritative():
+    with patch(
+        "scheduling_engine.student_assignment.runtime._process_memory_snapshot",
+        side_effect=RuntimeError("synthetic monitor failure"),
+    ):
+        report = ProcessResourceMonitor(interval_seconds=0.05).start().stop()
+
+    assert report["available"] is False
+    assert report["sample_count"] >= 2
+
+
+def test_process_resource_monitor_can_be_disabled_without_semantic_facts():
+    report = ProcessResourceMonitor(enabled=False).start().stop()
+
+    assert report["available"] is False
+    assert report["source"] == "disabled"
+    assert report["sample_count"] == 0
+
+
+def test_process_resource_monitor_handles_a_short_lived_child_process():
+    child = subprocess.Popen([
+        sys.executable,
+        "-c",
+        "import time; time.sleep(0.35)",
+    ])
+    try:
+        monitor = ProcessResourceMonitor(interval_seconds=0.05).start()
+        time.sleep(0.12)
+        report = monitor.stop()
+    finally:
+        child.wait(timeout=5)
+
+    # A child can legitimately disappear between psutil enumeration and the
+    # memory read, so the invariant is safety rather than an exact count.
+    assert report["peak_child_process_count"] >= 0
+    assert report["peak_tree_working_set_bytes"] is None or (
+        report["peak_tree_working_set_bytes"] >= 0
+    )
+
+
+def test_process_resource_monitor_can_restart_after_stop():
+    monitor = ProcessResourceMonitor(interval_seconds=0.05).start()
+    first = monitor.stop()
+    second = monitor.start().stop()
+
+    assert first["sample_count"] >= 2
+    assert second["sample_count"] >= 2
 
 
 def test_semantic_input_fingerprint_ignores_fresh_database_ids():

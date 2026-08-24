@@ -201,7 +201,7 @@ but those foundations do not constitute an implemented capability.
 | Category | Current status and design |
 |---|---|
 | Performance | CP-SAT stages use bounded solver calls. Student assignment first obtains and validates a complete hard-feasible seed, then runs the existing lexicographic objective sequence with bounded parallel search. A timeout retains the best complete incumbent; target-scale quality is reported through persisted stage/objective facts and hard-validity checks. |
-| Scalability | Expensive downstream solves use a dedicated Celery queue with one process-based worker slot and one heavy task per child. Horizontal worker scaling is intentionally deferred pending resource measurement. |
+| Scalability | Expensive downstream solves use a dedicated Celery queue with one process-based worker slot and one heavy task per child. Horizontal worker scaling is intentionally deferred pending resource measurement. The Django-free student-assignment diagnostic path reports compact psutil-backed process/system resource facts; these are observational and never authoritative over CP-SAT results. |
 | Maintainability | The engine is Django-free, the adapter is the ORM-to-DTO boundary, and services own multi-model workflows. These boundaries are covered by import and service tests. |
 | Auditability | Immutable run, approval, placement, teacher-assignment, offering, staffing, and reconciliation records preserve accepted decisions. General override history remains incomplete. |
 | Authorization | Every API resource/action must declare a policy; missing declarations fail closed. Policy scopes are tested at policy and endpoint levels. |
