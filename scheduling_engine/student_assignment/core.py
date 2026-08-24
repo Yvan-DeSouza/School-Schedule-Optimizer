@@ -3226,6 +3226,9 @@ def _solve_student_assignment(
                         target_importance_level=target_level,
                         threshold=current_seed_value - 1,
                         neighborhood_radius=radii[radius_index],
+                        max_changed_students=local_config.get(
+                            "max_changed_students"
+                        ),
                         time_limit_seconds=probe_limit,
                         worker_count=int(local_config.get("worker_count", 8)),
                     )

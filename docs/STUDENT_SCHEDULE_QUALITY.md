@@ -837,6 +837,43 @@ student bounds are infeasible. No R4 candidate was therefore persisted, no
 R2-after-escape run was required, and R8 was not justified. A longer or better
 evidence-gated R4 experiment would be a separate diagnostic study.
 
+The later evidence-gated study corrected the diagnostic wrapper so that
+`max_changed_students` is forwarded into the CP-SAT neighborhood model. The
+earlier short R4/S1 and R4/S2 labels above therefore remain historical
+screening records, but they must not be treated as valid student-bounded
+experiments. From the frozen, full-model-valid `65,025` checkpoint, matched
+600-second first-pass probes produced the following diagnostic-only results:
+
+| Neighborhood | Result | Changed students / source decisions | Substantive | Component change | CP-SAT wall | Full validation |
+|---|---|---:|---:|---|---:|---:|
+| R4 | validated escape | 3 / 4 | 65,021 | section utilization -4 | 176.8 s | 4.5 s |
+| R4/S1 | validated escape | 1 / 4 | 65,023 | section utilization -2 | 311.4 s | 18.0 s |
+| R4/S2 | validated escape | 2 / 4 | 65,007 | section utilization -18 | 190.4 s | 10.1 s |
+| R8 | validated escape | 6 / 8 | 65,005 | section utilization -20 | 202.2 s | 10.3 s |
+| R8/S1 | validated escape | 1 / 3 | 65,021 | section utilization -4 | 196.6 s | 8.4 s |
+| R8/S2 | validated escape | 2 / 8 | 65,005 | section utilization -20 | 187.0 s | 9.8 s |
+
+All candidates remained complete with `10,635` assignments, zero unmet
+requests, and unchanged semester-balance, difficulty, category-diversity, and
+schedule-preservation components. The R4/S2 candidate was repeated in two
+additional clean processes and reproduced `65,007`, the same two affected
+students, and the same `-18` section-utilization delta in all three runs.
+The R4/S2 branch was therefore used for one diagnostic continuous R2 descent
+without changing the canonical `65,025` checkpoint. That R2 session adopted
+twenty further validated improvements in twenty-one probes and reached
+`64,929` in `3,609.95` seconds (`3,136.75` seconds CP-SAT and `106.03`
+seconds full validation). Its final probe was `UNKNOWN`, so the result is a
+complete unresolved bounded incumbent, not a proof of local optimality.
+
+The R4/S2 escape and its follow-on R2 descent show that a small coordinated
+student neighborhood can unlock substantial section-utilization descent.
+They do not justify changing production Stage 2 objective semantics or
+promoting R4/R8 into the ordinary optimizer. The R8 scores were single-run
+diagnostic observations, while R4/S2 is the only escape strategy in this study
+with three clean-run reproductions. Any promotion decision requires a separate
+production-policy review and must preserve the existing hard constraints,
+objective definitions, and canonical checkpoint lineage.
+
 A bounded target-scale replay of the old post-local path, starting from the
 same `65,143` checkpoint, measured `25.270` seconds for the local probe and
 then `23.425` seconds of ordinary Stage 2 work after the local probe. That

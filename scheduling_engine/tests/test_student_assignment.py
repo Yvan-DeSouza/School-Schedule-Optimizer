@@ -997,6 +997,34 @@ def test_variable_neighborhood_diagnostic_records_bounded_radius_transitions():
     assert len(result.unmet_requests) == 0
 
 
+def test_variable_neighborhood_forwards_changed_student_bound_to_probe():
+    captured = {}
+    original_probe = student_assignment_module.probe_substantive_soft_tier
+
+    def capturing_probe(*args, **kwargs):
+        captured["max_changed_students"] = kwargs.get("max_changed_students")
+        return original_probe(*args, **kwargs)
+
+    with patch.object(
+        student_assignment_module,
+        "probe_substantive_soft_tier",
+        capturing_probe,
+    ):
+        result = student_assignment_module.run_student_assignment_variable_neighborhood_diagnostic(
+            _substantive_probe_input(),
+            neighborhood_radii=(0,),
+            max_iterations=1,
+            max_attempts_by_radius={0: 1},
+            max_changed_students=1,
+            per_probe_time_limit_seconds=0.5,
+            total_time_limit_seconds=5.0,
+            worker_count=1,
+        )
+
+    assert captured["max_changed_students"] == 1
+    assert result.status == "complete"
+
+
 def test_monotonic_deadline_clamps_nested_allowances(monkeypatch):
     current = iter((104.0, 107.0, 107.0))
     monkeypatch.setattr(
