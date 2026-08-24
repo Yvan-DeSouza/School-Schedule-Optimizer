@@ -658,11 +658,11 @@ not establish an R2 plateau. Its local-search peak working set was about
 `3.06 GiB` and peak pagefile usage about `3.59 GiB`; total child-process time
 was about `3,710` seconds including finalization.
 
-No mature-R2 R4 escape or R8 escalation was run because R2 was still finding
-validated improvements at the end of the frontier. VNS and R2 descent remain
-diagnostic-only: the endpoint variation across short runs, the continued
-late-horizon improvements, and the need for a longer operational safety study
-mean that no bounded production policy can yet be selected responsibly.
+At that earlier frontier endpoint, no mature-R2 R4 escape or R8 escalation was
+run because R2 was still finding validated improvements. VNS and R2 descent
+remain diagnostic-only: endpoint variation, continued late-horizon
+improvements, and the need for an operational safety study mean that no
+bounded production policy can yet be selected responsibly.
 Ordinary Stage 2, objective definitions, hard constraints, approval behavior,
 and fixture data remain unchanged.
 
@@ -727,9 +727,7 @@ explicit experiment-horizon stop, not evidence of an R2 plateau.
 
 This continuation is evidence that the mature R2 incumbent was still locally
 improvable under the tested bounded searches. It is not a proof of global
-optimality or of a stable production policy. R4/R8 promotion was therefore
-not run: the agreed gate is to investigate wider student-bounded
-neighborhoods only after R2 has actually stalled. The current checkpoint and
+optimality or of a stable production policy. The current checkpoint and
 compact frontier records are diagnostic artifacts, not ordinary scheduling
 inputs or production decisions.
 
@@ -761,8 +759,9 @@ profiling evidence, not a universal speedup claim. The checkpoint now stores
 the `65,143` source decisions with fingerprint
 `5e58aecf29b0c269ddab60b61a32cf493e7b9e02562fed6dea7696c3f7fb46c2`.
 
-That was the checkpoint immediately after the profile; the current durable
-checkpoint is the subsequently validated `65,133` result described below.
+That was the checkpoint immediately after the profile; it was subsequently
+continued through the durable `65,133` checkpoint and the two multi-iteration
+sessions described below. The current durable checkpoint is now `65,025`.
 
 Checkpoint serialization is not a material contributor at this scale: encoding
 and compressing all `10,945` source decisions took `0.371` seconds and
@@ -778,12 +777,65 @@ were `0.059` seconds for materialization, `0.195` seconds for fingerprinting,
 temporary artifact was removed after measurement.
 
 The durable local-only continuation was then extended from `65,143` to
-`65,133`. That session took `359.030` seconds total, including `229.177`
+`65,133`. That historical session took `359.030` seconds total, including `229.177`
 seconds of CP-SAT R2 solver wall time and `10.065` seconds of full-model
 candidate validation. It retained `10,635` assignments, zero unmet requests,
 and all `310` special commitments. The resulting checkpoint has source
 fingerprint
-`67131d41aeb39e53248fbc3d9f81c907d7e30d9d589d30dd8ff633cb0e1e0e84`.
+`67131d41aeb39e53248fbc3d9f81c907d7e30d9d589d30dd8ff633cb0e1e0e84`; the
+current checkpoint fingerprint after the later sessions is
+`d5036a44e71d5a3b2a94eebe51d645bb4034179a0dd29537492ea81feda2e900`.
+
+The mature-local wrapper now also supports an opt-in session persistence mode
+for diagnostic continuations. When enabled, the strongest complete,
+full-model-validated incumbent returned by the in-memory multi-iteration
+session is written to a temporary checkpoint file, flushed, fsynced, and
+atomically replaced into the configured checkpoint path. Only after that
+replacement succeeds is the compact frontier row appended and fsynced. The
+frontier row records both the parent checkpoint source fingerprint and the
+resulting checkpoint source fingerprint, so a durable row cannot claim a
+checkpoint that was not safely written first. Persistence is diagnostic-only;
+it does not alter immutable scheduling runs, approvals, or ordinary Stage 2.
+
+The session telemetry distinguishes the per-iteration R2 work from the
+session-level wrapper work and records cumulative elapsed time after each
+iteration. A later session can therefore resume from the last durable
+incumbent without rerunning the previous session's accepted improvements.
+An interrupted session leaves the previous checkpoint intact; an incomplete,
+unvalidated, unknown, or weaker candidate is never persisted.
+
+The first multi-iteration continuation from the durable `65,133` checkpoint
+adopted twelve consecutive complete, full-model-validated R2 improvements in
+one process, reaching `65,077` in `2,592.6` seconds. It retained `10,635`
+assignments, zero unmet requests, and all `310` special commitments. Across
+those iterations, CP-SAT accounted for approximately `2,095.6` seconds and
+full candidate validation for `74.6` seconds; the remaining session time was
+model/setup, extraction, quality, telemetry, and finalization work. It stopped
+at the diagnostic iteration cap used for that run, so it was not evidence of a
+plateau.
+
+A second continuation from `65,077`, with the iteration cap raised and the
+same `3,600`-second bounded R2 horizon, adopted fourteen further validated
+improvements and reached `65,025`. Its fifteenth probe returned `UNKNOWN`
+without a validated candidate after the shared horizon was exhausted; the
+strongest prior incumbent was retained and persisted atomically. The session
+finished in `3,633.6` seconds including finalization and checkpoint/frontier
+writes. This is an unresolved-search/horizon stop, not a proven R2 local
+optimum: only an `INFEASIBLE` strict-improvement probe can establish the latter.
+These two sessions are diagnostic evidence that ordinary R2 remains productive
+from the current target-scale frontier; they do not justify promoting R4/R8
+while R2 continues to produce validated improvements.
+
+After the second session ended with an unresolved `UNKNOWN` probe, matched
+target-scale R4 screening was run from the same durable `65,025` checkpoint.
+Ordinary R4, R4/S1 (`max_changed_students=1`), and R4/S2
+(`max_changed_students=2`) each received one 180-second, eight-worker
+diagnostic attempt. All three returned `UNKNOWN` without a candidate; all
+retained the complete `65,025` incumbent, with no candidate validation or
+adoption. These are inconclusive negative screens, not proofs that R4 or its
+student bounds are infeasible. No R4 candidate was therefore persisted, no
+R2-after-escape run was required, and R8 was not justified. A longer or better
+evidence-gated R4 experiment would be a separate diagnostic study.
 
 A bounded target-scale replay of the old post-local path, starting from the
 same `65,143` checkpoint, measured `25.270` seconds for the local probe and

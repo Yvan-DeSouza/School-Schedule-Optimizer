@@ -12,6 +12,7 @@ from ortools.sat.python import cp_model
 
 import scheduling_engine.student_assignment.core as student_assignment_module
 import scheduling_engine.student_assignment.solver as student_assignment_solver
+import scheduling_engine.student_assignment.stage2_benchmark as stage2_benchmark_module
 from scheduling_engine.dto import (
     CourseCategoryRelationshipDTO,
     CourseDifficultyDTO,
@@ -52,6 +53,7 @@ from scheduling_engine.student_assignment.stage2_benchmark import (
     write_student_assignment_input_snapshot,
     write_stage1_seed_snapshot,
     read_mature_r2_checkpoint,
+    run_mature_r2_local_session,
     write_mature_r2_checkpoint,
 )
 
@@ -322,6 +324,100 @@ def test_mature_r2_checkpoint_round_trips_semantic_source_decisions(tmp_path):
     assert loaded["experiment_id"] == "test-r2"
     assert loaded["source_decisions"]
     assert loaded["source_decision_fingerprint"]
+    assert loaded["substantive_components"] == probe.seed_component_values
+
+
+def test_mature_r2_checkpoint_replacement_is_atomic_on_write_failure(tmp_path, monkeypatch):
+    data = _substantive_probe_input()
+    probe = run_substantive_soft_tier_probe(
+        data,
+        threshold=1,
+        time_limit_seconds=5.0,
+        worker_count=1,
+    )
+    path = tmp_path / "mature_r2_checkpoint.json.gz"
+    write_mature_r2_checkpoint(
+        path,
+        data=data,
+        source_decisions=probe.seed_source_decisions,
+        result_facts={"status": "complete", "seed_validated": True},
+        experiment_id="initial",
+    )
+    original_bytes = path.read_bytes()
+
+    def fail_replace(*args, **kwargs):
+        raise OSError("simulated checkpoint replacement failure")
+
+    monkeypatch.setattr(stage2_benchmark_module.os, "replace", fail_replace)
+    with pytest.raises(OSError, match="simulated checkpoint replacement failure"):
+        write_mature_r2_checkpoint(
+            path,
+            data=data,
+            source_decisions=probe.seed_source_decisions,
+            result_facts={"status": "complete", "seed_validated": True},
+            experiment_id="replacement",
+        )
+
+    assert path.read_bytes() == original_bytes
+    assert not tuple(tmp_path.glob(".mature_r2_checkpoint.json.gz.*.tmp"))
+
+
+def test_mature_r2_session_persists_checkpoint_before_frontier_record(tmp_path):
+    data = _substantive_probe_input()
+    probe = run_substantive_soft_tier_probe(
+        data,
+        threshold=1,
+        time_limit_seconds=5.0,
+        worker_count=1,
+    )
+    seed = {
+        "input_semantic_fingerprint": semantic_student_assignment_input_fingerprint(data),
+        "seed_source_decisions": probe.seed_source_decisions,
+        "seed_objective_vector": probe.seed_objective_vector,
+        "seed_summary": probe.seed_summary,
+        "seed_component_values": probe.seed_component_values,
+    }
+    benchmark_directory = tmp_path / "benchmark"
+    write_durable_stage2_benchmark(benchmark_directory, data=data, seed=seed)
+    checkpoint_path = benchmark_directory / "mature_r2_checkpoint.json.gz"
+    write_mature_r2_checkpoint(
+        checkpoint_path,
+        data=data,
+        source_decisions=probe.seed_source_decisions,
+        result_facts={"status": "complete", "seed_validated": True},
+        experiment_id="initial",
+    )
+
+    frontier_path = tmp_path / "frontier.jsonl"
+    facts = run_mature_r2_local_session(
+        benchmark_directory,
+        checkpoint_path=checkpoint_path,
+        max_iterations=1,
+        per_probe_time_limit_seconds=0.5,
+        total_time_limit_seconds=5.0,
+        worker_count=1,
+        validation_time_limit_seconds=5.0,
+        validation_worker_count=1,
+        collect_resource_telemetry=False,
+        persist_best_checkpoint=True,
+        frontier_path=frontier_path,
+        experiment_id="session-1",
+    )
+
+    assert facts["status"] == "complete"
+    assert facts["persistence"]["checkpoint_updated"] is True
+    stored_checkpoint = read_mature_r2_checkpoint(checkpoint_path)
+    frontier_record = json.loads(frontier_path.read_text(encoding="utf-8"))
+    assert stored_checkpoint["source_decision_fingerprint"] == facts["persistence"][
+        "resulting_checkpoint_source_decision_fingerprint"
+    ]
+    assert frontier_record["checkpoint_updated"] is True
+    assert frontier_record["parent_checkpoint_source_fingerprint"] == facts[
+        "checkpoint_source_decision_fingerprint"
+    ]
+    assert frontier_record[
+        "resulting_checkpoint_source_decision_fingerprint"
+    ] == stored_checkpoint["source_decision_fingerprint"]
 
 
 def test_substantive_probe_can_minimize_one_existing_component():
@@ -892,6 +988,8 @@ def test_variable_neighborhood_diagnostic_records_bounded_radius_transitions():
         "neighborhood_sequence_exhausted",
         "iteration_budget_exhausted",
         "shared_budget_exhausted",
+        "proven_local_optimum",
+        "unresolved_unknown",
     }
     assert facts["radius_attempts"]
     assert all("transition_reason" in item for item in facts["iterations"])

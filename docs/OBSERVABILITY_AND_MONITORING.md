@@ -98,6 +98,14 @@ monitor lifetime is reported, but psutil call CPU overhead is not inferred
 from that lifetime. Resource sampling remains observational and must be
 measured on/off before being treated as a performance cost.
 
+During mature-local descent, the operation monitor and the local diagnostic
+monitor may sample during overlapping intervals. This is intentional current
+telemetry: the operation report describes the whole engine call, while the
+local report isolates neighborhood-search memory. The duplicate sampling is
+observational only and does not control CP-SAT, candidate adoption, or
+stopping. It remains a measured follow-up opportunity rather than a reason to
+remove either report without an equivalent phase-labelled replacement.
+
 An isolated Windows micro-measurement called the same snapshot routine `120`
 times in `2.761` seconds (`23.0` ms per snapshot). Calling it through the
 monitor's manual sampling method took `3.801` seconds (`31.7` ms per sample),
@@ -107,6 +115,17 @@ seconds, respectively; because CP-SAT took a different search path, that pair
 does not establish a solver-scale on/off speedup. The direct micro-measurement
 does establish that sampling is measurable per call but is not evidence that it
 explains the historical hundreds-of-seconds remainder.
+
+The two long target-scale mature sessions collected overlapping whole-operation
+and local-phase samples without affecting solver control. The `65,133` session
+recorded `5,803` whole-operation and `5,582` local samples, with a peak process
+tree working set of approximately `3.20 GiB` and peak pagefile usage of about
+`3.74 GiB`. The `65,077` continuation recorded `7,804` whole-operation and
+`7,764` local samples, with a peak process tree working set of approximately
+`3.15 GiB` and peak pagefile usage of about `3.72 GiB`. These measurements
+confirm resource-safe completion on this host, but do not establish that
+overlapping sampling is free; a future phase-labelled or tiered monitor should
+be benchmarked before replacing the current reports.
 
 ## Worker and process-tree expectations
 

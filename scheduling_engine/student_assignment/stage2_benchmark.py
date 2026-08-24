@@ -14,9 +14,11 @@ import gzip
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
 import platform
 import sys
+import tempfile
 from time import perf_counter
 
 from .. import dto as _dto_module
@@ -43,6 +45,35 @@ DURABLE_STAGE2_BENCHMARK_MANIFEST_SCHEMA = (
     "student_assignment_stage2_benchmark_manifest_v1"
 )
 MATURE_R2_CHECKPOINT_SCHEMA = "student_assignment_mature_r2_checkpoint_v1"
+
+
+def _atomic_write_bytes(path, payload):
+    """Replace a diagnostic artifact only after its complete bytes are durable.
+
+    Mature-R2 checkpoints are the restart frontier.  A process interruption
+    must therefore leave either the previous complete checkpoint or the new
+    complete checkpoint, never a truncated file that looks readable.
+    """
+
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="wb",
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            dir=path.parent,
+            delete=False,
+        ) as stream:
+            temporary_path = Path(stream.name)
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary_path, path)
+    finally:
+        if temporary_path is not None and temporary_path.exists():
+            temporary_path.unlink()
 
 
 def _dto_dataclass_types():
@@ -474,6 +505,7 @@ def write_mature_r2_checkpoint(
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "input_semantic_fingerprint": input_fingerprint,
         "parent_benchmark_fingerprint": parent_benchmark_fingerprint,
+        "parent_checkpoint_source_decision_fingerprint": parent_benchmark_fingerprint,
         "source_decision_fingerprint": source_fingerprint,
         "source_decisions": _encode_snapshot_value(canonical),
         "objective_vector": list(facts.get("objective_vector", stage_2.get("objective_values", ()))),
@@ -496,13 +528,12 @@ def write_mature_r2_checkpoint(
             "full_model_validation": validated,
         },
     }
-    encoded = _json_bytes(payload)
     path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
     if path.suffix == ".gz":
-        path.write_bytes(_gzip_bytes(payload))
+        encoded = _gzip_bytes(payload)
     else:
-        path.write_bytes(encoded)
+        encoded = _json_bytes(payload)
+    _atomic_write_bytes(path, encoded)
     return payload
 
 
@@ -557,13 +588,16 @@ def run_mature_r2_local_session(
     directory,
     *,
     checkpoint_path=None,
-    max_iterations=12,
+    max_iterations=64,
     per_probe_time_limit_seconds=600.0,
     total_time_limit_seconds=3600.0,
     worker_count=8,
     validation_time_limit_seconds=30.0,
     validation_worker_count=1,
     collect_resource_telemetry=True,
+    persist_best_checkpoint=False,
+    frontier_path=None,
+    experiment_id=None,
 ):
     """Run one mature-R2 session without ordinary Stage 2 afterward.
 
@@ -582,9 +616,11 @@ def run_mature_r2_local_session(
     timings["benchmark_load_seconds"] = perf_counter() - started
 
     started = perf_counter()
+    checkpoint_destination = Path(
+        checkpoint_path or Path(directory) / "mature_r2_checkpoint.json.gz"
+    )
     checkpoint = read_mature_r2_checkpoint(
-        checkpoint_path
-        or Path(directory) / "mature_r2_checkpoint.json.gz",
+        checkpoint_destination,
         expected_input_fingerprint=benchmark["input_semantic_fingerprint"],
     )
     timings["checkpoint_load_seconds"] = perf_counter() - started
@@ -623,6 +659,16 @@ def run_mature_r2_local_session(
     stage_2_facts = result.optimization_facts.get("stage_2", {})
     local_facts = result.optimization_facts.get("stage_2_local_bootstrap", {})
     final_source_decisions = stage_2_facts.get("final_source_decisions", ())
+    local_component_values = dict(local_facts.get("component_values", {}))
+    if not local_component_values:
+        local_component_values = next(
+            (
+                dict(item.get("component_values", {}))
+                for item in reversed(tuple(local_facts.get("iterations", ())))
+                if item.get("component_values")
+            ),
+            {},
+        )
     timings["result_reconstruction_seconds"] = perf_counter() - started
 
     facts = {
@@ -634,6 +680,7 @@ def run_mature_r2_local_session(
         "final_source_decisions": final_source_decisions,
         "status": result.status,
         "solver_outcome": result.solver_outcome,
+        "stopping_reason": local_facts.get("stopping_reason"),
         "assignment_count": len(result.assignments),
         "unmet_request_count": len(result.unmet_requests),
         "special_commitment_count": len(result.commitment_assignments),
@@ -650,6 +697,78 @@ def run_mature_r2_local_session(
         },
         "result": result,
     }
+    if persist_best_checkpoint:
+        if not experiment_id:
+            raise ValueError(
+                "experiment_id is required when persisting a mature-R2 session"
+            )
+        if facts["status"] != "complete" or not facts["final_source_decisions"]:
+            raise RuntimeError(
+                "A mature-R2 checkpoint may only persist a complete final result"
+            )
+        checkpoint_write_started = perf_counter()
+        persisted_payload = write_mature_r2_checkpoint(
+            checkpoint_destination,
+            data=benchmark["data"],
+            source_decisions=facts["final_source_decisions"],
+            result_facts={
+                "status": facts["status"],
+                "seed_validated": True,
+                "objective_vector": facts["objective_vector"],
+                "unmet_request_count": facts["unmet_request_count"],
+                "assignment_count": facts["assignment_count"],
+                "special_commitment_count": facts["special_commitment_count"],
+                "substantive_components": dict(
+                    local_component_values
+                ),
+                "quality": facts["quality"],
+                "optimization_facts": result.optimization_facts,
+            },
+            experiment_id=experiment_id,
+            parent_benchmark_fingerprint=checkpoint[
+                "source_decision_fingerprint"
+            ],
+        )
+        checkpoint_write_seconds = perf_counter() - checkpoint_write_started
+        frontier_destination = Path(
+            frontier_path
+            or Path(directory) / "mature_r2_frontier.jsonl"
+        )
+        frontier_record = compact_mature_r2_session_record(
+            facts,
+            experiment_id=experiment_id,
+            parent_checkpoint_source_fingerprint=checkpoint[
+                "source_decision_fingerprint"
+            ],
+        )
+        frontier_record.update({
+            "checkpoint_updated": True,
+            "resulting_checkpoint_source_decision_fingerprint": persisted_payload[
+                "source_decision_fingerprint"
+            ],
+            "checkpoint_write_seconds": checkpoint_write_seconds,
+            "session_elapsed_seconds": facts["timings"][
+                "total_operation_seconds"
+            ],
+        })
+        frontier_write_started = perf_counter()
+        append_experiment_record(frontier_destination, frontier_record)
+        frontier_write_seconds = perf_counter() - frontier_write_started
+        facts["persistence"] = {
+            "checkpoint_updated": True,
+            "checkpoint_path": str(checkpoint_destination),
+            "frontier_path": str(frontier_destination),
+            "parent_checkpoint_source_decision_fingerprint": checkpoint[
+                "source_decision_fingerprint"
+            ],
+            "resulting_checkpoint_source_decision_fingerprint": persisted_payload[
+                "source_decision_fingerprint"
+            ],
+            "checkpoint_write_seconds": checkpoint_write_seconds,
+            "frontier_write_seconds": frontier_write_seconds,
+        }
+    else:
+        facts["persistence"] = {"checkpoint_updated": False}
     return facts
 
 
@@ -666,6 +785,16 @@ def compact_mature_r2_session_record(
     stage_1 = dict(facts.get("stage_1", {}))
     stage_2 = dict(facts.get("stage_2", {}))
     local_iterations = tuple(local.get("iterations", ()))
+    local_component_values = dict(local.get("component_values", {}))
+    if not local_component_values:
+        local_component_values = next(
+            (
+                dict(item.get("component_values", {}))
+                for item in reversed(local_iterations)
+                if item.get("component_values")
+            ),
+            {},
+        )
     final_source_decisions = tuple(facts.get("final_source_decisions", ()))
     final_substantive_value = (
         stage_2.get("objective_values", [None] * 5)[4]
@@ -683,6 +812,7 @@ def compact_mature_r2_session_record(
         "final_substantive_value": final_substantive_value,
         "status": result.status,
         "solver_outcome": result.solver_outcome,
+        "stopping_reason": local.get("stopping_reason"),
         "candidate_validated": bool(
             local.get("candidate_validated", False)
             or result.status == "complete"
@@ -724,10 +854,16 @@ def compact_mature_r2_session_record(
         "local_resource_monitor": local.get("memory", {}),
         "objective_vector": stage_2.get("objective_values", ()),
         "component_values": dict(
-            local.get("component_values", {})
+            local_component_values
             or facts.get("quality", {}).get("stage_2", {}).get(
                 "substantive_components", {}
             )
+        ),
+        "checkpoint_updated": False,
+        "resulting_checkpoint_source_decision_fingerprint": None,
+        "checkpoint_write_seconds": None,
+        "session_elapsed_seconds": facts.get("timings", {}).get(
+            "total_operation_seconds"
         ),
     }
 
@@ -1502,6 +1638,8 @@ def append_experiment_record(path, record):
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as stream:
         stream.write(json.dumps(record, sort_keys=True, default=str) + "\n")
+        stream.flush()
+        os.fsync(stream.fileno())
 
 
 def run_component_minimum_probe(data, config: Stage2ExperimentConfig, component_name):

@@ -982,7 +982,7 @@ def run_student_assignment_mature_local_search_diagnostic(
     *,
     mature_source_decisions=(),
     mature_source_variable_values=None,
-    max_iterations=12,
+    max_iterations=64,
     per_probe_time_limit_seconds=600.0,
     total_time_limit_seconds=3600.0,
     worker_count=8,
@@ -3158,6 +3158,7 @@ def _solve_student_assignment(
             radius_attempts = {}
             radius_stop_reasons = []
             stopping_reason = None
+            local_session_started = monotonic()
 
             def _current_substantive_value(candidate_solver):
                 return int(sum(
@@ -3281,6 +3282,9 @@ def _solve_student_assignment(
                         "section_load_deltas": dict(local_result.section_load_deltas),
                         "best_bound": local_result.best_bound,
                         "attempt_number_for_radius": radius_attempts[current_radius],
+                        "cumulative_session_elapsed_seconds": (
+                            monotonic() - local_session_started
+                        ),
                         "memory": local_memory_monitor.sample(),
                     })
                     iteration_count += 1
@@ -3331,7 +3335,11 @@ def _solve_student_assignment(
                         iterations[-1]["transition_reason"] = "no_improvement_expand"
                         radius_index += 1
                 if stopping_reason is None:
-                    if iteration_count >= max_iterations:
+                    if last_result is not None and last_result.status == "unknown":
+                        stopping_reason = "unresolved_unknown"
+                    elif last_result is not None and last_result.status == "infeasible":
+                        stopping_reason = "proven_local_optimum"
+                    elif iteration_count >= max_iterations:
                         stopping_reason = "iteration_budget_exhausted"
                     elif radius_index >= len(radii):
                         stopping_reason = "neighborhood_sequence_exhausted"
@@ -3341,6 +3349,9 @@ def _solve_student_assignment(
                     "variable_neighborhood": variable_neighborhood,
                     "status": last_result.status if last_result is not None else "unknown",
                     "elapsed_seconds": sum(item["elapsed_seconds"] for item in iterations),
+                    "cumulative_session_elapsed_seconds": (
+                        monotonic() - local_session_started
+                    ),
                     "solver_wall_time_seconds": sum(
                         item["solver_wall_time_seconds"] for item in iterations
                     ),
