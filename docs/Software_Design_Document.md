@@ -211,6 +211,12 @@ but those foundations do not constitute an implemented capability.
 | Usability | Review payloads include recommendations, accepted values, diagnostics, and conflicts for implemented stages. No counselor frontend exists yet. |
 | Schema development | Project apps intentionally use the migrationless `migrate --run-syncdb` workflow. |
 
+The Objective Semantics v2 adaptive local-search allocator is currently an
+offline diagnostic wrapper around existing CP-SAT neighborhood operators. It
+is not part of the production workflow, persistence, approval, or API
+contract. Its policy may choose where to search, but CP-SAT and unchanged
+full-model validation remain the only authorities for accepting a candidate.
+
 ---
 
 ## 6. System Overview

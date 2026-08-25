@@ -28,6 +28,23 @@ from .search_experiments import (
     select_interacting_second_student,
     source_decision_fingerprint,
 )
+from .adaptive_search import (
+    ADAPTIVE_POLICY_VERSION,
+    AdaptiveOperatorAttempt,
+    AdaptiveOperatorSpec,
+    AdaptivePolicyDecision,
+    AdaptiveSearchState,
+    AdaptiveSessionRecord,
+    DEFAULT_ADAPTIVE_OPERATOR_PORTFOLIO,
+    build_adaptive_search_state,
+    choose_adaptive_operator,
+    replay_adaptive_policy,
+    simulate_adaptive_policy,
+)
+from .adaptive_runtime import (
+    AdaptiveSessionResult,
+    run_adaptive_local_search_diagnostic,
+)
 __all__ = [
     "run_substantive_soft_tier_probe",
     "solve_student_assignment",
@@ -38,4 +55,17 @@ __all__ = [
     "StudentTargetPressure",
     "rank_students_by_quality_pressure",
     "reconcile_student_quality_pressure",
+    "ADAPTIVE_POLICY_VERSION",
+    "AdaptiveOperatorAttempt",
+    "AdaptiveOperatorSpec",
+    "AdaptivePolicyDecision",
+    "AdaptiveSearchState",
+    "AdaptiveSessionRecord",
+    "AdaptiveSessionResult",
+    "DEFAULT_ADAPTIVE_OPERATOR_PORTFOLIO",
+    "build_adaptive_search_state",
+    "choose_adaptive_operator",
+    "replay_adaptive_policy",
+    "simulate_adaptive_policy",
+    "run_adaptive_local_search_diagnostic",
 ]

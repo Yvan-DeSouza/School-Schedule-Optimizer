@@ -250,10 +250,31 @@ authorize a candidate.
 
 Earlier quality documentation uses “adaptive bootstrap” and “adaptive VNS” for
 historical v1 diagnostic experiments. Those names describe bounded v1 search
-behavior and must not be confused with the future v2 adaptive operator
-allocator. The future allocator is not implemented: it may choose among
-targeted repair and retained local operators, but it must never change
-objective semantics, authorize a schedule, or bypass full validation.
+behavior and must not be confused with the v2 adaptive operator allocator.
+The v2 allocator now exists as a diagnostic-only policy documented separately:
+it may choose among targeted repair and retained local operators, but it must
+never change objective semantics, authorize a schedule, or bypass full
+validation.
 
 Grade-bounded unrestricted search and full-school unrestricted escape remain
 deferred until after that adaptive-policy study.
+
+## Objective Semantics v2 adaptive allocator
+
+The diagnostic-only allocator is implemented in
+`scheduling_engine/student_assignment/adaptive_search.py` and
+`adaptive_runtime.py`. It chooses among the existing R2, targeted R8/S1,
+targeted R8/S2, and targeted R4/S2 operators using explicit v2 pressure,
+counselor-intent, history, and shared-budget signals. It does not call from
+ordinary production assignment and does not alter the objective or hard-model
+contract. Each attempt still goes through CP-SAT and the existing full-model
+validator, and only a strict validated improvement is adopted. Quality and
+student ranking are recomputed after adoption. Unknown and proven infeasible
+outcomes remain distinct. The policy state and session records are documented
+in [`STUDENT_ASSIGNMENT_ADAPTIVE_SEARCH.md`](STUDENT_ASSIGNMENT_ADAPTIVE_SEARCH.md).
+
+This is an experiment boundary, not a production recommendation. Static
+R2-only, targeted-operator-only, fixed-cycle, and adaptive sessions must be
+compared on identical v2 input and source-seed fingerprints before any future
+promotion decision. Grade-bounded and unrestricted global operators remain
+deferred.

@@ -1164,4 +1164,7 @@ next adaptive-allocation study, not production promotion or adaptive policy.
 
 Historical references in this document to an “adaptive bootstrap” or “adaptive
 VNS” refer to bounded v1 diagnostics. They do not mean that the future v2
-adaptive operator allocator has been implemented.
+adaptive operator allocator has been implemented. The separate v2 adaptive
+operator allocator is now implemented as an offline diagnostic policy in
+`STUDENT_ASSIGNMENT_ADAPTIVE_SEARCH.md`; it is not production-wired and does
+not alter objective semantics or candidate authority.

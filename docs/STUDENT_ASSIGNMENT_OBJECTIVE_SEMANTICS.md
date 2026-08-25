@@ -264,10 +264,21 @@ label/numeric equivalence, genuine soft tradeoffs, special-commitment and hard
 constraint invariance, snapshot/API compatibility, quality reconstruction,
 and bounded compatibility checks for retained diagnostic search operators.
 
+## Search-policy boundary
+
+Objective Semantics v2 is the definition of schedule quality. The diagnostic
+adaptive allocator is a separate search-policy experiment documented in
+[`STUDENT_ASSIGNMENT_ADAPTIVE_SEARCH.md`](STUDENT_ASSIGNMENT_ADAPTIVE_SEARCH.md).
+It may choose where to run an existing CP-SAT neighborhood probe, but it must
+not change objective definitions, counselor scores, hard constraints, or
+candidate-authority rules. Objective measurement remains solver-neutral and
+CP-SAT plus full-model validation remain authoritative.
+
 ## Non-goals
 
-This document does not define or implement the student-targeted search policy,
-adaptive operator allocation, grade-bounded unrestricted search, or full-school
-global escape. The implemented targeted diagnostics are defined separately and
-must consume this objective contract rather than alter it. Future search-policy
-experiments must follow the same boundary.
+This document does not define the detailed student-targeted search policy,
+operator-scoring policy, grade-bounded unrestricted search, or full-school
+global escape. The diagnostic adaptive allocator and implemented targeted
+diagnostics are defined separately and must consume this objective contract
+rather than alter it. Future search-policy experiments must follow the same
+boundary.
