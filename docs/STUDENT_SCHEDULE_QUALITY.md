@@ -1146,3 +1146,22 @@ the distinction between **what** is better (the normalized counselor-weighted
 objective) and **how** to search (operator selection); heuristics may choose a
 student, pair, neighborhood, or grade to explore, but never authorize a
 candidate.
+
+### Objective Semantics v2 targeted-repair evidence gate
+
+The canonical operator contract and the current matched v2 targeted-repair
+study are maintained in
+[`STUDENT_ASSIGNMENT_SEARCH_STRATEGY.md`](STUDENT_ASSIGNMENT_SEARCH_STRATEGY.md).
+The study used one detached 1,400-student input and one validated source seed.
+Weighted targeted R8/S1 and R8/S2 each produced three complete, full-model-
+validated trials at stable endpoints (`6,871` and `6,869`, respectively).
+Ordinary CP-SAT-selected R4/R8 S1/S2 controls found no improvement within the
+matched bounded trials and retained `6,875`; a deterministic targeted control
+reached `6,873`. The weighted and raw policies selected the same leading
+students on this input, so weighted-ranking superiority over raw ranking is
+not established by this fixture alone. This is diagnostic evidence for the
+next adaptive-allocation study, not production promotion or adaptive policy.
+
+Historical references in this document to an “adaptive bootstrap” or “adaptive
+VNS” refer to bounded v1 diagnostics. They do not mean that the future v2
+adaptive operator allocator has been implemented.

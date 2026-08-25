@@ -21,6 +21,15 @@ from scheduling_engine.student_assignment.search_guidance import (
     rank_students_by_quality_pressure,
     reconcile_student_quality_pressure,
 )
+from scheduling_engine.student_assignment.search_experiments import (
+    RANKING_POLICY_DETERMINISTIC,
+    RANKING_POLICY_RAW,
+    RANKING_POLICY_WEIGHTED,
+    build_search_experiment_record,
+    rank_students_by_raw_local_penalty,
+    select_deterministic_control_students,
+    select_interacting_second_student,
+)
 from scheduling_engine.student_assignment.core import (
     run_student_assignment_variable_neighborhood_diagnostic,
 )
@@ -156,6 +165,82 @@ def test_v2_zero_sequence_importance_removes_only_sequence_soft_contribution():
     assert result.objective_components["weighted_normalized_contributions"][
         "course_sequence_preferences_penalty"
     ] == 0
+
+
+def test_raw_and_weighted_rankings_are_distinct_explicit_controls():
+    data = _v2(build_realistic_validation_fixture(), score=6)
+    result = solve_student_assignment(data)
+    report = evaluate_student_assignment_quality(
+        data,
+        assignments=result.assignments,
+        commitment_assignments=result.commitment_assignments,
+        solver_objective_components=result.objective_components,
+    )
+
+    weighted = rank_students_by_quality_pressure(data, report)
+    raw = rank_students_by_raw_local_penalty(data, report)
+
+    assert weighted
+    assert raw
+    assert weighted[0].rank == 1
+    assert raw[0].rank == 1
+    weighted_by_id = {item.student_id: item for item in weighted}
+    assert any(
+        sum(value for _name, value in item.component_penalties)
+        != weighted_by_id[item.student_id].weighted_current_penalty
+        for item in raw
+    )
+
+
+def test_deterministic_control_selection_is_reproducible_and_quality_independent():
+    data = _v2(build_realistic_validation_fixture(), score=6)
+    first = select_deterministic_control_students(data, 2, seed=41)
+    second = select_deterministic_control_students(data, 2, seed=41)
+    other_seed = select_deterministic_control_students(data, 2, seed=42)
+
+    assert first == second
+    assert len(first) == 2
+    assert first != other_seed
+
+
+def test_interacting_second_student_uses_shared_static_course_opportunities():
+    data = _v2(build_realistic_validation_fixture(), score=6)
+    result = solve_student_assignment(data)
+    report = evaluate_student_assignment_quality(
+        data,
+        assignments=result.assignments,
+        commitment_assignments=result.commitment_assignments,
+        solver_objective_components=result.objective_components,
+    )
+    ranked = rank_students_by_quality_pressure(data, report)
+
+    partner = select_interacting_second_student(data, ranked[0].student_id, ranked)
+
+    assert partner is not None
+    assert partner.student_id != ranked[0].student_id
+
+
+def test_structured_search_record_is_json_safe_and_contains_authority_facts():
+    data = _v2(build_realistic_quality_tradeoff_fixture(), score=6)
+    result = solve_student_assignment(data)
+    record = build_search_experiment_record(
+        data=data,
+        result=result,
+        experiment_id="unit-control",
+        operator="s1",
+        ranking_policy=RANKING_POLICY_WEIGHTED,
+        selected_student_ids=(1,),
+        targeted=True,
+        source_seed_decisions=((('course', 1), (1, 1, None, 1, 101, None)),),
+    )
+
+    payload = record.to_dict()
+    assert payload["experiment_id"] == "unit-control"
+    assert payload["ranking_policy"] == RANKING_POLICY_WEIGHTED
+    assert payload["targeted"] is True
+    assert payload["source_seed_fingerprint"]
+    assert isinstance(record.to_json(), str)
+    assert RANKING_POLICY_RAW != RANKING_POLICY_DETERMINISTIC
 
 
 def test_v2_score_profiles_preserve_hard_feasibility_and_completion():
@@ -475,6 +560,60 @@ def test_student_pressure_ranking_responds_to_counselor_importance_profile():
     )
     assert all(item.weighted_current_penalty == 0 for item in low)
     assert any(item.weighted_current_penalty > 0 for item in high)
+
+
+def test_student_pressure_profile_can_switch_difficulty_and_sequence_priority():
+    data = _v2(build_realistic_validation_fixture(), score=0)
+    components = {
+        name: {"denominator": 100}
+        for name in (
+            "student_semester_load_balance",
+            "difficulty_balance",
+            "course_category_diversity",
+            "course_sequence_preferences",
+        )
+    }
+    components["course_sequence_preferences"]["denominator"] = 1
+    report = {
+        "objective_semantics": {"components": components},
+        "student_semester_load_balance": {
+            "entities": {"1": {"absolute_difference": 0}, "2": {"absolute_difference": 0}}
+        },
+        "difficulty_balance": {
+            "entities": {"1": {"absolute_difference": 50}, "2": {"absolute_difference": 0}}
+        },
+        "course_category_diversity": {
+            "entities": {"1": {"penalty": 0}, "2": {"penalty": 0}}
+        },
+        "course_sequence_preferences": {
+            "entities": {"2:10:20": False}
+        },
+    }
+    difficulty_first = rank_students_by_quality_pressure(
+        replace(
+            data,
+            objective_importance_scores={
+                **{key: 0 for key in OBJECTIVE_KEYS},
+                "difficulty_balance": 10,
+                "course_sequence_preferences": 2,
+            },
+        ),
+        report,
+    )
+    sequence_first = rank_students_by_quality_pressure(
+        replace(
+            data,
+            objective_importance_scores={
+                **{key: 0 for key in OBJECTIVE_KEYS},
+                "difficulty_balance": 2,
+                "course_sequence_preferences": 10,
+            },
+        ),
+        report,
+    )
+
+    assert difficulty_first[0].student_id == 1
+    assert sequence_first[0].student_id == 2
 
 
 def test_sequence_edges_are_part_of_semantic_student_input_fingerprint():

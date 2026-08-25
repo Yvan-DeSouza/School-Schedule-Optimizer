@@ -104,3 +104,156 @@ among targeted repair and retained local operators. Grade-bounded unrestricted
 escape and full-school global escape remain deferred. The targeted diagnostic
 does not change the production objective, counselor policy, approval behavior,
 or operator allocation.
+
+## Objective semantics versus search strategy
+
+Objective Semantics v2 defines what constitutes a better complete schedule:
+the unchanged hard model plus the normalized counselor-weighted objective.
+Search guidance defines only where a diagnostic probe should look. A ranking,
+control sample, or pair heuristic cannot authorize a candidate. CP-SAT and the
+full-model validator remain authoritative.
+
+## Search-operator taxonomy
+
+The current diagnostic vocabulary is:
+
+- `R2`, `R4`, and `R8`: source-decision neighborhood radius.
+- `S1` and `S2`: maximum one or two changed students.
+- ordinary: CP-SAT chooses the changed students inside the bound.
+- targeted: guidance selects the students before CP-SAT search and all other
+  student-owned source decisions are frozen.
+
+The targeted wrappers are `run_student_assignment_targeted_s1_diagnostic` and
+`run_student_assignment_targeted_s2_diagnostic`. The matched ordinary control
+is `run_student_assignment_ordinary_repair_diagnostic`. All are diagnostic
+entry points; none is called by ordinary production assignment.
+
+## Ranking policies and counselor profiles
+
+The evidence module defines three explicit policies:
+
+1. `v2_counselor_weighted_pressure` uses normalized local penalties and the
+   canonical counselor scores.
+2. `raw_local_penalty_control` ranks comparable raw local penalties without
+   normalization or counselor weighting. It exists only as an experiment.
+3. `deterministic_semantic_control` selects a reproducible hash-ordered sample
+   independent of quality pressure.
+
+The balanced target-scale profile used in the first matched study assigned
+score `6` to all five v2 components. Difficulty-heavy, sequence-heavy,
+semester-heavy, category-heavy, and utilization-heavy profiles are supported
+by the same ranking API. On the current target input, sequence opportunities
+were absent and the leading students remained ordered the same under the
+tested profiles; this is a property of this input, not a claim that profiles
+cannot change ranking. Focused unit coverage proves a difficulty-versus-
+sequence profile can change ranking when both opportunities exist.
+
+## Structured experiment records
+
+`search_experiments.py` defines `StudentSearchExperimentRecord`, a compact
+JSON-safe record containing the input and source-seed fingerprints, profile,
+ranking policy, operator scope, candidate/validation/adoption facts, objective
+vectors and components, changed students/sections, solver timings, model
+size, search statistics, stopping reason, and process-tree resource facts.
+Records are diagnostic artifacts and are not persisted as scheduling state.
+
+## Target-scale weighted/control evidence
+
+The matched v2 experiment used one detached input and one validated source
+seed:
+
+| Fact | Value |
+|---|---|
+| Input fingerprint | `faa7a016b553d662821cb1247bb70fed8b9021dc289a6b406ff9f7c993b0d280` |
+| Source seed fingerprint | `54a1dc6324fcdd6055f5c5f5dc4a9f0b3c417d4d9520f5ae19cd124e3f3acd2f` |
+| Students / requests / required groups | `1,400 / 10,760 / 10,945` |
+| Sections / assignments / unmet | `317 / 10,635 / 0` |
+| Special commitments | `310` |
+| Profile | all five scores `6` |
+
+The baseline section-utilization penalty was `6,875`; semester balance was
+`175`, difficulty was `35,973`, and category diversity was `22,150`.
+
+| Operator/policy | Trials | Candidate utilization | Complete/validated | Typical total time |
+|---|---:|---:|---|---:|
+| Weighted R4/S1 | 1 | `6,871` | yes | `53.1s` |
+| Weighted R8/S1 | 3 | `6,871` | 3/3 | `54.4–58.2s` |
+| Weighted R4/S2 | 1 | `6,869` | yes | `53.4s` |
+| Weighted R8/S2 | 3 | `6,869` | 3/3 | `53.9–54.9s` |
+| Raw R8/S1 | 1 | `6,871` | yes | `52.9s` |
+| Deterministic R8/S1 | 1 | `6,873` | yes | `51.7s` |
+| Deterministic R8/S2 | 1 | `6,873` | yes | `53.8s` |
+| Ordinary R4/S1 | 1 | `6,875` retained | no improvement | `111.6s` |
+| Ordinary R8/S1 | 1 | `6,875` retained | no improvement | `107.7s` |
+| Ordinary R4/S2 | 1 | `6,875` retained | no improvement | `102.4s` |
+| Ordinary R8/S2 | 1 | `6,875` retained | no improvement | `44.3s` |
+
+The targeted model contained approximately `110,922` variables and `186,829`
+to `186,837` constraints. The ordinary control contained `112,322` variables
+and `189,646` constraints because of the unrestricted changed-student
+indicators. Targeted probes generally used about `0.81–0.82 GB` peak process-
+tree RSS; ordinary controls reached approximately `0.87–0.89 GB` in the
+longer trials.
+
+The weighted and raw policies selected the same leading student and pair on
+this particular input, so this study does not prove weighted ranking
+superiority over raw ranking. The deterministic control selected students
+`376` and `286` and produced the weaker `6,873` result. The strongest weighted
+S2 candidate changed one student-owned source decision: student `1068`,
+request `8515`, section `210` to section `213`.
+
+The first target-scale pair-selection comparison used the same weighted first
+student (`1052`). Top-two pressure selected `(1052, 1068)` and reached `6,869`.
+The interaction-aware partner selector chose `(1052, 1072)` and reached
+`6,871` in one matched R8/S2 trial. This is preliminary evidence that static
+interaction is useful as a measurable alternative but is not automatically
+better than top-two pressure; repeated pair-policy trials belong in the next
+adaptive study.
+
+## Repeatability and promotion classification
+
+Within the balanced profile and fixed input, weighted R8/S1 and R8/S2 were
+strongly repeatable in the measured sample: three clean trials each found a
+complete validated candidate with the same substantive endpoint and same
+affected student (`1052` for S1 and `1068` for S2). This is strong repeatability
+for this input/profile, not a universal guarantee.
+
+Current evidence classification:
+
+- Targeted R4/S1: useful escape candidate; one successful trial.
+- Targeted R8/S1: candidate for the next adaptive portfolio; three matching
+  successful trials, but no demonstrated advantage over targeted R4/S1.
+- Targeted R4/S2: useful escape candidate; one successful trial.
+- Targeted R8/S2: candidate for the next adaptive portfolio; three matching
+  successful trials and the strongest measured targeted endpoint.
+- Raw targeted control: reference only; it matched weighted selection here.
+- Deterministic targeted control: reference only; weaker endpoint in the one
+  measured trial.
+- Ordinary R4/S1, R8/S1, R4/S2, and R8/S2: bounded controls only. They found no
+  improvement in these trials, but are not declared infeasible.
+
+The evidence supports designing the next adaptive-allocation study, but does
+not authorize enabling an adaptive allocator in production. The next study
+must include repeated matched controls, profile-specific cases with real
+sequence opportunities, and an explicit gain-per-minute/resource policy.
+
+## Contributor contract for search operators
+
+A new operator must specify its scope, source-decision freedom, student-bound
+semantics, objective authority, full-validation requirement, timeout and stop
+classifications, telemetry, benchmark identity, and production-promotion
+boundary. A new heuristic must specify its input facts, deterministic ordering,
+attribution semantics, control comparison, and the fact that it cannot
+authorize a candidate.
+
+## Historical adaptive terminology
+
+Earlier quality documentation uses “adaptive bootstrap” and “adaptive VNS” for
+historical v1 diagnostic experiments. Those names describe bounded v1 search
+behavior and must not be confused with the future v2 adaptive operator
+allocator. The future allocator is not implemented: it may choose among
+targeted repair and retained local operators, but it must never change
+objective semantics, authorize a schedule, or bypass full validation.
+
+Grade-bounded unrestricted search and full-school unrestricted escape remain
+deferred until after that adaptive-policy study.

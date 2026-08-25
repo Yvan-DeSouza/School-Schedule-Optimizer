@@ -31,6 +31,7 @@ from scheduling_engine.dto import (
     TimeSlotDTO,
 )
 from scheduling_engine.student_assignment import (
+    run_student_assignment_ordinary_repair_diagnostic,
     run_student_assignment_targeted_s1_diagnostic,
     run_student_assignment_targeted_s2_diagnostic,
     run_substantive_soft_tier_probe,
@@ -276,6 +277,22 @@ def test_targeted_s2_requires_exactly_two_students():
             total_time_limit_seconds=1.0,
             worker_count=1,
         )
+
+
+def test_ordinary_repair_control_has_same_local_authority_without_selected_students():
+    result = run_student_assignment_ordinary_repair_diagnostic(
+        _substantive_probe_input(),
+        neighborhood_radius=0,
+        max_changed_students=1,
+        time_limit_seconds=5.0,
+        total_time_limit_seconds=5.0,
+        worker_count=1,
+    )
+
+    facts = result.optimization_facts["stage_2_local_bootstrap"]
+    assert facts["selected_student_ids"] == ()
+    assert facts["max_changed_students"] == 1
+    assert result.status == "complete"
 
 
 def test_substantive_probe_records_semantic_candidate_and_impact_facts():

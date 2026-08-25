@@ -1216,6 +1216,63 @@ def run_student_assignment_targeted_s2_diagnostic(
     )
 
 
+def run_student_assignment_ordinary_repair_diagnostic(
+    data: StudentAssignmentInputDTO,
+    *,
+    neighborhood_radius=2,
+    max_changed_students=None,
+    time_limit_seconds=90.0,
+    total_time_limit_seconds=1800.0,
+    worker_count=8,
+    hard_feasibility_validation_time_limit_seconds=None,
+    hard_feasibility_validation_worker_count=None,
+    alternate_source_decisions=(),
+    alternate_source_variable_values=None,
+    collect_incumbent_timeline=True,
+    timeline_max_events=128,
+    capture_final_source_decisions=False,
+    collect_resource_telemetry=False,
+):
+    """Probe an unselected-student control with the same local-only budget.
+
+    This is the matched control for targeted S1/S2 experiments: CP-SAT may
+    choose any changed student, while the full model, strict improvement, and
+    full validation remain identical to the targeted operator.
+    """
+
+    return _solve_student_assignment(
+        data,
+        include_lock_costs=False,
+        include_candidate_ledger=False,
+        use_hard_feasibility_bootstrap=True,
+        collect_stage2_trace=True,
+        stage_2_local_bootstrap={
+            "threshold": None,
+            "time_limit_seconds": time_limit_seconds,
+            "worker_count": worker_count,
+            "target_importance_level": _soft_tier_importance_level(data),
+            "neighborhood_radius": neighborhood_radius,
+            "max_changed_students": max_changed_students,
+            "strict_improvement": True,
+        },
+        stage_2_total_time_limit_seconds=total_time_limit_seconds,
+        retain_incumbent_on_non_improvement=True,
+        local_only=True,
+        alternate_source_decisions=alternate_source_decisions,
+        alternate_source_variable_values=alternate_source_variable_values,
+        hard_feasibility_validation_time_limit_seconds=(
+            hard_feasibility_validation_time_limit_seconds
+        ),
+        hard_feasibility_validation_worker_count=(
+            hard_feasibility_validation_worker_count
+        ),
+        collect_incumbent_timeline=collect_incumbent_timeline,
+        timeline_max_events=timeline_max_events,
+        capture_final_source_decisions=capture_final_source_decisions,
+        collect_resource_telemetry=collect_resource_telemetry,
+    )
+
+
 def _solve_student_assignment(
     data,
     *,
@@ -3558,6 +3615,13 @@ def _solve_student_assignment(
                         "candidate_validated": candidate_validated,
                         "adopted": adopted,
                         "validation_elapsed_seconds": validation_elapsed,
+                        "model_variable_count": local_result.model_variable_count,
+                        "model_constraint_count": local_result.model_constraint_count,
+                        "branches": local_result.branches,
+                        "conflicts": local_result.conflicts,
+                        "deterministic_time_seconds": local_result.timings.get(
+                            "deterministic_time_seconds"
+                        ),
                         "changed_source_decision_count": local_result.changed_source_decision_count,
                         "changed_student_count": local_result.changed_student_count,
                         "component_values": dict(local_result.candidate_component_values),
@@ -3740,7 +3804,25 @@ def _solve_student_assignment(
                     "candidate_found": local_result.complete_candidate_found,
                     "candidate_validated": candidate_validated,
                     "improvement_adopted": candidate_validated,
+                    "model_variable_count": local_result.model_variable_count,
+                    "model_constraint_count": local_result.model_constraint_count,
+                    "branches": local_result.branches,
+                    "conflicts": local_result.conflicts,
+                    "deterministic_time_seconds": local_result.timings.get(
+                        "deterministic_time_seconds"
+                    ),
                     "iterations": (),
+                    "stopping_reason": (
+                        "improvement_adopted"
+                        if candidate_validated
+                        else (
+                            "proven_infeasible"
+                            if local_result.status == "infeasible"
+                            else "unresolved_unknown"
+                            if local_result.status == "unknown"
+                            else "no_improvement"
+                        )
+                    ),
                     "memory": local_memory_monitor.stop(),
                 }
 

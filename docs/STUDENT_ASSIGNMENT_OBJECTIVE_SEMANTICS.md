@@ -152,10 +152,13 @@ The first v2 production-scale run is a new baseline. It must be compared with
 the existing frozen v1 evidence only as a versioned semantic comparison, never
 as if the raw objective values were expected to be numerically identical.
 
-Student-targeted repair, adaptive operator selection, grade-bounded escape,
-and full-school unrestricted search are intentionally outside v2. Any future
-search policy may choose where to explore, but CP-SAT and full hard-model
-validation remain the only authorities for accepting a candidate.
+Student-targeted repair is a diagnostic search policy that consumes v2; its
+ranking and operator contract is documented separately in
+`STUDENT_ASSIGNMENT_SEARCH_STRATEGY.md`. Adaptive operator selection,
+grade-bounded escape, and full-school unrestricted search remain outside the
+current implementation. Any search policy may choose where to explore, but
+CP-SAT and full hard-model validation remain the only authorities for accepting
+a candidate.
 
 ## Why these normalization methods were selected
 
@@ -263,7 +266,8 @@ and bounded compatibility checks for retained diagnostic search operators.
 
 ## Non-goals
 
-This document does not define or implement student-targeted heuristics,
+This document does not define or implement the student-targeted search policy,
 adaptive operator allocation, grade-bounded unrestricted search, or full-school
-global escape. Those later search-policy experiments must consume this
-objective contract rather than alter it.
+global escape. The implemented targeted diagnostics are defined separately and
+must consume this objective contract rather than alter it. Future search-policy
+experiments must follow the same boundary.
