@@ -9,6 +9,7 @@ from .core import (
     run_student_assignment_targeted_s1_diagnostic,
     run_student_assignment_targeted_s2_diagnostic,
     run_student_assignment_ordinary_repair_diagnostic,
+    run_student_assignment_operator_session_diagnostic,
     run_substantive_soft_tier_probe,
     solve_student_assignment,
 )
@@ -37,6 +38,7 @@ from .adaptive_search import (
     AdaptiveSessionRecord,
     DEFAULT_ADAPTIVE_OPERATOR_PORTFOLIO,
     build_adaptive_search_state,
+    build_operator_session_request,
     choose_adaptive_operator,
     replay_adaptive_policy,
     simulate_adaptive_policy,
@@ -45,6 +47,15 @@ from .adaptive_runtime import (
     AdaptiveSessionResult,
     run_adaptive_local_search_diagnostic,
 )
+from .operator_session import (
+    ContinuousOperatorSessionConfig,
+    ContinuousOperatorSessionRecord,
+    OPERATOR_FAMILIES,
+    TARGET_POLICIES,
+    build_continuous_operator_session_record,
+    operator_session_target_count,
+    select_operator_session_targets,
+)
 __all__ = [
     "run_substantive_soft_tier_probe",
     "solve_student_assignment",
@@ -52,6 +63,7 @@ __all__ = [
     "run_student_assignment_targeted_s1_diagnostic",
     "run_student_assignment_targeted_s2_diagnostic",
     "run_student_assignment_ordinary_repair_diagnostic",
+    "run_student_assignment_operator_session_diagnostic",
     "StudentTargetPressure",
     "rank_students_by_quality_pressure",
     "reconcile_student_quality_pressure",
@@ -64,8 +76,16 @@ __all__ = [
     "AdaptiveSessionResult",
     "DEFAULT_ADAPTIVE_OPERATOR_PORTFOLIO",
     "build_adaptive_search_state",
+    "build_operator_session_request",
     "choose_adaptive_operator",
     "replay_adaptive_policy",
     "simulate_adaptive_policy",
     "run_adaptive_local_search_diagnostic",
+    "ContinuousOperatorSessionConfig",
+    "ContinuousOperatorSessionRecord",
+    "OPERATOR_FAMILIES",
+    "TARGET_POLICIES",
+    "build_continuous_operator_session_record",
+    "operator_session_target_count",
+    "select_operator_session_targets",
 ]

@@ -278,3 +278,28 @@ R2-only, targeted-operator-only, fixed-cycle, and adaptive sessions must be
 compared on identical v2 input and source-seed fingerprints before any future
 promotion decision. Grade-bounded and unrestricted global operators remain
 deferred.
+
+## Continuous operator-session boundary
+
+The mature-R2 continuation has now been generalized into the reusable pure-
+engine diagnostic entry point
+`run_student_assignment_operator_session_diagnostic`. It supports `r2`,
+`targeted_r4_s1`, `targeted_r8_s1`, `targeted_r4_s2`, and `targeted_r8_s2`.
+The session builds one immutable model/context boundary and performs multiple
+strict-improvement probes without returning to ordinary Stage 2 between
+attempts. Each attempt still clones the model, is bounded, and must pass the
+unchanged full-model validator before adoption.
+
+Targeted sessions explicitly declare `dynamic` or `fixed` target policy. A
+dynamic policy retargets from current validated quality pressure after an
+adoption; a fixed policy holds the supplied student scope. Target selection is
+search guidance only and cannot create or authorize a schedule. Session facts
+record target history, attempts, CP-SAT/validation time, total deadline
+elapsed time, external overrun, resource telemetry, and explicit unresolved or
+proven stop reasons.
+
+This is a diagnostic capability and a characterization boundary. It does not
+enable adaptive search in ordinary production scheduling, alter Objective
+Semantics v2, introduce grade-bounded/global search, or replace CP-SAT and
+full-model validation as the authority. Repeated operator-family descent and
+adaptive-controller calibration remain separate evidence-gated studies.

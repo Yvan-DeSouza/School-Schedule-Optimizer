@@ -197,6 +197,21 @@ review counterfactuals that explicitly request a shorter solve limit honor
 that bound rather than inheriting the production bootstrap minimum. They
 remain evidence-only solves and never replace the immutable recommendation.
 
+The engine also exposes a separate diagnostic-only continuous operator-session
+boundary for offline search characterization. It generalizes mature-R2
+continuation to `r2`, targeted `r4/s1`, `r8/s1`, `r4/s2`, and `r8/s2` sessions.
+One session retains the same immutable input, production model, required-group
+scope, and ownership metadata while running multiple bounded neighborhood
+probes. Each candidate is extracted, validated against the unchanged full
+model, and adopted only when it is complete and strictly substantively better.
+Targeted sessions may use a fixed student scope or recompute a bounded scope
+from the current validated quality pressure after adoption. This is search
+guidance only: it does not change fulfillment, hard constraints, objective
+semantics, approval behavior, or ordinary production scheduling. The session
+has one monotonic budget covering setup and attempts, records native-call
+overrun separately, and preserves the distinction between unresolved
+`UNKNOWN` and scope-specific proven `INFEASIBLE`.
+
 Accepted placement and aggregate course capacity are necessary input facts, but
 they are not by themselves proof that every mandatory personal timetable can
 be completed. A shared timing/capacity bottleneck can still make a set of

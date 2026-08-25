@@ -82,6 +82,12 @@ future scheduling stages do not reimplement the same rules in different places.
   is available by default; only explicit unavailable records remove a slot.
 - Named teacher candidates are immutable runs reviewed before approval. A
   partial named-teacher result is diagnostic-only and cannot be approved.
+- Continuous student-assignment operator sessions are diagnostic-only search
+  experiments. Session-static model/context data may be reused, but each
+  attempt must rebuild its incumbent-dependent bounds, hints, target scope,
+  and validation state. CP-SAT plus the unchanged full-model validator remain
+  the only authority for adopting a candidate; an UNKNOWN result is never
+  treated as a proof of exhaustion or infeasibility.
 
 ## Immutable Workflow Records
 

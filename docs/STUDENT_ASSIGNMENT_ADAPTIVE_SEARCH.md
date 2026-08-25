@@ -87,6 +87,50 @@ pressure from an older incumbent. The session record contains the selected
 operator, reasons/signals, status, candidate/validation/adoption facts, gain,
 timings, changed entities, and stopping reason.
 
+## Continuous operator sessions
+
+The reusable diagnostic session entry point is
+`run_student_assignment_operator_session_diagnostic` in the pure engine. It
+generalizes the mature-R2 in-memory continuation boundary to these explicit
+operator families:
+
+- `r2` — radius two with no student cap;
+- `targeted_r4_s1` and `targeted_r8_s1` — radius four/eight with one student;
+- `targeted_r4_s2` and `targeted_r8_s2` — radius four/eight with two students.
+
+One session builds and validates its supplied complete semantic incumbent,
+constructs the production model and static probe scope once, and then runs
+bounded probe attempts against clones of that model. An adopted candidate
+updates only the incumbent-dependent seed, strict improvement bound, hints,
+target scope, and validation facts. It does not rebuild placement, staffing,
+the immutable input, or the static decision-group ownership map for every
+attempt. The model clone and CP-SAT solve remain per-attempt because a probe
+must receive a fresh bounded satisfiability model.
+
+Targeted sessions support two explicit policies. `dynamic` recomputes the
+bounded student target from the current validated quality pressure after each
+adopted improvement. `fixed` keeps the caller-supplied one- or two-student
+scope for every attempt. These IDs restrict diagnostic search only; they never
+authorize an assignment and an empty/invalid target scope stops the session
+with an explicit diagnostic stop reason.
+
+The session has one monotonic wall-clock deadline. It covers model setup,
+incumbent validation, probe model cloning, CP-SAT, candidate extraction,
+full-model validation, and final session facts. `UNKNOWN` remains unresolved
+and is distinct from proven `INFEASIBLE`; a complete validated incumbent is
+retained in either case. The record reports configured budget, attempt count,
+CP-SAT and validation time, total elapsed time, external overrun, target
+history, adopted gains, resource facts, and the stop reason. A native solver
+call can exceed its requested slice before returning, so external overrun is
+reported rather than hidden.
+
+The adaptive allocator currently remains an offline policy diagnostic. Its
+new session-request shape describes an operator family, allocated chunk,
+attempt cap, per-attempt CP-SAT ceiling, worker count, target policy, and
+selected targets. The allocator does not yet execute continuous sessions as
+ordinary scheduling behavior, and no adaptive-versus-static promotion study
+is implied by this interface addition.
+
 ## Offline replay and comparison
 
 `AdaptiveSessionRecord` is a structured diagnostic artifact. It includes the

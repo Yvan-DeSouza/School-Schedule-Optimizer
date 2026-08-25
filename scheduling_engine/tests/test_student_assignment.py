@@ -454,6 +454,8 @@ def test_mature_r2_session_persists_checkpoint_before_frontier_record(tmp_path):
     )
 
     assert facts["status"] == "complete"
+    assert facts["local_bootstrap"]["operator_session"] is True
+    assert facts["local_bootstrap"]["operator_family"] == "r2"
     assert facts["persistence"]["checkpoint_updated"] is True
     stored_checkpoint = read_mature_r2_checkpoint(checkpoint_path)
     frontier_record = json.loads(frontier_path.read_text(encoding="utf-8"))

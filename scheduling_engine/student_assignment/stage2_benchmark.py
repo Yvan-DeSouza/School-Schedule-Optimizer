@@ -32,7 +32,7 @@ from ..student_assignment.runtime import semantic_student_assignment_input_finge
 from .core import (
     run_student_assignment_adaptive_local_bootstrap_diagnostic,
     run_student_assignment_local_bootstrap_diagnostic,
-    run_student_assignment_mature_local_search_diagnostic,
+    run_student_assignment_operator_session_diagnostic,
     run_student_assignment_stage2_diagnostic,
     run_substantive_soft_tier_probe,
 )
@@ -638,10 +638,11 @@ def run_mature_r2_local_session(
     """Run one mature-R2 session without ordinary Stage 2 afterward.
 
     This is a diagnostic-only clean-process boundary. It loads and verifies
-    the frozen benchmark/checkpoint once, performs one in-memory R2 descent,
-    and returns bounded phase timings alongside the engine result. The
-    ordinary lexicographic optimizer remains unchanged and is not invoked by
-    this session.
+    the frozen benchmark/checkpoint once, delegates the R2 descent to the
+    reusable continuous operator-session engine boundary, and returns bounded
+    phase timings alongside the engine result. The mature checkpoint format
+    remains unchanged. The ordinary lexicographic optimizer remains unchanged
+    and is not invoked by this session.
     """
 
     timings = {}
@@ -676,11 +677,12 @@ def run_mature_r2_local_session(
         raise ValueError("Mature checkpoint fingerprint failed after materialization")
 
     started = perf_counter()
-    result = run_student_assignment_mature_local_search_diagnostic(
+    result = run_student_assignment_operator_session_diagnostic(
         benchmark["data"],
-        mature_source_decisions=source_decisions,
-        max_iterations=max_iterations,
-        per_probe_time_limit_seconds=per_probe_time_limit_seconds,
+        operator_family="r2",
+        initial_source_decisions=source_decisions,
+        max_attempts=max_iterations,
+        per_attempt_time_limit_seconds=per_probe_time_limit_seconds,
         total_time_limit_seconds=total_time_limit_seconds,
         worker_count=worker_count,
         hard_feasibility_validation_time_limit_seconds=validation_time_limit_seconds,

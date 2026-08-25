@@ -217,6 +217,16 @@ is not part of the production workflow, persistence, approval, or API
 contract. Its policy may choose where to search, but CP-SAT and unchanged
 full-model validation remain the only authorities for accepting a candidate.
 
+The pure engine also provides a continuous operator-session diagnostic for
+repeatable offline characterization. It reuses one immutable model/context
+boundary across bounded R2 and targeted R4/R8 S1/S2 probes, retargeting only
+from the current validated incumbent when configured for dynamic targeting.
+The session budget includes setup and validation, and its structured facts
+separate CP-SAT time, validation time, total elapsed time, and native-call
+overrun. This facility is intentionally outside ordinary scheduling,
+persistence, approval, and API behavior; it cannot authorize a candidate or
+alter Objective Semantics v2.
+
 ---
 
 ## 6. System Overview
@@ -562,7 +572,7 @@ flowchart LR
 | `scheduling_engine/constraint_compiler.py` | Normalized qualification/index compilation and fail-closed eligibility sets. | Implemented |
 | `scheduling_engine/section_placement.py` | Semester/A-D timing solve with conflict weights, locks, and anonymous staffing witnesses. | Implemented |
 | `scheduling_engine/teacher_assignment.py` | Named teacher candidate solve using compiled eligibility, availability, capacities, locks, rules, and factual soft evidence. | Implemented |
-| `scheduling_engine/student_assignment.py` | Student-to-section enrollment solve, including fixed/locked context, scope, priorities, preservation, and structured explanations. | Implemented first release and controlled reruns; consumes fixed accepted sections and immutable DTO input. |
+| `scheduling_engine/student_assignment/` | Student-to-section enrollment solve, including fixed/locked context, scope, priorities, preservation, structured explanations, and diagnostic operator sessions. | Implemented first release and controlled reruns; consumes fixed accepted sections and immutable DTO input. |
 | `scheduling_engine/conflict_analyzer.py` | Post-solve issue report. | Not yet implemented; file does not exist. |
 
 There is no `scheduling_engine/solvers/` directory in the current repository.

@@ -130,6 +130,8 @@ from .objective_semantics import (
     OBJECTIVE_SEMANTICS_V2,
     resolve_importance_scores,
 )
+from .search_guidance import rank_students_by_quality_pressure
+from .operator_session import select_operator_session_targets
 
 
 def _soft_tier_importance_level(data):
@@ -1062,6 +1064,100 @@ def run_student_assignment_mature_local_search_diagnostic(
     )
 
 
+def run_student_assignment_operator_session_diagnostic(
+    data: StudentAssignmentInputDTO,
+    *,
+    operator_family="r2",
+    initial_source_decisions=(),
+    initial_source_variable_values=None,
+    total_time_limit_seconds=600.0,
+    max_attempts=10,
+    per_attempt_time_limit_seconds=60.0,
+    worker_count=8,
+    target_policy="dynamic",
+    selected_student_ids=(),
+    minimum_next_attempt_seconds=1.0,
+    hard_feasibility_validation_time_limit_seconds=None,
+    hard_feasibility_validation_worker_count=None,
+    collect_resource_telemetry=True,
+    capture_final_source_decisions=True,
+):
+    """Run one operator family continuously in one diagnostic engine call.
+
+    The supplied incumbent is validated once, the immutable production model
+    and probe metadata are built once, and each attempt clones only the model
+    while rebuilding incumbent-dependent bounds, freezes, hints, and
+    validation. This is diagnostic-only and intentionally skips ordinary
+    lexicographic Stage 2 between local improvements.
+    """
+
+    from .operator_session import ContinuousOperatorSessionConfig
+
+    config = ContinuousOperatorSessionConfig(
+        operator_family=operator_family,
+        total_time_limit_seconds=total_time_limit_seconds,
+        max_attempts=max_attempts,
+        per_attempt_time_limit_seconds=per_attempt_time_limit_seconds,
+        worker_count=worker_count,
+        target_policy=target_policy,
+        selected_student_ids=tuple(selected_student_ids),
+        minimum_next_attempt_seconds=minimum_next_attempt_seconds,
+        collect_resource_telemetry=collect_resource_telemetry,
+        hard_feasibility_validation_time_limit_seconds=(
+            hard_feasibility_validation_time_limit_seconds
+        ),
+        hard_feasibility_validation_worker_count=(
+            hard_feasibility_validation_worker_count
+        ),
+    )
+    if not initial_source_decisions and initial_source_variable_values is None:
+        raise ValueError("initial_source_decisions is required")
+    return _solve_student_assignment(
+        data,
+        include_lock_costs=False,
+        include_candidate_ledger=False,
+        use_hard_feasibility_bootstrap=True,
+        collect_stage2_trace=True,
+        stage_2_local_bootstrap={
+            "adaptive": True,
+            "operator_session": True,
+            "operator_family": config.operator_family,
+            "neighborhood_radii": (config.neighborhood_radius,),
+            "max_iterations": config.max_attempts,
+            "per_probe_time_limit_seconds": config.per_attempt_time_limit_seconds,
+            "worker_count": config.worker_count,
+            "target_importance_level": _soft_tier_importance_level(data),
+            "neighborhood_radius": config.neighborhood_radius,
+            "max_changed_students": config.max_changed_students,
+            "target_policy": config.target_policy,
+            "selected_student_ids": tuple(config.selected_student_ids),
+            "minimum_next_attempt_seconds": config.minimum_next_attempt_seconds,
+            "source_seed_fingerprint": (
+                sha256(
+                    repr(tuple(sorted(initial_source_decisions, key=repr))).encode()
+                ).hexdigest()
+                if initial_source_decisions
+                else None
+            ),
+        },
+        stage_2_total_time_limit_seconds=config.total_time_limit_seconds,
+        retain_incumbent_on_non_improvement=True,
+        alternate_source_decisions=initial_source_decisions,
+        alternate_source_variable_values=initial_source_variable_values,
+        mature_checkpoint_only=True,
+        local_only=True,
+        hard_feasibility_validation_time_limit_seconds=(
+            config.hard_feasibility_validation_time_limit_seconds
+        ),
+        hard_feasibility_validation_worker_count=(
+            config.hard_feasibility_validation_worker_count
+        ),
+        collect_incumbent_timeline=False,
+        capture_final_source_decisions=capture_final_source_decisions,
+        collect_resource_telemetry=config.collect_resource_telemetry,
+    )
+
+
 def run_student_assignment_variable_neighborhood_diagnostic(
     data: StudentAssignmentInputDTO,
     *,
@@ -1307,6 +1403,7 @@ def _solve_student_assignment(
     # quality facts.  The existing local monitor remains intentionally
     # separate so local-probe memory can still be compared with whole-operation
     # resource use.  Resource telemetry is observational only.
+    engine_operation_started = monotonic()
     operation_resource_monitor = ProcessResourceMonitor(
         enabled=collect_resource_telemetry
     ).start()
@@ -3413,26 +3510,30 @@ def _solve_student_assignment(
             ),
         }
 
+    probe_source_decision_owners = tuple(
+        (
+            None
+            if source_key is None
+            else requests_by_id[source_key[1]].student_id
+            if source_key[0] == "course"
+            else commitment_metadata.get(source_key, (None,))[0]
+        )
+        for source_key in complete_required_decision_source_keys
+    )
+    probe_required_decision_groups = tuple(
+        tuple(group) for group in complete_required_decision_groups
+    )
+
     def _build_probe_context(seed_solver):
-        source_decision_owners = []
-        for source_key in complete_required_decision_source_keys:
-            if source_key is None:
-                source_decision_owners.append(None)
-            elif source_key[0] == "course":
-                source_decision_owners.append(
-                    requests_by_id[source_key[1]].student_id
-                )
-            else:
-                source_decision_owners.append(
-                    commitment_metadata.get(source_key, (None,))[0]
-                )
+        # The model, source groups, owner map, and objective metadata are
+        # session-static. Only the validated incumbent-dependent fields change
+        # after an improvement is adopted. This prevents a continuous session
+        # from rebuilding the production model or its static scope per probe.
         return SubstantiveSoftTierProbeContext(
             model=model,
             objective_metadata=tuple(objective_metadata),
-            complete_required_decision_groups=tuple(
-                tuple(group) for group in complete_required_decision_groups
-            ),
-            source_decision_owners=tuple(source_decision_owners),
+            complete_required_decision_groups=probe_required_decision_groups,
+            source_decision_owners=probe_source_decision_owners,
             validated_seed_solver=seed_solver,
             seed_outcome=_hard_feasibility_outcome,
             solver_objective_components=_solver_objective_components,
@@ -3457,8 +3558,19 @@ def _solve_student_assignment(
     )
     local_bootstrap_facts = None
     local_memory_monitor = None
+    operator_session_budget = bool(
+        stage_2_local_bootstrap
+        and stage_2_local_bootstrap.get("operator_session")
+    )
     stage_2_deadline = (
-        MonotonicDeadline.start(stage_2_budget_seconds)
+        MonotonicDeadline(
+            max(0.0, float(stage_2_budget_seconds)),
+            started_at=(
+                engine_operation_started
+                if operator_session_budget
+                else monotonic()
+            ),
+        )
         if stage_2_budget_seconds is not None
         else None
     )
@@ -3493,6 +3605,7 @@ def _solve_student_assignment(
             # pressure without adding a runtime dependency.
             local_memory_monitor = ProcessMemoryMonitor().start()
             adaptive = bool(local_config.get("adaptive", False))
+            operator_session = bool(local_config.get("operator_session", False))
             iterations = []
             current_seed_value = None
             last_result = None
@@ -3508,6 +3621,8 @@ def _solve_student_assignment(
             radius_stop_reasons = []
             stopping_reason = None
             local_session_started = monotonic()
+            session_target_history = []
+            selected_student_ids = tuple(local_config.get("selected_student_ids", ()))
 
             def _current_substantive_value(candidate_solver):
                 return int(sum(
@@ -3545,13 +3660,19 @@ def _solve_student_assignment(
             if adaptive:
                 radii = tuple(
                     int(radius)
-                    for radius in local_config.get("neighborhood_radii", (2, 4))
+                    for radius in local_config.get(
+                        "neighborhood_radii",
+                        (local_config.get("neighborhood_radius", 2), 2, 4),
+                    )
                     if int(radius) >= 0
                 ) or (2,)
                 max_iterations = max(1, int(local_config.get("max_iterations", 3)))
                 per_probe_limit = float(
                     local_config.get("per_probe_time_limit_seconds", 90.0)
                 )
+                if operator_session:
+                    radii = (int(local_config.get("neighborhood_radius", radii[0])),)
+                    variable_neighborhood = False
                 radius_index = 0
                 iteration_count = 0
                 while iteration_count < max_iterations and radius_index < len(radii):
@@ -3560,6 +3681,15 @@ def _solve_student_assignment(
                         and stage_2_deadline.remaining() <= 0.001
                     ):
                         stopping_reason = "shared_budget_exhausted"
+                        break
+                    if (
+                        operator_session
+                        and iteration_count > 0
+                        and stage_2_deadline is not None
+                        and stage_2_deadline.remaining()
+                        < float(local_config.get("minimum_next_attempt_seconds", 1.0))
+                    ):
+                        stopping_reason = "insufficient_budget_for_next_attempt"
                         break
                     current_radius = radii[radius_index]
                     radius_attempts[current_radius] = (
@@ -3570,6 +3700,36 @@ def _solve_student_assignment(
                         min(per_probe_limit, _remaining_stage2_budget())
                     )
                     probe_limit = max(0.001, iteration_deadline.remaining())
+                    selected_student_ids = tuple(
+                        local_config.get("selected_student_ids", ())
+                    )
+                    if operator_session and local_config.get("max_changed_students"):
+                        if local_config.get("target_policy") == "dynamic":
+                            current_quality = _full_quality_for_solver(
+                                stage_2_seed_solver
+                            )
+                            ranked_students = rank_students_by_quality_pressure(
+                                data, current_quality
+                            )
+                            ranked_student_ids = tuple(
+                                item.student_id for item in ranked_students
+                            )
+                        else:
+                            ranked_student_ids = ()
+                        selected_student_ids = select_operator_session_targets(
+                            local_config.get("operator_family"),
+                            target_policy=local_config.get("target_policy", "dynamic"),
+                            ranked_student_ids=ranked_student_ids,
+                            fixed_student_ids=selected_student_ids,
+                        )
+                        required_targets = int(local_config["max_changed_students"])
+                        if len(selected_student_ids) != required_targets:
+                            stopping_reason = "no_eligible_target"
+                            break
+                    session_target_history.append(selected_student_ids)
+                    probe_selected_student_ids = (
+                        selected_student_ids if operator_session else ()
+                    )
                     local_result = probe_substantive_soft_tier(
                         _build_probe_context(stage_2_seed_solver),
                         target_importance_level=target_level,
@@ -3578,6 +3738,7 @@ def _solve_student_assignment(
                         max_changed_students=local_config.get(
                             "max_changed_students"
                         ),
+                        selected_student_ids=probe_selected_student_ids,
                         time_limit_seconds=probe_limit,
                         worker_count=int(local_config.get("worker_count", 8)),
                     )
@@ -3697,14 +3858,31 @@ def _solve_student_assignment(
                     if last_result is not None and last_result.status == "unknown":
                         stopping_reason = "unresolved_unknown"
                     elif last_result is not None and last_result.status == "infeasible":
-                        stopping_reason = "proven_local_optimum"
+                        stopping_reason = (
+                            "proven_scope_exhausted"
+                            if operator_session
+                            else "proven_local_optimum"
+                        )
                     elif iteration_count >= max_iterations:
-                        stopping_reason = "iteration_budget_exhausted"
+                        stopping_reason = (
+                            "attempt_cap_reached"
+                            if operator_session
+                            else "iteration_budget_exhausted"
+                        )
                     elif radius_index >= len(radii):
                         stopping_reason = "neighborhood_sequence_exhausted"
                 final_value = _current_substantive_value(stage_2_seed_solver)
                 local_bootstrap_facts = {
                     "adaptive": True,
+                    "operator_session": operator_session,
+                    "operator_family": local_config.get("operator_family"),
+                    "source_seed_fingerprint": local_config.get(
+                        "source_seed_fingerprint"
+                    ),
+                    "target_policy": local_config.get("target_policy"),
+                    "session_context_reused": operator_session,
+                    "static_probe_context_built_once": operator_session,
+                    "session_target_history": tuple(session_target_history),
                     "variable_neighborhood": variable_neighborhood,
                     "target_importance_level": target_level,
                     "status": last_result.status if last_result is not None else "unknown",
@@ -3723,6 +3901,7 @@ def _solve_student_assignment(
                         item["validation_elapsed_seconds"] for item in iterations
                     ),
                     "time_limit_seconds": per_probe_limit,
+                    "max_iterations": max_iterations,
                     "deadline_requested_time_limit_seconds": stage_2_budget_seconds,
                     "deadline_elapsed_seconds": stage_2_deadline.elapsed() if stage_2_deadline else None,
                     "deadline_remaining_seconds": stage_2_deadline.remaining() if stage_2_deadline else None,
@@ -3733,9 +3912,7 @@ def _solve_student_assignment(
                     "changed_source_decision_count": iterations[-1]["changed_source_decision_count"] if iterations else 0,
                     "changed_student_count": iterations[-1].get("changed_student_count") if iterations else 0,
                     "max_changed_students": local_config.get("max_changed_students"),
-                    "selected_student_ids": tuple(
-                        local_config.get("selected_student_ids", ())
-                    ),
+                    "selected_student_ids": tuple(selected_student_ids),
                     "component_values": dict(last_result.candidate_component_values) if last_result is not None else {},
                     "component_deltas": dict(last_result.component_deltas) if last_result is not None else {},
                     "candidate_found": any_candidate_validated,
@@ -3744,6 +3921,21 @@ def _solve_student_assignment(
                     "radius_attempts": dict(radius_attempts),
                     "radius_stop_reasons": tuple(radius_stop_reasons),
                     "stopping_reason": stopping_reason,
+                    "configured_session_budget_seconds": stage_2_budget_seconds,
+                    "session_elapsed_seconds": (
+                        stage_2_deadline.elapsed()
+                        if stage_2_deadline is not None
+                        else monotonic() - local_session_started
+                    ),
+                    "external_overrun_seconds": max(
+                        0.0,
+                        (
+                            stage_2_deadline.elapsed() - stage_2_budget_seconds
+                            if stage_2_deadline is not None
+                            and stage_2_budget_seconds is not None
+                            else 0.0
+                        ),
+                    ),
                     "iterations": tuple(iterations),
                     "memory": local_memory_monitor.stop(),
                 }
@@ -4029,6 +4221,14 @@ def _solve_student_assignment(
             _source_decision_fingerprint(solver)
         )
     if local_bootstrap_facts is not None:
+        if local_bootstrap_facts.get("operator_session"):
+            local_bootstrap_facts["external_overrun_seconds"] = max(
+                0.0,
+                optimization_facts["stage_2"]["operation_wall_time_seconds"]
+                - float(local_bootstrap_facts.get(
+                    "configured_session_budget_seconds", 0.0
+                ) or 0.0),
+            )
         optimization_facts["stage_2_local_bootstrap"] = local_bootstrap_facts
         # The shared Stage 2 deadline is started immediately before the local
         # bootstrap, so its elapsed value already includes probe setup,
@@ -4100,6 +4300,21 @@ def _solve_student_assignment(
             result = replace(result, lock_costs=_build_lock_costs(data, result))
             optimization_facts["operation_resource_monitor"] = (
                 operation_resource_monitor.stop()
+            )
+        if local_bootstrap_facts and local_bootstrap_facts.get("operator_session"):
+            final_operation_wall_time = monotonic() - stage_2_started
+            optimization_facts["stage_2"]["operation_wall_time_seconds"] = (
+                final_operation_wall_time
+            )
+            local_bootstrap_facts["session_elapsed_seconds"] = (
+                final_operation_wall_time
+            )
+            local_bootstrap_facts["external_overrun_seconds"] = max(
+                0.0,
+                final_operation_wall_time
+                - float(local_bootstrap_facts.get(
+                    "configured_session_budget_seconds", 0.0
+                ) or 0.0),
             )
         return result
 
@@ -4451,5 +4666,18 @@ def _solve_student_assignment(
         result = replace(result, lock_costs=_build_lock_costs(data, result))
         optimization_facts["operation_resource_monitor"] = (
             operation_resource_monitor.stop()
+        )
+    if local_bootstrap_facts and local_bootstrap_facts.get("operator_session"):
+        final_operation_wall_time = monotonic() - stage_2_started
+        optimization_facts["stage_2"]["operation_wall_time_seconds"] = (
+            final_operation_wall_time
+        )
+        local_bootstrap_facts["session_elapsed_seconds"] = final_operation_wall_time
+        local_bootstrap_facts["external_overrun_seconds"] = max(
+            0.0,
+            final_operation_wall_time
+            - float(local_bootstrap_facts.get(
+                "configured_session_budget_seconds", 0.0
+            ) or 0.0),
         )
     return result

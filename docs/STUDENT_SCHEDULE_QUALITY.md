@@ -1149,6 +1149,37 @@ candidate.
 
 ### Objective Semantics v2 targeted-repair evidence gate
 
+### Continuous operator-session implementation boundary
+
+The mature-R2 continuation has now been generalized in the pure engine into
+`run_student_assignment_operator_session_diagnostic`. The session contract
+supports `r2`, `targeted_r4_s1`, `targeted_r8_s1`, `targeted_r4_s2`, and
+`targeted_r8_s2`. This is a reusable diagnostic boundary, not a production
+optimizer and not an adaptive-policy promotion.
+
+One session validates its supplied complete semantic incumbent, builds the
+production model and static probe scope once, and then runs bounded CP-SAT
+probe attempts against fresh model clones. After a validated strict
+improvement, only incumbent-dependent bounds, hints, target scope, and
+validation state change. Dynamic targeted sessions recompute their student
+scope from the current validated quality facts; fixed sessions reuse the
+caller-supplied scope. All candidates still require CP-SAT plus full-model
+validation before adoption.
+
+The session owns one monotonic wall-clock budget covering setup, validation,
+probe construction, CP-SAT, candidate extraction, repeated validation, and
+finalization. Native solver overrun is recorded separately. `UNKNOWN` remains
+unresolved and distinct from proven infeasibility or proven scope exhaustion;
+the last complete validated incumbent is retained. Session telemetry records
+target history, attempts, adopted improvements, CP-SAT time, validation time,
+total elapsed time, overrun, memory facts, and stop reason.
+
+The current implementation and medium-fixture regression coverage establish
+reusable multi-attempt behavior, dynamic retargeting, fixed-target isolation,
+and status-authority semantics. A target-scale repeated-family calibration
+and adaptive-versus-static promotion study remain future work and must use
+detached, fingerprinted input without mutating canonical checkpoints.
+
 The canonical operator contract and the current matched v2 targeted-repair
 study are maintained in
 [`STUDENT_ASSIGNMENT_SEARCH_STRATEGY.md`](STUDENT_ASSIGNMENT_SEARCH_STRATEGY.md).

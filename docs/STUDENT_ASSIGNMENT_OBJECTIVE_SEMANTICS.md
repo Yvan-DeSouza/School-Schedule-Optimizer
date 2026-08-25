@@ -274,6 +274,16 @@ not change objective definitions, counselor scores, hard constraints, or
 candidate-authority rules. Objective measurement remains solver-neutral and
 CP-SAT plus full-model validation remain authoritative.
 
+The reusable continuous operator-session runner is also a search-policy
+diagnostic. Its operator family, radius, target scope, attempt budget, and
+worker configuration change only where the unchanged full model is searched;
+they do not change the Objective Semantics v2 definitions or lexicographic
+importance ordering. A complete validated incumbent is carried between
+attempts, while `UNKNOWN` remains unresolved and proven infeasibility remains
+scope-specific. The session may use dynamic or fixed targeted student scopes,
+but neither scope policy nor the policy's session-request metadata is a
+counselor-facing quality definition.
+
 ## Non-goals
 
 This document does not define the detailed student-targeted search policy,

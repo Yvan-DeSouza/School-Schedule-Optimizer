@@ -525,7 +525,7 @@ composed timetables, and personal schedule endpoints remain deferred.
 
 **Implemented first release:**
 
-- A Django-free `scheduling_engine/student_assignment.py` solver and detached
+- A Django-free `scheduling_engine/student_assignment/` solver package and detached
   DTO input snapshot.
 - Immutable `StudentAssignmentRun`, `StudentAssignmentApproval`, and
   per-enrollment provenance rows; approval creates new `Enrollment` rows in
@@ -540,6 +540,10 @@ composed timetables, and personal schedule endpoints remain deferred.
 - The temporary explicit policy that prior prerequisite completion is assumed;
   the system does not validate transcripts, grades, credits, CSV files, or SIS
   data in this release.
+- An offline-only continuous operator-session diagnostic for repeated R2 and
+  targeted R4/R8 S1/S2 neighborhood probes. It reuses one immutable engine
+  model/context boundary, requires CP-SAT plus full-model validation for every
+  adopted candidate, and is not enabled in ordinary scheduling or approval.
 
 The accepted scope and deliberate exclusions are recorded in
 `docs/decisions/student-assignment-first-release.md`.

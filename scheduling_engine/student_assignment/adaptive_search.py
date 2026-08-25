@@ -28,6 +28,10 @@ class AdaptiveOperatorSpec:
     targeted: bool
     student_count: int
     portfolio_role: str
+    session_time_limit_seconds: float = 60.0
+    session_max_attempts: int = 4
+    per_attempt_cp_sat_limit_seconds: float = 20.0
+    target_policy: str = "dynamic"
 
 
 DEFAULT_ADAPTIVE_OPERATOR_PORTFOLIO = (
@@ -106,6 +110,10 @@ class AdaptivePolicyDecision:
             "score": self.score,
             "reasons": list(self.reasons),
             "signal_values": dict(self.signal_values),
+            "session_request": build_operator_session_request(
+                self,
+                remaining_seconds=self.signal_values.get("remaining_seconds", 0),
+            ),
         }
 
 
@@ -311,6 +319,38 @@ def choose_adaptive_operator(
     )
 
 
+def build_operator_session_request(
+    decision,
+    *,
+    remaining_seconds,
+    worker_count=8,
+):
+    """Translate a policy decision into a future session execution request.
+
+    This is an interface description for offline calibration. It does not run
+    an operator, create a model, or authorize a candidate. The session runner
+    remains responsible for CP-SAT, full validation, and strict adoption.
+    """
+
+    spec = decision.operator if isinstance(decision, AdaptivePolicyDecision) else decision
+    return {
+        "operator_family": spec.name,
+        "allocated_time_limit_seconds": min(
+            max(0.0, float(remaining_seconds)),
+            float(spec.session_time_limit_seconds),
+        ),
+        "max_attempts": int(spec.session_max_attempts),
+        "per_attempt_time_limit_seconds": float(spec.per_attempt_cp_sat_limit_seconds),
+        "worker_count": int(worker_count),
+        "target_policy": spec.target_policy,
+        "selected_student_ids": tuple(
+            decision.selected_student_ids
+            if isinstance(decision, AdaptivePolicyDecision)
+            else ()
+        ),
+    }
+
+
 def replay_adaptive_policy(records, *, portfolio=DEFAULT_ADAPTIVE_OPERATOR_PORTFOLIO):
     """Replay policy decisions from structured records without solving."""
 
@@ -392,6 +432,7 @@ __all__ = [
     "DEFAULT_ADAPTIVE_OPERATOR_PORTFOLIO",
     "build_adaptive_search_state",
     "choose_adaptive_operator",
+    "build_operator_session_request",
     "replay_adaptive_policy",
     "simulate_adaptive_policy",
 ]
