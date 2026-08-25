@@ -10,6 +10,8 @@ Objective Semantics v2 reports use `student_schedule_quality_v4` and add
 canonical counselor scores plus input-derived normalized contributions. The
 raw metrics remain present in both versions. The mathematical contract is
 documented in [`STUDENT_ASSIGNMENT_OBJECTIVE_SEMANTICS.md`](STUDENT_ASSIGNMENT_OBJECTIVE_SEMANTICS.md).
+Targeted diagnostic repair guidance and its authority boundaries are documented
+in [`STUDENT_ASSIGNMENT_SEARCH_STRATEGY.md`](STUDENT_ASSIGNMENT_SEARCH_STRATEGY.md).
 
 ## Objective Semantics v2
 
@@ -1108,15 +1110,18 @@ canonical `0`--`10` importance representation. The v2 baseline must be
 measured separately from the v1 baseline and must not overwrite the v1
 checkpoint or historical trajectories.
 
-The next research order is explicitly deferred and is not implemented by the
-v2 semantics increment:
+The next research order is explicitly staged. Objective Semantics v2 and the
+first student-targeted diagnostic operators are implemented, but no adaptive
+production policy has been selected:
 
 1. Establish and document the post-v2 target-scale baseline.
 2. Revalidate only the retained v1 search operators that are relevant under
    v2, without assuming their v1 ranking carries over.
-3. Investigate student-targeted repair using counselor importance and current
-   per-student opportunity as search guidance only; CP-SAT and full validation
-   remain authoritative.
+3. Characterize the implemented targeted S1/S2 diagnostics across repeated
+   medium and target-scale trials, including time-to-first-improvement,
+   changed students, validation cost, and repeatability. Initial target-scale
+   capability results are recorded in the search-strategy document and are not
+   a promotion decision.
 4. Investigate adaptive allocation across targeted repair, R2, R4/S1, R4/S2,
    R8/S1, R8/S2, and unrestricted variants where evidence justifies them.
 5. Investigate grade-bounded unrestricted escape only after targeted/adaptive

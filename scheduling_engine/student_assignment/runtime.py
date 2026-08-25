@@ -378,7 +378,11 @@ class ProcessMemoryMonitor(ProcessResourceMonitor):
     """Backward-compatible name for the richer resource monitor."""
 
 
-def semantic_student_assignment_input_fingerprint(data):
+def semantic_student_assignment_input_fingerprint(
+    data,
+    *,
+    include_extended_facts=True,
+):
     """Return a diagnostic fingerprint that omits opaque database identities.
 
     The detached student-assignment DTO does not carry catalog codes or
@@ -602,5 +606,30 @@ def semantic_student_assignment_input_fingerprint(data):
             data.schedule_preservation_level,
         ),
     }
+    if include_extended_facts:
+        # Sequence edges are immutable run facts, not merely a global
+        # importance setting.  Include the directed relation itself so an
+        # edit to counselor sequencing configuration cannot pass approval
+        # drift checks under an unchanged configuration label.
+        payload.update({
+            "hard_prerequisites": sorted(
+                (
+                    course_rank.get(item.course_id),
+                    course_rank.get(item.prerequisite_id),
+                )
+                for item in data.hard_prerequisites
+            ),
+            "soft_sequence_preferences": sorted(
+                (
+                    course_rank.get(item.earlier_course_id),
+                    course_rank.get(item.later_course_id),
+                )
+                for item in data.soft_sequence_preferences
+            ),
+            "objective_semantics": (
+                data.objective_semantics_version,
+                tuple(sorted(data.objective_importance_scores.items())),
+            ),
+        })
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
     return sha256(encoded.encode("utf-8")).hexdigest()

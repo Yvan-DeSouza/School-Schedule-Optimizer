@@ -85,6 +85,7 @@ class SubstantiveSoftTierProbeResult:
     quality_comparison: dict = field(default_factory=dict)
     changed_student_count: int = 0
     max_changed_students: int | None = None
+    selected_student_ids: tuple = ()
 
 
 def _model_family_variable_counts(model):
@@ -161,6 +162,7 @@ def probe_substantive_soft_tier(
     minimize_component: str | None = None,
     strict_improvement: bool = False,
     max_changed_students: int | None = None,
+    selected_student_ids=(),
 ) -> SubstantiveSoftTierProbeResult:
     """Ask whether the unchanged full model can beat one soft tier.
 
@@ -177,6 +179,11 @@ def probe_substantive_soft_tier(
     """
 
     operation_started = monotonic()
+    selected_student_ids = tuple(sorted(set(selected_student_ids), key=repr))
+    if selected_student_ids and neighborhood_radius is None:
+        raise ValueError(
+            "selected_student_ids requires a source-decision neighborhood radius"
+        )
     seed_solver = context.validated_seed_solver
     seed_validated = seed_solver is not None
     seed_outcome = outcome_name(context.seed_outcome)
@@ -225,6 +232,7 @@ def probe_substantive_soft_tier(
                 "operation_total_seconds": monotonic() - operation_started,
             },
             max_changed_students=max_changed_students,
+            selected_student_ids=selected_student_ids,
         )
 
     target_entries = [
@@ -302,6 +310,17 @@ def probe_substantive_soft_tier(
                     changed_literals_by_student.setdefault(owner, []).append(
                         selected_clone_variable.Not()
                     )
+                    if selected_student_ids and owner not in selected_student_ids:
+                        # A targeted repair freezes every source decision owned
+                        # by a student outside the selected neighborhood.  The
+                        # candidate still has to satisfy the unchanged full
+                        # model and all objective bounds; this is a diagnostic
+                        # restriction, never a production scheduling rule.
+                        probe_model.Add(selected_clone_variable == 1)
+                elif selected_student_ids:
+                    # Untagged required groups are fixed context.  They cannot
+                    # be moved by a student-targeted repair.
+                    probe_model.Add(selected_clone_variable == 1)
             probe_model.Add(sum(changed_group_terms or [0]) <= neighborhood_radius)
             if max_changed_students is not None:
                 changed_student_variables = []
@@ -540,4 +559,5 @@ def probe_substantive_soft_tier(
         quality_comparison=quality_comparison,
         changed_student_count=changed_student_count,
         max_changed_students=max_changed_students,
+        selected_student_ids=selected_student_ids,
     )

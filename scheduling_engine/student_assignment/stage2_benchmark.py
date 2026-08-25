@@ -219,7 +219,18 @@ def read_student_assignment_input_snapshot(path, *, expected_input_fingerprint=N
         raise ValueError("Student-assignment input snapshot does not contain the expected DTO")
     actual_fingerprint = semantic_student_assignment_input_fingerprint(data)
     if actual_fingerprint != stored_fingerprint:
-        raise ValueError("Student-assignment input snapshot fingerprint is invalid")
+        # Preserve readability of the committed historical v1 artifact.  Its
+        # original fingerprint predates extended prerequisite/sequence and v2
+        # semantics facts.  New snapshots always use the extended fingerprint;
+        # this fallback is read compatibility only and never authorizes a new
+        # run or suppresses current drift checks.
+        legacy_fingerprint = semantic_student_assignment_input_fingerprint(
+            data,
+            include_extended_facts=False,
+        )
+        if legacy_fingerprint != stored_fingerprint:
+            raise ValueError("Student-assignment input snapshot fingerprint is invalid")
+        actual_fingerprint = stored_fingerprint
     return {
         "input_semantic_fingerprint": actual_fingerprint,
         "data": data,
@@ -306,7 +317,13 @@ def _read_input_snapshot_payload(payload, *, expected_input_fingerprint=None):
         )
     actual_fingerprint = semantic_student_assignment_input_fingerprint(data)
     if actual_fingerprint != stored_fingerprint:
-        raise ValueError("Student-assignment input snapshot fingerprint is invalid")
+        legacy_fingerprint = semantic_student_assignment_input_fingerprint(
+            data,
+            include_extended_facts=False,
+        )
+        if legacy_fingerprint != stored_fingerprint:
+            raise ValueError("Student-assignment input snapshot fingerprint is invalid")
+        actual_fingerprint = stored_fingerprint
     return {
         "input_semantic_fingerprint": actual_fingerprint,
         "data": data,

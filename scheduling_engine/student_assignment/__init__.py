@@ -4,6 +4,26 @@ Callers continue to import ``solve_student_assignment`` from this package;
 the internal modules are deliberately not part of the solver's public API.
 """
 
-from .core import run_substantive_soft_tier_probe, solve_student_assignment
+from .core import (
+    run_student_assignment_targeted_repair_diagnostic,
+    run_student_assignment_targeted_s1_diagnostic,
+    run_student_assignment_targeted_s2_diagnostic,
+    run_substantive_soft_tier_probe,
+    solve_student_assignment,
+)
+from .search_guidance import (
+    StudentTargetPressure,
+    rank_students_by_quality_pressure,
+    reconcile_student_quality_pressure,
+)
 
-__all__ = ["run_substantive_soft_tier_probe", "solve_student_assignment"]
+__all__ = [
+    "run_substantive_soft_tier_probe",
+    "solve_student_assignment",
+    "run_student_assignment_targeted_repair_diagnostic",
+    "run_student_assignment_targeted_s1_diagnostic",
+    "run_student_assignment_targeted_s2_diagnostic",
+    "StudentTargetPressure",
+    "rank_students_by_quality_pressure",
+    "reconcile_student_quality_pressure",
+]

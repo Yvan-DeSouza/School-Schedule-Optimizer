@@ -9,6 +9,7 @@ from scheduling_engine.realistic_student_assignment_validation import (
 )
 from scheduling_engine.dto import (
     CourseDifficultyDTO,
+    CourseSequencePreferenceDTO,
     FixedEnrollmentDTO,
     StudentAssignmentInputDTO,
     StudentAssignmentRequestDTO,
@@ -16,6 +17,10 @@ from scheduling_engine.dto import (
     TimeSlotDTO,
 )
 from scheduling_engine.student_assignment import solve_student_assignment
+from scheduling_engine.student_assignment.search_guidance import (
+    rank_students_by_quality_pressure,
+    reconcile_student_quality_pressure,
+)
 from scheduling_engine.student_assignment.core import (
     run_student_assignment_variable_neighborhood_diagnostic,
 )
@@ -106,6 +111,50 @@ def test_v2_non_applicable_quality_component_is_zero_without_solver_payload():
     )
     assert report["objective_semantics"]["components"]["course_category_diversity"][
         "normalized_penalty"
+    ] == 0
+
+
+def test_v2_sequence_is_normalized_and_counselor_weighted_like_other_components():
+    data = _v2(
+        replace(
+            build_realistic_quality_tradeoff_fixture(),
+            soft_sequence_preferences=(
+                CourseSequencePreferenceDTO(earlier_course_id=1, later_course_id=2),
+            ),
+        ),
+        score=10,
+    )
+    result = solve_student_assignment(data)
+    semantics = result.optimization_facts["objective_semantics"]
+    sequence = semantics["normalization"]["course_sequence_preferences_penalty"]
+
+    assert result.status == "complete"
+    assert sequence["denominator"] > 0
+    assert sequence["importance_score"] == 10
+    assert 0 <= result.objective_components["normalized_components"][
+        "course_sequence_preferences_penalty"
+    ] <= sequence["normalized_scale"]
+    assert result.objective_components["weighted_normalized_contributions"][
+        "course_sequence_preferences_penalty"
+    ] == result.objective_components["normalized_components"][
+        "course_sequence_preferences_penalty"
+    ] * 10
+
+
+def test_v2_zero_sequence_importance_removes_only_sequence_soft_contribution():
+    data = _v2(
+        replace(
+            build_realistic_quality_tradeoff_fixture(),
+            soft_sequence_preferences=(
+                CourseSequencePreferenceDTO(earlier_course_id=1, later_course_id=2),
+            ),
+        ),
+        score=0,
+    )
+    result = solve_student_assignment(data)
+    assert result.status == "complete"
+    assert result.objective_components["weighted_normalized_contributions"][
+        "course_sequence_preferences_penalty"
     ] == 0
 
 
@@ -369,6 +418,85 @@ def test_v2_label_preset_and_explicit_score_have_identical_semantics():
     )
     assert label_result.objective_components["normalized_components"] == (
         explicit_result.objective_components["normalized_components"]
+    )
+
+
+def test_student_pressure_ranking_uses_v2_weighted_local_facts_without_section_attribution():
+    data = _v2(build_realistic_quality_tradeoff_fixture(), score=6)
+    result = solve_student_assignment(data)
+    report = evaluate_student_assignment_quality(
+        data,
+        assignments=result.assignments,
+        commitment_assignments=result.commitment_assignments,
+        solver_objective_components=result.objective_components,
+    )
+
+    ranked = rank_students_by_quality_pressure(data, report)
+
+    assert ranked
+    assert all(item.rank == index for index, item in enumerate(ranked, start=1))
+    assert all(item.weighted_current_penalty >= 0 for item in ranked)
+    assert all(item.opportunity_signal >= 0 for item in ranked)
+    assert any(item.weighted_current_penalty > 0 for item in ranked)
+    reconciliation = reconcile_student_quality_pressure(report, ranked)
+    assert reconciliation["excluded_components"] == (
+        "section_utilization_balance",
+    )
+    assert reconciliation["aggregate_student_local_weighted_total"] >= (
+        reconciliation["student_local_weighted_total"]
+    )
+    # Section utilization is global and must not be fabricated as a student
+    # pressure component.
+    assert all(
+        "section_utilization_balance" not in dict(item.component_penalties)
+        for item in ranked
+    )
+
+
+def test_student_pressure_ranking_responds_to_counselor_importance_profile():
+    base = _v2(build_realistic_quality_tradeoff_fixture(), score=0)
+    result = solve_student_assignment(replace(
+        base,
+        objective_importance_scores={key: 5 for key in OBJECTIVE_KEYS},
+    ))
+    report = evaluate_student_assignment_quality(
+        replace(base, objective_importance_scores={key: 5 for key in OBJECTIVE_KEYS}),
+        assignments=result.assignments,
+        commitment_assignments=result.commitment_assignments,
+        solver_objective_components=result.objective_components,
+    )
+    low = rank_students_by_quality_pressure(
+        replace(base, objective_importance_scores={key: 0 for key in OBJECTIVE_KEYS}),
+        report,
+    )
+    high = rank_students_by_quality_pressure(
+        replace(base, objective_importance_scores={key: 10 for key in OBJECTIVE_KEYS}),
+        report,
+    )
+    assert all(item.weighted_current_penalty == 0 for item in low)
+    assert any(item.weighted_current_penalty > 0 for item in high)
+
+
+def test_sequence_edges_are_part_of_semantic_student_input_fingerprint():
+    base = build_realistic_quality_tradeoff_fixture()
+    forward = replace(
+        base,
+        soft_sequence_preferences=(
+            CourseSequencePreferenceDTO(earlier_course_id=1, later_course_id=2),
+        ),
+    )
+    reverse = replace(
+        base,
+        soft_sequence_preferences=(
+            CourseSequencePreferenceDTO(earlier_course_id=2, later_course_id=1),
+        ),
+    )
+    from scheduling_engine.student_assignment.runtime import (
+        semantic_student_assignment_input_fingerprint,
+    )
+
+    assert semantic_student_assignment_input_fingerprint(forward) != (
+        semantic_student_assignment_input_fingerprint(reverse)
     )
 
 

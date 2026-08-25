@@ -1127,6 +1127,95 @@ def run_student_assignment_variable_neighborhood_diagnostic(
     )
 
 
+def run_student_assignment_targeted_repair_diagnostic(
+    data: StudentAssignmentInputDTO,
+    *,
+    selected_student_ids,
+    neighborhood_radius=2,
+    time_limit_seconds=90.0,
+    total_time_limit_seconds=1800.0,
+    worker_count=8,
+    hard_feasibility_time_limit_seconds=None,
+    hard_feasibility_validation_time_limit_seconds=None,
+    hard_feasibility_worker_count=None,
+    hard_feasibility_validation_worker_count=None,
+    alternate_source_decisions=(),
+    alternate_source_variable_values=None,
+    collect_incumbent_timeline=True,
+    timeline_max_events=128,
+    capture_final_source_decisions=False,
+    collect_resource_telemetry=False,
+):
+    """Probe a strict v2 improvement while freezing unselected students.
+
+    This is diagnostic-only targeted repair guidance.  ``selected_student_ids``
+    restricts which source-decision owners may move inside the existing full
+    model; CP-SAT still validates every hard rule and the ordinary full-model
+    validator still gates adoption.  No adaptive policy is implied by this
+    entry point, and ordinary production Stage 2 does not call it.
+    """
+
+    selected_student_ids = tuple(sorted(set(selected_student_ids), key=repr))
+    if not selected_student_ids:
+        raise ValueError("selected_student_ids must contain at least one student")
+    return _solve_student_assignment(
+        data,
+        include_lock_costs=False,
+        include_candidate_ledger=False,
+        use_hard_feasibility_bootstrap=True,
+        collect_stage2_trace=True,
+        stage_2_local_bootstrap={
+            "threshold": None,
+            "time_limit_seconds": time_limit_seconds,
+            "worker_count": worker_count,
+            "target_importance_level": _soft_tier_importance_level(data),
+            "neighborhood_radius": neighborhood_radius,
+            "strict_improvement": True,
+            "selected_student_ids": selected_student_ids,
+        },
+        stage_2_total_time_limit_seconds=total_time_limit_seconds,
+        retain_incumbent_on_non_improvement=True,
+        local_only=True,
+        alternate_source_decisions=alternate_source_decisions,
+        alternate_source_variable_values=alternate_source_variable_values,
+        hard_feasibility_time_limit_seconds=hard_feasibility_time_limit_seconds,
+        hard_feasibility_validation_time_limit_seconds=(
+            hard_feasibility_validation_time_limit_seconds
+        ),
+        hard_feasibility_worker_count=hard_feasibility_worker_count,
+        hard_feasibility_validation_worker_count=hard_feasibility_validation_worker_count,
+        collect_incumbent_timeline=collect_incumbent_timeline,
+        timeline_max_events=timeline_max_events,
+        capture_final_source_decisions=capture_final_source_decisions,
+        collect_resource_telemetry=collect_resource_telemetry,
+    )
+
+
+def run_student_assignment_targeted_s1_diagnostic(data, *, selected_student_id, **kwargs):
+    """Convenience wrapper for a one-student targeted repair probe."""
+
+    return run_student_assignment_targeted_repair_diagnostic(
+        data,
+        selected_student_ids=(selected_student_id,),
+        **kwargs,
+    )
+
+
+def run_student_assignment_targeted_s2_diagnostic(
+    data, *, selected_student_ids, **kwargs
+):
+    """Convenience wrapper for a two-student targeted repair probe."""
+
+    selected_student_ids = tuple(sorted(set(selected_student_ids), key=repr))
+    if len(selected_student_ids) != 2:
+        raise ValueError("selected_student_ids must contain exactly two students")
+    return run_student_assignment_targeted_repair_diagnostic(
+        data,
+        selected_student_ids=selected_student_ids,
+        **kwargs,
+    )
+
+
 def _solve_student_assignment(
     data,
     *,
@@ -1140,7 +1229,11 @@ def _solve_student_assignment(
     mature_checkpoint_only=False,
     local_only=False,
     stage_2_total_time_limit_seconds=None,
-    retain_incumbent_on_non_improvement=False,
+    # A complete CP-SAT Stage 1 seed is an approved-quality incumbent.  If a
+    # later optimization pass finds a weaker bounded candidate before timing
+    # out, retain the complete seed rather than exposing the degraded partial
+    # result.  This is the documented two-stage fallback boundary.
+    retain_incumbent_on_non_improvement=True,
     stage_2_local_bootstrap=None,
     collect_incumbent_timeline=False,
     timeline_max_events=128,
@@ -2207,7 +2300,11 @@ def _solve_student_assignment(
     category_denominator = 0
     v2_normalized_variables = {}
     v2_component_scales = {}
-    # Reward the requested soft sequence only if both related courses appear.
+    # Reward the requested soft sequence only when both related courses are
+    # applicable to the student.  Applicability is broader than the preferred
+    # orientation: if the only legal arrangement is later-course Semester 1
+    # and earlier-course Semester 2, the opportunity must still be recorded as
+    # unsatisfied rather than disappearing from the objective.
     sequence_satisfied = []
     for preference in data.soft_sequence_preferences:
         for student_id in student_ids:
@@ -2215,9 +2312,21 @@ def _solve_student_assignment(
             later_s2 = list(by_student_course_semester[student_id, preference.later_course_id, 2])
             early_fixed = 1 if 1 in fixed_semesters.get((student_id, preference.earlier_course_id), ()) else 0
             later_fixed = 1 if 2 in fixed_semesters.get((student_id, preference.later_course_id), ()) else 0
+            early_applicable = bool(fixed_semesters.get(
+                (student_id, preference.earlier_course_id), ()
+            )) or any(
+                by_student_course_semester[student_id, preference.earlier_course_id, semester]
+                for semester in (1, 2)
+            )
+            later_applicable = bool(fixed_semesters.get(
+                (student_id, preference.later_course_id), ()
+            )) or any(
+                by_student_course_semester[student_id, preference.later_course_id, semester]
+                for semester in (1, 2)
+            )
             early_expression = sum(early_s1) + early_fixed
             later_expression = sum(later_s2) + later_fixed
-            if not early_s1 and not later_s2 and not (early_fixed and later_fixed):
+            if not early_applicable or not later_applicable:
                 continue
             satisfied = model.NewBoolVar(
                 f"sequence_{student_id}_{preference.earlier_course_id}_{preference.later_course_id}"
@@ -3560,6 +3669,9 @@ def _solve_student_assignment(
                     "changed_source_decision_count": iterations[-1]["changed_source_decision_count"] if iterations else 0,
                     "changed_student_count": iterations[-1].get("changed_student_count") if iterations else 0,
                     "max_changed_students": local_config.get("max_changed_students"),
+                    "selected_student_ids": tuple(
+                        local_config.get("selected_student_ids", ())
+                    ),
                     "component_values": dict(last_result.candidate_component_values) if last_result is not None else {},
                     "component_deltas": dict(last_result.component_deltas) if last_result is not None else {},
                     "candidate_found": any_candidate_validated,
@@ -3617,6 +3729,9 @@ def _solve_student_assignment(
                     "changed_source_decision_count": local_result.changed_source_decision_count,
                     "changed_student_count": local_result.changed_student_count,
                     "max_changed_students": local_config.get("max_changed_students"),
+                    "selected_student_ids": tuple(
+                        local_config.get("selected_student_ids", ())
+                    ),
                     "component_values": dict(local_result.candidate_component_values),
                     "component_deltas": dict(local_result.component_deltas),
                     "affected_student_ids": tuple(local_result.affected_student_ids),
@@ -4207,6 +4322,10 @@ def _solve_student_assignment(
                             * v2_component_scales[name]["importance_score"]
                         )
                         for name, variable in v2_normalized_variables.items()
+                    },
+                    "normalization": {
+                        name: dict(scale)
+                        for name, scale in v2_component_scales.items()
                     },
                 }
                 if objective_semantics_v2

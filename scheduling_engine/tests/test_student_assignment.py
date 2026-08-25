@@ -4,6 +4,7 @@ import json
 import subprocess
 import sys
 import time
+from dataclasses import replace
 from unittest.mock import patch
 
 import pytest
@@ -30,6 +31,8 @@ from scheduling_engine.dto import (
     TimeSlotDTO,
 )
 from scheduling_engine.student_assignment import (
+    run_student_assignment_targeted_s1_diagnostic,
+    run_student_assignment_targeted_s2_diagnostic,
     run_substantive_soft_tier_probe,
     solve_student_assignment,
 )
@@ -243,6 +246,35 @@ def test_substantive_probe_rejects_student_bound_without_source_neighborhood():
             time_limit_seconds=5.0,
             worker_count=1,
             max_changed_students=1,
+        )
+
+
+def test_targeted_s1_probe_records_selected_students_and_remains_diagnostic_only():
+    result = run_student_assignment_targeted_s1_diagnostic(
+        _substantive_probe_input(),
+        selected_student_id=1,
+        neighborhood_radius=0,
+        time_limit_seconds=5.0,
+        total_time_limit_seconds=5.0,
+        worker_count=1,
+    )
+
+    facts = result.optimization_facts["stage_2_local_bootstrap"]
+    assert facts["selected_student_ids"] == (1,)
+    assert facts["neighborhood_radius"] == 0
+    assert result.status == "complete"
+    assert len(result.assignments) == 2
+
+
+def test_targeted_s2_requires_exactly_two_students():
+    with pytest.raises(ValueError, match="exactly two"):
+        run_student_assignment_targeted_s2_diagnostic(
+            _substantive_probe_input(),
+            selected_student_ids=(1,),
+            neighborhood_radius=2,
+            time_limit_seconds=1.0,
+            total_time_limit_seconds=1.0,
+            worker_count=1,
         )
 
 
@@ -1334,6 +1366,37 @@ def test_soft_sequence_is_reported_when_both_courses_apply():
     assert result.status == "complete"
     assert result.sequence_outcomes == ({
         "student_id": 1, "earlier_course_id": 1, "later_course_id": 2, "satisfied": True,
+    },)
+
+
+def test_soft_sequence_records_an_unsatisfied_opportunity_for_only_reverse_legal_order():
+    result = solve_student_assignment(_input(
+        requests=(
+            _request(1, course_id=1, course_offering_id=11),
+            _request(2, course_id=2, course_offering_id=22),
+        ),
+        sections=(
+            _section(1, semester=2, timeslot_id=202),
+            _section(
+                2,
+                delivery_group_id=2,
+                member_course_offering_ids=(22,),
+                member_course_ids=(2,),
+                semester=1,
+                timeslot_id=101,
+            ),
+        ),
+        soft_sequence_preferences=(
+            CourseSequencePreferenceDTO(earlier_course_id=1, later_course_id=2),
+        ),
+    ))
+
+    assert result.status == "complete"
+    assert result.sequence_outcomes == ({
+        "student_id": 1,
+        "earlier_course_id": 1,
+        "later_course_id": 2,
+        "satisfied": False,
     },)
 
 
