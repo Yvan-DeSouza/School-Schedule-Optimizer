@@ -10,7 +10,13 @@ contract that frontend work can depend on.
 - Serializers remain the runtime source of request/response shape.
 - Every backend API view must declare a resource policy or action policy.
 - Endpoint tests should cover role access, important response fields, and stable
-diagnostic/error codes.
+  diagnostic/error codes.
+- Student-assignment run creation accepts an explicit objective-semantics
+  version. The v1 label-only shape remains the default for compatibility; v2
+  may carry five canonical integer importance scores from 0 through 10. The
+  serializer owns transport validation, while the service snapshots the
+  resolved version/settings and the pure engine owns objective mathematics.
+  These fields are additive JSON contract data and require no model migration.
 
 ## Named teacher assignment
 

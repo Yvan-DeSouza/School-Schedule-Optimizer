@@ -20,6 +20,12 @@ import json
 from django.db.models import Q
 
 from scheduling_engine.demand_analyzer import parse_academic_year_start
+from scheduling_engine.student_assignment.objective_semantics import (
+    OBJECTIVE_SEMANTICS_V1,
+    OBJECTIVE_SEMANTICS_V2,
+    OBJECTIVE_SEMANTICS_VERSIONS,
+    resolve_importance_scores,
+)
 from scheduling_engine.dto import (
     AcademicYearDTO, CounselorConstraintPreferenceDTO, CourseConflictDTO, CourseDTO,
     CoursePrerequisiteDTO, CourseQualificationRequirementDTO, CourseRequestDTO,
@@ -972,7 +978,8 @@ def load_student_assignment_input(
     *, academic_year_id, staffing_mode, provisional_teacher_assignment_run=None,
     soft_constraint_importance, scope=None, priority_request_ids=(),
     priority_request_limit=100, schedule_preservation_level="none",
-    selected_lock_ids=None,
+    selected_lock_ids=None, objective_semantics_version=OBJECTIVE_SEMANTICS_V1,
+    objective_importance_scores=None,
 ):
     """Load a fully detached student-assignment snapshot.
 
@@ -998,6 +1005,22 @@ def load_student_assignment_input(
     }
     if set(soft_constraint_importance) != required_importance_keys:
         raise ValueError("All five student-assignment soft_constraint_importance values are required.")
+    if objective_semantics_version not in OBJECTIVE_SEMANTICS_VERSIONS:
+        raise ValueError(
+            f"Unsupported student-assignment objective semantics version: {objective_semantics_version!r}."
+        )
+    if objective_semantics_version == OBJECTIVE_SEMANTICS_V1 and objective_importance_scores:
+        raise ValueError("Explicit 0-10 scores require objective_semantics_version='v2'.")
+    resolved_importance_scores = resolve_importance_scores(
+        labels={
+            "section_utilization_balance": soft_constraint_importance["section_utilization_balance"],
+            "student_semester_balance": soft_constraint_importance["student_semester_balance"],
+            "course_sequence_preferences": soft_constraint_importance["course_sequence_preferences"],
+            "difficulty_balance": soft_constraint_importance["difficulty_balance"],
+            "course_category_diversity": soft_constraint_importance["course_category_diversity"],
+        },
+        scores=(objective_importance_scores if objective_semantics_version == OBJECTIVE_SEMANTICS_V2 else None),
+    )
     sections = list(active_sections_for_year(academic_year_id).select_related(
         "course", "delivery_group__capacity_profile", "teacher",
         "staffing_approval_offering__approval__staffing_run",
@@ -1534,6 +1557,10 @@ def load_student_assignment_input(
                 request_type=COURSE_REQUEST_TYPE_ALTERNATE,
             ).values_list("student_id", flat=True)
         ))),
+        objective_semantics_version=objective_semantics_version,
+        objective_importance_scores=(
+            resolved_importance_scores if objective_semantics_version == OBJECTIVE_SEMANTICS_V2 else {}
+        ),
     ), staffing_context
 
 

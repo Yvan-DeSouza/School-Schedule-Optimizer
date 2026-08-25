@@ -13,6 +13,9 @@ from scheduling_engine.diagnostics import (
     STUDENT_ASSIGNMENT_UNRESOLVED_REQUIRED_REQUEST,
 )
 from scheduling_engine.student_assignment import solve_student_assignment
+from scheduling_engine.student_assignment.objective_semantics import (
+    OBJECTIVE_SEMANTICS_V1,
+)
 
 from backend.apps.common.exceptions import DomainConflictError, DomainValidationError
 from backend.apps.courses.constants import ENROLLMENT_LIFECYCLE_ACTIVE, ENROLLMENT_LIFECYCLE_HISTORICAL
@@ -224,6 +227,15 @@ def _importance_from_snapshot(snapshot):
     }
 
 
+def _objective_semantics_from_snapshot(snapshot):
+    """Reload versioned objective settings exactly as snapshotted."""
+
+    return (
+        snapshot.get("objective_semantics_version", OBJECTIVE_SEMANTICS_V1),
+        dict(snapshot.get("objective_importance_scores", {})),
+    )
+
+
 def _selected_lock_ids_from_snapshot(snapshot):
     """Return the exact lock selection used by the immutable candidate."""
 
@@ -250,7 +262,8 @@ def create_student_assignment_run(
     scope_student_ids=(), scope_course_ids=(), scope_section_ids=(),
     priority_request_ids=(), priority_request_limit=STUDENT_ASSIGNMENT_DEFAULT_MAX_PRIORITY_REQUESTS,
     schedule_preservation_level=STUDENT_ASSIGNMENT_SCHEDULE_PRESERVATION_NONE,
-    selected_lock_ids=None,
+    selected_lock_ids=None, objective_semantics_version=OBJECTIVE_SEMANTICS_V1,
+    objective_importance_scores=None,
 ):
     """Solve once against a detached target-year snapshot without writes."""
 
@@ -273,6 +286,8 @@ def create_student_assignment_run(
         priority_request_limit=priority_request_limit,
         schedule_preservation_level=schedule_preservation_level,
         selected_lock_ids=selected_lock_ids,
+        objective_semantics_version=objective_semantics_version,
+        objective_importance_scores=objective_importance_scores,
     )
     result = solve_student_assignment(data)
     status = {
@@ -297,6 +312,7 @@ def create_student_assignment_run(
         result=asdict(result),
         solver_metadata={
             "engine": "ortools-cp-sat",
+            "objective_semantics_version": data.objective_semantics_version,
             "time_limit_seconds": data.time_limit_seconds,
             "rooms_included": False,
             "teacher_assignments_changed": False,
@@ -318,6 +334,9 @@ def _current_input_for_run(run):
     """Reload once and reject data/staffing drift; never re-solve on approval."""
 
     snapshot = run.input_snapshot
+    objective_semantics_version, objective_importance_scores = (
+        _objective_semantics_from_snapshot(snapshot)
+    )
     selected_lock_ids = _selected_lock_ids_from_snapshot(snapshot)
     try:
         data, staffing_context = load_student_assignment_input(
@@ -333,6 +352,8 @@ def _current_input_for_run(run):
             ),
             schedule_preservation_level=snapshot.get("schedule_preservation_level", "none"),
             selected_lock_ids=selected_lock_ids,
+            objective_semantics_version=objective_semantics_version,
+            objective_importance_scores=objective_importance_scores,
         )
     except ValueError as error:
         # A selected lock being released is a workflow conflict, not an
@@ -858,6 +879,9 @@ def preview_student_assignment_unlock(run, *, lock_ids):
             "detail": "Every what-if lock must be active in the run's academic year.",
         })
     snapshot = run.input_snapshot
+    objective_semantics_version, objective_importance_scores = (
+        _objective_semantics_from_snapshot(snapshot)
+    )
     selected_ids = set(_selected_lock_ids_from_snapshot(snapshot))
     data, _staffing_context = _current_input_for_run(run)
     remaining_ids = tuple(sorted(selected_ids - set(lock_ids)))
@@ -871,6 +895,8 @@ def preview_student_assignment_unlock(run, *, lock_ids):
         priority_request_limit=snapshot.get("priority_request_limit", STUDENT_ASSIGNMENT_DEFAULT_MAX_PRIORITY_REQUESTS),
         schedule_preservation_level=snapshot.get("schedule_preservation_level", STUDENT_ASSIGNMENT_SCHEDULE_PRESERVATION_NONE),
         selected_lock_ids=remaining_ids,
+        objective_semantics_version=objective_semantics_version,
+        objective_importance_scores=objective_importance_scores,
     )
     result = solve_student_assignment(unlocked_data)
     before = list(run.result.get("assignments", ()))

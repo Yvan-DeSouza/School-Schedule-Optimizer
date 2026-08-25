@@ -8,7 +8,7 @@ the production entry point, objective definitions, or persisted workflow.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, fields, is_dataclass, replace
+from dataclasses import MISSING, dataclass, fields, is_dataclass, replace
 from datetime import datetime, timezone
 import gzip
 import hashlib
@@ -144,15 +144,34 @@ def _decode_snapshot_value(value):
         encoded_fields = value.get("fields")
         if not isinstance(encoded_fields, dict):
             raise ValueError("DTO snapshot fields must be an object")
-        allowed_fields = {field.name for field in fields(dto_type)}
-        if set(encoded_fields) != allowed_fields:
+        dto_fields = {field.name: field for field in fields(dto_type)}
+        unknown_fields = set(encoded_fields) - set(dto_fields)
+        if unknown_fields:
             raise ValueError(
-                f"DTO snapshot fields do not match {dto_type.__name__}"
+                f"DTO snapshot contains unknown {dto_type.__name__} fields: "
+                f"{sorted(unknown_fields)!r}"
             )
-        return dto_type(**{
+        decoded_fields = {
             name: _decode_snapshot_value(item)
             for name, item in encoded_fields.items()
-        })
+        }
+        # Durable v1 artifacts predate additive DTO metadata such as the
+        # objective-semantics version and canonical score mapping.  Rehydrate
+        # omitted fields from their dataclass defaults so historical benchmark
+        # fingerprints and source decisions remain readable. Required fields
+        # still fail closed rather than being invented.
+        for name, field in dto_fields.items():
+            if name in decoded_fields:
+                continue
+            if field.default is not MISSING:
+                decoded_fields[name] = field.default
+            elif field.default_factory is not MISSING:
+                decoded_fields[name] = field.default_factory()
+            else:
+                raise ValueError(
+                    f"DTO snapshot is missing required {dto_type.__name__} field: {name}"
+                )
+        return dto_type(**decoded_fields)
     raise ValueError(f"Unsupported Stage 1 snapshot value type: {value_type!r}")
 
 

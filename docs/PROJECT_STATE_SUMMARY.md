@@ -486,6 +486,12 @@ Where the workflow stops today:
   fake normal instructional section; placement includes a primary online
   co-request feasibility witness so multiple online courses for one student
   receive distinct supervision blocks when a valid placement exists;
+- student-assignment objective semantics are versioned in the immutable input
+  snapshot. Historical v1 label tiers remain compatible; explicit v2 runs use
+  engine-owned input-derived normalization and one canonical counselor score
+  from 0 through 10, while retaining raw objective facts for review and
+  measurement. This does not change hard feasibility or approval semantics;
+  the v2 target-scale baseline remains a separate validation task.
 - section cancellation with active enrollments fails closed with the affected
   student IDs until a reviewed rerun resolves those enrollments; historical
   enrollments then remain audit evidence while reconciliation may retire the

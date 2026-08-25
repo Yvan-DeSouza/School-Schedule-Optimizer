@@ -122,6 +122,30 @@ from .runtime import (
     ProcessResourceMonitor,
     semantic_student_assignment_input_fingerprint,
 )
+from .objective_semantics import (
+    CANONICAL_IMPORTANCE_MAX,
+    IMPORTANCE_LABEL_TO_SCORE,
+    NORMALIZED_OBJECTIVE_SCALE,
+    OBJECTIVE_SEMANTICS_V1,
+    OBJECTIVE_SEMANTICS_V2,
+    resolve_importance_scores,
+)
+
+
+def _soft_tier_importance_level(data):
+    """Return the metadata level used by diagnostic soft-tier probes.
+
+    V1 has one soft tier per historical label level.  V2 deliberately emits
+    one normalized aggregate tier, whose metadata level is the canonical
+    maximum score.  This keeps diagnostic wrappers pointed at the same
+    objective without changing production optimization semantics.
+    """
+
+    return (
+        CANONICAL_IMPORTANCE_MAX
+        if data.objective_semantics_version == OBJECTIVE_SEMANTICS_V2
+        else IMPORTANCE_LEVELS["important"]
+    )
 
 
 def _candidate_sort_key(candidate):
@@ -763,7 +787,7 @@ def run_substantive_soft_tier_probe(
     threshold,
     time_limit_seconds=1800.0,
     worker_count=8,
-    target_importance_level=IMPORTANCE_LEVELS["important"],
+    target_importance_level=None,
     neighborhood_radius=None,
     component_bounds=None,
     minimize_component=None,
@@ -784,6 +808,8 @@ def run_substantive_soft_tier_probe(
     is intended for focused tests and offline target-scale experiments only.
     """
 
+    if target_importance_level is None:
+        target_importance_level = _soft_tier_importance_level(data)
     return _solve_student_assignment(
         data,
         include_lock_costs=False,
@@ -893,7 +919,7 @@ def run_student_assignment_local_bootstrap_diagnostic(
             "threshold": None,
             "time_limit_seconds": time_limit_seconds,
             "worker_count": worker_count,
-            "target_importance_level": IMPORTANCE_LEVELS["important"],
+            "target_importance_level": _soft_tier_importance_level(data),
             "neighborhood_radius": neighborhood_radius,
             "max_changed_students": max_changed_students,
             "component_bounds": None,
@@ -957,7 +983,7 @@ def run_student_assignment_adaptive_local_bootstrap_diagnostic(
             "max_iterations": max_iterations,
             "per_probe_time_limit_seconds": per_probe_time_limit_seconds,
             "worker_count": worker_count,
-            "target_importance_level": IMPORTANCE_LEVELS["important"],
+            "target_importance_level": _soft_tier_importance_level(data),
             "max_changed_students": max_changed_students,
         },
         stage_2_total_time_limit_seconds=total_time_limit_seconds,
@@ -1016,7 +1042,7 @@ def run_student_assignment_mature_local_search_diagnostic(
             "max_iterations": max_iterations,
             "per_probe_time_limit_seconds": per_probe_time_limit_seconds,
             "worker_count": worker_count,
-            "target_importance_level": IMPORTANCE_LEVELS["important"],
+            "target_importance_level": _soft_tier_importance_level(data),
         },
         stage_2_total_time_limit_seconds=total_time_limit_seconds,
         retain_incumbent_on_non_improvement=True,
@@ -1081,7 +1107,7 @@ def run_student_assignment_variable_neighborhood_diagnostic(
             "max_attempts_by_radius": dict(max_attempts_by_radius or {}),
             "per_probe_time_limit_seconds": per_probe_time_limit_seconds,
             "worker_count": worker_count,
-            "target_importance_level": IMPORTANCE_LEVELS["important"],
+            "target_importance_level": _soft_tier_importance_level(data),
             "max_changed_students": max_changed_students,
         },
         stage_2_total_time_limit_seconds=total_time_limit_seconds,
@@ -1151,6 +1177,29 @@ def _solve_student_assignment(
             ),
         )
     offering_sections = _validate_input(data)
+    if data.objective_semantics_version not in {
+        OBJECTIVE_SEMANTICS_V1,
+        OBJECTIVE_SEMANTICS_V2,
+    }:
+        raise ValueError(
+            f"Unsupported student-assignment objective semantics version: "
+            f"{data.objective_semantics_version!r}."
+        )
+    objective_semantics_v2 = data.objective_semantics_version == OBJECTIVE_SEMANTICS_V2
+    if not objective_semantics_v2 and data.objective_importance_scores:
+        raise ValueError(
+            "Explicit 0-10 scores require objective_semantics_version='v2'."
+        )
+    objective_importance_scores = resolve_importance_scores(
+        labels={
+            "section_utilization_balance": data.section_utilization_balance_importance,
+            "student_semester_balance": data.student_semester_balance_importance,
+            "course_sequence_preferences": data.course_sequence_preferences_importance,
+            "difficulty_balance": data.difficulty_balance_importance,
+            "course_category_diversity": data.course_category_diversity_importance,
+        },
+        scores=data.objective_importance_scores if objective_semantics_v2 else None,
+    )
     input_semantic_fingerprint = semantic_student_assignment_input_fingerprint(data)
     model = cp_model.CpModel()
     model_build_started = monotonic()
@@ -2149,6 +2198,15 @@ def _solve_student_assignment(
     )
 
     soft_objectives = defaultdict(list)
+    # v2 records one input-derived denominator per raw objective.  The v1
+    # branch below remains byte-for-byte in mathematical behavior; these
+    # values are consumed only when an input explicitly selects v2.
+    utilization_denominator = 0
+    semester_denominator = 0
+    difficulty_denominator = 0
+    category_denominator = 0
+    v2_normalized_variables = {}
+    v2_component_scales = {}
     # Reward the requested soft sequence only if both related courses appear.
     sequence_satisfied = []
     for preference in data.soft_sequence_preferences:
@@ -2182,6 +2240,7 @@ def _solve_student_assignment(
         group_sections = sorted(group_sections, key=lambda item: item.section_id)
         for index, left in enumerate(group_sections):
             for right in group_sections[index + 1:]:
+                utilization_denominator += max(left.capacity_max, right.capacity_max)
                 left_count = len(fixed_by_section[left.section_id]) + sum(by_section[left.section_id])
                 right_count = len(fixed_by_section[right.section_id]) + sum(by_section[right.section_id])
                 difference = model.NewIntVar(
@@ -2265,6 +2324,25 @@ def _solve_student_assignment(
                 semester_1 += 4 * variable
             else:
                 semester_2 += 4 * variable
+        semester_denominator += sum(
+            round(request.credit_value * 2)
+            for request in requests_by_student[student_id]
+            if request.delivery_kind != "co_op"
+        )
+        semester_denominator += sum(
+            round(row.credit_value * 2)
+            for row in fixed_rows_by_student[student_id]
+        )
+        semester_denominator += sum(
+            4
+            for source_key, _index, _variable in commitment_variables_by_student[student_id]
+            if commitment_metadata[source_key][1] == "co_op"
+        )
+        semester_denominator += sum(
+            round(commitment.credit_value * 2)
+            for commitment in active_commitments_by_student[student_id]
+            if commitment.commitment_kind == "co_op"
+        )
         penalty = model.NewIntVar(
             0,
             2 * (len(data.requests) + len(fixed_rows) + 2),
@@ -2333,6 +2411,7 @@ def _solve_student_assignment(
                         difficulty_by_course.get(metadata[4], 0)
                         * requests_by_id[metadata[2]].credit_value
                     ))
+            difficulty_denominator += difficulty_upper_bound
             semester_1_difficulty = sum(
                 round(difficulty_by_course.get(course_id, 0) * credit_by_student_course.get((student_id, course_id), 1.0)) * variable
                 for course_id in requested_course_ids
@@ -2498,6 +2577,7 @@ def _solve_student_assignment(
                                 model.AddBoolOr((left.Not(), right.Not(), shared))
                                 shared_halves.append(shared)
                         if shared_halves:
+                            category_denominator += similarity
                             # A full/full overlap remains the legacy penalty of
                             # ``similarity``. A full/half overlap costs half;
                             # sequential first/second-half courses cost zero.
@@ -2520,13 +2600,98 @@ def _solve_student_assignment(
             if section.section_id != enrollment.section_id
         )
     preservation_level = SCHEDULE_PRESERVATION_LEVELS[data.schedule_preservation_level]
-    if preservation_level:
+    if preservation_level and not objective_semantics_v2:
         # A stronger counselor choice both promotes this objective above lower
         # soft tiers and scales its internal penalty without exposing numeric
         # weights through the public contract.
         soft_objectives[preservation_level].append(
             preservation_level * sum(preservation_terms or [0])
         )
+    if objective_semantics_v2:
+        # v2 uses one linear weighted soft tier after the unchanged fulfillment
+        # objectives.  Each raw component is first converted to the common
+        # bounded integer scale, then multiplied by its canonical 0-10 score.
+        # This keeps raw magnitude from silently deciding counselor authority.
+        v2_component_inputs = {
+            "section_utilization_balance_penalty": (
+                sum(section_balance_terms or [0]), utilization_denominator,
+                objective_importance_scores["section_utilization_balance"],
+            ),
+            "student_semester_balance_penalty": (
+                sum(semester_balance_terms or [0]), semester_denominator,
+                objective_importance_scores["student_semester_balance"],
+            ),
+            "difficulty_balance_penalty": (
+                sum(difficulty_balance_terms or [0]), difficulty_denominator,
+                objective_importance_scores["difficulty_balance"],
+            ),
+            "course_category_diversity_penalty": (
+                sum(category_diversity_terms or [0]), category_denominator,
+                objective_importance_scores["course_category_diversity"],
+            ),
+            "course_sequence_preferences_penalty": (
+                len(sequence_satisfied) - sum(
+                    item[2] for item in sequence_satisfied
+                ),
+                len(sequence_satisfied),
+                objective_importance_scores["course_sequence_preferences"],
+            ),
+        }
+        weighted_terms = []
+        component_specs = {}
+        for name, (raw_expression, denominator, importance_score) in v2_component_inputs.items():
+            denominator = int(denominator)
+            normalized = model.NewIntVar(
+                0,
+                NORMALIZED_OBJECTIVE_SCALE,
+                f"v2_normalized_{name}",
+            )
+            if denominator > 0:
+                model.AddDivisionEquality(
+                    normalized,
+                    raw_expression * NORMALIZED_OBJECTIVE_SCALE,
+                    denominator,
+                )
+            else:
+                model.Add(normalized == 0)
+            v2_normalized_variables[name] = normalized
+            v2_component_scales[name] = {
+                "denominator": denominator,
+                "normalized_scale": NORMALIZED_OBJECTIVE_SCALE,
+                "importance_score": int(importance_score),
+            }
+            component_term = ((normalized.Index(), int(importance_score)),)
+            component_specs[name] = component_term
+            weighted_terms.extend(component_term)
+        _append_objective(
+            sum(
+                int(importance_score) * variable
+                for name, variable in v2_normalized_variables.items()
+                for importance_score in (v2_component_scales[name]["importance_score"],)
+            ) if weighted_terms else 0,
+            weighted_terms,
+            kind="soft_tier",
+            name="normalized_soft_preferences",
+            importance_level=10,
+            semantics_version=OBJECTIVE_SEMANTICS_V2,
+            normalized_scale=NORMALIZED_OBJECTIVE_SCALE,
+            component_specs=component_specs,
+            component_scales=v2_component_scales,
+        )
+        if preservation_level:
+            _append_objective(
+                preservation_level * sum(preservation_terms or [0]),
+                _term_specs(preservation_terms, preservation_level),
+                kind="preservation",
+                name="schedule_preservation",
+                semantics_version=OBJECTIVE_SEMANTICS_V2,
+                preservation_level=data.schedule_preservation_level,
+            )
+    if objective_semantics_v2:
+        # The legacy component-by-component tiers were populated above for
+        # shared raw-term construction, but v2 has already emitted its single
+        # normalized weighted tier.
+        soft_objectives.clear()
     for level in sorted(soft_objectives, reverse=True):
         level_term_specs = []
         level_component_specs = {}
@@ -2591,7 +2756,7 @@ def _solve_student_assignment(
     def _solver_objective_components(candidate_solver):
         """Read exact aggregate objective facts from one CP-SAT candidate."""
 
-        return {
+        components = {
             "section_utilization_balance_penalty": float(
                 sum(candidate_solver.Value(item) for item in section_balance_terms)
             ),
@@ -2611,6 +2776,24 @@ def _solve_student_assignment(
                 sum(candidate_solver.Value(item[2]) for item in sequence_satisfied)
             ),
         }
+        if objective_semantics_v2:
+            components["objective_semantics_version"] = OBJECTIVE_SEMANTICS_V2
+            components["normalized_components"] = {
+                name: float(candidate_solver.Value(variable))
+                for name, variable in v2_normalized_variables.items()
+            }
+            components["weighted_normalized_contributions"] = {
+                name: float(
+                    candidate_solver.Value(variable)
+                    * v2_component_scales[name]["importance_score"]
+                )
+                for name, variable in v2_normalized_variables.items()
+            }
+            components["normalization"] = {
+                name: dict(scale)
+                for name, scale in v2_component_scales.items()
+            }
+        return components
 
     def _source_variable_values(source_decisions):
         """Translate semantic source decisions back to required variables."""
@@ -3121,7 +3304,7 @@ def _solve_student_assignment(
     if stage_2_local_bootstrap is not None and stage_2_seed_solver is not None:
         local_config = dict(stage_2_local_bootstrap)
         target_level = local_config.get(
-            "target_importance_level", IMPORTANCE_LEVELS["important"]
+            "target_importance_level", _soft_tier_importance_level(data)
         )
         target_metadata = next(
             (
@@ -3350,6 +3533,7 @@ def _solve_student_assignment(
                 local_bootstrap_facts = {
                     "adaptive": True,
                     "variable_neighborhood": variable_neighborhood,
+                    "target_importance_level": target_level,
                     "status": last_result.status if last_result is not None else "unknown",
                     "elapsed_seconds": sum(item["elapsed_seconds"] for item in iterations),
                     "cumulative_session_elapsed_seconds": (
@@ -3414,6 +3598,9 @@ def _solve_student_assignment(
                     alternate_seed_validated = True
                 local_bootstrap_facts = {
                     "adaptive": False,
+                    "target_importance_level": local_config.get(
+                        "target_importance_level", _soft_tier_importance_level(data)
+                    ),
                     "status": local_result.status,
                     "elapsed_seconds": local_result.elapsed_seconds,
                     "solver_wall_time_seconds": local_result.solver_wall_time_seconds,
@@ -3571,6 +3758,11 @@ def _solve_student_assignment(
                 "kind": metadata.get("kind"),
                 "name": metadata.get("name"),
                 "importance_level": metadata.get("importance_level"),
+                "semantics_version": metadata.get(
+                    "semantics_version", data.objective_semantics_version
+                ),
+                "normalized_scale": metadata.get("normalized_scale"),
+                "component_scales": metadata.get("component_scales", {}),
                 "term_count": len(metadata.get("term_specs", ())),
                 "component_term_counts": {
                     name: len(term_specs)
@@ -3582,6 +3774,24 @@ def _solve_student_assignment(
             for index, metadata in enumerate(objective_metadata)
         ),
     )
+    optimization_facts["objective_semantics"] = {
+        "version": data.objective_semantics_version,
+        "importance_scores": dict(objective_importance_scores),
+        "label_presets": dict(IMPORTANCE_LABEL_TO_SCORE),
+        "normalized_scale": (
+            NORMALIZED_OBJECTIVE_SCALE
+            if objective_semantics_v2
+            else None
+        ),
+        "normalization": (
+            {
+                name: dict(scale)
+                for name, scale in v2_component_scales.items()
+            }
+            if objective_semantics_v2
+            else {}
+        ),
+    }
     if collect_incumbent_timeline:
         optimization_facts["stage_2"]["incumbent_timeline"] = tuple(
             incumbent_timeline
@@ -3592,7 +3802,7 @@ def _solve_student_assignment(
     )
     substantive_pass_wall_time = 0.0
     tie_break_pass_wall_time = 0.0
-    substantive_level = IMPORTANCE_LEVELS["important"]
+    substantive_level = _soft_tier_importance_level(data)
     for pass_fact in optimization_passes:
         metadata = objective_metadata[pass_fact["objective_index"]]
         if (
@@ -3984,6 +4194,24 @@ def _solve_student_assignment(
             "course_category_diversity_penalty": float(sum(solver.Value(item) for item in category_diversity_terms)),
             "schedule_preservation_move_penalty": float(sum(solver.Value(item) for item in preservation_terms)),
             "soft_sequence_preferences_satisfied": float(sum(item["satisfied"] for item in sequence_outcomes)),
+            **(
+                {
+                    "objective_semantics_version": OBJECTIVE_SEMANTICS_V2,
+                    "normalized_components": {
+                        name: float(solver.Value(variable))
+                        for name, variable in v2_normalized_variables.items()
+                    },
+                    "weighted_normalized_contributions": {
+                        name: float(
+                            solver.Value(variable)
+                            * v2_component_scales[name]["importance_score"]
+                        )
+                        for name, variable in v2_normalized_variables.items()
+                    },
+                }
+                if objective_semantics_v2
+                else {}
+            ),
         },
         optimization_facts=optimization_facts,
         sequence_outcomes=tuple(sequence_outcomes),

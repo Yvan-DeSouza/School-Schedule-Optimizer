@@ -11,6 +11,7 @@ from backend.apps.common.constants import (
 from backend.apps.courses.models import Course, CourseCategoryRelationship, CourseRequest, Section
 from backend.apps.courses.services.offerings import ensure_academic_year_offerings
 from backend.apps.scheduling.models import SectionSchedule, TimeSlot
+from backend.apps.scheduling.serializers import StudentAssignmentRunCreateSerializer
 from backend.apps.scheduling.services.engine_adapter import load_student_assignment_input
 from backend.apps.scheduling.services.student_assignment import (
     StudentAssignmentConflictError,
@@ -27,6 +28,34 @@ def _importance():
         "difficulty_balance": "important",
         "course_category_diversity": "really_important",
     }
+
+
+def _importance_scores():
+    return {
+        "section_utilization_balance": 1,
+        "student_semester_balance": 3,
+        "course_sequence_preferences": 5,
+        "difficulty_balance": 7,
+        "course_category_diversity": 9,
+    }
+
+
+def test_v2_serializer_accepts_canonical_scores_and_rejects_them_for_v1():
+    base = {
+        "academic_year": 1,
+        "staffing_mode": "sections_only",
+        "soft_constraint_importance": _importance(),
+        "objective_importance_scores": _importance_scores(),
+    }
+    v2 = StudentAssignmentRunCreateSerializer(
+        data={**base, "objective_semantics_version": "v2"}
+    )
+    assert v2.is_valid(), v2.errors
+    assert v2.validated_data["objective_importance_scores"] == _importance_scores()
+
+    v1 = StudentAssignmentRunCreateSerializer(data={**base, "objective_semantics_version": "v1"})
+    assert not v1.is_valid()
+    assert "objective_importance_scores" in v1.errors
 
 
 @pytest.mark.django_db
@@ -71,6 +100,65 @@ def test_adapter_freezes_effective_difficulty_category_relationships_and_importa
     assert difficulty.source == "manual_override"
     assert data.course_category_relationships[0].similarity_score == 40
     assert other_course.id not in {item.course_id for item in data.course_difficulties}
+
+
+@pytest.mark.django_db
+def test_adapter_resolves_v2_importance_scores_into_immutable_engine_input(
+    academic_year, course, counselor_user,
+):
+    offering = ensure_academic_year_offerings(academic_year, actor=counselor_user)[0]
+    section = Section.objects.create(
+        course=course, delivery_group=offering.delivery_group, section_number="V2-01",
+        academic_year=academic_year, semester=1, capacity_min=10, capacity_max=30,
+    )
+    slot = TimeSlot.objects.create(
+        academic_year=academic_year, semester=1, block=SCHEDULE_BLOCK_A,
+    )
+    SectionSchedule.objects.create(section=section, timeslot=slot)
+    data, _staffing = load_student_assignment_input(
+        academic_year_id=academic_year.id,
+        staffing_mode="sections_only",
+        soft_constraint_importance=_importance(),
+        objective_semantics_version="v2",
+        objective_importance_scores=_importance_scores(),
+    )
+
+    assert data.objective_semantics_version == "v2"
+    assert dict(data.objective_importance_scores) == _importance_scores()
+
+
+@pytest.mark.django_db
+def test_v2_run_snapshot_and_result_preserve_objective_semantics_metadata(
+    academic_year, course, counselor_user, student_user,
+):
+    offering = ensure_academic_year_offerings(academic_year, actor=counselor_user)[0]
+    section = Section.objects.create(
+        course=course, delivery_group=offering.delivery_group, section_number="V2-02",
+        academic_year=academic_year, semester=1, capacity_min=10, capacity_max=30,
+    )
+    slot = TimeSlot.objects.create(
+        academic_year=academic_year, semester=1, block=SCHEDULE_BLOCK_A,
+    )
+    SectionSchedule.objects.create(section=section, timeslot=slot)
+    CourseRequest.objects.create(
+        student=student_user.student_profile, academic_year=academic_year,
+        course=course, request_type=COURSE_REQUEST_TYPE_PRIMARY,
+    )
+
+    run = create_student_assignment_run(
+        academic_year=academic_year.id,
+        staffing_mode="sections_only",
+        soft_constraint_importance=_importance(),
+        objective_semantics_version="v2",
+        objective_importance_scores=_importance_scores(),
+        created_by=counselor_user,
+    )
+
+    assert run.status == "complete"
+    assert run.input_snapshot["objective_semantics_version"] == "v2"
+    assert run.input_snapshot["objective_importance_scores"] == _importance_scores()
+    assert run.solver_metadata["objective_semantics_version"] == "v2"
+    assert run.result["optimization_facts"]["objective_semantics"]["version"] == "v2"
 
 
 @pytest.mark.django_db

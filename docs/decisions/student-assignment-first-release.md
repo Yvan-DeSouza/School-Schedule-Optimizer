@@ -75,8 +75,13 @@ or unresolved cancellation provenance fails closed.
 Counselors select a label from `not_important` through
 `extremely_important` for section-utilization balance, student semester-load
 balance, soft sequence preferences, difficulty balance, and course-category
-diversity. Labels are compiled to deterministic engine priorities and no
-numeric weight is exposed through the API. Mandatory fulfillment, primary
+diversity. In historical v1 runs, labels compile to deterministic engine
+priorities and no numeric weight is exposed through the API. The explicit v2
+semantics version resolves these same labels, or five supplied integer scores
+from `0` through `10`, into one canonical normalized soft tier. V2 is opt-in
+and is documented in [`STUDENT_ASSIGNMENT_OBJECTIVE_SEMANTICS.md`](../STUDENT_ASSIGNMENT_OBJECTIVE_SEMANTICS.md);
+it does not alter the hard model or fulfillment ordering. Mandatory
+fulfillment, primary
 fulfillment by course priority tier, approved backups, capacity, timeslot
 safety, and hard prerequisite sequencing always take precedence over these
 soft controls.

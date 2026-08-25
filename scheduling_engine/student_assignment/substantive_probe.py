@@ -10,6 +10,7 @@ production solver's constraints, objective ordering, or returned result.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from numbers import Real
 from time import monotonic
 
 from ortools.sat.python import cp_model
@@ -454,6 +455,8 @@ def probe_substantive_soft_tier(
         {
             key: candidate_component_values.get(key, 0.0) - value
             for key, value in seed_component_values.items()
+            if isinstance(value, Real)
+            and isinstance(candidate_component_values.get(key), Real)
         }
         if complete_candidate_found
         else {}

@@ -5,7 +5,28 @@ This document describes the measurement-only quality evaluator in
 objectives, hints, or search behavior. CP-SAT remains the authority for the
 recommendation.
 
-The current payload version is `student_schedule_quality_v3`.
+The historical v1 payload version is `student_schedule_quality_v3`. Explicit
+Objective Semantics v2 reports use `student_schedule_quality_v4` and add
+canonical counselor scores plus input-derived normalized contributions. The
+raw metrics remain present in both versions. The mathematical contract is
+documented in [`STUDENT_ASSIGNMENT_OBJECTIVE_SEMANTICS.md`](STUDENT_ASSIGNMENT_OBJECTIVE_SEMANTICS.md).
+
+## Objective Semantics v2
+
+Objective Semantics v2 is an explicit opt-in solver semantics version. It keeps
+the existing fulfillment tiers, hard constraints, special commitments,
+complete-incumbent behavior, approvals, and immutable snapshots unchanged.
+After fulfillment, the five existing soft components are normalized
+independently to a common bounded integer scale and multiplied by one canonical
+counselor importance score from `0` through `10`. Existing labels are presets
+over that same scale; they are not a second weighting system. Schedule
+preservation remains a distinct rerun-only objective by explicit design.
+
+The solver's raw and normalized component values, denominator facts, selected
+semantics version, and importance scores are persisted in the existing result
+and snapshot payloads. The quality evaluator remains diagnostic-only and keeps
+CP-SAT authoritative. A v2 production-scale run establishes a new baseline;
+the historical v1 values below are not silently reinterpreted under v2.
 
 ## Stage comparison
 
@@ -1045,34 +1066,71 @@ shaving. No canonical checkpoint was changed and no current objective or
 importance semantics were altered. The next work should address the objective
 contract rather than continue accumulating isolated v1 endpoint evidence.
 
-### Frozen roadmap after v1
+### First Objective Semantics v2 target-scale baseline
 
-The planned next research order is explicitly deferred and is not implemented
-by this study:
+The first isolated v2 replay used the unchanged durable production-scale input
+fingerprint
+`1c4843ac33fccabd76218c63d8818c94a0a8dd8ab2886e3f5718ca1cd9576a11` and the
+unchanged validated v1 source-decision seed. It did not modify the v1
+checkpoint or fixture. The v2 compatibility presets resolved the five
+`important`/`not_important` labels to scores `5, 5, 0, 5, 5`.
 
-1. Design principled, input/metric-aware normalization of soft objectives.
-2. Introduce one canonical counselor importance score from `0` through `10`.
-3. Represent simple labels as presets over that canonical scale, not as a
-   second objective system.
-4. Establish an Objective Semantics v2 baseline and revalidate only the search
-   operators that remain relevant under v2.
-5. Investigate student-targeted repair using counselor importance and current
+The fresh v2 Stage 1 hard bootstrap was tested with 8 workers and 30 seconds;
+it returned `UNKNOWN` after approximately `31.1` seconds and did not produce
+an independent seed. The unchanged v1 source seed was then validated against
+the v2 full model and accepted. This is valid evidence that the hard model and
+v2 objective auxiliaries accept the existing complete source assignment, but it
+is not evidence that a cold v2 Stage 1 bootstrap completes within 30 seconds.
+
+Using that validated seed, v2 Stage 2 ran with 8 workers and the existing
+1,800-second bound. It returned a complete feasible candidate in approximately
+`1,822.3` Stage 2 seconds (`2,002.7` seconds including detached loading,
+model construction, validation, and finalization). The result retained
+`10,635` assignments, zero unmet requests, and all `310` special commitments.
+Raw components remained `6,875` section utilization, `175` semester balance,
+`35,973` difficulty, and `22,150` category diversity. The v2 normalized
+components were `1,750`, `77`, `536`, and `3,941`, for a weighted substantive
+value of `31,520`; no substantive improvement was found. The final opaque
+tie-break improved, so the final objective vector was
+`[-10945, 0, 0, 0, 31520, 5669086063269]`.
+
+This is the post-implementation v2 baseline, not a claim that v2 is already
+the default production policy. A future promotion decision must separately
+address cold Stage 1 bootstrap reliability and compare v2 quality/search
+behavior against the frozen v1 evidence without mixing objective values across
+versions.
+
+### Frozen roadmap after v1 and v2 implementation
+
+The current v1 search-mechanics evidence is historical and closed. Objective
+Semantics v2 now implements the previously deferred normalization and one
+canonical `0`--`10` importance representation. The v2 baseline must be
+measured separately from the v1 baseline and must not overwrite the v1
+checkpoint or historical trajectories.
+
+The next research order is explicitly deferred and is not implemented by the
+v2 semantics increment:
+
+1. Establish and document the post-v2 target-scale baseline.
+2. Revalidate only the retained v1 search operators that are relevant under
+   v2, without assuming their v1 ranking carries over.
+3. Investigate student-targeted repair using counselor importance and current
    per-student opportunity as search guidance only; CP-SAT and full validation
    remain authoritative.
-6. Investigate adaptive allocation across targeted repair, R2, R4/S1, R4/S2,
+4. Investigate adaptive allocation across targeted repair, R2, R4/S1, R4/S2,
    R8/S1, R8/S2, and unrestricted variants where evidence justifies them.
-7. Investigate grade-bounded unrestricted escape only after normalization and
-   targeted/adaptive studies. A selected grade changes source decisions only
-   for students in that grade; the full model still applies, including frozen
-   students, mixed-grade sections, capacity, conflicts, prerequisites, locks,
-   and special commitments.
-8. Return to faster local operators after a successful grade-scoped escape;
+5. Investigate grade-bounded unrestricted escape only after targeted/adaptive
+   studies. A selected grade changes source decisions only for students in
+   that grade; the full model still applies, including frozen students,
+   mixed-grade sections, capacity, conflicts, prerequisites, locks, and
+   special commitments.
+6. Return to faster local operators after a successful grade-scoped escape;
    consider full-school unrestricted escape only as a later evidence-gated
    escalation.
-9. Run a final production-policy and promotion study only after those
+7. Run a final production-policy and promotion study only after those
    prerequisites.
 
-Objective v2 must preserve this invariant: if multiple soft preferences have
+Objective v2 preserves the invariant that if multiple soft preferences have
 the same counselor importance, their practical influence should be
 approximately comparable rather than being dominated by raw metric magnitude.
 The current v1 observed raw contribution shares were approximately `10%`

@@ -478,6 +478,12 @@ class StudentAssignmentInputDTO:
     # factual empty-time review can distinguish a student with no requested
     # fallback from one whose course-request workflow already records one.
     student_ids_with_alternate_requests: Tuple[int, ...] = ()
+    # New runs may opt into the versioned normalized semantics contract.  An
+    # empty score mapping preserves the historical label-only v1 input shape;
+    # v2 callers receive canonical scores from the adapter or may provide them
+    # directly in a detached engine fixture.
+    objective_semantics_version: str = "v1"
+    objective_importance_scores: Mapping[str, int] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

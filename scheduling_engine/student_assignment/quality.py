@@ -17,11 +17,22 @@ from .occupancy import (
     fixed_enrollment_occupied_half_segments,
     occupied_half_segments,
 )
+from .objective_semantics import (
+    NORMALIZED_OBJECTIVE_SCALE,
+    OBJECTIVE_SEMANTICS_V2,
+    normalize_penalty,
+    resolve_importance_scores,
+)
 
 
 # The version is bumped when report semantics change, so consumers can
 # distinguish the fixed-context/semester-aligned payload from earlier reports.
+# v1 keeps the established report identifier for historical snapshots.  v2
+# adds canonical importance scores and input-derived normalized contributions,
+# so it has a distinct report version even though the raw diagnostic metrics
+# remain available in both payloads.
 QUALITY_REPORT_VERSION = "student_schedule_quality_v3"
+QUALITY_REPORT_VERSION_V2 = "student_schedule_quality_v4"
 
 
 def _rounded(value):
@@ -677,7 +688,11 @@ def evaluate_student_assignment_quality(
             ),
         )
     metrics = {
-        "version": QUALITY_REPORT_VERSION,
+        "version": (
+            QUALITY_REPORT_VERSION_V2
+            if data.objective_semantics_version == OBJECTIVE_SEMANTICS_V2
+            else QUALITY_REPORT_VERSION
+        ),
         "request_fulfillment": _request_fulfillment(
             evaluation_data, assignments, commitment_assignments,
         ),
@@ -731,6 +746,65 @@ def evaluate_student_assignment_quality(
             metric["reconstructed_penalty"] = reconstructed
             metric["reconstruction_delta"] = authoritative - reconstructed
             metric["solver_aligned_penalty"] = authoritative
+    if data.objective_semantics_version == OBJECTIVE_SEMANTICS_V2:
+        labels = {
+            "section_utilization_balance": data.section_utilization_balance_importance,
+            "student_semester_balance": data.student_semester_balance_importance,
+            "course_sequence_preferences": data.course_sequence_preferences_importance,
+            "difficulty_balance": data.difficulty_balance_importance,
+            "course_category_diversity": data.course_category_diversity_importance,
+        }
+        scores = resolve_importance_scores(
+            labels=labels,
+            scores=data.objective_importance_scores,
+        )
+        normalization = (
+            solver_objective_components.get("normalization", {})
+            if solver_objective_components is not None
+            else {}
+        )
+        normalized_values = (
+            solver_objective_components.get("normalized_components", {})
+            if solver_objective_components is not None
+            else {}
+        )
+        raw_names = {
+            "section_utilization_balance_penalty": "section_utilization_balance",
+            "student_semester_balance_penalty": "student_semester_load_balance",
+            "difficulty_balance_penalty": "difficulty_balance",
+            "course_category_diversity_penalty": "course_category_diversity",
+            "course_sequence_preferences_penalty": "course_sequence_preferences",
+        }
+        objective_facts = {}
+        for raw_name, metric_name in raw_names.items():
+            metric = metrics.get(metric_name, {})
+            scale = dict(normalization.get(raw_name, {}))
+            denominator = scale.get("denominator")
+            raw_penalty = metric.get("solver_aligned_penalty", 0)
+            normalized = normalized_values.get(raw_name)
+            if normalized is None:
+                # A non-applicable objective has denominator zero and still
+                # has a defined normalized value: zero.  Keep standalone
+                # measurement output aligned with solver-produced v2 facts
+                # even when no objective-components payload is supplied.
+                normalized = normalize_penalty(raw_penalty, denominator or 0)
+            score_key = raw_name.removesuffix("_penalty")
+            score = scores.get(score_key, 0)
+            objective_facts[metric_name] = {
+                "raw_penalty": raw_penalty,
+                "denominator": denominator,
+                "normalized_penalty": normalized,
+                "importance_score": score,
+                "weighted_normalized_contribution": (
+                    normalized * score if normalized is not None else None
+                ),
+            }
+        metrics["objective_semantics"] = {
+            "version": OBJECTIVE_SEMANTICS_V2,
+            "normalized_scale": NORMALIZED_OBJECTIVE_SCALE,
+            "importance_scores": scores,
+            "components": objective_facts,
+        }
     return metrics
 
 

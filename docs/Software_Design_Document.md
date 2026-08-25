@@ -200,7 +200,7 @@ but those foundations do not constitute an implemented capability.
 
 | Category | Current status and design |
 |---|---|
-| Performance | CP-SAT stages use bounded solver calls. Student assignment first obtains and validates a complete hard-feasible seed, then runs the existing lexicographic objective sequence with bounded parallel search. A timeout retains the best complete incumbent; target-scale quality is reported through persisted stage/objective facts and hard-validity checks. |
+| Performance | CP-SAT stages use bounded solver calls. Student assignment first obtains and validates a complete hard-feasible seed, then runs the existing lexicographic objective sequence with bounded parallel search. A timeout retains the best complete incumbent; target-scale quality is reported through persisted stage/objective facts and hard-validity checks. Objective Semantics v2 is an explicit opt-in: it keeps fulfillment and hard feasibility unchanged while normalizing the five school-wide soft penalties onto a common engine-owned scale and applying one canonical counselor score. |
 | Scalability | Expensive downstream solves use a dedicated Celery queue with one process-based worker slot and one heavy task per child. Horizontal worker scaling is intentionally deferred pending resource measurement. The Django-free student-assignment diagnostic path reports compact psutil-backed process/system resource facts; these are observational and never authoritative over CP-SAT results. |
 | Maintainability | The engine is Django-free, the adapter is the ORM-to-DTO boundary, and services own multi-model workflows. These boundaries are covered by import and service tests. |
 | Auditability | Immutable run, approval, placement, teacher-assignment, offering, staffing, and reconciliation records preserve accepted decisions. General override history remains incomplete. |
@@ -1019,6 +1019,16 @@ sections, timing, or rooms.
   as two simultaneous student courses. A half-semester online course keeps a
   full-semester supervision seat and reports its unused half for counselor
   review.
+
+Student-assignment objective semantics are versioned in the immutable input
+snapshot. Historical v1 runs retain label-based lexicographic tiers. Explicit
+v2 runs resolve labels or canonical `0`--`10` scores in the backend adapter,
+then let the Django-free engine normalize each existing raw soft penalty from
+input-derived bounds before combining the weighted components in one soft
+tier. Result and quality payloads retain both raw and normalized facts. This
+does not add a hard rule, persistence schema, or search-operator policy. The
+exact formulas and compatibility boundary are documented in
+[`STUDENT_ASSIGNMENT_OBJECTIVE_SEMANTICS.md`](STUDENT_ASSIGNMENT_OBJECTIVE_SEMANTICS.md).
 
 The Django service writes active `Enrollment`, `OnlineEnrollment`, and
 `StudentScheduleCommitment` records with immutable approval provenance after a

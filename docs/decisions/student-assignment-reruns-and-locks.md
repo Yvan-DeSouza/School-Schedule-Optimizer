@@ -94,8 +94,12 @@ never displaces a mandatory request.
 
 Schedule preservation is a fourth, rerun-only soft priority with the separate
 labels `none`, `slight`, `moderate`, and `strong`. The existing three
-five-level student-assignment soft controls remain unchanged. No API exposes
-numeric solver weights.
+five-level student-assignment soft controls remain unchanged in historical v1
+runs. Explicit Objective Semantics v2 runs use the canonical `0`--`10`
+importance score and input-derived normalized soft tier for the five school-
+wide components; schedule preservation remains a separate rerun-only
+objective. The v2 snapshot/API contract is documented in
+[`STUDENT_ASSIGNMENT_OBJECTIVE_SEMANTICS.md`](../STUDENT_ASSIGNMENT_OBJECTIVE_SEMANTICS.md).
 
 ### Stable result and workflow contract
 

@@ -14,6 +14,10 @@ from backend.apps.common.constants import (
     SECTION_BUDGET_TYPE_CHOICES,
 )
 from backend.apps.scheduling.constants import (
+    STUDENT_ASSIGNMENT_CANONICAL_IMPORTANCE_MAX,
+    STUDENT_ASSIGNMENT_CANONICAL_IMPORTANCE_MIN,
+    STUDENT_ASSIGNMENT_OBJECTIVE_SEMANTICS_V1,
+    STUDENT_ASSIGNMENT_OBJECTIVE_SEMANTICS_VERSIONS,
     SOFT_CONSTRAINT_IMPORTANCE_CHOICES,
     STUDENT_ASSIGNMENT_DEFAULT_MAX_PRIORITY_REQUESTS,
     STUDENT_ASSIGNMENT_LOCK_TYPE_CHOICES,
@@ -382,6 +386,31 @@ class StudentAssignmentSoftConstraintImportanceSerializer(serializers.Serializer
     course_category_diversity = serializers.ChoiceField(choices=SOFT_CONSTRAINT_IMPORTANCE_CHOICES)
 
 
+class StudentAssignmentImportanceScoreSerializer(serializers.Serializer):
+    """Optional explicit v2 canonical scores; labels remain compatibility input."""
+
+    section_utilization_balance = serializers.IntegerField(
+        min_value=STUDENT_ASSIGNMENT_CANONICAL_IMPORTANCE_MIN,
+        max_value=STUDENT_ASSIGNMENT_CANONICAL_IMPORTANCE_MAX,
+    )
+    student_semester_balance = serializers.IntegerField(
+        min_value=STUDENT_ASSIGNMENT_CANONICAL_IMPORTANCE_MIN,
+        max_value=STUDENT_ASSIGNMENT_CANONICAL_IMPORTANCE_MAX,
+    )
+    course_sequence_preferences = serializers.IntegerField(
+        min_value=STUDENT_ASSIGNMENT_CANONICAL_IMPORTANCE_MIN,
+        max_value=STUDENT_ASSIGNMENT_CANONICAL_IMPORTANCE_MAX,
+    )
+    difficulty_balance = serializers.IntegerField(
+        min_value=STUDENT_ASSIGNMENT_CANONICAL_IMPORTANCE_MIN,
+        max_value=STUDENT_ASSIGNMENT_CANONICAL_IMPORTANCE_MAX,
+    )
+    course_category_diversity = serializers.IntegerField(
+        min_value=STUDENT_ASSIGNMENT_CANONICAL_IMPORTANCE_MIN,
+        max_value=STUDENT_ASSIGNMENT_CANONICAL_IMPORTANCE_MAX,
+    )
+
+
 class StudentAssignmentRunCreateSerializer(serializers.Serializer):
     """Create one immutable student assignment run over fixed section context."""
 
@@ -393,6 +422,13 @@ class StudentAssignmentRunCreateSerializer(serializers.Serializer):
         allow_null=True,
     )
     soft_constraint_importance = StudentAssignmentSoftConstraintImportanceSerializer()
+    objective_semantics_version = serializers.ChoiceField(
+        choices=STUDENT_ASSIGNMENT_OBJECTIVE_SEMANTICS_VERSIONS,
+        default=STUDENT_ASSIGNMENT_OBJECTIVE_SEMANTICS_V1,
+    )
+    objective_importance_scores = StudentAssignmentImportanceScoreSerializer(
+        required=False,
+    )
     scope_type = serializers.ChoiceField(choices=STUDENT_ASSIGNMENT_RUN_SCOPE_CHOICES, default="full")
     source_approval = serializers.PrimaryKeyRelatedField(
         queryset=StudentAssignmentApproval.objects.all(), required=False, allow_null=True,
@@ -437,6 +473,15 @@ class StudentAssignmentRunCreateSerializer(serializers.Serializer):
             })
         if len(priority_ids) != len(set(priority_ids)):
             raise serializers.ValidationError({"priority_request_ids": "Priority request IDs must be unique."})
+        if (
+            attrs.get("objective_semantics_version") == STUDENT_ASSIGNMENT_OBJECTIVE_SEMANTICS_V1
+            and attrs.get("objective_importance_scores") is not None
+        ):
+            raise serializers.ValidationError({
+                "objective_importance_scores": (
+                    "Explicit 0-10 scores require objective_semantics_version='v2'."
+                ),
+            })
         return attrs
 
 

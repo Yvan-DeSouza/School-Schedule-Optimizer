@@ -99,6 +99,19 @@ STUDENT_ASSIGNMENT_STAFFING_MODE_CHOICES = (
     (STUDENT_ASSIGNMENT_STAFFING_MODE_FINAL_STAFFING, "Final staffing"),
 )
 
+# Versioned transport vocabulary for student-assignment objective semantics.
+# The engine owns the mathematical implementation; these values are repeated
+# here only so serializers and task payload handling stay on the Django side of
+# the engine boundary.
+STUDENT_ASSIGNMENT_OBJECTIVE_SEMANTICS_V1 = "v1"
+STUDENT_ASSIGNMENT_OBJECTIVE_SEMANTICS_V2 = "v2"
+STUDENT_ASSIGNMENT_OBJECTIVE_SEMANTICS_VERSIONS = (
+    STUDENT_ASSIGNMENT_OBJECTIVE_SEMANTICS_V1,
+    STUDENT_ASSIGNMENT_OBJECTIVE_SEMANTICS_V2,
+)
+STUDENT_ASSIGNMENT_CANONICAL_IMPORTANCE_MIN = 0
+STUDENT_ASSIGNMENT_CANONICAL_IMPORTANCE_MAX = 10
+
 # A full run has no accepted student-assignment baseline. A scoped run must
 # point to the approval that represents the accepted schedule it may revise;
 # the resolved IDs remain in the immutable input snapshot.

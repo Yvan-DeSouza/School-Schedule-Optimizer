@@ -19,6 +19,7 @@ from backend.apps.scheduling.codes import (
     SCHEDULING_EXECUTION_WORKER_FAILED,
 )
 from backend.apps.scheduling.constants import (
+    STUDENT_ASSIGNMENT_OBJECTIVE_SEMANTICS_V1,
     SCHEDULING_EXECUTION_OPERATION_SECTION_PLACEMENT,
     SCHEDULING_EXECUTION_OPERATION_STUDENT_ASSIGNMENT,
     SCHEDULING_EXECUTION_OPERATION_TEACHER_ASSIGNMENT,
@@ -87,6 +88,11 @@ def execute_scheduling_execution(self, execution_id):
                     if payload.get("provisional_teacher_assignment_run_id") is not None else None
                 ),
                 soft_constraint_importance=payload["soft_constraint_importance"],
+                objective_semantics_version=payload.get(
+                    "objective_semantics_version",
+                    STUDENT_ASSIGNMENT_OBJECTIVE_SEMANTICS_V1,
+                ),
+                objective_importance_scores=payload.get("objective_importance_scores"),
                 created_by=execution.created_by,
                 scope_type=payload.get("scope_type", "full"),
                 source_approval=(

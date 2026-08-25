@@ -59,6 +59,11 @@ future scheduling stages do not reimplement the same rules in different places.
   `scheduling_engine` directly.
 - Engine solvers should depend on public shared helper modules, not private
   underscore functions from sibling solver modules.
+- Versioned student-assignment objective mathematics, including input-derived
+  normalization and canonical counselor scores, belongs in Django-free engine
+  modules. Backend adapters may resolve transport settings into immutable DTO
+  fields, but services must not duplicate objective formulas or reinterpret a
+  snapshotted semantics version.
 - New solver stages return recommendations first. Operational writes happen
   only after an explicit authorized approval workflow.
 - Annual placement locks are pre-section timing decisions keyed by academic
