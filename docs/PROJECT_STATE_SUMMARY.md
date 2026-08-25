@@ -1,6 +1,6 @@
 # Project State Summary
 
-Snapshot date: 2026-08-11
+Snapshot date: 2026-08-25
 
 This document is a repository-backed orientation snapshot. It is based on the
 actual code, tests, and docs in this checkout, not on prior chat memory.
@@ -15,13 +15,24 @@ actual code, tests, and docs in this checkout, not on prior chat memory.
 | Section budgeting and staffing-feasible physical counts | Implemented | `backend/apps/scheduling/services/section_budget_planning.py`, `backend/apps/scheduling/services/staffing_planning.py`, `backend/tests/test_upstream_planning_workflow.py` |
 | Semester/A-D placement with staffing feasibility | Implemented | `backend/apps/scheduling/services/section_placement.py`, `scheduling_engine/section_placement.py`, including shared online-supervision placement and sequential paired half-semester sections |
 | Named teacher assignment | Implemented | `backend/apps/scheduling/services/teacher_assignment.py`, `scheduling_engine/teacher_assignment.py`, including workload-safe online supervision without subject qualification |
-| Student assignment, special commitments, controlled reruns, and diagnostic operator sessions | Implemented | `backend/apps/scheduling/services/student_assignment.py`, `backend/apps/scheduling/services/student_special_commitment_locks.py`, `backend/apps/scheduling/services/online_supervision.py`, `scheduling_engine/student_assignment/`, `backend/tests/test_special_student_schedule_commitments.py`, `scheduling_engine/tests/test_student_assignment.py`, `scheduling_engine/tests/test_adaptive_search.py` |
+| Student assignment, special commitments, controlled reruns, and diagnostic operator sessions | Implemented; target-scale continuous R2/R4/R8 sessions qualified diagnostically, adaptive production execution remains disabled | `backend/apps/scheduling/services/student_assignment.py`, `backend/apps/scheduling/services/student_special_commitment_locks.py`, `backend/apps/scheduling/services/online_supervision.py`, `scheduling_engine/student_assignment/`, `backend/tests/test_special_student_schedule_commitments.py`, `scheduling_engine/tests/test_student_assignment.py`, `scheduling_engine/tests/test_adaptive_search.py`, `docs/STUDENT_ASSIGNMENT_SEARCH_STRATEGY.md` |
 | Room assignment | Not implemented | Deferred by the placement and teacher-assignment decisions |
 | Frontend | Not started | `docs/Implementation_Roadmap.md` phase 6, no frontend directory in repo |
 
 The system is now a counselor-controlled decision-support pipeline with
 immutable review/approval checkpoints. It does not silently turn solver output
 into operational state.
+
+### Current diagnostic-search status
+
+The reusable continuous operator-session primitives have passed a detached
+Objective Semantics v2 target-scale qualification study using the 1,400-student
+benchmark input and one validated source incumbent. Dynamic R4/S1, R8/S1,
+R4/S2, and R8/S2 sessions completed repeated full-model-validated attempts;
+R2 remained complete but unresolved after `UNKNOWN`. This is diagnostic
+qualification only. Targeted utilization-cluster R16/R32/R64 research is the
+next approved investigation, while adaptive allocation, grade-bounded escape,
+global escape, and production enablement remain deferred.
 
 ## 1. System Overview & Product Philosophy
 

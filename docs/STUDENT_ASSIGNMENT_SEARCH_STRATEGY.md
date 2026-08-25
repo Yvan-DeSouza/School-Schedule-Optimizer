@@ -303,3 +303,98 @@ enable adaptive search in ordinary production scheduling, alter Objective
 Semantics v2, introduce grade-bounded/global search, or replace CP-SAT and
 full-model validation as the authority. Repeated operator-family descent and
 adaptive-controller calibration remain separate evidence-gated studies.
+
+## Target-scale reusable-session qualification (Objective Semantics v2)
+
+The reusable continuous-session boundary was qualified against the detached
+production-scale v2 input, not by rerunning placement or named-teacher
+assignment. The input fingerprint was
+`faa7a016b553d662821cb1247bb70fed8b9021dc289a6b406ff9f7c993b0d280`, and the
+validated source-seed fingerprint remained
+`d5036a44e71d5a3b2a94eebe51d645bb4034179a0dd29537492ea81feda2e900`. The
+source facts remained 1,400 students, 10,760 requests, 10,945 required source
+groups, 10,635 assignments, zero unmet required requests, and 310 fulfilled
+special commitments. These are diagnostic-session facts only; the detached
+input and canonical benchmark checkpoint were not mutated.
+
+The matched target-scale runs used eight workers, a 180-second session budget,
+three attempts, 30 seconds per CP-SAT attempt, and 20 seconds for each
+single-worker full-model validation. The starting v2 substantive value was
+37,596. Results were:
+
+| Family | Final value | Attempts/adoptions | Target behavior | Session wall time | Peak working set |
+| --- | ---: | ---: | --- | ---: | ---: |
+| `r2` | 37,596 | 1 / 0 | dynamic, no candidate | 57.0 s | 0.88 GB |
+| targeted `r4_s1` | 37,578 | 3 / 3 | dynamic, one target | 73.6 s | 0.83 GB |
+| targeted `r8_s1` | 37,572 | 3 / 3 | dynamic, one target | 70.3 s | 0.83 GB |
+| targeted `r4_s2` | 37,470 | 3 / 3 | dynamic, retargeted after adoption | 71.2 s | 0.83 GB |
+| targeted `r8_s2` | 37,470 | 3 / 3 | dynamic, retargeted after adoption | 74.6 s | 0.83 GB |
+
+Every adopted candidate was complete, passed full-model validation, retained
+10,635 assignments, retained zero unmet required requests, and fulfilled all
+310 special commitments. Section-utilization improvement appeared throughout
+the targeted trajectories. The S2 trajectories also found a validated
+intermediate move changing the difficulty and category components while
+preserving the semester component; those component changes are part of the
+existing v2 aggregate objective, not a new weighting rule. The two-student S2
+families both followed the same target transition, `(1052, 1068)` to
+`(1052, 1072)`, and produced the same final value in this bounded sample. The
+R2 result remained a complete retained incumbent but returned `UNKNOWN` without
+an improvement, so that is unresolved search evidence rather than a proof of
+local optimality.
+
+Fixed-target controls also completed without leakage: fixed `r8_s1` ended at
+37,578 and fixed `r8_s2` ended at 37,464 in their respective single trials.
+Those runs are useful control evidence, not a claim that fixed targeting is
+globally superior; the sample is too small and CP-SAT uses parallel search.
+
+The session-reuse comparison used the same fixed `r8_s2` scope and source
+lineage. Three independent wrapper calls took 163.7 seconds in aggregate and
+ended at 37,464; one reused continuous session took 73.2 seconds and reached
+the same endpoint. This is approximately a 55% external-wall-time saving in
+that comparison, while the reused process remained within a measured peak of
+approximately 0.95 GB. The result supports reusing the static model/context
+for diagnostic sessions, but it is not production enablement.
+
+This qualification is sufficient to proceed to diagnostic research on larger
+neighborhood families such as R16/R32/R64. It is not sufficient to promote an
+adaptive allocator or any operator into ordinary scheduling. The next study
+must retain detached, fingerprinted inputs, complete incumbent validation,
+full-model candidate validation, clean-process controls, and explicit
+memory/unknown/infeasible reporting.
+
+### Target-scale timing and gain scorecard
+
+The session record exposes CP-SAT and validation totals; the remainder below
+is the observed external session time after subtracting those reported values.
+It includes model/context preparation, target ranking, cloning, hint and bound
+setup, extraction, quality reconstruction, finalization, and process overhead.
+The subtraction is an operational remainder, not an additive claim about every
+nested probe timer.
+
+| Family | First validated improvement | CP-SAT total | Validation total | External session | Non-CP remainder | Gain/minute | Stop |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `r2` | none | 30.3 s | 0.0 s | 57.0 s | ~26.7 s | 0.0 | `unresolved_unknown` |
+| targeted `r4_s1` | 17.2 s | 6.8 s | 11.8 s | 73.6 s | ~55.0 s | 14.7 | `attempt_cap_reached` |
+| targeted `r8_s1` | 18.7 s | 6.5 s | 10.7 s | 70.3 s | ~53.1 s | 20.5 | `attempt_cap_reached` |
+| targeted `r4_s2` | 16.8 s | 6.9 s | 11.2 s | 71.2 s | ~53.1 s | 106.2 | `attempt_cap_reached` |
+| targeted `r8_s2` | 19.6 s | 6.8 s | 11.5 s | 74.6 s | ~56.3 s | 101.6 | `attempt_cap_reached` |
+
+The gain-per-minute values use the total validated substantive gain divided by
+the actual external session wall time. The sessions reached only three
+attempts, so there are no honest five- or ten-minute checkpoints to report.
+No family proved a target scope exhausted; `UNKNOWN` remained unresolved.
+
+The S1 trajectories were 37,596 → 37,590 → 37,578 → 37,572 for R8/S1 and
+37,596 → 37,590 → 37,584 → 37,578 for R4/S1. The S2 trajectories were
+37,596 → 37,590 → 37,476 → 37,470 for both dynamic R4/S2 and dynamic R8/S2.
+Section utilization improved throughout the targeted trajectories. The S2
+middle move also changed difficulty and category components under the existing
+aggregate v2 objective; semester balance and fulfillment remained preserved.
+
+Target-scale telemetry records per-attempt model sizes, branches, conflicts,
+CP-SAT wall time, validation time, target history, and sampled process memory.
+It does not currently expose independent timers for every setup sub-phase or a
+separate quality-reconstruction timer at session scope. Those phases are
+therefore included in the reported non-CP remainder rather than fabricated as
+individual measurements.

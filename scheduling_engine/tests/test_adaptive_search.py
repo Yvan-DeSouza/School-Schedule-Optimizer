@@ -631,6 +631,40 @@ def test_continuous_targeted_session_retargets_after_adoption(monkeypatch):
     assert len(ranking_calls) >= 2
 
 
+def test_continuous_dynamic_two_student_session_retargets_after_adoption(monkeypatch):
+    data, source = _multi_attempt_operator_fixture((1, 2, 3))
+    ranking_calls = []
+    ranked_pairs = ((1, 2), (2, 3))
+
+    def ranked_students(_data, _quality):
+        pair = ranked_pairs[min(len(ranking_calls), len(ranked_pairs) - 1)]
+        ranking_calls.append(True)
+        return tuple(SimpleNamespace(student_id=student_id) for student_id in pair)
+
+    monkeypatch.setattr(
+        "scheduling_engine.student_assignment.core.rank_students_by_quality_pressure",
+        ranked_students,
+    )
+    result = run_student_assignment_operator_session_diagnostic(
+        data,
+        operator_family="targeted_r4_s2",
+        initial_source_decisions=source,
+        total_time_limit_seconds=8,
+        max_attempts=2,
+        per_attempt_time_limit_seconds=2,
+        worker_count=1,
+        target_policy="dynamic",
+        hard_feasibility_validation_time_limit_seconds=2,
+        hard_feasibility_validation_worker_count=1,
+        collect_resource_telemetry=False,
+    )
+    facts = result.optimization_facts["stage_2_local_bootstrap"]
+    assert result.status == "complete"
+    assert facts["improvement_adopted"] is True
+    assert facts["session_target_history"][:2] == ((1, 2), (2, 3))
+    assert len(ranking_calls) >= 2
+
+
 def test_fixed_targeted_session_does_not_leak_attempt_target_state():
     data, source = _multi_attempt_operator_fixture((1, 2))
     result = run_student_assignment_operator_session_diagnostic(

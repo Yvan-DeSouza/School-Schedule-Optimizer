@@ -34,19 +34,45 @@ def new_solver(time_limit_seconds, *, fix_hints=False, worker_count=1):
     return solver
 
 
-def set_solver_hints(model, solver):
+def set_solver_hints(model, solver, *, source_model=None):
     """Carry a complete validated candidate into the next lexicographic pass.
 
     CP-SAT does not automatically retain a prior ``CpSolver`` solution after
     the model gains an equality for that objective. Reapplying all values keeps
     the next pass focused on improvement rather than rediscovering a candidate
-    that is already known to satisfy every hard scheduling rule.
+    that is already known to satisfy every hard scheduling rule. Read the
+    solver response by variable index instead of passing variables from a
+    cloned model to ``CpSolver.Value``. OR-Tools may otherwise dereference the
+    variable's owning model incorrectly; this is especially unsafe for the
+    larger diagnostic neighborhood clones used by continuous sessions.
     """
 
     model.ClearHints()
+    source_model = source_model or model
+    response = (
+        solver.ResponseProto().solution
+        if hasattr(solver, "ResponseProto")
+        else ()
+    )
+    source_variable_count = len(source_model.Proto().variables)
     for index in range(len(model.Proto().variables)):
         variable = model.GetIntVarFromProtoIndex(index)
-        model.AddHint(variable, solver.Value(variable))
+        if index < len(response):
+            value = response[index]
+        elif index >= source_variable_count:
+            # Diagnostic probe clones may append indicator variables that do
+            # not exist in the solved source model. The supplied incumbent has
+            # no changed-student indicators set, so zero is the safe hint for
+            # these search-only auxiliaries; CP-SAT still validates the model.
+            value = 0
+        else:
+            # Some CP-SAT responses omit values for variables that were
+            # eliminated or otherwise unused. When the destination is a
+            # clone, query the solver with the variable from the original
+            # solved model, never with the clone's variable object.
+            source_variable = source_model.GetIntVarFromProtoIndex(index)
+            value = solver.Value(source_variable)
+        model.AddHint(variable, value)
 
 
 def set_assignment_hints(model, assignment_hints):

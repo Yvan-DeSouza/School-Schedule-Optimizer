@@ -88,6 +88,12 @@ future scheduling stages do not reimplement the same rules in different places.
   and validation state. CP-SAT plus the unchanged full-model validator remain
   the only authority for adopting a candidate; an UNKNOWN result is never
   treated as a proof of exhaustion or infeasibility.
+- When transferring CP-SAT hints from a solved model into a cloned diagnostic
+  model, transfer solution values by response/proto variable index. Never call
+  `CpSolver.Value()` with a variable owned by a different model. If a cloned
+  probe adds variables that do not exist in the source model, initialize those
+  probe-only variables conservatively rather than treating them as source
+  assignments. This preserves safe model boundaries during diagnostic search.
 
 ## Immutable Workflow Records
 

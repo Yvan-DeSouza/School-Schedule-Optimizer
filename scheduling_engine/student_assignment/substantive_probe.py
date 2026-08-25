@@ -384,7 +384,11 @@ def probe_substantive_soft_tier(
             )
             probe_model.Minimize(component_expressions[minimize_component])
     with timing.measure("hint_application_seconds"):
-        set_solver_hints(probe_model, seed_solver)
+        set_solver_hints(
+            probe_model,
+            seed_solver,
+            source_model=context.model,
+        )
 
     with timing.measure("solver_creation_seconds"):
         solver = new_solver(

@@ -649,6 +649,26 @@ def test_result_records_validated_seed_and_optimization_quality_facts():
     assert len(facts["input_semantic_fingerprint"]) == 64
 
 
+def test_solver_hints_transfer_by_response_index_to_a_cloned_model():
+    model = cp_model.CpModel()
+    first = model.NewIntVar(0, 1, "first")
+    second = model.NewIntVar(0, 4, "second")
+    model.Add(first == 1)
+    model.Add(second == 3)
+    solver = cp_model.CpSolver()
+    assert solver.Solve(model) in {cp_model.OPTIMAL, cp_model.FEASIBLE}
+
+    cloned_model = model.Clone()
+    with patch.object(solver, "Value", side_effect=AssertionError("cross-model Value call")):
+        student_assignment_solver.set_solver_hints(cloned_model, solver)
+
+    hint = cloned_model.Proto().solution_hint
+    assert dict(zip(hint.vars, hint.values)) == {
+        first.Index(): 1,
+        second.Index(): 3,
+    }
+
+
 def test_stage2_diagnostic_trace_records_seed_hint_and_objective_metadata():
     result = student_assignment_module.run_student_assignment_stage2_diagnostic(
         _substantive_probe_input()

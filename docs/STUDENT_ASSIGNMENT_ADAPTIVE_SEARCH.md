@@ -217,3 +217,28 @@ The research order after the current diagnostic allocator is:
 Heuristics may choose a student, pair, neighborhood, or grade to explore.
 They must never authorize a candidate. CP-SAT plus unchanged full-model
 validation remain the only authority.
+
+## Target-scale session qualification gate
+
+The reusable session primitives have now been exercised on the detached
+Objective Semantics v2 production-scale input with one validated source
+incumbent. Dynamic `r4_s1`, `r8_s1`, `r4_s2`, and `r8_s2` sessions each completed
+three bounded attempts with complete, full-model-validated candidates. Their
+final substantive values were respectively `37,578`, `37,572`, `37,470`, and
+`37,470`, from a common starting value of `37,596`. Dynamic R2 returned
+`UNKNOWN` without a candidate and retained the complete incumbent; it was not
+classified as infeasible or locally optimal.
+
+The source facts were unchanged across sessions: 1,400 students, 10,760
+requests, 10,945 required groups, 10,635 assignments, zero unmet required
+requests, and 310 fulfilled special commitments. The detached v2 input and
+canonical checkpoint were not persisted or mutated. Fixed-target controls
+completed as well, and a reused continuous `r8_s2` session reached the same
+endpoint as three independent calls while taking materially less external
+wall time. Peak process memory remained below 1 GB in the measured runs.
+
+This closes the reusable-session qualification gate for diagnostic research,
+not the production-promotion gate. It supports investigating larger
+neighborhood escape operators next. It does not authorize R16/R32/R64,
+adaptive allocation, grade-bounded search, or global search without a separate
+evidence-gated study.

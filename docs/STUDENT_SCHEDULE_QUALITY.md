@@ -1199,3 +1199,45 @@ adaptive operator allocator has been implemented. The separate v2 adaptive
 operator allocator is now implemented as an offline diagnostic policy in
 `STUDENT_ASSIGNMENT_ADAPTIVE_SEARCH.md`; it is not production-wired and does
 not alter objective semantics or candidate authority.
+
+### Target-scale reusable-session qualification
+
+The current v2 operator-session implementation has passed a detached
+target-scale qualification gate using input fingerprint
+`faa7a016b553d662821cb1247bb70fed8b9021dc289a6b406ff9f7c993b0d280` and
+source-seed fingerprint
+`d5036a44e71d5a3b2a94eebe51d645bb4034179a0dd29537492ea81feda2e900`. The
+1,400-student source facts were preserved: 10,760 requests, 10,945 required
+groups, 10,635 assignments, zero unmet required requests, and 310 special
+commitments.
+
+At eight workers with three 30-second attempts per session, dynamic sessions
+started from v2 substantive value `37,596` and ended as follows:
+
+| Session | Final substantive value | Validated adoptions | Wall time |
+| --- | ---: | ---: | ---: |
+| R2 | 37,596 | 0 | 57.0 s |
+| targeted R4/S1 | 37,578 | 3 | 73.6 s |
+| targeted R8/S1 | 37,572 | 3 | 70.3 s |
+| targeted R4/S2 | 37,470 | 3 | 71.2 s |
+| targeted R8/S2 | 37,470 | 3 | 74.6 s |
+
+All adopted candidates were complete and passed the unchanged full-model
+validator. No run changed fulfillment, assignment count, or special-
+commitment completion. Section-utilization improvement appeared throughout
+the targeted trajectories; the S2 trajectories also included a validated
+difficulty/category component move while preserving semester balance. The S2
+sessions retargeted after adoption and followed the same `(1052, 1068)` to
+`(1052, 1072)` target transition. Fixed-target controls also completed; one
+fixed R8/S2 control reached `37,464`, which is useful control evidence but not
+enough to establish fixed-policy superiority.
+
+A session-reuse A/B comparison reached the same fixed-R8/S2 endpoint in 73.2
+seconds as one continuous session, compared with 163.7 seconds for three
+independent wrapper calls. This supports the session-static reuse design. Peak
+working-set telemetry remained below approximately 0.95 GB in the measured
+process. These are diagnostic facts, not production-policy approval.
+
+The next authorized research boundary is larger-neighborhood diagnostic
+qualification. Adaptive allocation, objective redesign, grade-bounded search,
+and global search remain separate future studies.

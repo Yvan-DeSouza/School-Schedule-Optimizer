@@ -858,3 +858,19 @@ The immediate implementation boundary is now counselor-reviewed A–D block and 
 ---
 
 *End of Implementation Roadmap.*
+
+## Current diagnostic-search update (2026-08-25)
+
+Objective Semantics v2 and the reusable continuous student-assignment
+operator-session boundary are implemented as pure-engine diagnostics. The
+detached target-scale qualification study established complete, full-model-
+validated repeated-session baselines for dynamic targeted R4/R8 S1/S2 and a
+safe retained-incumbent R2 baseline. It did not enable those operators in
+ordinary production scheduling.
+
+The next research increment, if separately authorized, is targeted
+utilization-cluster search using progressively larger R16/R32/R64 neighborhoods
+and intelligently selected multi-student scopes. Adaptive allocation over the
+expanded portfolio, grade-bounded unrestricted escape, full-school escape, and
+production promotion remain deferred until that family is characterized with
+the same detached-input, validation, resource, and repeatability evidence.
