@@ -100,11 +100,12 @@ and finalization. These are target-scale capability results, not evidence that
 the ranking is globally optimal or that an adaptive controller should select
 these students in production.
 
-The next separately scoped research increment may study adaptive allocation
-among targeted repair and retained local operators. Grade-bounded unrestricted
-escape and full-school global escape remain deferred. The targeted diagnostic
-does not change the production objective, counselor policy, approval behavior,
-or operator allocation.
+The next separately scoped research increment is comprehensive characterization
+of the implemented operator portfolio. It must include repeated utilization
+and grade-bounded evidence before adaptive allocation is calibrated. Full-
+school global escape remains deferred. The diagnostic operators do not change
+the production objective, counselor policy, approval behavior, or production
+operator allocation.
 
 ## Objective semantics versus search strategy
 
@@ -306,9 +307,9 @@ proven stop reasons.
 This is a diagnostic capability and a characterization boundary. It does not
 enable adaptive search in ordinary production scheduling, alter Objective
 Semantics v2, introduce full-school global search, or replace CP-SAT and
-full-model validation as the authority. Grade-bounded characterization,
-repeated operator-family descent, and adaptive-controller calibration remain
-separate evidence-gated studies.
+full-model validation as the authority. Comprehensive portfolio
+characterization and adaptive-controller calibration remain separate
+evidence-gated studies.
 
 ## Target-scale reusable-session qualification (Objective Semantics v2)
 
@@ -362,11 +363,12 @@ that comparison, while the reused process remained within a measured peak of
 approximately 0.95 GB. The result supports reusing the static model/context
 for diagnostic sessions, but it is not production enablement.
 
-This qualification is sufficient to proceed to diagnostic research on larger
-neighborhood families such as R16/R32/R64. It is not sufficient to promote an
-adaptive allocator or any operator into ordinary scheduling. The next study
-must retain detached, fingerprinted inputs, complete incumbent validation,
-full-model candidate validation, clean-process controls, and explicit
+This qualification is sufficient to proceed to comprehensive characterization
+of the implemented portfolio, including larger utilization neighborhoods and
+grade-bounded escape. It is not sufficient to promote an adaptive allocator or
+any operator into ordinary scheduling. The characterization study must retain
+detached, fingerprinted inputs, complete incumbent validation, full-model
+candidate validation, clean-process controls, and explicit
 memory/unknown/infeasible reporting.
 
 ### Target-scale timing and gain scorecard

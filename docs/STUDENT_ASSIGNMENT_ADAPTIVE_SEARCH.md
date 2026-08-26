@@ -20,7 +20,10 @@ quality facts to allocate a shared offline budget.
 
 ## Scope and non-goals
 
-The current portfolio contains only existing local operators:
+The implemented diagnostic portfolio contains existing local, targeted,
+utilization-cluster, and grade-bounded operators. The allocator below still
+uses only its explicitly configured local subset; broader families are
+characterized separately before any adaptive calibration.
 
 | Operator | Search scope | Role |
 | --- | --- | --- |
@@ -28,10 +31,12 @@ The current portfolio contains only existing local operators:
 | `targeted_r8_s1` | targeted radius 8, one student | targeted repair |
 | `targeted_r8_s2` | targeted radius 8, two students | targeted repair |
 | `targeted_r4_s2` | targeted radius 4, two students | targeted repair |
+| `targeted_utilization_r16_s2` through `targeted_utilization_r64_s10` | bounded utilization clusters | utilization repair |
+| `grade_bounded_g9` through `grade_bounded_g12` | one actual grade unrestricted; other grades frozen | basin escape |
 
-Grade-bounded unrestricted search, full-school global escape, reinforcement
-learning/bandits, adaptive objective weighting, and production operator
-selection are not implemented. In particular, the allocator cannot change
+Full-school global escape, reinforcement learning/bandits, adaptive objective
+weighting, and production operator selection are not implemented. In particular,
+the allocator cannot change
 the objective definition, importance scores, hard constraints, fulfillment
 semantics, locks, or approval behavior.
 
@@ -201,19 +206,16 @@ being presented as a quality win.
 
 ## Deferred roadmap
 
-The research order after the current diagnostic allocator is:
+The research order before adaptive calibration is:
 
-1. establish repeatable v2 operator baselines;
-2. test the allocator on medium fixtures and then only promising target-scale
-   candidates;
-3. retain only evidence-backed policy behavior;
-4. investigate student-targeted repair refinements;
-5. characterize the separate grade-bounded unrestricted operators while
-   freezing students outside the selected grade and retaining the full model
-   for everyone;
-6. return to faster local operators after a successful grade escape;
-7. consider full-school unrestricted escape only if evidence justifies it;
-8. run production-promotion and policy studies only after these gates.
+1. characterize every implemented v2 operator family on matched inputs;
+2. measure student-pressure, utilization, and grade-escape role-specific
+   productivity, resource cost, and stagnation;
+3. test the allocator only as an offline replay/diagnostic against that
+   evidence;
+4. return to faster local operators after any successful grade escape;
+5. consider full-school unrestricted escape only if evidence justifies it;
+6. run production-promotion and policy studies only after these gates.
 
 Heuristics may choose a student, pair, neighborhood, or grade to explore.
 They must never authorize a candidate. CP-SAT plus unchanged full-model
@@ -239,10 +241,10 @@ endpoint as three independent calls while taking materially less external
 wall time. Peak process memory remained below 1 GB in the measured runs.
 
 This closes the reusable-session qualification gate for diagnostic research,
-not the production-promotion gate. It supports investigating larger
-neighborhood escape operators next. It does not authorize R16/R32/R64,
-adaptive allocation, grade-bounded search, or global search without a separate
-evidence-gated study.
+not the production-promotion gate. Utilization-cluster and grade-bounded
+families are now implemented as separate diagnostic capabilities. The next
+evidence gate is comprehensive cross-family characterization; it does not
+authorize adaptive allocation or global search.
 
 The first larger-neighborhood diagnostic is now implemented as an opt-in
 utilization-cluster family. It uses the existing global section-utilization

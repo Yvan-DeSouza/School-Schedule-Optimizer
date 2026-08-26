@@ -56,9 +56,11 @@ operator does not authorize adaptive allocation, change Objective Semantics
 v2, or establish a production policy.
 
 The current durable production-scale v1 artifact predates the grade fact and
-originated from a fixture whose 1,400 students are all Grade 12. A temporary
-in-memory Grade-12 screen can therefore exercise the operator's target-scale
-plumbing, but it is not evidence about cross-grade opportunity. Cross-grade
-target-scale conclusions require a current adapter-produced snapshot with
-real mixed student grades and its own fingerprint; the canonical v1 artifact
-must remain unchanged.
+originated from a fixture whose 1,400 students are all Grade 12. It remains
+unchanged. A separate durable synthetic mixed-grade-v2 artifact records a
+deterministic 350/350/350/350 Grade 9–12 profile with its own input and
+source-seed fingerprints. It provides reproducible diagnostic cross-grade
+plumbing and capability evidence, but it is not an adapter-produced school
+dataset and must not be presented as real cross-grade production evidence.
+Stronger production conclusions still require a current adapter-produced
+snapshot with real mixed student grades.

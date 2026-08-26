@@ -26,6 +26,18 @@ from .utilization_guidance import (
     select_utilization_cluster_targets,
 )
 from .grade_guidance import GradeOpportunity, build_grade_opportunity_facts
+from .operator_characterization import (
+    CHARACTERIZATION_SCHEMA,
+    OPERATOR_ROLES,
+    OperatorCharacterizationRecord,
+    aggregate_operator_characterization,
+    build_adaptive_readiness_matrix,
+    build_capability_card,
+    build_operator_characterization_record,
+    estimate_attempts_per_time_window,
+    run_operator_characterization_trial,
+    summarize_stagnation,
+)
 from .search_experiments import (
     RANKING_POLICY_DETERMINISTIC,
     RANKING_POLICY_RAW,
@@ -82,6 +94,16 @@ __all__ = [
     "select_utilization_cluster_targets",
     "GradeOpportunity",
     "build_grade_opportunity_facts",
+    "CHARACTERIZATION_SCHEMA",
+    "OPERATOR_ROLES",
+    "OperatorCharacterizationRecord",
+    "aggregate_operator_characterization",
+    "build_adaptive_readiness_matrix",
+    "build_capability_card",
+    "build_operator_characterization_record",
+    "estimate_attempts_per_time_window",
+    "run_operator_characterization_trial",
+    "summarize_stagnation",
     "ADAPTIVE_POLICY_VERSION",
     "AdaptiveOperatorAttempt",
     "AdaptiveOperatorSpec",

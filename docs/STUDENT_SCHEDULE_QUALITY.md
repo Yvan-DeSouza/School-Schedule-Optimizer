@@ -1248,6 +1248,8 @@ independent wrapper calls. This supports the session-static reuse design. Peak
 working-set telemetry remained below approximately 0.95 GB in the measured
 process. These are diagnostic facts, not production-policy approval.
 
-The next authorized research boundary is larger-neighborhood diagnostic
-qualification. Adaptive allocation, objective redesign, grade-bounded search,
-and global search remain separate future studies.
+The next authorized research boundary is comprehensive diagnostic
+characterization of the implemented operator portfolio. Adaptive allocation
+remains a separate future study and is not production-wired; grade-bounded
+search is implemented diagnostically and is covered by the operator
+characterization evidence catalog. Full-school global search remains deferred.

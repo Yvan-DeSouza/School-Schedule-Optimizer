@@ -3695,6 +3695,11 @@ def _solve_student_assignment(
                     variable_neighborhood = False
                 radius_index = 0
                 iteration_count = 0
+                # Keep the final facts well-defined if the shared deadline is
+                # already exhausted before the first iteration. Grade-bounded
+                # sessions use this same summary path, but their guidance is
+                # initialized inside the loop when an attempt starts.
+                target_guidance = {}
                 while iteration_count < max_iterations and radius_index < len(radii):
                     if (
                         stage_2_deadline is not None

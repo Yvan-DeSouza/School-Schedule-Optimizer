@@ -1,0 +1,61 @@
+{
+  "artifacts": {
+    "input": {
+      "compressed_bytes": 108533,
+      "path": "input.json.gz",
+      "sha256_compressed": "3b6506671184d3e9bd6c196bd7cdb4a5cea07f6aaf25a1c24d961bfad2871679",
+      "sha256_uncompressed": "c3bacd2578d67824a5d9a3193d012ba2784b3ab88dd8b5db4ab64837b4c9444d",
+      "uncompressed_bytes": 9075400
+    },
+    "stage1_seed": {
+      "compressed_bytes": 86623,
+      "path": "stage1_seed.json.gz",
+      "sha256_compressed": "50dc090f0a782ee9a1a5118b2c07d2a50eee995dc6bab846244145ea0194ee3b",
+      "sha256_uncompressed": "4a07002495fef21c0e2d750adeeba041ab0b6c70e36108fda71e8f60674baeb7",
+      "uncompressed_bytes": 4699942
+    }
+  },
+  "benchmark_name": "mixed-grade-v2-production-shape",
+  "benchmark_schema": "student_assignment_stage2_benchmark_v1",
+  "counts": {
+    "normal_section_count": 304,
+    "online_supervision_session_count": 13,
+    "request_count": 10760,
+    "required_source_decision_group_count": 10945,
+    "special_commitment_count": 310,
+    "special_commitment_request_count": 185,
+    "student_assignment_section_record_count": 317,
+    "student_count": 1400
+  },
+  "created_at_utc": "2026-08-26T02:54:34.618391+00:00",
+  "input_semantic_fingerprint": "c07c77d0aa077a3e72240f27644d86b8a1a4faecb2f72a900aacc3fcb792d28a",
+  "schema": "student_assignment_stage2_benchmark_manifest_v1",
+  "seed_source_decision_fingerprint": "d5036a44e71d5a3b2a94eebe51d645bb4034179a0dd29537492ea81feda2e900",
+  "solver": {
+    "ortools": "9.15.6755",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python": "3.14.5"
+  },
+  "source": "Synthetic deterministic grade/profile overlay of production_scale_v1; not real school data and not a replacement for the v1 artifact.",
+  "stage1": {
+    "complete": true,
+    "objective_vector": [
+      -10945.0,
+      0.0,
+      0.0,
+      0.0,
+      65025.0,
+      5669086063317.0
+    ],
+    "source_decision_count": 10635,
+    "substantive_components": {
+      "course_category_diversity_penalty": 22150.0,
+      "difficulty_balance_penalty": 35973.0,
+      "schedule_preservation_move_penalty": 0.0,
+      "section_utilization_balance_penalty": 6727.0,
+      "soft_sequence_preferences_satisfied": 0.0,
+      "student_semester_balance_penalty": 175.0
+    },
+    "validated": true
+  }
+}

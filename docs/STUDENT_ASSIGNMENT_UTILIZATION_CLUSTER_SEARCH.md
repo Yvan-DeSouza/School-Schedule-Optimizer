@@ -178,9 +178,10 @@ unbounded endpoint shaving. The order remains:
    simple labels as presets rather than a second weighting system;
 4. establish a new Objective Semantics v2 baseline and revalidate only the
    operators affected by that change;
-5. then study targeted repair and adaptive operator allocation;
-6. defer grade-bounded unrestricted escape and full-school global escape until
-   those prerequisites are complete.
+5. characterize the complete implemented operator portfolio, including
+   targeted repair, utilization clusters, and grade-bounded escape;
+6. then study adaptive operator allocation;
+7. defer full-school global escape until those prerequisites are complete.
 
 Future guidance may select students, pairs, neighborhoods, or grades to
 search. It must never authorize a candidate. CP-SAT and unchanged full-model

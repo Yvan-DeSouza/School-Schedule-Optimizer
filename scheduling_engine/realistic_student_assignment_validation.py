@@ -9,6 +9,7 @@ demand.
 from __future__ import annotations
 
 from collections import Counter
+from dataclasses import replace
 from statistics import mean, median
 from time import perf_counter
 
@@ -29,6 +30,7 @@ from .dto import (
     TimeSlotDTO,
 )
 from .student_assignment import solve_student_assignment
+from .student_assignment.runtime import semantic_student_assignment_input_fingerprint
 
 
 def _section(
@@ -543,6 +545,75 @@ def build_production_shaped_medium_fixture(*, student_count=240) -> StudentAssig
         special_commitment_locks=tuple(special_locks),
         timeslots=timeslots,
     )
+
+
+def build_mixed_grade_v2_fixture(*, student_count=240) -> StudentAssignmentInputDTO:
+    """Return a current, deterministic mixed-grade v2 study fixture.
+
+    The existing production-shaped medium fixture deliberately exercises the
+    special-commitment and section interactions.  This wrapper adds actual
+    student-grade facts and opts the detached input into the current v2
+    objective semantics.  It is synthetic benchmark data, not a claim about a
+    particular school's grade distribution, and it never changes the
+    production-scale Django fixture or the durable v1 artifact.
+    """
+
+    base = build_production_shaped_medium_fixture(student_count=student_count)
+    return apply_mixed_grade_v2_profile(base)
+
+
+def apply_mixed_grade_v2_profile(
+    data: StudentAssignmentInputDTO,
+) -> StudentAssignmentInputDTO:
+    """Return ``data`` with a deterministic synthetic mixed-grade v2 profile.
+
+    This helper is intentionally DTO-only so a detached production-shaped
+    input can be screened without mutating its source artifact.  Grade facts
+    are synthetic study metadata; they are not inferred from course catalog
+    grades and are not presented as real school data.
+    """
+
+    grade_facts = tuple(
+        (student_id, 9 + ((student_id - 1) % 4))
+        for student_id in sorted({
+            request.student_id for request in data.requests
+        } | {
+            enrollment.student_id for enrollment in data.fixed_enrollments
+        } | {
+            commitment.student_id
+            for commitment in data.schedule_commitment_requests
+        })
+    )
+    return replace(
+        data,
+        objective_semantics_version="v2",
+        objective_importance_scores={
+            "section_utilization_balance": 6,
+            "student_semester_balance": 6,
+            "course_sequence_preferences": 6,
+            "difficulty_balance": 6,
+            "course_category_diversity": 6,
+        },
+        student_grades=grade_facts,
+    )
+
+
+def summarize_mixed_grade_v2_fixture(data):
+    """Return benchmark identity facts for a mixed-grade v2 fixture."""
+
+    grade_counts = {}
+    for _student_id, grade_level in data.student_grades:
+        grade_counts[int(grade_level)] = grade_counts.get(int(grade_level), 0) + 1
+    return {
+        "objective_semantics_version": data.objective_semantics_version,
+        "student_count": len(data.student_grades),
+        "grade_counts": dict(sorted(grade_counts.items())),
+        "request_count": len(data.requests),
+        "section_count": len(data.sections),
+        "special_commitment_count": len(data.schedule_commitment_requests),
+        "online_supervision_session_count": len(data.online_supervision_sessions),
+        "input_fingerprint": semantic_student_assignment_input_fingerprint(data),
+    }
 
 
 def summarize_production_shaped_medium_fixture(data, result=None):

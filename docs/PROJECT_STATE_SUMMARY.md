@@ -30,9 +30,13 @@ Objective Semantics v2 target-scale qualification study using the 1,400-student
 benchmark input and one validated source incumbent. Dynamic R4/S1, R8/S1,
 R4/S2, and R8/S2 sessions completed repeated full-model-validated attempts;
 R2 remained complete but unresolved after `UNKNOWN`. This is diagnostic
-qualification only. Targeted utilization-cluster R16/R32/R64 research is the
-next approved investigation, while adaptive allocation, grade-bounded escape,
-global escape, and production enablement remain deferred.
+qualification only. The current research boundary is a diagnostic-only
+characterization study over the implemented student-pressure,
+utilization-cluster, and actual-grade-bounded operator families. Adaptive
+allocation, grade-bounded production use, global escape, and production
+enablement remain deferred. The evidence catalog is maintained in
+`docs/STUDENT_ASSIGNMENT_OPERATOR_CHARACTERIZATION.md` and escape semantics in
+`docs/STUDENT_ASSIGNMENT_ESCAPE_STRATEGIES.md`.
 
 ## 1. System Overview & Product Philosophy
 
