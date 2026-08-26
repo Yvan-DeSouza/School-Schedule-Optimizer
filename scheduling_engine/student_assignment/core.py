@@ -1067,6 +1067,49 @@ def run_student_assignment_mature_local_search_diagnostic(
     )
 
 
+def run_student_assignment_source_decision_validation_diagnostic(
+    data: StudentAssignmentInputDTO,
+    *,
+    source_decisions=(),
+    source_variable_values=None,
+    time_limit_seconds=None,
+    worker_count=1,
+    capture_final_source_decisions=True,
+    collect_resource_telemetry=False,
+):
+    """Validate detached semantic decisions against the current full model.
+
+    This is a diagnostic boundary for transparent benchmark branches. It
+    skips Stage 1 and all optimization, then uses the same full-model source
+    decision validator used by mature diagnostic sessions. The returned
+    result is extracted from that CP-SAT-validated incumbent; no heuristic
+    repair or replacement schedule is created.
+    """
+
+    if not source_decisions and source_variable_values is None:
+        raise ValueError("source_decisions is required")
+    validation_limit = max(
+        0.001,
+        float(time_limit_seconds)
+        if time_limit_seconds is not None
+        else float(data.time_limit_seconds),
+    )
+    return _solve_student_assignment(
+        data,
+        include_lock_costs=False,
+        include_candidate_ledger=False,
+        use_hard_feasibility_bootstrap=True,
+        alternate_source_decisions=source_decisions,
+        alternate_source_variable_values=source_variable_values,
+        mature_checkpoint_only=True,
+        local_only=True,
+        hard_feasibility_validation_time_limit_seconds=validation_limit,
+        hard_feasibility_validation_worker_count=worker_count,
+        capture_final_source_decisions=capture_final_source_decisions,
+        collect_resource_telemetry=collect_resource_telemetry,
+    )
+
+
 def run_student_assignment_operator_session_diagnostic(
     data: StudentAssignmentInputDTO,
     *,

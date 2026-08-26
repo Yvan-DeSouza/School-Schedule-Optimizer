@@ -33,6 +33,7 @@ from .core import (
     run_student_assignment_adaptive_local_bootstrap_diagnostic,
     run_student_assignment_local_bootstrap_diagnostic,
     run_student_assignment_operator_session_diagnostic,
+    run_student_assignment_source_decision_validation_diagnostic,
     run_student_assignment_stage2_diagnostic,
     run_substantive_soft_tier_probe,
 )
@@ -45,6 +46,197 @@ DURABLE_STAGE2_BENCHMARK_MANIFEST_SCHEMA = (
     "student_assignment_stage2_benchmark_manifest_v1"
 )
 MATURE_R2_CHECKPOINT_SCHEMA = "student_assignment_mature_r2_checkpoint_v1"
+DIAGNOSTIC_BRANCH_SCHEMA = "student_assignment_diagnostic_branch_v1"
+
+
+def _read_json_artifact(path):
+    """Read one transparent JSON or deterministic gzip JSON artifact."""
+
+    path = Path(path)
+    if path.suffix == ".gz":
+        with gzip.GzipFile(fileobj=io.BytesIO(path.read_bytes()), mode="rb") as source:
+            return json.loads(source.read().decode("utf-8"))
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def write_diagnostic_branch_checkpoint(
+    path,
+    *,
+    data,
+    source_decisions,
+    parent_source_decision_fingerprint,
+    branch_id,
+    provenance,
+    objective_vector=(),
+    substantive_components=None,
+    quality=None,
+    validation=None,
+):
+    """Write one validated, transparent derived incumbent for offline study.
+
+    This is deliberately separate from the mature-R2 checkpoint schema.  A
+    branch may come from any diagnostic operator, but it may only be written
+    after the caller has established a complete result and full-model
+    validation.  The semantic source decisions, rather than an opaque solver
+    object, are the durable identity of the branch.
+    """
+
+    input_fingerprint = semantic_student_assignment_input_fingerprint(data)
+    canonical = _canonical_seed_source_decisions(data, tuple(source_decisions))
+    source_fingerprint = stage1_seed_source_fingerprint(canonical)
+    validation = dict(validation or {})
+    quality = dict(quality or {})
+    if not validation.get("full_model_validation"):
+        raise ValueError("A diagnostic branch requires full-model validation")
+    if not validation.get("complete"):
+        raise ValueError("A diagnostic branch requires a complete result")
+    if int(validation.get("unmet_request_count", 0) or 0) != 0:
+        raise ValueError("A diagnostic branch cannot contain unmet requests")
+    payload = {
+        "schema": DIAGNOSTIC_BRANCH_SCHEMA,
+        "branch_id": str(branch_id),
+        "created_at_utc": datetime.now(timezone.utc).isoformat(),
+        "input_semantic_fingerprint": input_fingerprint,
+        "parent_source_decision_fingerprint": (
+            parent_source_decision_fingerprint
+        ),
+        "source_decision_fingerprint": source_fingerprint,
+        "source_decisions": _encode_snapshot_value(canonical),
+        "objective_semantics_version": data.objective_semantics_version,
+        "objective_importance_scores": dict(data.objective_importance_scores),
+        "provenance": dict(provenance or {}),
+        "objective_vector": list(objective_vector),
+        "substantive_components": dict(substantive_components or {}),
+        "quality": quality,
+        "counts": {
+            "source_decision_count": len(canonical),
+            "assignment_count": validation.get("assignment_count"),
+            "required_source_decision_group_count": validation.get(
+                "required_source_decision_group_count"
+            ),
+            "unmet_request_count": int(validation.get("unmet_request_count", 0) or 0),
+            "special_commitment_count": validation.get("special_commitment_count"),
+        },
+        "validation": validation,
+    }
+    path = Path(path)
+    encoded = _gzip_bytes(payload) if path.suffix == ".gz" else _json_bytes(payload)
+    _atomic_write_bytes(path, encoded)
+    return payload
+
+
+def read_diagnostic_branch_checkpoint(
+    path,
+    *,
+    data=None,
+    expected_input_fingerprint=None,
+):
+    """Read and verify a derived branch without trusting opaque state.
+
+    If ``data`` is supplied, source decisions are materialized into the
+    current DTO's identifier namespace and the input fingerprint is checked.
+    The caller must still run the current full-model validator before solving
+    from the branch; stored validation facts are provenance, not authority.
+    """
+
+    payload = _read_json_artifact(path)
+    if payload.get("schema") != DIAGNOSTIC_BRANCH_SCHEMA:
+        raise ValueError("Unsupported diagnostic branch schema")
+    stored_input_fingerprint = payload.get("input_semantic_fingerprint")
+    if (
+        expected_input_fingerprint is not None
+        and stored_input_fingerprint != expected_input_fingerprint
+    ):
+        raise ValueError("Diagnostic branch input fingerprint does not match")
+    canonical = tuple(_decode_snapshot_value(payload.get("source_decisions")))
+    actual_source_fingerprint = stage1_seed_source_fingerprint(canonical)
+    if actual_source_fingerprint != payload.get("source_decision_fingerprint"):
+        raise ValueError("Diagnostic branch source fingerprint is invalid")
+    stored_validation = payload.get("validation", {})
+    if not stored_validation.get("full_model_validation"):
+        raise ValueError("Diagnostic branch is not marked as fully validated")
+    if not stored_validation.get("complete"):
+        raise ValueError("Diagnostic branch is not marked complete")
+    if int(stored_validation.get("unmet_request_count", 0) or 0) != 0:
+        raise ValueError("Diagnostic branch contains unmet requests")
+    materialized = canonical
+    actual_input_fingerprint = stored_input_fingerprint
+    if data is not None:
+        actual_input_fingerprint = semantic_student_assignment_input_fingerprint(data)
+        if actual_input_fingerprint != stored_input_fingerprint:
+            raise ValueError("Diagnostic branch belongs to a different input")
+        materialized = _materialize_seed_source_decisions(data, canonical)
+        if semantic_stage1_seed_source_fingerprint(data, materialized) != (
+            actual_source_fingerprint
+        ):
+            raise ValueError("Diagnostic branch cannot be materialized for this input")
+    return {
+        **payload,
+        "input_semantic_fingerprint": actual_input_fingerprint,
+        "source_decisions": materialized,
+        "canonical_source_decisions": canonical,
+        "source_decision_fingerprint": actual_source_fingerprint,
+    }
+
+
+def validate_diagnostic_branch_checkpoint(
+    path,
+    *,
+    data,
+    time_limit_seconds=30.0,
+    worker_count=1,
+):
+    """Revalidate a detached branch through the existing full-model boundary.
+
+    Reading a stored ``full_model_validation`` flag is not sufficient: the
+    current DTO and model implementation are the authority.  The mature
+    diagnostic entry point validates the materialized semantic decisions
+    against the unchanged full model before its bounded local attempt.  The
+    attempt is deliberately tiny; this helper is a reproducibility gate, not
+    an additional quality-search experiment.
+    """
+
+    started = perf_counter()
+    branch = read_diagnostic_branch_checkpoint(path, data=data)
+    result = run_student_assignment_source_decision_validation_diagnostic(
+        data,
+        source_decisions=branch["source_decisions"],
+        time_limit_seconds=time_limit_seconds,
+        worker_count=int(worker_count),
+        capture_final_source_decisions=True,
+        collect_resource_telemetry=False,
+    )
+    stage_2 = dict((result.optimization_facts or {}).get("stage_2") or {})
+    validation = {
+        "full_model_validation": bool(stage_2.get("alternate_seed_validated")),
+        "complete": result.status == "complete",
+        "unmet_request_count": len(result.unmet_requests),
+        "assignment_count": len(result.assignments),
+        "special_commitment_count": len(result.commitment_assignments),
+        "solver_outcome": result.solver_outcome,
+        "elapsed_seconds": perf_counter() - started,
+    }
+    final_source_decisions = tuple(
+        stage_2.get("final_source_decisions") or ()
+    )
+    if final_source_decisions:
+        validation["source_fingerprint_matches"] = (
+            semantic_stage1_seed_source_fingerprint(data, final_source_decisions)
+            == branch["source_decision_fingerprint"]
+        )
+    else:
+        validation["source_fingerprint_matches"] = False
+    if not validation["full_model_validation"] or not validation["complete"]:
+        raise ValueError(
+            "Diagnostic branch failed current full-model validation: "
+            f"{validation}"
+        )
+    if not validation["source_fingerprint_matches"]:
+        raise ValueError(
+            "Diagnostic branch validation returned different source decisions: "
+            f"{validation}"
+        )
+    return {"branch": branch, "validation": validation, "result": result}
 
 
 def _atomic_write_bytes(path, payload):
@@ -1156,6 +1348,18 @@ def _canonical_seed_source_decisions(data, source_decisions):
     commitments_by_id = {
         item.request_id: item for item in data.schedule_commitment_requests
     }
+
+    def required_rank(mapping, value, label):
+        if value is None:
+            return None
+        try:
+            return mapping[value]
+        except KeyError as error:
+            raise ValueError(
+                f"Cannot canonicalize source decision: {label} {value!r} "
+                "is not present in the current input."
+            ) from error
+
     canonical = []
     for source_key, value in source_decisions:
         if source_key[0] == "course":
@@ -1164,10 +1368,10 @@ def _canonical_seed_source_decisions(data, source_decisions):
             canonical_key = ("course", maps["request_rank"][request_id])
             canonical_value = (
                 maps["student_rank"][value[0]],
-                maps["section_rank"].get(value[1]),
-                maps["online_rank"].get(value[2]),
+                required_rank(maps["section_rank"], value[1], "section"),
+                required_rank(maps["online_rank"], value[2], "online session"),
                 value[3],
-                maps["timeslot_rank"].get(value[4]),
+                required_rank(maps["timeslot_rank"], value[4], "timeslot"),
                 value[5],
             )
         elif source_key[0] == "commitment":

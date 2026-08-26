@@ -615,7 +615,7 @@ def test_adaptive_runner_adopts_only_validated_strict_improvement(monkeypatch):
         },
     )
     monkeypatch.setattr(
-        "scheduling_engine.student_assignment.adaptive_runtime.run_student_assignment_targeted_s1_diagnostic",
+        "scheduling_engine.student_assignment.adaptive_runtime._operator_result",
         lambda *args, **kwargs: candidate,
     )
     monkeypatch.setattr(

@@ -8,7 +8,7 @@ validation before it can become the next incumbent.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from time import monotonic
 from uuid import uuid4
 
@@ -16,6 +16,7 @@ from .adaptive_search import (
     AdaptiveOperatorAttempt,
     AdaptiveSessionRecord,
     DEFAULT_ADAPTIVE_OPERATOR_PORTFOLIO,
+    build_operator_session_request,
     build_adaptive_search_state,
     choose_adaptive_operator,
     select_fixed_cycle_operator,
@@ -23,7 +24,6 @@ from .adaptive_search import (
 )
 from .core import (
     run_student_assignment_operator_session_diagnostic,
-    run_student_assignment_targeted_s1_diagnostic,
 )
 from .runtime import semantic_student_assignment_input_fingerprint
 from .search_experiments import source_decision_fingerprint
@@ -73,6 +73,31 @@ def _weighted_substantive_value(result):
     )
 
 
+def _weighted_quality_value(quality, result):
+    """Use the supplied DTO profile when valuing an incumbent.
+
+    A detached source-decision incumbent can be reused under another v2
+    counselor profile.  In that case the result object's solver components
+    may describe the profile that originally created it, so policy state must
+    use the freshly reconstructed quality facts instead.
+    """
+
+    components = (
+        quality.get("objective_semantics", {}).get("components", {})
+        if isinstance(quality, dict)
+        else {}
+    )
+    weighted = [
+        fact.get("weighted_normalized_contribution")
+        for fact in components.values()
+        if isinstance(fact, dict)
+        and fact.get("weighted_normalized_contribution") is not None
+    ]
+    if weighted:
+        return float(sum(float(value or 0) for value in weighted))
+    return _weighted_substantive_value(result)
+
+
 def _source_decisions_from_result(result):
     return tuple(
         (result.optimization_facts or {})
@@ -83,51 +108,52 @@ def _source_decisions_from_result(result):
 
 def _operator_result(data, spec, *, selected_student_ids, current_source_decisions,
                     time_limit_seconds, worker_count, collect_resource_telemetry,
+                    session_overrides=None,
                     hard_feasibility_time_limit_seconds=None,
                     hard_feasibility_validation_time_limit_seconds=None,
                     hard_feasibility_worker_count=None,
                     hard_feasibility_validation_worker_count=None):
-    # Keep the original narrow wrapper available for compatibility with the
-    # existing diagnostic test seam.  All newly exposed families use the
-    # reusable operator-session boundary below.
-    if spec.name == "targeted_r8_s1":
-        return run_student_assignment_targeted_s1_diagnostic(
-            data,
-            selected_student_id=selected_student_ids[0],
-            neighborhood_radius=spec.radius,
-            time_limit_seconds=time_limit_seconds,
-            total_time_limit_seconds=time_limit_seconds,
-            worker_count=worker_count,
-            alternate_source_decisions=current_source_decisions,
-            capture_final_source_decisions=True,
-            collect_resource_telemetry=collect_resource_telemetry,
-            hard_feasibility_validation_time_limit_seconds=(
-                hard_feasibility_validation_time_limit_seconds
-            ),
-            hard_feasibility_validation_worker_count=(
-                hard_feasibility_validation_worker_count
-            ),
-        )
-    if spec.name == "r2":
-        target_policy = "dynamic"
-        selected = ()
-    else:
-        # The policy has already selected this scope from the current state.
-        # Passing it as fixed input makes the executed attempt correspond to
-        # the explanation record; the next policy iteration recomputes scope.
-        target_policy = "fixed"
-        selected = tuple(selected_student_ids)
+    # Every policy family uses the same reusable continuous-session boundary.
+    # The policy spec describes the session granularity; the outer caller still
+    # caps it by the remaining shared deadline.  This keeps multi-attempt
+    # execution and validation semantics identical across adaptive and static
+    # controls.
+    override = dict((session_overrides or {}).get(spec.name, {}))
+    effective_spec = replace(
+        spec,
+        session_time_limit_seconds=float(
+            override.get("session_time_limit_seconds", spec.session_time_limit_seconds)
+        ),
+        session_max_attempts=int(
+            override.get("session_max_attempts", spec.session_max_attempts)
+        ),
+        per_attempt_cp_sat_limit_seconds=float(
+            override.get(
+                "per_attempt_cp_sat_limit_seconds",
+                spec.per_attempt_cp_sat_limit_seconds,
+            )
+        ),
+    )
+    request = build_operator_session_request(
+        effective_spec,
+        remaining_seconds=time_limit_seconds,
+        worker_count=worker_count,
+        selected_student_ids=selected_student_ids,
+    )
     return run_student_assignment_operator_session_diagnostic(
         data,
         operator_family=spec.name,
         initial_source_decisions=current_source_decisions,
-        total_time_limit_seconds=time_limit_seconds,
-        max_attempts=1,
-        per_attempt_time_limit_seconds=time_limit_seconds,
-        worker_count=worker_count,
-        target_policy=target_policy,
-        selected_student_ids=selected,
-        selected_grade=spec.selected_grade,
+        total_time_limit_seconds=request["allocated_time_limit_seconds"],
+        max_attempts=request["max_attempts"],
+        per_attempt_time_limit_seconds=min(
+            request["per_attempt_time_limit_seconds"],
+            request["allocated_time_limit_seconds"],
+        ),
+        worker_count=request["worker_count"],
+        target_policy=request["target_policy"],
+        selected_student_ids=request["selected_student_ids"],
+        selected_grade=request["selected_grade"],
         utilization_cluster_policy="interaction_aware",
         hard_feasibility_validation_time_limit_seconds=(
             hard_feasibility_validation_time_limit_seconds
@@ -151,6 +177,7 @@ def run_adaptive_local_search_diagnostic(
     portfolio=DEFAULT_ADAPTIVE_OPERATOR_PORTFOLIO,
     max_iterations=None,
     collect_resource_telemetry=False,
+    session_overrides=None,
     hard_feasibility_time_limit_seconds=None,
     hard_feasibility_validation_time_limit_seconds=None,
     hard_feasibility_worker_count=None,
@@ -193,13 +220,15 @@ def run_adaptive_local_search_diagnostic(
     history = []
     decisions = []
     current_result = initial_result
-    current_value = _weighted_substantive_value(current_result)
     initial_components = dict(current_result.objective_components or {})
     initial_quality = _quality_report(data, current_result)
+    current_value = _weighted_quality_value(initial_quality, current_result)
     iteration_limit = (
         max(1, int(max_iterations)) if max_iterations is not None else None
     )
     stopping_reason = "shared_budget_exhausted"
+    policy_selection_seconds = 0.0
+    operator_execution_seconds = 0.0
 
     while monotonic() - started < configured_budget:
         if iteration_limit is not None and len(history) >= iteration_limit:
@@ -223,6 +252,7 @@ def run_adaptive_local_search_diagnostic(
                 or 0
             ),
         )
+        selection_started = monotonic()
         if selection_policy == "adaptive":
             decision = choose_adaptive_operator(
                 state,
@@ -241,14 +271,42 @@ def run_adaptive_local_search_diagnostic(
                 fixed_cycle,
                 ranked_students=ranked,
             )
+        policy_selection_seconds += monotonic() - selection_started
         if decision is None:
             stopping_reason = "no_eligible_operator"
             break
         decision_payload = decision.to_dict()
         decision_payload["selection_policy"] = selection_policy
-        decisions.append(decision_payload)
         selected = tuple(decision.selected_student_ids)
         operation_limit = min(per_operator, remaining)
+        effective_spec = replace(
+            decision.operator,
+            session_time_limit_seconds=float(
+                dict((session_overrides or {}).get(decision.operator.name, {})).get(
+                    "session_time_limit_seconds",
+                    decision.operator.session_time_limit_seconds,
+                )
+            ),
+            session_max_attempts=int(
+                dict((session_overrides or {}).get(decision.operator.name, {})).get(
+                    "session_max_attempts",
+                    decision.operator.session_max_attempts,
+                )
+            ),
+            per_attempt_cp_sat_limit_seconds=float(
+                dict((session_overrides or {}).get(decision.operator.name, {})).get(
+                    "per_attempt_cp_sat_limit_seconds",
+                    decision.operator.per_attempt_cp_sat_limit_seconds,
+                )
+            ),
+        )
+        decision_payload["session_request"] = build_operator_session_request(
+            effective_spec,
+            remaining_seconds=operation_limit,
+            worker_count=worker_count,
+            selected_student_ids=selected,
+        )
+        decisions.append(decision_payload)
         operation_started = monotonic()
         validation_error = None
         try:
@@ -260,6 +318,7 @@ def run_adaptive_local_search_diagnostic(
                 time_limit_seconds=operation_limit,
                 worker_count=worker_count,
                 collect_resource_telemetry=collect_resource_telemetry,
+                session_overrides=session_overrides,
                 hard_feasibility_time_limit_seconds=hard_feasibility_time_limit_seconds,
                 hard_feasibility_validation_time_limit_seconds=(
                     hard_feasibility_validation_time_limit_seconds
@@ -277,6 +336,7 @@ def run_adaptive_local_search_diagnostic(
             result = current_result
             validation_error = str(exc)
         operation_elapsed = monotonic() - operation_started
+        operator_execution_seconds += operation_elapsed
         local = dict((result.optimization_facts or {}).get("stage_2_local_bootstrap") or {})
         if validation_error is not None:
             local.update({
@@ -288,7 +348,8 @@ def run_adaptive_local_search_diagnostic(
                 "stopping_reason": "candidate_validation_error",
             })
         candidate_source = _source_decisions_from_result(result)
-        candidate_value = _weighted_substantive_value(result)
+        candidate_quality = _quality_report(data, result)
+        candidate_value = _weighted_quality_value(candidate_quality, result)
         candidate_found = bool(local.get("candidate_found", False))
         candidate_validated = bool(local.get("candidate_validated", False))
         hard_complete = result.status == "complete" and not result.unmet_requests
@@ -338,6 +399,21 @@ def run_adaptive_local_search_diagnostic(
                 utilization_cluster=tuple(
                     local.get("utilization_cluster", ()) or ()
                 ),
+                session_attempt_count=len(tuple(local.get("iterations", ()) or ())),
+                session_adopted_count=sum(
+                    bool(item.get("adopted"))
+                    for item in tuple(local.get("iterations", ()) or ())
+                ),
+                session_requested_seconds=local.get(
+                    "configured_session_budget_seconds"
+                ),
+                session_cp_sat_seconds=local.get("solver_wall_time_seconds"),
+                session_validation_seconds=local.get(
+                    "validation_elapsed_seconds"
+                ),
+                session_external_overrun_seconds=local.get(
+                    "external_overrun_seconds"
+                ),
             )
         )
         if monotonic() - started >= configured_budget:
@@ -345,8 +421,11 @@ def run_adaptive_local_search_diagnostic(
 
     if stopping_reason == "validated_improvement_adopted" and monotonic() - started >= configured_budget:
         stopping_reason = "shared_budget_exhausted"
+    finalization_started = monotonic()
     final_components = dict(current_result.objective_components or {})
     final_quality = _quality_report(data, current_result)
+    finalization_seconds = monotonic() - finalization_started
+    elapsed_seconds = monotonic() - started
     record = AdaptiveSessionRecord(
         session_id=str(session_id or uuid4()),
         policy_version=state.policy_version if "state" in locals() else "v2-local-allocator-diagnostic-2",
@@ -355,7 +434,7 @@ def run_adaptive_local_search_diagnostic(
         objective_semantics_version=data.objective_semantics_version,
         counselor_scores=dict(data.objective_importance_scores),
         configured_budget_seconds=configured_budget,
-        elapsed_seconds=monotonic() - started,
+        elapsed_seconds=elapsed_seconds,
         initial_components=initial_quality.get("objective_semantics", {}).get("components", {}) or initial_components,
         final_components=final_quality.get("objective_semantics", {}).get("components", {}) or final_components,
         initial_objective_vector=tuple(
@@ -378,6 +457,13 @@ def run_adaptive_local_search_diagnostic(
             (current_result.optimization_facts or {}).get("operation_resource_monitor") or {}
         ),
         selection_policy=selection_policy,
+        policy_selection_seconds=policy_selection_seconds,
+        operator_execution_seconds=operator_execution_seconds,
+        finalization_seconds=finalization_seconds,
+        external_overrun_seconds=max(
+            0.0,
+            elapsed_seconds - configured_budget,
+        ),
     )
     return AdaptiveSessionResult(
         record=record,

@@ -82,6 +82,12 @@ class AdaptiveOperatorAttempt:
     target_scope: tuple = ()
     selected_grade: int | None = None
     utilization_cluster: tuple = ()
+    session_attempt_count: int = 0
+    session_adopted_count: int = 0
+    session_requested_seconds: float | None = None
+    session_cp_sat_seconds: float | None = None
+    session_validation_seconds: float | None = None
+    session_external_overrun_seconds: float | None = None
 
     @property
     def gain_per_minute(self):
@@ -255,6 +261,10 @@ class AdaptiveSessionRecord:
     final_special_commitment_count: int
     resource: dict = field(default_factory=dict)
     selection_policy: str = "adaptive"
+    policy_selection_seconds: float = 0.0
+    operator_execution_seconds: float = 0.0
+    finalization_seconds: float = 0.0
+    external_overrun_seconds: float = 0.0
 
     def to_dict(self):
         return asdict(self)
@@ -578,12 +588,15 @@ def choose_adaptive_operator(
         if spec.portfolio_role == "utilization_repair" and len(selected) < spec.student_count:
             continue
         if spec.portfolio_role == "basin_escape":
-            grade = next(
-                (item for item in state.grade_opportunities
-                 if item.get("effective_search_available")),
-                None,
-            )
-            if grade is None:
+            # A grade operator is eligible only when that exact grade has a
+            # current actionable opportunity.  Checking merely that some
+            # other grade is actionable could cause the policy to select an
+            # unavailable grade because of its generic history/budget score.
+            if not any(
+                item.get("grade_level") == spec.selected_grade
+                and item.get("effective_search_available")
+                for item in state.grade_opportunities
+            ):
                 continue
         candidates.append(
             AdaptivePolicyDecision(
@@ -667,6 +680,7 @@ def build_operator_session_request(
     *,
     remaining_seconds,
     worker_count=8,
+    selected_student_ids=None,
 ):
     """Translate a policy decision into a future session execution request.
 
@@ -676,6 +690,12 @@ def build_operator_session_request(
     """
 
     spec = decision.operator if isinstance(decision, AdaptivePolicyDecision) else decision
+    if selected_student_ids is None:
+        selected_student_ids = (
+            decision.selected_student_ids
+            if isinstance(decision, AdaptivePolicyDecision)
+            else ()
+        )
     return {
         "operator_family": spec.name,
         "allocated_time_limit_seconds": min(
@@ -687,11 +707,7 @@ def build_operator_session_request(
         "worker_count": int(worker_count),
         "target_policy": spec.target_policy,
         "selected_grade": spec.selected_grade,
-        "selected_student_ids": tuple(
-            decision.selected_student_ids
-            if isinstance(decision, AdaptivePolicyDecision)
-            else ()
-        ),
+        "selected_student_ids": tuple(selected_student_ids),
     }
 
 

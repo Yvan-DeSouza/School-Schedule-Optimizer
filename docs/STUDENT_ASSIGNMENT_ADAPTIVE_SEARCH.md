@@ -239,6 +239,67 @@ does not yet prove that adaptive allocation outperforms a strong fixed policy
 across multiple states, counselor profiles, or total budgets. Real mixed-grade
 school data remains a later production-promotion gate.
 
+## Matched calibration protocol
+
+The offline calibration harness is implemented in
+`scheduling_engine/student_assignment/adaptive_calibration.py`, with the
+clean-process command surface in
+`scheduling_engine/benchmark_adaptive_calibration.py`. It is versioned as
+`adaptive-calibration-v1`. A trial applies one explicit v2 counselor-score
+profile, consumes one detached input and one complete semantic source-
+decision incumbent, and runs one selected policy under one shared outer
+wall-clock budget. The controls are `r2_only`, `student_repair_only`,
+`utilization_only`, `fixed_cycle`, `stateless_role`, and `adaptive`; they all
+use the same existing operator-session boundary, CP-SAT workers, full-model
+validation, strict-improvement adoption, and complete-incumbent retention.
+
+The harness writes only a temporary, transparent
+`student_assignment_diagnostic_branch_v1` checkpoint when a branch is needed
+for comparison. The checkpoint records semantic source decisions, input and
+source fingerprints, objective facts, completeness, and full-model validation
+provenance. Reading the stored validation flag is never treated as authority:
+the current DTO is materialized and the current full-model validator is run
+before the trial. Branches are detached from the canonical benchmark and are
+deleted after a trial unless an explicit output path is supplied. The harness
+does not call ordinary production assignment, approval, persistence, or
+upstream placement/staffing.
+
+Session overrides in the calibration protocol control only diagnostic session
+granularity (attempt caps and per-attempt/session slices). They do not change
+hard constraints, objective definitions, counselor semantics, or candidate
+authority. Session records separate policy-selection time, operator execution
+time, finalization time, CP-SAT/validation facts, and external overrun so a
+nominal solver slice is not misreported as total operational cost. A
+calibration result is evidence about a search policy, not a production
+recommendation.
+
+The first post-implementation calibration screens used the production-shaped
+detached input with fingerprint
+`c07c77d0aa077a3e72240f27644d86b8a1a4faecb2f72a900aacc3fcb792d28a`, the
+semantic seed fingerprint
+`d5036a44e71d5a3b2a94eebe51d645bb4034179a0dd29537492ea81feda2e900`, eight
+workers, a 60-second shared trial budget, and no canonical checkpoint writes.
+The R2-only control retained the complete incumbent (`10,635` assignments,
+zero unmet requests, `310` special commitments); its attempt returned
+unresolved `UNKNOWN` without an adopted candidate. Its operator execution was
+`93.806s` (`26.283s` CP-SAT), with `137.824s` spent in preparation and branch
+validation before the trial. The fixed-cycle control also retained the same
+complete incumbent and returned unresolved validation evidence without an
+adoption. Its operator execution was `79.688s` (`4.466s` CP-SAT and
+`11.094s` validation), with `211.690s` spent in preparation and branch
+validation. These results demonstrate why calibration records separate
+solver, validation, setup, and external-overrun time; they are not evidence
+that either control is a production winner.
+
+The final medium production-shaped screen used 80 generated students, the
+same bounded 30-second shared trial configuration, and two workers. The
+fixed-cycle control started from a complete `510`-assignment, zero-unmet
+incumbent, adopted two validated improvements, and ended complete at
+`35,262` versus `35,856` initially. This confirms multi-attempt execution,
+branch revalidation, and complete-incumbent retention on a practical screen;
+target-scale policy promotion still requires repeated matched trials and
+resource-aware comparison.
+
 ## Initial calibration evidence
 
 The matched diagnostic controls are defined by policy selection, not by a

@@ -128,7 +128,8 @@ control, not evidence that fixed targeting is infeasible or inferior.
 
 The R64/S8 and R64/S10 variants were not promoted after R64/S6 matched the
 strongest R32 result. They remain available for a separately justified
-experiment, but an exhaustive ladder sweep would not be evidence-efficient.
+experiment, and are now exposed to the offline calibration harness, but an
+exhaustive ladder sweep would not be evidence-efficient.
 
 ## Model and resource observations
 
@@ -155,7 +156,8 @@ configuration.
 - `R32/S4`: strongest current utilization-cluster candidate;
 - `R32/S6`: useful reference family, not superior in the measured sample;
 - `R64/S6`: useful escalation reference, currently not better than R32/S4;
-- `R64/S8` and `R64/S10`: unresolved/unmeasured;
+- `R64/S8` and `R64/S10`: available diagnostic families, unresolved in this
+  utilization-cluster study;
 - production adaptive enablement: not authorized;
 - objective semantics: unchanged.
 

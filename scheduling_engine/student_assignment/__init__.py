@@ -10,6 +10,7 @@ from .core import (
     run_student_assignment_targeted_s2_diagnostic,
     run_student_assignment_ordinary_repair_diagnostic,
     run_student_assignment_operator_session_diagnostic,
+    run_student_assignment_source_decision_validation_diagnostic,
     run_substantive_soft_tier_probe,
     solve_student_assignment,
 )
@@ -79,6 +80,18 @@ from .operator_session import (
     operator_session_target_count,
     select_operator_session_targets,
 )
+from .adaptive_calibration import (
+    CALIBRATION_FIXED_CYCLES,
+    CALIBRATION_PROFILES,
+    CALIBRATION_PROTOCOL_VERSION,
+    CALIBRATION_SESSION_OVERRIDES,
+    AdaptiveCalibrationTrialRecord,
+    apply_calibration_profile,
+    build_calibration_policy,
+    build_calibration_trial_record,
+    profile_fingerprint,
+    run_matched_calibration_trial,
+)
 __all__ = [
     "run_substantive_soft_tier_probe",
     "solve_student_assignment",
@@ -87,6 +100,7 @@ __all__ = [
     "run_student_assignment_targeted_s2_diagnostic",
     "run_student_assignment_ordinary_repair_diagnostic",
     "run_student_assignment_operator_session_diagnostic",
+    "run_student_assignment_source_decision_validation_diagnostic",
     "StudentTargetPressure",
     "rank_students_by_quality_pressure",
     "reconcile_student_quality_pressure",
@@ -131,4 +145,14 @@ __all__ = [
     "build_continuous_operator_session_record",
     "operator_session_target_count",
     "select_operator_session_targets",
+    "CALIBRATION_FIXED_CYCLES",
+    "CALIBRATION_PROFILES",
+    "CALIBRATION_PROTOCOL_VERSION",
+    "CALIBRATION_SESSION_OVERRIDES",
+    "AdaptiveCalibrationTrialRecord",
+    "apply_calibration_profile",
+    "build_calibration_policy",
+    "build_calibration_trial_record",
+    "profile_fingerprint",
+    "run_matched_calibration_trial",
 ]

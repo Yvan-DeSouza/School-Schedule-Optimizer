@@ -155,8 +155,9 @@ as if the raw objective values were expected to be numerically identical.
 Student-targeted repair is a diagnostic search policy that consumes v2; its
 ranking and operator contract is documented separately in
 `STUDENT_ASSIGNMENT_SEARCH_STRATEGY.md`. Grade-bounded escape is implemented
-as a separate diagnostic family and is not part of the adaptive allocator;
-full-school unrestricted search remains outside the current implementation.
+as a separate diagnostic family and is available to the offline adaptive
+allocator, but remains outside ordinary production scheduling. Full-school
+unrestricted search remains outside the current implementation.
 Any search policy may choose where to explore, but
 CP-SAT and full hard-model validation remain the only authorities for accepting
 a candidate. The utilization-cluster policy is a specific example: its

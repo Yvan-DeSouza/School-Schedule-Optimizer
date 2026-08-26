@@ -259,13 +259,15 @@ Earlier quality documentation uses “adaptive bootstrap” and “adaptive VNS�
 historical v1 diagnostic experiments. Those names describe bounded v1 search
 behavior and must not be confused with the v2 adaptive operator allocator.
 The v2 allocator now exists as a diagnostic-only policy documented separately:
-it may choose among targeted repair and retained local operators, but it must
-never change objective semantics, authorize a schedule, or bypass full
-validation.
+it may choose among targeted repair, retained local, utilization-cluster, and
+grade-bounded operators, but it must never change objective semantics,
+authorize a schedule, or bypass full validation.
 
 Grade-bounded unrestricted search is now a separately characterized
-diagnostic operator and remains outside the adaptive allocator. Full-school
-unrestricted escape remains deferred until evidence justifies it.
+diagnostic operator and is available to the offline adaptive allocator's
+portfolio. It remains outside ordinary production scheduling and cannot
+authorize a candidate. Full-school unrestricted escape remains deferred until
+evidence justifies it.
 
 ## Objective Semantics v2 adaptive allocator
 
@@ -318,7 +320,7 @@ evidence-gated studies.
 The reusable continuous-session boundary was qualified against the detached
 production-scale v2 input, not by rerunning placement or named-teacher
 assignment. The input fingerprint was
-`faa7a016b553d662821cb1247bb70fed8b9021dc289a6b406ff9f7c993b0d280`, and the
+`c07c77d0aa077a3e72240f27644d86b8a1a4faecb2f72a900aacc3fcb792d28a`, and the
 validated source-seed fingerprint remained
 `d5036a44e71d5a3b2a94eebe51d645bb4034179a0dd29537492ea81feda2e900`. The
 source facts remained 1,400 students, 10,760 requests, 10,945 required source
