@@ -154,9 +154,10 @@ as if the raw objective values were expected to be numerically identical.
 
 Student-targeted repair is a diagnostic search policy that consumes v2; its
 ranking and operator contract is documented separately in
-`STUDENT_ASSIGNMENT_SEARCH_STRATEGY.md`. Adaptive operator selection,
-grade-bounded escape, and full-school unrestricted search remain outside the
-current implementation. Any search policy may choose where to explore, but
+`STUDENT_ASSIGNMENT_SEARCH_STRATEGY.md`. Grade-bounded escape is implemented
+as a separate diagnostic family and is not part of the adaptive allocator;
+full-school unrestricted search remains outside the current implementation.
+Any search policy may choose where to explore, but
 CP-SAT and full hard-model validation remain the only authorities for accepting
 a candidate. The utilization-cluster policy is a specific example: its
 optimistic utilization-leverage facts select a multi-student neighborhood but
@@ -290,7 +291,7 @@ counselor-facing quality definition.
 
 This document does not define the detailed student-targeted search policy,
 operator-scoring policy, grade-bounded unrestricted search, or full-school
-global escape. The diagnostic adaptive allocator and implemented targeted
-diagnostics are defined separately and must consume this objective contract
-rather than alter it. Future search-policy experiments must follow the same
-boundary.
+global escape. The diagnostic adaptive allocator, targeted diagnostics, and
+separate grade-bounded diagnostic are defined elsewhere and must consume this
+objective contract rather than alter it. Future search-policy experiments
+must follow the same boundary.

@@ -17,6 +17,7 @@ from ortools.sat.python import cp_model
 
 from .solver import new_solver, outcome_name, set_solver_hints
 from .runtime import OperationTimer
+from ..constants import VALID_STUDENT_GRADE_LEVELS
 
 
 @dataclass(frozen=True)
@@ -37,6 +38,7 @@ class SubstantiveSoftTierProbeContext:
     source_decision_variable_values: object
     seed_source_decision_variable_values: object
     candidate_quality_facts: object | None = None
+    student_grades: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -88,6 +90,7 @@ class SubstantiveSoftTierProbeResult:
     selected_student_ids: tuple = ()
     eligible_targeted_source_decision_count: int = 0
     effective_neighborhood_radius: int | None = None
+    selected_grade: int | None = None
 
 
 def _model_family_variable_counts(model):
@@ -165,6 +168,7 @@ def probe_substantive_soft_tier(
     strict_improvement: bool = False,
     max_changed_students: int | None = None,
     selected_student_ids=(),
+    selected_grade: int | None = None,
 ) -> SubstantiveSoftTierProbeResult:
     """Ask whether the unchanged full model can beat one soft tier.
 
@@ -182,8 +186,33 @@ def probe_substantive_soft_tier(
 
     operation_started = monotonic()
     selected_student_ids = tuple(sorted(set(selected_student_ids), key=repr))
+    if selected_grade is not None:
+        selected_grade = int(selected_grade)
+        if selected_grade not in VALID_STUDENT_GRADE_LEVELS:
+            raise ValueError(f"Unsupported selected grade: {selected_grade}")
+        if selected_student_ids:
+            raise ValueError("selected_grade cannot be combined with selected_student_ids")
+        if neighborhood_radius is not None or max_changed_students is not None:
+            raise ValueError(
+                "selected_grade is unrestricted and cannot use a neighborhood bound"
+            )
+        grade_by_student = dict(context.student_grades)
+        if not grade_by_student:
+            raise ValueError("selected_grade requires immutable student_grades facts")
+        selected_grade_student_ids = {
+            student_id for student_id, grade_level in grade_by_student.items()
+            if int(grade_level) == selected_grade
+        }
+        if not selected_grade_student_ids:
+            raise ValueError(f"No students have selected grade {selected_grade}")
+    else:
+        selected_grade_student_ids = set()
     eligible_targeted_source_decision_count = (
         sum(
+            owner in selected_grade_student_ids
+            for owner in context.source_decision_owners
+        )
+        if selected_grade is not None else sum(
             owner in selected_student_ids
             for owner in context.source_decision_owners
         )
@@ -248,6 +277,7 @@ def probe_substantive_soft_tier(
             },
             max_changed_students=max_changed_students,
             selected_student_ids=selected_student_ids,
+            selected_grade=selected_grade,
             eligible_targeted_source_decision_count=eligible_targeted_source_decision_count,
             effective_neighborhood_radius=effective_neighborhood_radius,
         )
@@ -294,7 +324,37 @@ def probe_substantive_soft_tier(
                 for variable in decision_group
             )
 
-    if neighborhood_radius is not None:
+    if selected_grade is not None:
+        with timing.measure("grade_scope_constraints_seconds"):
+            for group_index, decision_group in enumerate(
+                context.complete_required_decision_groups
+            ):
+                selected_seed_variable = next(
+                    (
+                        variable
+                        for variable in decision_group
+                        if seed_solver.Value(
+                            context.model.GetIntVarFromProtoIndex(variable.Index())
+                        )
+                    ),
+                    None,
+                )
+                if selected_seed_variable is None:
+                    probe_model.AddBoolOr(())
+                    continue
+                owner = (
+                    context.source_decision_owners[group_index]
+                    if group_index < len(context.source_decision_owners)
+                    else None
+                )
+                if owner is None or owner not in selected_grade_student_ids:
+                    probe_model.Add(
+                        probe_model.GetIntVarFromProtoIndex(
+                            selected_seed_variable.Index()
+                        )
+                        == 1
+                    )
+    elif neighborhood_radius is not None:
         with timing.measure("neighborhood_constraints_seconds"):
             changed_group_terms = []
             changed_literals_by_student = {}
@@ -583,4 +643,5 @@ def probe_substantive_soft_tier(
         selected_student_ids=selected_student_ids,
         eligible_targeted_source_decision_count=eligible_targeted_source_decision_count,
         effective_neighborhood_radius=effective_neighborhood_radius,
+        selected_grade=selected_grade,
     )

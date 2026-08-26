@@ -873,6 +873,6 @@ utilization-cluster study using progressively larger R16/R32/R64 neighborhoods
 and intelligently selected multi-student scopes. Its target-scale evidence,
 limitations, and non-promotion boundary are recorded in
 `docs/STUDENT_ASSIGNMENT_UTILIZATION_CLUSTER_SEARCH.md`. Adaptive allocation
-over the expanded portfolio, grade-bounded unrestricted escape, full-school
-escape, and production promotion remain deferred until separately justified by
+over the expanded portfolio, full-school escape, and production promotion
+remain deferred until separately justified by
 detached-input, validation, resource, and repeatability evidence.

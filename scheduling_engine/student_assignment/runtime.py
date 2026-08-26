@@ -402,6 +402,7 @@ def semantic_student_assignment_input_fingerprint(
         + [item.student_id for item in data.schedule_commitment_requests]
         + [item.student_id for item in data.fixed_schedule_commitments]
         + list(data.student_ids_with_alternate_requests)
+        + [student_id for student_id, _grade_level in data.student_grades]
     )
     course_values = (
         [item.course_id for item in data.requests]
@@ -606,6 +607,11 @@ def semantic_student_assignment_input_fingerprint(
             data.schedule_preservation_level,
         ),
     }
+    if data.student_grades:
+        payload["student_grades"] = sorted(
+            (student_rank[int(student_id)], int(grade_level))
+            for student_id, grade_level in data.student_grades
+        )
     if include_extended_facts:
         # Sequence edges are immutable run facts, not merely a global
         # importance setting.  Include the directed relation itself so an

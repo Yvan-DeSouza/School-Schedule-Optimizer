@@ -208,8 +208,9 @@ The research order after the current diagnostic allocator is:
    candidates;
 3. retain only evidence-backed policy behavior;
 4. investigate student-targeted repair refinements;
-5. investigate grade-bounded unrestricted escape while freezing students
-   outside the selected grade and retaining the full model for everyone;
+5. characterize the separate grade-bounded unrestricted operators while
+   freezing students outside the selected grade and retaining the full model
+   for everyone;
 6. return to faster local operators after a successful grade escape;
 7. consider full-school unrestricted escape only if evidence justifies it;
 8. run production-promotion and policy studies only after these gates.

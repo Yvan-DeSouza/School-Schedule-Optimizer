@@ -12,6 +12,7 @@ import json
 from uuid import uuid4
 
 from .runtime import semantic_student_assignment_input_fingerprint
+from ..constants import VALID_STUDENT_GRADE_LEVELS
 
 
 OPERATOR_FAMILIES = (
@@ -27,6 +28,10 @@ OPERATOR_FAMILIES = (
     "targeted_utilization_r64_s6",
     "targeted_utilization_r64_s8",
     "targeted_utilization_r64_s10",
+    "grade_bounded_g9",
+    "grade_bounded_g10",
+    "grade_bounded_g11",
+    "grade_bounded_g12",
 )
 TARGET_POLICIES = ("dynamic", "fixed")
 
@@ -47,6 +52,10 @@ def operator_session_target_count(operator_family):
         "targeted_utilization_r64_s6": 6,
         "targeted_utilization_r64_s8": 8,
         "targeted_utilization_r64_s10": 10,
+        "grade_bounded_g9": None,
+        "grade_bounded_g10": None,
+        "grade_bounded_g11": None,
+        "grade_bounded_g12": None,
     }[operator_family]
 
 
@@ -90,6 +99,7 @@ class ContinuousOperatorSessionConfig:
     target_policy: str = "dynamic"
     selected_student_ids: tuple = ()
     utilization_cluster_policy: str = "interaction_aware"
+    selected_grade: int | None = None
     minimum_next_attempt_seconds: float = 1.0
     collect_resource_telemetry: bool = True
     hard_feasibility_validation_time_limit_seconds: float | None = None
@@ -122,7 +132,28 @@ class ContinuousOperatorSessionConfig:
             )
         if self.operator_family == "r2" and self.selected_student_ids:
             raise ValueError("r2 does not accept targeted student IDs")
-        if self.target_policy == "fixed" and self.operator_family != "r2":
+        grade_bounded = self.operator_family.startswith("grade_bounded_")
+        if grade_bounded:
+            if self.selected_grade not in VALID_STUDENT_GRADE_LEVELS:
+                raise ValueError(
+                    "Grade-bounded operators require selected_grade 9, 10, 11, or 12"
+                )
+            operator_grade = int(self.operator_family.rsplit("g", 1)[1])
+            if self.selected_grade != operator_grade:
+                raise ValueError(
+                    f"{self.operator_family} requires selected_grade {operator_grade}"
+                )
+            if self.selected_student_ids:
+                raise ValueError("Grade-bounded operators do not accept student IDs")
+            if self.target_policy != "fixed":
+                raise ValueError("Grade-bounded operators require fixed targeting")
+        elif self.selected_grade is not None:
+            raise ValueError("selected_grade is only valid for grade-bounded operators")
+        if (
+            self.target_policy == "fixed"
+            and self.operator_family != "r2"
+            and not grade_bounded
+        ):
             required = operator_session_target_count(self.operator_family)
             if len(tuple(self.selected_student_ids)) != required:
                 raise ValueError(
@@ -144,6 +175,10 @@ class ContinuousOperatorSessionConfig:
             "targeted_utilization_r64_s6": 64,
             "targeted_utilization_r64_s8": 64,
             "targeted_utilization_r64_s10": 64,
+            "grade_bounded_g9": None,
+            "grade_bounded_g10": None,
+            "grade_bounded_g11": None,
+            "grade_bounded_g12": None,
         }[self.operator_family]
 
     @property
@@ -161,6 +196,10 @@ class ContinuousOperatorSessionConfig:
             "targeted_utilization_r64_s6": 6,
             "targeted_utilization_r64_s8": 8,
             "targeted_utilization_r64_s10": 10,
+            "grade_bounded_g9": None,
+            "grade_bounded_g10": None,
+            "grade_bounded_g11": None,
+            "grade_bounded_g12": None,
         }[self.operator_family]
 
     @property
@@ -191,6 +230,7 @@ class ContinuousOperatorSessionRecord:
     total_validation_seconds: float
     external_overrun_seconds: float
     stopping_reason: str
+    selected_grade: int | None = None
     attempts: tuple[dict, ...] = ()
     target_history: tuple[tuple, ...] = ()
     session_context_reused: bool = True
@@ -258,6 +298,7 @@ def build_continuous_operator_session_record(
         total_validation_seconds=validation,
         external_overrun_seconds=float(local.get("external_overrun_seconds", 0) or 0),
         stopping_reason=local.get("stopping_reason") or "diagnostic_stop",
+        selected_grade=local.get("selected_grade"),
         attempts=attempts,
         target_history=tuple(local.get("session_target_history") or ()),
         session_context_reused=bool(local.get("session_context_reused", False)),

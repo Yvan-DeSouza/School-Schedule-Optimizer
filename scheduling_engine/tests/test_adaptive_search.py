@@ -1,6 +1,8 @@
 from dataclasses import replace
 from types import SimpleNamespace
 
+import pytest
+
 from scheduling_engine.realistic_student_assignment_validation import (
     build_realistic_quality_tradeoff_fixture,
 )
@@ -32,6 +34,9 @@ from scheduling_engine.student_assignment.operator_session import (
     build_continuous_operator_session_record,
     operator_session_target_count,
     select_operator_session_targets,
+)
+from scheduling_engine.student_assignment.grade_guidance import (
+    build_grade_opportunity_facts,
 )
 
 
@@ -136,6 +141,87 @@ def _multi_attempt_operator_fixture(student_ids=(1, 2)):
         ),
         tuple(source),
     )
+
+
+def test_grade_bounded_operator_uses_actual_grade_without_radius_or_student_cap():
+    original_data, source = _multi_attempt_operator_fixture((1, 2))
+    data = replace(original_data, student_grades=((1, 9), (2, 12)))
+    config = ContinuousOperatorSessionConfig(
+        operator_family="grade_bounded_g9",
+        target_policy="fixed",
+        selected_grade=9,
+    )
+    assert config.neighborhood_radius is None
+    assert config.max_changed_students is None
+    assert operator_session_target_count("grade_bounded_g9") is None
+
+    result = run_student_assignment_operator_session_diagnostic(
+        data,
+        operator_family="grade_bounded_g9",
+        selected_grade=9,
+        target_policy="fixed",
+        initial_source_decisions=source,
+        total_time_limit_seconds=8,
+        max_attempts=1,
+        per_attempt_time_limit_seconds=2,
+        worker_count=1,
+        hard_feasibility_validation_time_limit_seconds=2,
+        hard_feasibility_validation_worker_count=1,
+        collect_resource_telemetry=False,
+    )
+    facts = result.optimization_facts["stage_2_local_bootstrap"]
+    assert result.status == "complete"
+    assert not result.unmet_requests
+    assert facts["selected_grade"] == 9
+    assert facts["selected_student_ids"] == ()
+    assert facts["iterations"][0]["selected_grade"] == 9
+    assert facts["iterations"][0]["radius"] is None
+    assert facts["iterations"][0]["changed_student_count"] <= 1
+    assert facts["iterations"][0]["candidate_validated"] is True
+    assert set(facts["iterations"][0]["affected_student_ids"]).issubset({1})
+    assert facts["grade_opportunity"]["student_ids"] == (1,)
+
+
+def test_grade_opportunity_facts_cover_all_supported_grades_and_locks():
+    original_data, source = _multi_attempt_operator_fixture((1, 2))
+    data = replace(original_data, student_grades=((1, 9), (2, 12)))
+    opportunities = build_grade_opportunity_facts(data, source, {})
+    by_grade = {item.grade_level: item for item in opportunities}
+    assert set(by_grade) == {9, 10, 11, 12}
+    assert by_grade[9].student_ids == (1,)
+    assert by_grade[12].student_ids == (2,)
+    assert by_grade[10].effective_search_available is False
+
+
+def test_grade_bounded_configuration_rejects_missing_or_dynamic_grade_scope():
+    with pytest.raises(ValueError, match="selected_grade"):
+        ContinuousOperatorSessionConfig(
+            operator_family="grade_bounded_g11",
+            target_policy="fixed",
+        )
+    with pytest.raises(ValueError, match="fixed targeting"):
+        ContinuousOperatorSessionConfig(
+            operator_family="grade_bounded_g11",
+            target_policy="dynamic",
+            selected_grade=11,
+        )
+
+
+def test_all_grade_operator_identities_require_the_matching_actual_grade():
+    for grade_level in (9, 10, 11, 12):
+        config = ContinuousOperatorSessionConfig(
+            operator_family=f"grade_bounded_g{grade_level}",
+            target_policy="fixed",
+            selected_grade=grade_level,
+        )
+        assert config.neighborhood_radius is None
+        assert config.max_changed_students is None
+    with pytest.raises(ValueError, match="selected_grade 12"):
+        ContinuousOperatorSessionConfig(
+            operator_family="grade_bounded_g12",
+            target_policy="fixed",
+            selected_grade=9,
+        )
 
 
 def test_policy_prefers_targeted_operator_when_student_pressure_dominates():

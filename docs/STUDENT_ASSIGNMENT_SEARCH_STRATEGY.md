@@ -51,8 +51,9 @@ around the existing substantive soft-tier probe:
   it can replace the diagnostic incumbent.
 
 The target list is a search restriction, not a counselor rule and not an
-assignment recommendation. No adaptive controller, grade-bounded escape, or
-global unrestricted operator is implemented by this module.
+assignment recommendation. Grade-bounded escape is implemented separately as
+an opt-in diagnostic operator; no adaptive controller or global unrestricted
+operator is implemented by this module.
 
 The ordinary two-stage path also retains a complete validated Stage 1 seed
 when a later bounded optimization pass returns a weaker candidate or becomes
@@ -119,6 +120,9 @@ The current diagnostic vocabulary is:
 
 - `R2`, `R4`, and `R8`: source-decision neighborhood radius.
 - `S1` and `S2`: maximum one or two changed students.
+- `grade_bounded_g9` through `grade_bounded_g12`: unrestricted source
+  decisions for one selected actual student grade, with all other student-
+  owned source decisions frozen.
 - ordinary: CP-SAT chooses the changed students inside the bound.
 - targeted: guidance selects the students before CP-SAT search and all other
   student-owned source decisions are frozen.
@@ -256,8 +260,9 @@ it may choose among targeted repair and retained local operators, but it must
 never change objective semantics, authorize a schedule, or bypass full
 validation.
 
-Grade-bounded unrestricted search and full-school unrestricted escape remain
-deferred until after that adaptive-policy study.
+Grade-bounded unrestricted search is now a separately characterized
+diagnostic operator and remains outside the adaptive allocator. Full-school
+unrestricted escape remains deferred until evidence justifies it.
 
 ## Objective Semantics v2 adaptive allocator
 
@@ -276,8 +281,8 @@ in [`STUDENT_ASSIGNMENT_ADAPTIVE_SEARCH.md`](STUDENT_ASSIGNMENT_ADAPTIVE_SEARCH.
 This is an experiment boundary, not a production recommendation. Static
 R2-only, targeted-operator-only, fixed-cycle, and adaptive sessions must be
 compared on identical v2 input and source-seed fingerprints before any future
-promotion decision. Grade-bounded and unrestricted global operators remain
-deferred.
+promotion decision. Grade-bounded operators are a separate diagnostic family;
+unrestricted global search remains deferred.
 
 ## Continuous operator-session boundary
 
@@ -300,9 +305,10 @@ proven stop reasons.
 
 This is a diagnostic capability and a characterization boundary. It does not
 enable adaptive search in ordinary production scheduling, alter Objective
-Semantics v2, introduce grade-bounded/global search, or replace CP-SAT and
-full-model validation as the authority. Repeated operator-family descent and
-adaptive-controller calibration remain separate evidence-gated studies.
+Semantics v2, introduce full-school global search, or replace CP-SAT and
+full-model validation as the authority. Grade-bounded characterization,
+repeated operator-family descent, and adaptive-controller calibration remain
+separate evidence-gated studies.
 
 ## Target-scale reusable-session qualification (Objective Semantics v2)
 

@@ -1518,6 +1518,12 @@ def load_student_assignment_input(
         )
         for item in CourseCategoryRelationship.objects.order_by("category_a", "category_b", "id")
     )
+    student_grades = tuple(
+        (int(student_id), int(grade_level))
+        for student_id, grade_level in Student.objects.filter(
+            academic_year_id=academic_year_id,
+        ).order_by("id").values_list("id", "grade_level")
+    )
     return StudentAssignmentInputDTO(
         academic_year_id=academic_year_id,
         requests=tuple(requests), sections=tuple(section_dtos), fixed_enrollments=tuple(fixed_rows),
@@ -1561,6 +1567,7 @@ def load_student_assignment_input(
         objective_importance_scores=(
             resolved_importance_scores if objective_semantics_version == OBJECTIVE_SEMANTICS_V2 else {}
         ),
+        student_grades=student_grades,
     ), staffing_context
 
 

@@ -39,6 +39,11 @@ LOCK_TYPES = {
 
 HALF_SEMESTER_SEGMENTS = ("first_half", "second_half")
 
+# Diagnostic grade-bounded search is scoped by the student's actual grade,
+# never by a course's catalog grade.  The supported secondary-school grades
+# are kept in the pure engine so detached diagnostics do not import Django.
+VALID_STUDENT_GRADE_LEVELS = (9, 10, 11, 12)
+
 # Placement and named-teacher assignment are offline batch stages. Their
 # production DTO defaults deliberately give CP-SAT enough bounded search time
 # to establish a complete upstream incumbent, while callers can still provide

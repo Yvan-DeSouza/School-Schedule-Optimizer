@@ -132,6 +132,7 @@ from .objective_semantics import (
 )
 from .search_guidance import rank_students_by_quality_pressure
 from .utilization_guidance import select_utilization_cluster_targets
+from .grade_guidance import build_grade_opportunity_facts
 from .operator_session import select_operator_session_targets
 
 
@@ -1077,6 +1078,7 @@ def run_student_assignment_operator_session_diagnostic(
     worker_count=8,
     target_policy="dynamic",
     selected_student_ids=(),
+    selected_grade=None,
     utilization_cluster_policy="interaction_aware",
     minimum_next_attempt_seconds=1.0,
     hard_feasibility_validation_time_limit_seconds=None,
@@ -1103,6 +1105,7 @@ def run_student_assignment_operator_session_diagnostic(
         worker_count=worker_count,
         target_policy=target_policy,
         selected_student_ids=tuple(selected_student_ids),
+        selected_grade=selected_grade,
         utilization_cluster_policy=utilization_cluster_policy,
         minimum_next_attempt_seconds=minimum_next_attempt_seconds,
         collect_resource_telemetry=collect_resource_telemetry,
@@ -1134,6 +1137,7 @@ def run_student_assignment_operator_session_diagnostic(
             "max_changed_students": config.max_changed_students,
             "target_policy": config.target_policy,
             "selected_student_ids": tuple(config.selected_student_ids),
+            "selected_grade": config.selected_grade,
             "utilization_cluster_policy": config.utilization_cluster_policy,
             "minimum_next_attempt_seconds": config.minimum_next_attempt_seconds,
             "source_seed_fingerprint": (
@@ -3547,6 +3551,7 @@ def _solve_student_assignment(
             source_decision_variable_values=_source_decision_variable_values,
             seed_source_decision_variable_values=_source_decision_variable_values,
             candidate_quality_facts=_candidate_quality_facts,
+            student_grades=tuple(data.student_grades),
             seed_objective_vector=_objective_values(
                 seed_solver, objectives
             ) if seed_solver is not None else (),
@@ -3628,6 +3633,8 @@ def _solve_student_assignment(
             session_target_history = []
             session_target_guidance = []
             selected_student_ids = tuple(local_config.get("selected_student_ids", ()))
+            selected_grade = local_config.get("selected_grade")
+            grade_bounded = selected_grade is not None
 
             def _current_substantive_value(candidate_solver):
                 return int(sum(
@@ -3663,20 +3670,28 @@ def _solve_student_assignment(
                 return validator, monotonic() - started
 
             if adaptive:
-                radii = tuple(
-                    int(radius)
-                    for radius in local_config.get(
-                        "neighborhood_radii",
-                        (local_config.get("neighborhood_radius", 2), 2, 4),
-                    )
-                    if int(radius) >= 0
-                ) or (2,)
+                if grade_bounded:
+                    radii = (None,)
+                else:
+                    radii = tuple(
+                        int(radius)
+                        for radius in local_config.get(
+                            "neighborhood_radii",
+                            (local_config.get("neighborhood_radius", 2), 2, 4),
+                        )
+                        if int(radius) >= 0
+                    ) or (2,)
                 max_iterations = max(1, int(local_config.get("max_iterations", 3)))
                 per_probe_limit = float(
                     local_config.get("per_probe_time_limit_seconds", 90.0)
                 )
                 if operator_session:
-                    radii = (int(local_config.get("neighborhood_radius", radii[0])),)
+                    current_operator_radius = (
+                        None
+                        if grade_bounded
+                        else int(local_config.get("neighborhood_radius", radii[0]))
+                    )
+                    radii = (current_operator_radius,)
                     variable_neighborhood = False
                 radius_index = 0
                 iteration_count = 0
@@ -3717,6 +3732,28 @@ def _solve_student_assignment(
                         "guidance_only": True,
                         "objective_attribution": False,
                     }
+                    if grade_bounded:
+                        grade_facts = build_grade_opportunity_facts(
+                            data,
+                            _source_decision_fingerprint(stage_2_seed_solver),
+                            _full_quality_for_solver(stage_2_seed_solver),
+                        )
+                        target_guidance.update({
+                            "policy": "fixed_actual_grade",
+                            "selected_grade": int(selected_grade),
+                            "grade_opportunities": tuple(
+                                item.__dict__ for item in grade_facts
+                            ),
+                            "grade_opportunity": next(
+                                (
+                                    item.__dict__
+                                    for item in grade_facts
+                                    if item.grade_level == int(selected_grade)
+                                ),
+                                {},
+                            ),
+                        })
+                        session_target_guidance.append(target_guidance)
                     if operator_session and local_config.get("max_changed_students"):
                         utilization_cluster = str(
                             local_config.get("operator_family", "")
@@ -3788,6 +3825,7 @@ def _solve_student_assignment(
                             "max_changed_students"
                         ),
                         selected_student_ids=probe_selected_student_ids,
+                        selected_grade=(int(selected_grade) if grade_bounded else None),
                         time_limit_seconds=probe_limit,
                         worker_count=int(local_config.get("worker_count", 8)),
                     )
@@ -3854,6 +3892,7 @@ def _solve_student_assignment(
                         "affected_section_ids": tuple(local_result.affected_section_ids),
                         "section_load_deltas": dict(local_result.section_load_deltas),
                         "target_guidance": dict(target_guidance),
+                        "selected_grade": int(selected_grade) if grade_bounded else None,
                         "best_bound": local_result.best_bound,
                         "attempt_number_for_radius": radius_attempts[current_radius],
                         "cumulative_session_elapsed_seconds": (
@@ -3981,6 +4020,15 @@ def _solve_student_assignment(
                     "changed_student_count": iterations[-1].get("changed_student_count") if iterations else 0,
                     "max_changed_students": local_config.get("max_changed_students"),
                     "selected_student_ids": tuple(selected_student_ids),
+                    "selected_grade": int(selected_grade) if grade_bounded else None,
+                    "grade_opportunity": (
+                        target_guidance.get("grade_opportunity", {})
+                        if grade_bounded else {}
+                    ),
+                    "grade_opportunities": (
+                        target_guidance.get("grade_opportunities", ())
+                        if grade_bounded else ()
+                    ),
                     "component_values": dict(last_result.candidate_component_values) if last_result is not None else {},
                     "component_deltas": dict(last_result.component_deltas) if last_result is not None else {},
                     "candidate_found": any_candidate_validated,

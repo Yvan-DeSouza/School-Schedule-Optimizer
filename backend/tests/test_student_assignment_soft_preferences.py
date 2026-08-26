@@ -100,6 +100,7 @@ def test_adapter_freezes_effective_difficulty_category_relationships_and_importa
     assert difficulty.source == "manual_override"
     assert data.course_category_relationships[0].similarity_score == 40
     assert other_course.id not in {item.course_id for item in data.course_difficulties}
+    assert (student_user.student_profile.id, student_user.student_profile.grade_level) in data.student_grades
 
 
 @pytest.mark.django_db

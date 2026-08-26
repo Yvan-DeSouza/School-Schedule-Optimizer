@@ -25,6 +25,7 @@ from .utilization_guidance import (
     build_utilization_cluster_guidance,
     select_utilization_cluster_targets,
 )
+from .grade_guidance import GradeOpportunity, build_grade_opportunity_facts
 from .search_experiments import (
     RANKING_POLICY_DETERMINISTIC,
     RANKING_POLICY_RAW,
@@ -79,6 +80,8 @@ __all__ = [
     "UtilizationClusterSelection",
     "build_utilization_cluster_guidance",
     "select_utilization_cluster_targets",
+    "GradeOpportunity",
+    "build_grade_opportunity_facts",
     "ADAPTIVE_POLICY_VERSION",
     "AdaptiveOperatorAttempt",
     "AdaptiveOperatorSpec",

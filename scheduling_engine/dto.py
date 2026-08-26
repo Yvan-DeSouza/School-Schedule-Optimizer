@@ -484,6 +484,10 @@ class StudentAssignmentInputDTO:
     # directly in a detached engine fixture.
     objective_semantics_version: str = "v1"
     objective_importance_scores: Mapping[str, int] = field(default_factory=dict)
+    # Actual student grade is immutable source context for diagnostic
+    # grade-bounded search.  It is deliberately a compact detached mapping,
+    # not a Django model or a course-grade inference.
+    student_grades: Tuple[Tuple[int, int], ...] = ()
 
 
 @dataclass(frozen=True)

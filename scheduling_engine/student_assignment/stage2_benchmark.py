@@ -274,7 +274,9 @@ def _student_ids(data):
             *data.schedule_commitment_requests,
             *data.fixed_schedule_commitments,
         )
-    } | set(data.student_ids_with_alternate_requests)
+    } | set(data.student_ids_with_alternate_requests) | {
+        student_id for student_id, _grade_level in data.student_grades
+    }
 
 
 def _input_snapshot_payload(data, input_fingerprint):
