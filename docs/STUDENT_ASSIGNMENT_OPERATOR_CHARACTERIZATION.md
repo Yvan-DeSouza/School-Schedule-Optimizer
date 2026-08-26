@@ -530,3 +530,32 @@ supplied fixed-cycle selections through the same operator-session boundary.
 This keeps CP-SAT, full-model validation, adoption, and incumbent retention
 matched across policy controls; the selection policy remains diagnostic metadata
 and is not used by ordinary student assignment.
+
+## Matched target-scale calibration status (2026-08-26)
+
+The first target-scale matched screen used one detached, revalidated
+Objective Semantics v2 source state for all six policy controls. All controls
+preserved a complete `10,635`-assignment state with zero unmet required
+requests and `310` fulfilled special commitments. In the 720-second policy
+window, fixed cycle reached `37,278` from `37,596`; adaptive reached `37,590`;
+R2-only, student-repair-only, utilization-only, and stateless-role controls
+retained `37,596` in their bounded screen. These are v2 weighted substantive
+values; raw component values remain documented separately in
+`STUDENT_ASSIGNMENT_ADAPTIVE_SEARCH.md`.
+
+A longer derived-state comparison gave adaptive `37,002` versus fixed cycle
+`37,026` from the same revalidated student-repair state. This is useful
+directional evidence that stateful escalation and return-to-local behavior can
+find additional validated improvements, but it is not a promotion result.
+The matched stateless control exceeded its nominal 1,800-second budget by
+approximately 7,562 seconds before its final attempt reached CP-SAT. Because
+the current diagnostic wrapper has no hard outer process deadline around model
+construction/setup, that cell cannot be compared fairly with the bounded
+adaptive and fixed-cycle cells.
+
+The target-scale study is consequently **inconclusive**. Fixed cycle is the
+strongest simple control observed in the baseline screen, adaptive remains a
+research candidate, and ordinary scheduling remains unchanged. Before more
+expensive target-scale policy or finalist-repeat studies, the diagnostic
+runner needs a reliable outer wall-clock/resource boundary and the comparison
+must use semantically identical detached states under that boundary.

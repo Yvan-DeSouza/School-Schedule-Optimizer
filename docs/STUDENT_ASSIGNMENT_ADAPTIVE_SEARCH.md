@@ -485,3 +485,80 @@ non-attributive, and every candidate still requires CP-SAT plus unchanged
 full-model validation. Target-scale results and the decision not to promote
 this family into ordinary scheduling are recorded in
 `STUDENT_ASSIGNMENT_UTILIZATION_CLUSTER_SEARCH.md`.
+
+## Matched target-scale promotion-readiness study (2026-08-26)
+
+The first matched promotion-readiness screen used the authoritative detached
+Objective Semantics v2 input fingerprint
+`c07c77d0aa077a3e72240f27644d86b8a1a4faecb2f72a900aacc3fcb792d28a` and the
+durable Stage 1 source seed fingerprint
+`d5036a44e71d5a3b2a94eebe51d645bb4034179a0dd29537492ea81feda2e900`.
+The canonical checkpoint was not mutated. Every retained state remained
+complete, full-model validated, at `10,635` assignments, with zero unmet
+required requests and `310` fulfilled special commitments.
+
+The starting v2 substantive value was `37,596`. The values below are the
+weighted Objective Semantics v2 substantive tier; the raw component values are
+shown separately so that these results are not confused with the historical
+v1 raw objective total.
+
+| Policy | Budget | Final v2 tier | Adoption count | Attempts | Preparation / policy time | Peak tree working set |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| adaptive | 720 s | 37,590 | 1 | 4 | 825.155 s / 771.661 s | 1.74 GB |
+| stateless role | 720 s | 37,596 | 0 | 4 | 809.401 s / 767.323 s | not recorded |
+| R2 only | 720 s | 37,596 | 0 | 4 | 835.349 s / 767.353 s | not recorded |
+| student repair only | 720 s | 37,596 | 0 | 6 | 805.897 s / 761.226 s | not recorded |
+| utilization only | 720 s | 37,596 | 0 | 7 | 864.537 s / 799.872 s | not recorded |
+| fixed cycle | 720 s | 37,278 | 4 | 6 | 776.342 s / 756.083 s | 0.94 GB |
+
+Preparation includes detached seed materialization and validation. Policy time
+is the allocator's external policy window, not just CP-SAT wall time. The
+policy windows exceeded their nominal shared budgets by approximately `36` to
+`80` seconds because the current diagnostic boundary does not interrupt model
+construction and cleanup already in progress. These values are therefore
+screening observations, not production time guarantees.
+
+The final baseline-screen raw components were:
+
+- adaptive: utilization `6,723`, semester balance `175`, difficulty `35,973`,
+  category diversity `22,150`;
+- fixed cycle: utilization `6,599`, semester balance `175`, difficulty
+  `35,853`, category diversity `22,050`.
+
+The remaining controls retained the starting raw components of utilization
+`6,727`, semester balance `175`, difficulty `35,973`, and category diversity
+`22,150`. The fixed-cycle result is the strongest simple control in this
+screen; the one adaptive baseline run is not sufficient to establish a policy
+win.
+
+Two derived detached states were also tested for a longer matched diagnostic
+window. The student-repair state was independently revalidated before each
+trial and had source fingerprint
+`e147beadd23c31a068acaa928cae3fb2fe5262ad6af92e695f5fa2ccbbe8e386`, starting
+v2 tier `37,440`. Adaptive reached `37,002` after `14` adopted improvements in
+`1,816.492` seconds of policy time; fixed cycle reached `37,026` after `8`
+adopted improvements in `1,816.029` seconds. Both retained complete,
+full-model-validated states. Adaptive selected a grade-bounded G12 escape
+after repeated utilization/local stagnation and then returned to local
+operators; the grade attempts produced validated improvements, but there was
+no matched static grade control, so this is not grade-escape promotion
+evidence.
+
+The stateless-role trial on the same derived state is not a valid matched
+1,800-second result. It reported a final retained tier of `37,320`, but its
+external policy time was `9,362.483` seconds, including `7,562.483` seconds
+of overrun. Its final attempt had zero CP-SAT attempts, zero CP-SAT wall time,
+and no validation attempt, which localizes the overrun to work before a solver
+attempt (such as model/setup or resource pressure), although the current
+telemetry does not identify the exact operation. The result is retained as an
+operational failure observation, not as quality evidence.
+
+This study therefore closes the current screening step but does not authorize
+adaptive search in ordinary scheduling. No finalist repeat set, target-scale
+profile matrix, R2-derived branch, or full production-pipeline promotion run
+was launched after the hard budget-boundary failure was found. Additional
+target-scale comparisons require a reliable outer process/time boundary and
+more complete matched detached states. The current conclusion is
+**EVIDENCE REMAINS INCONCLUSIVE**: fixed cycle is the strongest simple
+screening control, adaptive search is a useful research candidate on the
+derived student-repair state, and neither is promotion-ready.
