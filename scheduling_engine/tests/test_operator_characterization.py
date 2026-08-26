@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+from ortools.sat.python import cp_model
+
 from scheduling_engine.realistic_student_assignment_validation import (
     apply_mixed_grade_v2_profile,
     build_mixed_grade_v2_fixture,
@@ -27,6 +29,9 @@ from scheduling_engine.student_assignment.stage2_benchmark import (
     read_durable_stage2_benchmark,
     read_student_assignment_input_snapshot,
     write_student_assignment_input_snapshot,
+)
+from scheduling_engine.student_assignment.solver import (
+    validate_source_decision_candidate_with_status,
 )
 
 
@@ -149,6 +154,80 @@ def test_mixed_grade_v2_production_shape_artifact_is_versioned_and_input_bound()
     }
     assert benchmark["data"].objective_semantics_version == "v2"
     assert len(benchmark["data"].student_grades) == 1400
+
+
+def _single_boolean_candidate_model():
+    model = cp_model.CpModel()
+    selected = model.NewBoolVar("selected")
+    return model, selected
+
+
+def test_candidate_validation_distinguishes_validated_from_hard_invalid():
+    model, selected = _single_boolean_candidate_model()
+    outcome = validate_source_decision_candidate_with_status(
+        model,
+        ((selected,),),
+        {selected.Index(): 1},
+        5,
+        worker_count=1,
+    )
+    assert outcome.classification == "validated"
+    assert outcome.solver_outcome in {"optimal", "feasible"}
+    assert outcome.solver is not None
+
+    invalid_model, invalid_selected = _single_boolean_candidate_model()
+    invalid_outcome = validate_source_decision_candidate_with_status(
+        invalid_model,
+        ((invalid_selected,),),
+        {invalid_selected.Index(): 0},
+        5,
+        worker_count=1,
+    )
+    assert invalid_outcome.classification == "hard_invalid"
+    assert invalid_outcome.solver_outcome == "infeasible"
+    assert invalid_outcome.solver is None
+
+
+def test_candidate_validation_unknown_and_errors_are_not_adoptable(monkeypatch):
+    model, selected = _single_boolean_candidate_model()
+
+    class UnknownSolver:
+        def Solve(self, _model):
+            return cp_model.UNKNOWN
+
+    monkeypatch.setattr(
+        "scheduling_engine.student_assignment.solver.new_solver",
+        lambda *args, **kwargs: UnknownSolver(),
+    )
+    unknown = validate_source_decision_candidate_with_status(
+        model,
+        ((selected,),),
+        {selected.Index(): 1},
+        5,
+        worker_count=1,
+    )
+    assert unknown.classification == "validation_unknown"
+    assert unknown.solver_outcome == "unknown"
+    assert unknown.solver is None
+
+    def raise_solver(*args, **kwargs):
+        raise RuntimeError("validator unavailable")
+
+    monkeypatch.setattr(
+        "scheduling_engine.student_assignment.solver.new_solver",
+        raise_solver,
+    )
+    error = validate_source_decision_candidate_with_status(
+        model,
+        ((selected,),),
+        {selected.Index(): 1},
+        5,
+        worker_count=1,
+    )
+    assert error.classification == "validation_error"
+    assert error.solver_outcome == "error"
+    assert error.solver is None
+    assert "RuntimeError" in error.error
 
 
 def test_characterization_role_map_covers_every_diagnostic_operator_family():

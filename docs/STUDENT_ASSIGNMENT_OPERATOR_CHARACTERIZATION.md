@@ -237,10 +237,87 @@ repeatability.
 A Grade-9 repeat returned `UNKNOWN` after approximately `30.07` seconds of
 CP-SAT time without a candidate. A repeat of the only previously productive
 grade family, Grade 12, also returned `UNKNOWN` after approximately `30.48`
-seconds without a candidate. Because no grade family has repeated validated
-adoption, no grade-escape branch checkpoint or downstream local-return session
-was launched. These observations justify keeping the characterization
-diagnostic and the adaptive decision at NO-GO.
+seconds without a candidate. At that earlier stage, no grade-escape branch
+checkpoint or downstream local-return session was launched. These observations
+justified keeping the characterization diagnostic and the adaptive decision at
+NO-GO until the later endurance evidence was collected below.
+
+### Validation-authority classification
+
+The original two rejected R8/S2 records were collected before validator-status
+telemetry existed. They record only `candidate_validated=false`, so they cannot
+be classified retrospectively as hard-invalid, validation-unknown, or an
+infrastructure error. They remain unresolved evidence.
+
+The two fresh clean R8/S2 repeats run with the classified validator both
+reproduced the semantic candidate `37,590` and returned validator status
+`optimal`/classification `validated`; both were adopted. Thus current
+candidate generation and validation are directionally repeatable, while the
+historical unclassified records prevent an unconditional strong-repeatability
+claim for the entire record set.
+
+### Current target-scale endurance characterization
+
+The later target-scale endurance study used the same detached v2 input and
+validated `37,596` source seed, with eight workers, continuous session reuse,
+full validation after every candidate, and no operational persistence. These
+are diagnostic sessions; they do not replace the ordinary Stage 2 policy.
+
+The R2 session ran ten bounded attempts and adopted all ten validated
+improvements, reaching `37,506` from `37,596`. The attempt-cap stop is not a
+local-optimum proof. It retained `10,635` assignments, zero unmet required
+requests, and all `310` special commitments. Session wall time was
+approximately `1,436s`; peak process memory was approximately `3.4GB` RSS.
+
+The interaction-aware student-pressure sessions produced:
+
+| Operator | Final value | Adopted | External seconds | CP-SAT seconds | Result |
+| --- | ---: | ---: | ---: | ---: | --- |
+| `targeted_r4_s1` | 37,566 | 4/4 | 101.1 | 11.6 | fifth scope attempt infeasible |
+| `targeted_r8_s1` | 37,566 | 4/4 | 101.5 | 11.2 | fifth scope attempt infeasible |
+| `targeted_r4_s2` | 37,440 | 5/5 | 114.9 | 12.6 | complete validated session |
+| `targeted_r8_s2` | 37,440 | 5/5 | 110.7 | 11.2 | complete validated session |
+
+The S2 paths included a genuine same-tier trade-off observation: one adopted
+move worsened utilization while improving difficulty and category components.
+This confirms that the current aggregate objective can trade components; it
+does not establish that R8/S2 is better than R4/S2 on a broader sample.
+
+The utilization-cluster endurance sessions also completed five validated
+attempts each. Their final values were `37,554` (R16/S2), `37,554`
+(R16/S4), `37,548` (R32/S4), `37,560` (R32/S6), `37,554` (R64/S6),
+`37,506` (R64/S8), and `37,548` (R64/S10). External session times ranged
+from approximately `110s` to `119s`; all retained the complete source
+assignment state. R64/S8 was the strongest single observed utilization-cluster
+endpoint in this bounded sample, but it is not a production recommendation.
+
+### Target-scale grade-bounded endurance and basin return
+
+One-attempt target-scale grade probes from the common `37,596` seed all
+returned complete, validated candidates:
+
+| Grade | Candidate | CP-SAT seconds | Changed students | Component result |
+| --- | ---: | ---: | ---: | --- |
+| 9 | 37,590 | 104.8 | 10 | utilization -4 |
+| 10 | 37,488 | 34.3 | 1 | difficulty -38, category -100 |
+| 11 | 37,590 | 77.7 | 11 | utilization -4 |
+| 12 | 37,590 | 43.3 | 19 | utilization -4 |
+
+Clean repeats reproduced the Grade-9, Grade-10, and Grade-12 objective/component
+outcomes. Grade 11 reproduced the value and changed-student count but changed
+the exact source-decision set, so its repeatability is directional rather than
+exact. Grade 10 had three exact value/component outcomes at `37,488`.
+
+A Grade-10 branch was then returned to ordinary R2 without rerunning upstream
+stages. The R2 attempt returned `UNKNOWN` without an adopted candidate after
+approximately `121s` of CP-SAT time; the complete `37,488` incumbent was
+retained. This is unresolved local-return evidence, not proof that the grade
+branch is a local optimum.
+
+These runs establish target-scale capability and repeatability evidence for
+bounded grade scopes, but not a 30-minute per-grade search curve, a complete
+grade-opportunity correlation analysis, or a production grade-allocation
+policy.
 
 ### Medium all-operator plumbing screen
 
@@ -341,19 +418,16 @@ incumbent remained available in every non-adopted or unresolved case.
 The following experiments were not launched because the preceding evidence
 did not justify their cost or would not have produced an interpretable result:
 
-- Target-scale `targeted_utilization_r64_s8` and
-  `targeted_utilization_r64_s10` were not promoted after the smaller
-  utilization families produced no actionable strict improvement in the
-  mixed-grade target screen and historical v1 evidence did not distinguish
-  them.
+- No additional target-scale utilization families beyond the bounded endurance
+  sessions were launched; the completed R64/S8 and R64/S10 runs remain
+  diagnostic evidence and were not promoted into ordinary scheduling.
 - A target-scale R4/S2 versus R8/S2 matched comparison on the durable
   mixed-grade artifact was not promoted after repeated R8/S2 candidates failed
   the full-model validation boundary. The medium matched comparison remains
   available, but it is not a substitute for target-scale evidence.
-- Grade-escape-to-local-return follow-on sessions were not launched because
-  no grade family had a repeated validated/adopted target-scale escape. A
-  follow-on from an unvalidated or `UNKNOWN` result would violate the
-  experiment's full-validation authority boundary.
+- Only the Grade-10 escape received a downstream local-return probe. It was
+  run from a validated branch and retained that branch when R2 returned
+  `UNKNOWN`; other grade returns remain unmeasured.
 - No adaptive allocation replay was run. The characterization evidence is not
   yet sufficient to calibrate policy priors or switching thresholds.
 
@@ -416,7 +490,9 @@ diagnostic-only.
 
 The classification below reflects evidence strength, not implementation status:
 
-- `r2`: diagnostic/reference; target-scale bounded probes were unresolved.
+- `r2`: useful local-descent reference; the target-scale endurance session
+  adopted ten validated improvements but stopped at its attempt cap, so no
+  local-optimum claim is made.
 - Targeted R4/S1 and R4/S2: useful student-pressure candidates; additional
   mixed-grade repeated trials required.
 - Targeted R8/S1 and R8/S2: strongest current v2 targeted candidates in the
@@ -424,7 +500,8 @@ The classification below reflects evidence strength, not implementation status:
 - R16/R32/R64-S6 utilization families: current v2 bounded screens were
   completed but produced no strict validated improvement; repeated sessions
   and policy comparisons remain required.
-- R64/S8 and R64/S10: unresolved/unmeasured at target scale.
+- R64/S8 and R64/S10: useful diagnostic utilization-cluster candidates in the
+  measured bounded endurance sample; not production-retained.
 - Grade 9–12 operators: current v2 bounded screens were completed on the
   synthetic mixed-grade target input, but repeated outcomes and downstream
   return-to-local evidence remain unresolved.
@@ -434,12 +511,13 @@ The classification below reflects evidence strength, not implementation status:
 **NO-GO for adaptive-controller calibration.**
 
 The portfolio is implemented, but evidence is not yet complete enough to answer
-all required policy questions. In particular, current evidence lacks repeated
-validated mixed-grade target-scale outcomes, repeated grade-escape outcomes,
-downstream return-to-local evidence, v2 utilization-family characterization,
-and matched role-specific gain/time/resource curves across the complete
-portfolio. A controller should not be calibrated from implementation presence
-or from mixing v1 and v2 totals.
+all required policy questions. The current study now has bounded target-scale
+R2, student-pressure, utilization-cluster, and grade-escape evidence, but it
+still lacks repeated matched policy trials, complete role-specific
+student-pressure metrics at target scale, full grade-opportunity correlation,
+and downstream return-to-local evidence for every grade/operator family. A
+controller should not be calibrated from implementation presence or from
+mixing v1 and v2 totals.
 
 The next evidence gate is to produce a current mixed-grade detached snapshot,
 run its bounded medium characterization, promote only informative operators to

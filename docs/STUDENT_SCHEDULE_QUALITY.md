@@ -922,8 +922,9 @@ normal bootstrap cost, not as a matched old-versus-new quality comparison.
 
 ## Objective Semantics / Search Evidence v1 closeout
 
-The current objective and search-mechanics study is now closed as historical
-v1 evidence. The durable production-scale input remains the
+The current objective and search-mechanics study is now frozen as historical
+v1 evidence, with the current-tree R8/S2 repeatability discrepancy explicitly
+unresolved. The durable production-scale input remains the
 `production_scale_v1` benchmark with input fingerprint
 `1c4843ac33fccabd76218c63d8818c94a0a8dd8ab2886e3f5718ca1cd9576a11` and
 `1,400` students, `10,760` requests, `10,945` required source groups,
@@ -938,96 +939,98 @@ substantive value `65,025` and components `6,727` section utilization,
 
 R8/S2 means radius `8`, `max_changed_students=2`, eight CP-SAT workers, a
 bounded approximately `600`-second probe, strict substantive improvement, and
-mandatory full-model validation. All three valid trials started from the same
-canonical semantic incumbent and produced the same complete candidate:
+mandatory full-model validation. The older accepted first-pass record and the
+two new clean-process replications started from the same canonical semantic
+incumbent, but the current tree did not reproduce the older endpoint:
 
 | Trial | Substantive | Direct gain | Changed decisions / students | Affected students | CP-SAT wall | Validation | Local operation |
 |---|---:|---:|---:|---|---:|---:|---:|
-| Accepted first run | `65,005` | `20` | `8 / 2` | `22, 478` | `187.0 s` | `9.8 s` | `229.6 s` |
-| Repeat 2 | `65,005` | `20` | `8 / 2` | `22, 478` | `134.7 s` | `3.8 s` | `151.9 s` |
-| Repeat 3 | `65,005` | `20` | `8 / 2` | `22, 478` | `132.4 s` | `5.2 s` | `152.4 s` |
+| Historical accepted first run | `65,005` | `20` | `8 / 2` | `22, 478` | `187.0 s` | `9.8 s` | `229.6 s` |
+| Current-tree clean repeat 1 | `65,021` | `4` | `1 / 1` | `1042` | `2.30 s` | `3.58 s` | `34.92 s` |
+| Current-tree clean repeat 2 | `65,021` | `4` | `1 / 1` | `1042` | `2.39 s` | `3.71 s` | `35.71 s` |
 
 Every candidate was complete, full-model valid, retained `10,635`
 assignments, retained zero unmet requests, and fulfilled all `310` special
-commitments. The affected section set was identical in all three valid trials:
-`1, 7, 19, 20, 100, 101, 122, 126, 203, 204, 211, 216, 281, 284, 294,
-296`. Each substantive improvement was section-utilization only: utilization
-changed from `6,727` to `6,707`; semester balance, difficulty, category
-diversity, sequence, and preservation were unchanged. The three trials are
-therefore classified as **strong exact repeatability** at the source-decision
-and quality-result level. CP-SAT status was `UNKNOWN` after finding a
-validated candidate in the reported R8/S2 trials; `UNKNOWN` remains a bounded
-search outcome, not a proof that the neighborhood is exhausted.
+commitments. The two current-tree repeats selected student `1042` and moved
+between sections `296` and `300`; each changed utilization by `-4` and left
+the other substantive components unchanged. Both inner probes reported
+`OPTIMAL`, and both validation classifications were `validated` with an
+`OPTIMAL` validator result. The older `65,005` record remains valid historical
+evidence, but it is not reproducible by the current clean-process path. The
+three-record set is therefore classified as **inconsistent current-v1
+repeatability**, not strong exact repeatability. This is an evidence mismatch,
+not permission to rewrite the canonical checkpoint or infer that either
+endpoint is globally optimal.
 
-One additional process was intentionally excluded from this repeatability
-sample because its temporary wrapper accidentally reran the hard-feasibility
-bootstrap instead of using the frozen mature checkpoint. It produced no
-usable R8/S2 comparison candidate after spending time outside the local probe;
-it was a harness configuration error, not contradictory search evidence.
+The fresh trials used the mature checkpoint directly and did not run Stage 1.
+No canonical checkpoint or frontier was written by either process.
 
 ### Matched R4/S2 versus R8/S2 scorecard
 
-The R4/S2 comparison consists of the original run plus two clean repeats. The
-R8/S2 comparison consists of the three valid trials above. The R4/S2 and R8/S2
-candidate qualities were exact and repeatable, while solver wall time varied
-substantially with the parallel CP-SAT search. Branch and conflict counts were
-not exposed by the bounded diagnostic result and are therefore not inferred.
+The historical R4/S2 comparison consists of the original run plus two clean
+repeats. One current-tree R4/S2 control was also run from the same canonical
+checkpoint. It matched the current-tree R8/S2 result at `65,021`, with student
+`1042` and sections `296`/`300`. The old and current records are not silently
+pooled into one repeatability claim.
 
 | Measure | R4/S2 | R8/S2 |
 |---|---:|---:|
 | Radius / student bound | `4 / 2` | `8 / 2` |
-| Valid candidate success | `3 / 3` | `3 / 3` |
-| Median substantive candidate | `65,007` | `65,005` |
-| Best substantive candidate | `65,007` | `65,005` |
-| Direct gain | `18` | `20` |
-| Median CP-SAT wall | `186.3 s` | `134.7 s` |
-| Median full validation | `10.0 s` | `5.2 s` |
-| Median local operation | `229.3 s` | `152.4 s` |
-| Changed decisions | `4` | `8` |
-| Changed students | `2` | `2` |
-| Affected-result repeatability | exact across three runs | exact across three runs |
-| Branches / conflicts | not exposed | not exposed |
+| Historical valid-candidate success | `3 / 3` | `1 / 1` |
+| Current-tree valid-candidate success | `1 / 1` | `2 / 2` |
+| Historical median substantive candidate | `65,007` | `65,005` |
+| Current-tree substantive candidate | `65,021` | `65,021` |
+| Historical best direct gain | `18` | `20` |
+| Current-tree direct gain | `4` | `4` |
+| Historical median CP-SAT wall | `186.3 s` | `134.7 s` |
+| Current-tree CP-SAT wall | `2.40 s` | `2.35 s` |
+| Current-tree full validation | `3.76 s` | `3.65 s` |
+| Current-tree local operation | `35.96 s` | `35.31 s` median |
+| Historical changed decisions / students | `4 / 2` | `8 / 2` |
+| Current-tree changed decisions / students | `1 / 1` | `1 / 1` |
+| Repeatability | historical exact; current control differs | historical endpoint not reproduced; current repeats exact |
+| Branches / conflicts | not exposed historically | current: `676 / 8` |
 | Comparable memory telemetry | not retained for the earlier R4/S2 set | peak process-tree working set approximately `4.04–4.11 GB` |
 
-The extra radius produced a stable two-point stronger direct escape without
-changing the number of affected students, and it was not slower in these
-three measured R8/S2 trials. That makes R8/S2 a **useful escape candidate**.
-It does not, by itself, make R8/S2 the production optimizer: the comparison
-must also include the downstream R2 basin and the cost/complexity of retaining
-the wider neighborhood.
+The older record suggested a two-point R8/S2 advantage, but the two current
+clean repeats produced the same `65,021` result as the current R4/S2 control.
+The current evidence therefore does not establish a stable direct R8 advantage.
+The wider radius remains a diagnostic/reference operator, not a production
+optimizer, pending investigation of the historical/current discrepancy.
 
 ### Temporary R8/S2 branch and matched R2 follow-on
 
-One validated temporary branch was captured without modifying
-`mature_r2_checkpoint.json.gz`:
+One current-tree validated temporary branch was captured in memory without
+modifying `mature_r2_checkpoint.json.gz`:
 
 - parent source fingerprint: `d5036a44e71d5a3b2a94eebe51d645bb4034179a0dd29537492ea81feda2e900`;
-- branch source fingerprint: `3d6dd6c714513dfe50c35cb72b30dfc2ef8828b91615327117c1ea1bb8473132`;
-- objective vector: `[-10945, 0, 0, 0, 65005, 5669086063326]`;
-- components: `6,707` utilization, `175` semester balance, `35,973`
+- branch source fingerprint: `36adbb29d796d75497765d5a6b5b23c9ce4928a6db2075db180e5575da8a25b9`;
+- objective vector: `[-10945, 0, 0, 0, 65021, 5669086063321]`;
+- components: `6,723` utilization, `175` semester balance, `35,973`
   difficulty, `22,150` category diversity;
 - validation: complete, seed validated, full-model validated;
 - counts: `10,635` assignments, zero unmet, `310` special commitments.
 
-The matched continuous R2 session from that temporary branch used the same
+The matched continuous R2 session from this temporary branch used the same
 diagnostic policy as the earlier R4/S2 follow-on: radius `2`, no student bound,
 eight workers, up to `600` seconds per probe, a `3,600`-second total horizon,
 full validation after each candidate, and no ordinary Stage 2 between
 iterations. It produced this compact trajectory:
 
 ```text
-65,005 -> 65,003 -> 65,001 -> 64,997 -> 64,987 -> 64,985 -> 64,983
-        -> 64,981 -> final UNKNOWN
+65,021 -> 65,017 -> 65,005 -> 65,003 -> 64,997 -> 64,995 -> 64,991
+        -> 64,989 -> 64,987 -> 64,983 -> 64,975 -> 64,973 -> 64,971
+        -> 64,969 -> 64,965 -> 64,961 -> 64,957 -> 64,955 -> 64,949
+        -> 64,947 -> 64,943
 ```
 
-Seven improvements were adopted in eight probes. Every adopted candidate was
+Twenty improvements were adopted in twenty probes. Every adopted candidate was
 complete and full-model validated; the final retained result had `10,635`
 assignments, zero unmet requests, and all `310` special commitments. The
-session used approximately `3,136.65` seconds of CP-SAT wall time and
-`3,201.37` seconds in the engine local session (`3,203.60` seconds including
-benchmark/checkpoint loading and reconstruction). Its final probe returned
-`UNKNOWN`, so `64,981` is an unresolved bounded incumbent, not a proof of an
-R2 local optimum. The final components were `6,683` utilization, `175`
+session used approximately `2,586.56` seconds of CP-SAT wall time and
+`2,961.20` seconds in the engine local session. It reached the configured
+attempt cap after twenty validated adoptions; this is not a proof of an R2
+local optimum. The final components were `6,645` utilization, `175`
 semester balance, `35,973` difficulty, and `22,150` category diversity.
 
 ### Complete escape-path comparison
@@ -1035,19 +1038,24 @@ semester balance, `35,973` difficulty, and `22,150` category diversity.
 | Path | Direct escape | R2 endpoint | Total gain vs `65,025` | R2 adopted improvements | Approx. diagnostic runtime |
 |---|---:|---:|---:|---:|---:|
 | R4/S2 -> R2 | `65,007` | `64,929` | `96` | `20` | escape plus `3,652.9 s` R2 session |
-| R8/S2 -> R2 | `65,005` | `64,981` | `44` | `7` | escape plus `3,203.6 s` R2 session |
+| R8/S2 -> R2 (historical branch) | `65,005` | `64,981` | `44` | `7` | escape plus `3,203.6 s` R2 session |
+| R8/S2 -> R2 (current-tree branch) | `65,021` | `64,943` | `82` | `20` | escape plus `2,996.1 s` including branch setup |
 
-On this single matched downstream comparison, R4/S2 reached the stronger
-endpoint by `52` substantive points and produced the larger downstream R2
-descent. R8/S2 therefore has a stable direct advantage, but R4/S2 is the
-better complete escape path observed in this study because the R4/S2 branch
-opened a materially stronger R2 basin. This conclusion is about the measured
-v1 experiments, not a proof that every future incumbent will behave the same
-way.
+The current-tree R8/S2 branch reached `64,943`, which is `14` points weaker
+than the historical R4/S2 endpoint `64,929`. The historical R8/S2 branch
+reached `64,981`; it is retained as historical evidence but cannot be treated
+as current-tree repeatability. The measured complete-path evidence therefore
+favors R4/S2, while the current fresh R8/S2 branch still demonstrates a
+productive R2 descent. Neither path establishes a global optimum.
 
 ### v1 operator classification and closeout
 
 The current evidence classifies the operators as follows:
+
+For R8/S2 specifically, the classification is superseded by the current-tree
+replication above: the two fresh trials both returned `65,021`, while the older
+`65,005` trial was not reproduced. The current direct-repeatability result is
+therefore inconsistent, and the current-tree R8/S2 -> R2 path reached `64,943`.
 
 - **R2 — core retained operator:** repeatedly productive and the primary local
   descent mechanism;
@@ -1060,8 +1068,11 @@ The current evidence classifies the operators as follows:
 - **R8 — diagnostic/reference only:** valid direct escape evidence, but not
   repeated in the matched bound/student matrix;
 - **R8/S1 — diagnostic/reference only:** valid but weaker direct result;
-- **R8/S2 — useful escape candidate:** exact three-run direct repeatability and
-  the strongest direct escape, but downstream R2 was weaker than R4/S2.
+- **R8/S2 — unresolved diagnostic candidate:** the older record had the
+  strongest direct escape, but two current-tree repeats produced `65,021`, the
+  same endpoint as current R4/S2. Its current direct-repeatability
+  classification is inconsistent, and downstream R2 from the current-tree
+  branch was weaker than R4/S2.
 
 The current v1 characterization is complete enough to stop open-ended endpoint
 shaving. No canonical checkpoint was changed and no current objective or
@@ -1095,6 +1106,13 @@ components were `1,750`, `77`, `536`, and `3,941`, for a weighted substantive
 value of `31,520`; no substantive improvement was found. The final opaque
 tie-break improved, so the final objective vector was
 `[-10945, 0, 0, 0, 31520, 5669086063269]`.
+
+This earlier `31,520` record belongs to the first v2 compatibility-profile
+replay and is not numerically comparable with the later mixed-grade-v2
+characterization, whose common target-scale source-seed value is `37,596`.
+Those profiles, objective facts, and search results must remain separate; the
+later operator characterization is the authoritative source for the mixed-
+grade-v2 diagnostic comparisons.
 
 This is the post-implementation v2 baseline, not a claim that v2 is already
 the default production policy. A future promotion decision must separately

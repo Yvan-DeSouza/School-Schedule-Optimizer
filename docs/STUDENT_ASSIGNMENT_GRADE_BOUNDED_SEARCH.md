@@ -64,3 +64,23 @@ plumbing and capability evidence, but it is not an adapter-produced school
 dataset and must not be presented as real cross-grade production evidence.
 Stronger production conclusions still require a current adapter-produced
 snapshot with real mixed student grades.
+
+## Current target-scale diagnostic evidence
+
+The current mixed-grade-v2 target-shaped artifact was used for bounded
+one-attempt probes with the same complete `37,596` source seed and eight
+workers. Grades 9, 10, 11, and 12 each produced a complete candidate that
+passed the unchanged full-model validator. The resulting values were
+`37,590`, `37,488`, `37,590`, and `37,590`, respectively. Grade 10's move
+improved difficulty by `38` and category diversity by `100`; the other first
+probes improved utilization by `4`.
+
+Clean repeats reproduced the Grade-9, Grade-10, and Grade-12 value/component
+outcomes. Grade 11 reproduced its value and changed-student count but not the
+exact source-decision set, so its repeatability is directional. A validated
+Grade-10 branch was returned to ordinary R2; that bounded R2 attempt returned
+`UNKNOWN` without a new adopted candidate and retained the complete branch.
+This does not prove a grade branch is locally optimal. All runs preserved
+`10,635` assignments, zero unmet required requests, and `310` special
+commitments. These results are characterization evidence only and do not
+authorize adaptive allocation or production grade selection.

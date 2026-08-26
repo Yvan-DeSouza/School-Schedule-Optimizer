@@ -93,6 +93,7 @@ from .solver import (
     solve_lexicographically as _solve_lexicographically,
     validate_complete_hard_feasibility_seed as _validate_complete_hard_feasibility_seed,
     validate_source_decision_candidate as _validate_source_decision_candidate,
+    validate_source_decision_candidate_with_status as _validate_source_decision_candidate_with_status,
 )
 from .initial_hint import build_initial_assignment_hints as _build_initial_assignment_hints
 from .unmet_diagnostics import diagnostic_for_unmet_request as _diagnostic_for_unmet_request
@@ -3654,9 +3655,13 @@ def _solve_student_assignment(
                     not local_result.complete_candidate_found
                     or not local_result.candidate_source_variable_values
                 ):
-                    return None, 0.0
+                    return None, 0.0, {
+                        "classification": "not_attempted",
+                        "solver_outcome": None,
+                        "error": None,
+                    }
                 started = monotonic()
-                validator = _validate_source_decision_candidate(
+                validation_outcome = _validate_source_decision_candidate_with_status(
                     model,
                     complete_required_decision_groups,
                     local_result.candidate_source_variable_values,
@@ -3667,7 +3672,15 @@ def _solve_student_assignment(
                         else STUDENT_ASSIGNMENT_HARD_FEASIBILITY_VALIDATION_WORKER_COUNT
                     ),
                 )
-                return validator, monotonic() - started
+                return (
+                    validation_outcome.solver,
+                    monotonic() - started,
+                    {
+                        "classification": validation_outcome.classification,
+                        "solver_outcome": validation_outcome.solver_outcome,
+                        "error": validation_outcome.error,
+                    },
+                )
 
             if adaptive:
                 if grade_bounded:
@@ -3836,7 +3849,11 @@ def _solve_student_assignment(
                     )
                     last_result = local_result
                     candidate_before_validation = local_result.candidate_substantive_value
-                    local_validator, validation_elapsed = _validate_local_result(
+                    (
+                        local_validator,
+                        validation_elapsed,
+                        validation_facts,
+                    ) = _validate_local_result(
                         local_result,
                         iteration_deadline,
                     )
@@ -3870,6 +3887,13 @@ def _solve_student_assignment(
                         "incumbent_before": current_seed_value,
                         "candidate_value": candidate_before_validation,
                         "candidate_validated": candidate_validated,
+                        "validation_classification": validation_facts[
+                            "classification"
+                        ],
+                        "validation_solver_outcome": validation_facts[
+                            "solver_outcome"
+                        ],
+                        "validation_error": validation_facts["error"],
                         "adopted": adopted,
                         "validation_elapsed_seconds": validation_elapsed,
                         "model_variable_count": local_result.model_variable_count,
@@ -4038,6 +4062,18 @@ def _solve_student_assignment(
                     "component_deltas": dict(last_result.component_deltas) if last_result is not None else {},
                     "candidate_found": any_candidate_validated,
                     "candidate_validated": any_candidate_validated,
+                    "validation_classification": (
+                        iterations[-1].get("validation_classification", "not_attempted")
+                        if iterations else "not_attempted"
+                    ),
+                    "validation_solver_outcome": (
+                        iterations[-1].get("validation_solver_outcome")
+                        if iterations else None
+                    ),
+                    "validation_error": (
+                        iterations[-1].get("validation_error")
+                        if iterations else None
+                    ),
                     "improvement_adopted": any_improvement_adopted,
                     "radius_attempts": dict(radius_attempts),
                     "radius_stop_reasons": tuple(radius_stop_reasons),
@@ -4077,7 +4113,11 @@ def _solve_student_assignment(
                     _build_probe_context(stage_2_seed_solver),
                     **local_config,
                 )
-                local_validator, validation_elapsed = _validate_local_result(
+                (
+                    local_validator,
+                    validation_elapsed,
+                    validation_facts,
+                ) = _validate_local_result(
                     local_result,
                     local_deadline,
                 )
@@ -4116,6 +4156,13 @@ def _solve_student_assignment(
                     "section_load_deltas": dict(local_result.section_load_deltas),
                     "candidate_found": local_result.complete_candidate_found,
                     "candidate_validated": candidate_validated,
+                    "validation_classification": validation_facts[
+                        "classification"
+                    ],
+                    "validation_solver_outcome": validation_facts[
+                        "solver_outcome"
+                    ],
+                    "validation_error": validation_facts["error"],
                     "improvement_adopted": candidate_validated,
                     "model_variable_count": local_result.model_variable_count,
                     "model_constraint_count": local_result.model_constraint_count,

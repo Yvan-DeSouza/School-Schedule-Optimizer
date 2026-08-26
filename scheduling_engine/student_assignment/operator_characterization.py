@@ -302,6 +302,9 @@ class OperatorCharacterizationRecord:
     model_constraint_count: int | None
     branches: int | None
     conflicts: int | None
+    validation_classification: str = "not_attempted"
+    validation_solver_outcome: str | None = None
+    validation_error: str | None = None
     resource: dict = field(default_factory=dict)
     attempts: tuple[dict, ...] = ()
     stagnation: dict = field(default_factory=dict)
@@ -353,6 +356,7 @@ def build_operator_characterization_record(
     final_role_value = _role_value(data, final_quality, role)
     starting_role_facts = _role_facts(data, initial_quality, role)
     final_role_facts = _role_facts(data, final_quality, role)
+    final_attempt = attempts[-1] if attempts else {}
     start_value = _weighted_substantive_value(initial_quality)
     final_value = _weighted_substantive_value(final_quality)
     return OperatorCharacterizationRecord(
@@ -406,6 +410,19 @@ def build_operator_characterization_record(
         ),
         branches=_last_observed_attempt_fact(local, attempts, "branches"),
         conflicts=_last_observed_attempt_fact(local, attempts, "conflicts"),
+        validation_classification=str(
+            final_attempt.get("validation_classification")
+            or local.get("validation_classification")
+            or "not_attempted"
+        ),
+        validation_solver_outcome=(
+            final_attempt.get("validation_solver_outcome")
+            or local.get("validation_solver_outcome")
+        ),
+        validation_error=(
+            final_attempt.get("validation_error")
+            or local.get("validation_error")
+        ),
         resource=dict(local.get("memory") or {}),
         attempts=attempts,
         stagnation=summarize_stagnation(attempts),

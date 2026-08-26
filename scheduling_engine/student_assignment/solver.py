@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from time import monotonic
 
 from ortools.sat.python import cp_model
@@ -32,6 +33,24 @@ def new_solver(time_limit_seconds, *, fix_hints=False, worker_count=1):
     solver.parameters.random_seed = 0
     solver.parameters.fix_variables_to_their_hinted_value = fix_hints
     return solver
+
+
+@dataclass(frozen=True)
+class SourceDecisionValidationOutcome:
+    """Diagnostic result for validating one semantic source-decision candidate.
+
+    A rejected candidate is not necessarily hard-invalid: a bounded CP-SAT
+    validator can also return ``UNKNOWN`` or fail to construct/solve the
+    validation model.  Keeping those cases distinct prevents characterization
+    reports from turning missing proof into a false constraint explanation.
+    The existing caller-facing helper below still returns only the validated
+    solver, preserving the established adoption semantics.
+    """
+
+    classification: str
+    solver: object | None
+    solver_outcome: str
+    error: str | None = None
 
 
 def set_solver_hints(model, solver, *, source_model=None):
@@ -187,25 +206,82 @@ def validate_source_decision_candidate(
     heuristic schedule.
     """
 
-    candidate_model = model.Clone()
-    for decision_group in required_decision_groups:
-        candidate_model.AddExactlyOne(
-            candidate_model.GetIntVarFromProtoIndex(variable.Index())
-            for variable in decision_group
-        )
-    for variable_index, value in source_variable_values.items():
-        # This is validation, not search guidance.  Equality constraints avoid
-        # CP-SAT's ``fix_variables_to_their_hinted_value`` requirement that
-        # every auxiliary variable also carry a hint.
-        candidate_model.Add(
-            candidate_model.GetIntVarFromProtoIndex(variable_index) == int(value)
-        )
-    validator = new_solver(
+    outcome = validate_source_decision_candidate_with_status(
+        model,
+        required_decision_groups,
+        source_variable_values,
         time_limit_seconds,
         worker_count=worker_count,
     )
-    status = validator.Solve(candidate_model)
-    return validator if _has_solution(status) else None
+    return outcome.solver if outcome.classification == "validated" else None
+
+
+def validate_source_decision_candidate_with_status(
+    model,
+    required_decision_groups,
+    source_variable_values,
+    time_limit_seconds,
+    *,
+    worker_count=1,
+):
+    """Validate a candidate and preserve the bounded validator outcome.
+
+    ``hard_invalid`` means CP-SAT proved the fixed source decisions
+    inconsistent with the unchanged full model.  ``validation_unknown`` means
+    the validator did not establish feasibility within its bound.  Model
+    construction/solver exceptions and ``MODEL_INVALID`` are reported as
+    ``validation_error``.  None of these non-validated outcomes may be
+    adopted by the production or diagnostic caller.
+    """
+
+    try:
+        candidate_model = model.Clone()
+        for decision_group in required_decision_groups:
+            candidate_model.AddExactlyOne(
+                candidate_model.GetIntVarFromProtoIndex(variable.Index())
+                for variable in decision_group
+            )
+        for variable_index, value in source_variable_values.items():
+            # This is validation, not search guidance.  Equality constraints
+            # avoid CP-SAT's ``fix_variables_to_their_hinted_value``
+            # requirement that every auxiliary variable also carry a hint.
+            candidate_model.Add(
+                candidate_model.GetIntVarFromProtoIndex(variable_index) == int(value)
+            )
+        validator = new_solver(
+            time_limit_seconds,
+            worker_count=worker_count,
+        )
+        status = validator.Solve(candidate_model)
+    except Exception as error:  # pragma: no cover - defensive infrastructure path
+        return SourceDecisionValidationOutcome(
+            classification="validation_error",
+            solver=None,
+            solver_outcome="error",
+            error=f"{type(error).__name__}: {error}",
+        )
+
+    if status in {cp_model.OPTIMAL, cp_model.FEASIBLE}:
+        return SourceDecisionValidationOutcome(
+            classification="validated",
+            solver=validator,
+            solver_outcome=outcome_name(status),
+        )
+    if status == cp_model.INFEASIBLE:
+        return SourceDecisionValidationOutcome(
+            classification="hard_invalid",
+            solver=None,
+            solver_outcome=outcome_name(status),
+        )
+    return SourceDecisionValidationOutcome(
+        classification=(
+            "validation_error"
+            if status == cp_model.MODEL_INVALID
+            else "validation_unknown"
+        ),
+        solver=None,
+        solver_outcome=outcome_name(status),
+    )
 
 
 def validated_initial_hint_solver(
