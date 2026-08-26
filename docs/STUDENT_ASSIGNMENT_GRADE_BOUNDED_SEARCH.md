@@ -52,8 +52,10 @@ resource telemetry, and stopping reason. Do not mutate a canonical checkpoint.
 Target-scale characterization is progressive: qualify a small multi-grade
 fixture first, then a medium fixture, then only promising target-scale grade
 probes, followed by a final full-pipeline check if warranted. This diagnostic
-operator does not authorize adaptive allocation, change Objective Semantics
-v2, or establish a production policy.
+operator does not authorize production adaptive allocation, change Objective
+Semantics v2, or establish a production policy. The diagnostic adaptive
+allocator may select this operator for offline calibration, but CP-SAT and
+full-model validation remain the only candidate authority.
 
 The current durable production-scale v1 artifact predates the grade fact and
 originated from a fixture whose 1,400 students are all Grade 12. It remains

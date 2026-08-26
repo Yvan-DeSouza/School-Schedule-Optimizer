@@ -52,8 +52,9 @@ around the existing substantive soft-tier probe:
 
 The target list is a search restriction, not a counselor rule and not an
 assignment recommendation. Grade-bounded escape is implemented separately as
-an opt-in diagnostic operator; no adaptive controller or global unrestricted
-operator is implemented by this module.
+an opt-in diagnostic operator. The offline adaptive allocator can choose
+among these existing diagnostic families, but no adaptive controller or
+global unrestricted operator is used by ordinary production assignment.
 
 The ordinary two-stage path also retains a complete validated Stage 1 seed
 when a later bounded optimization pass returns a weaker candidate or becomes
@@ -100,10 +101,11 @@ and finalization. These are target-scale capability results, not evidence that
 the ranking is globally optimal or that an adaptive controller should select
 these students in production.
 
-The next separately scoped research increment is comprehensive characterization
-of the implemented operator portfolio. It must include repeated utilization
-and grade-bounded evidence before adaptive allocation is calibrated. Full-
-school global escape remains deferred. The diagnostic operators do not change
+The current separately scoped research increment is offline calibration of the
+implemented operator portfolio against matched static controls. It must report
+policy choices, resource cost, repeatability, and validation outcomes before
+any promotion decision. Full-school global escape remains deferred. The
+diagnostic operators do not change
 the production objective, counselor policy, approval behavior, or production
 operator allocation.
 
@@ -269,9 +271,9 @@ unrestricted escape remains deferred until evidence justifies it.
 
 The diagnostic-only allocator is implemented in
 `scheduling_engine/student_assignment/adaptive_search.py` and
-`adaptive_runtime.py`. It chooses among the existing R2, targeted R8/S1,
-targeted R8/S2, and targeted R4/S2 operators using explicit v2 pressure,
-counselor-intent, history, and shared-budget signals. It does not call from
+`adaptive_runtime.py`. It exposes R2, targeted student-pressure, utilization
+cluster, and grade-bounded families using explicit v2 pressure,
+counselor-intent, history, and shared-budget signals. It is not called by
 ordinary production assignment and does not alter the objective or hard-model
 contract. Each attempt still goes through CP-SAT and the existing full-model
 validator, and only a strict validated improvement is adopted. Quality and
@@ -363,10 +365,10 @@ that comparison, while the reused process remained within a measured peak of
 approximately 0.95 GB. The result supports reusing the static model/context
 for diagnostic sessions, but it is not production enablement.
 
-This qualification is sufficient to proceed to comprehensive characterization
-of the implemented portfolio, including larger utilization neighborhoods and
-grade-bounded escape. It is not sufficient to promote an adaptive allocator or
-any operator into ordinary scheduling. The characterization study must retain
+This qualification supports the current offline adaptive-calibration study
+over the implemented portfolio, including larger utilization neighborhoods
+and grade-bounded escape. It is not sufficient to promote an adaptive
+allocator or any operator into ordinary scheduling. Calibration must retain
 detached, fingerprinted inputs, complete incumbent validation, full-model
 candidate validation, clean-process controls, and explicit
 memory/unknown/infeasible reporting.

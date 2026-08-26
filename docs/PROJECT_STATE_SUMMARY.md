@@ -1,6 +1,6 @@
 # Project State Summary
 
-Snapshot date: 2026-08-25
+Snapshot date: 2026-08-26
 
 This document is a repository-backed orientation snapshot. It is based on the
 actual code, tests, and docs in this checkout, not on prior chat memory.
@@ -30,10 +30,10 @@ Objective Semantics v2 target-scale qualification study using the 1,400-student
 benchmark input and one validated source incumbent. Dynamic R4/S1, R8/S1,
 R4/S2, and R8/S2 sessions completed repeated full-model-validated attempts;
 R2 remained complete but unresolved after `UNKNOWN`. This is diagnostic
-qualification only. The current research boundary is a diagnostic-only
-characterization study over the implemented student-pressure,
+qualification only. The current research boundary is offline calibration of
+a diagnostic-only adaptive allocator over the implemented student-pressure,
 utilization-cluster, and actual-grade-bounded operator families. Adaptive
-allocation, grade-bounded production use, global escape, and production
+production allocation, grade-bounded production use, global escape, and production
 enablement remain deferred. The evidence catalog is maintained in
 `docs/STUDENT_ASSIGNMENT_OPERATOR_CHARACTERIZATION.md` and escape semantics in
 `docs/STUDENT_ASSIGNMENT_ESCAPE_STRATEGIES.md`.

@@ -45,7 +45,7 @@ change Objective Semantics v2, or bypass approval.
 
 ## Evidence requirements
 
-Before adaptive integration, each retained family needs matched records for
+Before production adaptive integration, each retained family needs matched records for
 success rate, first-improvement time, total and role-specific gain/minute,
 attempt-level marginal gains, stagnation/unknown behavior, validation cost,
 memory, and downstream effect. Input and source-seed fingerprints must match

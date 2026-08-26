@@ -18,16 +18,20 @@ from scheduling_engine.student_assignment.adaptive_runtime import (
 from scheduling_engine.student_assignment.adaptive_search import (
     AdaptiveOperatorAttempt,
     AdaptiveOperatorSpec,
+    AdaptivePolicyDecision,
     AdaptiveSearchState,
     DEFAULT_ADAPTIVE_OPERATOR_PORTFOLIO,
     build_adaptive_search_state,
     build_operator_session_request,
     choose_adaptive_operator,
+    select_fixed_cycle_operator,
+    select_stateless_role_operator,
     replay_adaptive_policy,
 )
 from scheduling_engine.student_assignment.core import (
     run_student_assignment_operator_session_diagnostic,
     run_student_assignment_stage2_diagnostic,
+    solve_student_assignment,
 )
 from scheduling_engine.student_assignment.operator_session import (
     ContinuousOperatorSessionConfig,
@@ -42,9 +46,10 @@ from scheduling_engine.student_assignment.grade_guidance import (
 
 def _state(*, local_share, utilization_share, history=()):
     return AdaptiveSearchState(
-        policy_version="v2-local-allocator-diagnostic-1",
+        policy_version="v2-local-allocator-diagnostic-2",
         objective_semantics_version="v2",
         counselor_scores={
+            "section_utilization_balance": 10,
             "student_semester_balance": 10,
             "difficulty_balance": 10,
             "course_category_diversity": 10,
@@ -61,6 +66,7 @@ def _state(*, local_share, utilization_share, history=()):
         elapsed_seconds=0.0,
         remaining_seconds=60.0,
         operator_history=tuple(history),
+        utilization_ranked_student_ids=(7, 8, 9, 10, 11, 12, 13, 14, 15, 16),
     )
 
 
@@ -239,8 +245,54 @@ def test_policy_prefers_ordinary_operator_when_global_utilization_dominates():
         _state(local_share=0.1, utilization_share=0.9),
         ranked_students=(SimpleNamespace(student_id=7), SimpleNamespace(student_id=8)),
     )
-    assert decision.operator.name == "r2"
-    assert decision.selected_student_ids == ()
+    assert decision.operator.portfolio_role == "utilization_repair"
+    assert decision.selected_student_ids == (7, 8, 9, 10)
+
+
+def test_role_signals_bound_rounding_inflated_student_share():
+    state = replace(
+        _state(local_share=4.0, utilization_share=0.9),
+        counselor_scores={
+            "section_utilization_balance": 10,
+            "student_semester_balance": 2,
+            "difficulty_balance": 2,
+            "course_category_diversity": 2,
+            "course_sequence_preferences": 2,
+        },
+    )
+    decision = choose_adaptive_operator(
+        state,
+        ranked_students=(SimpleNamespace(student_id=7), SimpleNamespace(student_id=8)),
+    )
+    signals = decision.signal_values["role_signals"]
+    assert all(0.0 <= value <= 1.0 for value in signals.values())
+    assert decision.operator.portfolio_role == "utilization_repair"
+
+
+def test_policy_decision_exposes_history_budget_and_resource_effects():
+    attempt = AdaptiveOperatorAttempt(
+        operator="r2",
+        status="unknown",
+        candidate_found=False,
+        candidate_validated=False,
+        adopted=False,
+        gain=0,
+        elapsed_seconds=7,
+        unknown=True,
+    )
+    state = replace(
+        _state(local_share=0.2, utilization_share=0.2, history=(attempt,)),
+        recent_memory_peak_bytes=123456,
+        recent_operation_seconds=7,
+    )
+    decision = choose_adaptive_operator(
+        state,
+        portfolio=(AdaptiveOperatorSpec("r2", 2, None, False, 0, "local_descent"),),
+    )
+    assert decision.signal_values["history_effect"]["attempt_count"] == 1
+    assert decision.signal_values["history_effect"]["unknown_rate"] == 1.0
+    assert decision.signal_values["budget_effect"]["remaining_seconds"] == 60.0
+    assert decision.signal_values["resource_facts"]["recent_memory_peak_bytes"] == 123456
 
 
 def test_policy_history_is_explicit_and_replay_is_solver_free():
@@ -270,6 +322,195 @@ def test_policy_history_is_explicit_and_replay_is_solver_free():
         "total_operation_seconds": 3,
     },))
     assert replayed[0].unknown is True
+
+
+def test_frozen_policy_state_replays_same_choice_and_reasoning():
+    recorded = ({
+        "operator": "targeted_r8_s2",
+        "status": "unknown",
+        "candidate_found": False,
+        "candidate_validated": False,
+        "candidate_adopted": False,
+        "gain": 0,
+        "total_operation_seconds": 3,
+    },)
+    replayed_history = replay_adaptive_policy(recorded)
+    state = replace(
+        _state(local_share=0.8, utilization_share=0.2),
+        operator_history=replayed_history,
+    )
+    ranked = (SimpleNamespace(student_id=7), SimpleNamespace(student_id=8))
+    first = choose_adaptive_operator(state, ranked_students=ranked)
+    second = choose_adaptive_operator(state, ranked_students=ranked)
+    assert first.to_dict() == second.to_dict()
+
+
+def test_policy_selects_grade_from_opportunity_facts_after_stagnation():
+    history = (
+        AdaptiveOperatorAttempt(
+            operator="r2", status="unknown", candidate_found=False,
+            candidate_validated=False, adopted=False, gain=0,
+            elapsed_seconds=5, unknown=True,
+        ),
+        AdaptiveOperatorAttempt(
+            operator="targeted_r4_s2", status="infeasible", candidate_found=False,
+            candidate_validated=False, adopted=False, gain=0,
+            elapsed_seconds=5, infeasible=True,
+        ),
+    )
+    state = replace(
+        _state(local_share=0.1, utilization_share=0.1, history=history),
+        grade_opportunities=(
+            {"grade_level": 9, "local_pressure_total": 80,
+             "utilization_pressure_share": 0.05,
+             "effective_search_available": True},
+            {"grade_level": 10, "local_pressure_total": 10,
+             "utilization_pressure_share": 0.01,
+             "effective_search_available": True},
+        ),
+        student_local_weighted_total=100,
+        consecutive_no_improvement_attempts=2,
+    )
+    decision = choose_adaptive_operator(state, ranked_students=())
+    assert decision.operator.name == "grade_bounded_g9"
+    assert decision.operator.selected_grade == 9
+    assert "specialized_search_stagnation" in decision.reasons
+
+
+def test_policy_does_not_memorize_grade_number_when_opportunity_changes():
+    history = tuple(
+        AdaptiveOperatorAttempt(
+            operator="r2", status="unknown", candidate_found=False,
+            candidate_validated=False, adopted=False, gain=0,
+            elapsed_seconds=5, unknown=True,
+        ) for _ in range(2)
+    )
+    state = replace(
+        _state(local_share=0.1, utilization_share=0.1, history=history),
+        grade_opportunities=(
+            {"grade_level": 9, "local_pressure_total": 5,
+             "utilization_pressure_share": 0.01,
+             "effective_search_available": True},
+            {"grade_level": 12, "local_pressure_total": 90,
+             "utilization_pressure_share": 0.05,
+             "effective_search_available": True},
+        ),
+        student_local_weighted_total=100,
+        consecutive_no_improvement_attempts=2,
+    )
+    decision = choose_adaptive_operator(state, ranked_students=())
+    assert decision.operator.name == "grade_bounded_g12"
+
+
+def test_policy_returns_to_local_after_validated_grade_escape():
+    state = replace(
+        _state(local_share=0.1, utilization_share=0.1),
+        operator_history=(
+            AdaptiveOperatorAttempt(
+                operator="grade_bounded_g9", status="feasible",
+                candidate_found=True, candidate_validated=True, adopted=True,
+                gain=10, elapsed_seconds=5, selected_grade=9,
+            ),
+        ),
+        grade_opportunities=(
+            {"grade_level": 9, "local_pressure_total": 80,
+             "utilization_pressure_share": 0.05,
+             "effective_search_available": True},
+        ),
+    )
+    decision = choose_adaptive_operator(
+        state,
+        ranked_students=(SimpleNamespace(student_id=7),),
+    )
+    assert decision.operator.name == "r2"
+    assert "return_to_local_after_escape" in decision.reasons
+    assert decision.signal_values["selected_role"] == "local_descent"
+
+
+def test_stateless_policy_ignores_prior_attempt_history():
+    history = (
+        AdaptiveOperatorAttempt(
+            operator="r2", status="unknown", candidate_found=False,
+            candidate_validated=False, adopted=False, gain=0,
+            elapsed_seconds=5, unknown=True,
+        ),
+    )
+    state = _state(local_share=0.8, utilization_share=0.2, history=history)
+    decision = select_stateless_role_operator(
+        state,
+        portfolio=(
+            AdaptiveOperatorSpec("r2", 2, None, False, 0, "local_descent"),
+            AdaptiveOperatorSpec("targeted_r4_s1", 4, 1, True, 1, "targeted_repair"),
+        ),
+        ranked_students=(SimpleNamespace(student_id=7),),
+    )
+    assert decision.operator.name == "targeted_r4_s1"
+    assert decision.signal_values["attempt_count"] == 0
+
+
+def test_stateless_policy_clears_derived_stagnation_history():
+    state = replace(
+        _state(local_share=0.1, utilization_share=0.1),
+        consecutive_no_improvement_attempts=4,
+        unknown_streak=4,
+        grade_opportunities=(
+            {
+                "grade_level": 9,
+                "local_pressure_total": 90,
+                "utilization_pressure_share": 0.05,
+                "effective_search_available": True,
+            },
+        ),
+    )
+    decision = select_stateless_role_operator(
+        state,
+        portfolio=(
+            AdaptiveOperatorSpec("r2", 2, None, False, 0, "local_descent"),
+            AdaptiveOperatorSpec(
+                "grade_bounded_g9", None, None, False, 0, "basin_escape",
+                target_policy="fixed", selected_grade=9,
+            ),
+        ),
+    )
+    assert decision.operator.name == "r2"
+
+
+def test_fixed_cycle_control_is_deterministic_and_solver_free():
+    state = _state(local_share=0.2, utilization_share=0.2)
+    cycle = (
+        AdaptiveOperatorSpec("r2", 2, None, False, 0, "local_descent"),
+        AdaptiveOperatorSpec("targeted_r4_s1", 4, 1, True, 1, "targeted_repair"),
+    )
+    first = select_fixed_cycle_operator(
+        state, cycle, ranked_students=(SimpleNamespace(student_id=7),)
+    )
+    second = select_fixed_cycle_operator(
+        replace(state, operator_history=(AdaptiveOperatorAttempt(
+            operator="r2", status="unknown", candidate_found=False,
+            candidate_validated=False, adopted=False, gain=0,
+            elapsed_seconds=1,
+        ),)),
+        cycle,
+        ranked_students=(SimpleNamespace(student_id=7),),
+    )
+    assert first.operator.name == "r2"
+    assert second.operator.name == "targeted_r4_s1"
+
+
+def test_policy_stops_cleanly_when_history_exhausts_single_operator():
+    exhausted = AdaptiveOperatorAttempt(
+        operator="r2", status="infeasible", candidate_found=False,
+        candidate_validated=False, adopted=False, gain=0,
+        elapsed_seconds=1, infeasible=True,
+        stopping_reason="proven_scope_exhausted",
+    )
+    state = _state(local_share=0.5, utilization_share=0.5, history=(exhausted,))
+    assert choose_adaptive_operator(
+        state,
+        portfolio=(AdaptiveOperatorSpec(
+            "r2", 2, None, False, 0, "local_descent"
+        ),),
+    ) is None
 
 
 def test_build_state_exposes_pressure_concentration_from_quality_facts():
@@ -395,12 +636,195 @@ def test_adaptive_runner_adopts_only_validated_strict_improvement(monkeypatch):
     assert result.record.final_assignment_count == 2
 
 
-def test_policy_portfolio_contains_no_grade_or_global_operator():
+def test_runner_executes_fixed_cycle_control_through_shared_operator_boundary(monkeypatch):
+    data = replace(
+        build_realistic_quality_tradeoff_fixture(),
+        objective_semantics_version="v2",
+        objective_importance_scores={
+            "section_utilization_balance": 6,
+            "student_semester_balance": 6,
+            "course_sequence_preferences": 6,
+            "difficulty_balance": 6,
+            "course_category_diversity": 6,
+        },
+    )
+    quality = {
+        "objective_semantics": {
+            "components": {
+                name: {"denominator": 100}
+                for name in (
+                    "student_semester_load_balance",
+                    "difficulty_balance",
+                    "course_category_diversity",
+                    "course_sequence_preferences",
+                )
+            }
+        }
+    }
+    initial = SimpleNamespace(
+        status="complete",
+        solver_outcome="optimal",
+        unmet_requests=(),
+        assignments=(1,),
+        commitment_assignments=(),
+        objective_components={"weighted_normalized_contributions": {"x": 100}},
+        optimization_facts={
+            "stage_1": {"objective_values": (-1,)},
+            "stage_2": {
+                "objective_values": (-1,),
+                "final_source_decisions": (("a", 1),),
+            },
+        },
+    )
+    candidate = SimpleNamespace(
+        status="complete",
+        solver_outcome="feasible",
+        unmet_requests=(),
+        assignments=(1, 2),
+        commitment_assignments=(),
+        objective_components={"weighted_normalized_contributions": {"x": 90}},
+        optimization_facts={
+            "stage_2_local_bootstrap": {
+                "status": "feasible",
+                "candidate_found": True,
+                "candidate_validated": True,
+                "changed_student_count": 1,
+                "changed_source_decision_count": 1,
+            },
+            "stage_2": {
+                "objective_values": (-2,),
+                "final_source_decisions": (("a", 2),),
+            },
+        },
+    )
+    spec = AdaptiveOperatorSpec("r2", 2, None, False, 0, "local_descent")
+    decision = AdaptivePolicyDecision(
+        operator=spec,
+        selected_student_ids=(),
+        score=0.0,
+        reasons=("fixed_cycle_control",),
+        signal_values={"remaining_seconds": 1},
+    )
+    monkeypatch.setattr(
+        "scheduling_engine.student_assignment.adaptive_runtime._quality_report",
+        lambda *_args: quality,
+    )
+    monkeypatch.setattr(
+        "scheduling_engine.student_assignment.adaptive_runtime.select_fixed_cycle_operator",
+        lambda *_args, **_kwargs: decision,
+    )
+    monkeypatch.setattr(
+        "scheduling_engine.student_assignment.adaptive_runtime._operator_result",
+        lambda *_args, **_kwargs: candidate,
+    )
+
+    result = run_adaptive_local_search_diagnostic(
+        data,
+        initial_result=initial,
+        total_time_limit_seconds=1,
+        per_operator_time_limit_seconds=0.1,
+        max_iterations=1,
+        selection_policy="fixed_cycle",
+        fixed_cycle=(spec,),
+    )
+
+    assert result.record.selection_policy == "fixed_cycle"
+    assert result.record.decisions[0]["selection_policy"] == "fixed_cycle"
+    assert result.result is candidate
+    assert result.record.attempts[0]["adopted"] is True
+
+
+def test_runner_records_validation_error_and_retains_incumbent(monkeypatch):
+    data = replace(
+        build_realistic_quality_tradeoff_fixture(),
+        objective_semantics_version="v2",
+        objective_importance_scores={
+            "section_utilization_balance": 6,
+            "student_semester_balance": 6,
+            "course_sequence_preferences": 6,
+            "difficulty_balance": 6,
+            "course_category_diversity": 6,
+        },
+    )
+    quality = {"objective_semantics": {"components": {}}}
+    initial = SimpleNamespace(
+        status="complete",
+        solver_outcome="optimal",
+        unmet_requests=(),
+        assignments=(1,),
+        commitment_assignments=(),
+        objective_components={"weighted_normalized_contributions": {"x": 100}},
+        optimization_facts={
+            "stage_1": {"objective_values": (-1,)},
+            "stage_2": {
+                "objective_values": (-1,),
+                "final_source_decisions": (("a", 1),),
+            },
+        },
+    )
+    monkeypatch.setattr(
+        "scheduling_engine.student_assignment.adaptive_runtime._quality_report",
+        lambda *_args: quality,
+    )
+    monkeypatch.setattr(
+        "scheduling_engine.student_assignment.adaptive_runtime._operator_result",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            ValueError("The supplied mature checkpoint failed full-model validation")
+        ),
+    )
+
+    result = run_adaptive_local_search_diagnostic(
+        data,
+        initial_result=initial,
+        total_time_limit_seconds=1,
+        per_operator_time_limit_seconds=0.1,
+        max_iterations=1,
+        portfolio=(AdaptiveOperatorSpec("r2", 2, None, False, 0, "local_descent"),),
+    )
+
+    attempt = result.record.attempts[0]
+    assert result.result is initial
+    assert attempt["status"] == "validation_error"
+    assert attempt["validation_classification"] == "validation_error"
+    assert attempt["candidate_validated"] is False
+    assert result.record.final_assignment_count == 1
+
+
+def test_ordinary_solver_does_not_call_diagnostic_adaptive_runner(monkeypatch):
+    original_data, _source = _multi_attempt_operator_fixture((1,))
+    data = replace(original_data, objective_semantics_version="v2")
+
+    monkeypatch.setattr(
+        "scheduling_engine.student_assignment.adaptive_runtime.run_adaptive_local_search_diagnostic",
+        lambda *_args, **_kwargs: pytest.fail(
+            "ordinary student assignment must not invoke adaptive diagnostics"
+        ),
+    )
+
+    result = solve_student_assignment(data)
+
+    assert result.status == "complete"
+    assert not result.unmet_requests
+
+
+def test_policy_portfolio_covers_all_diagnostic_operator_families():
     assert {item.name for item in DEFAULT_ADAPTIVE_OPERATOR_PORTFOLIO} == {
         "r2",
+        "targeted_r4_s1",
         "targeted_r8_s1",
-        "targeted_r8_s2",
         "targeted_r4_s2",
+        "targeted_r8_s2",
+        "targeted_utilization_r16_s2",
+        "targeted_utilization_r16_s4",
+        "targeted_utilization_r32_s4",
+        "targeted_utilization_r32_s6",
+        "targeted_utilization_r64_s6",
+        "targeted_utilization_r64_s8",
+        "targeted_utilization_r64_s10",
+        "grade_bounded_g9",
+        "grade_bounded_g10",
+        "grade_bounded_g11",
+        "grade_bounded_g12",
     }
 
 

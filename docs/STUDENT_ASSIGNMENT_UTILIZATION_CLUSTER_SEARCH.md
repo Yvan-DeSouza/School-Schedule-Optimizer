@@ -168,20 +168,20 @@ memory, completeness, repeatability, and unresolved outcomes.
 
 ## Next research boundary
 
-The next major objective is Objective Semantics v2 refinement, not further
-unbounded endpoint shaving. The order remains:
+Objective Semantics v2, input-derived normalization, the canonical counselor
+importance score, and the complete diagnostic operator portfolio are now
+implemented. The next boundary is offline adaptive-search calibration, not
+further unbounded endpoint shaving or a second objective system. The current
+order is:
 
 1. preserve this diagnostic evidence and do not mutate the canonical source;
-2. investigate principled input/metric-aware normalization, without using
-   current benchmark values as normalization constants;
-3. retain one canonical counselor importance score from 0 through 10, with
-   simple labels as presets rather than a second weighting system;
-4. establish a new Objective Semantics v2 baseline and revalidate only the
-   operators affected by that change;
-5. characterize the complete implemented operator portfolio, including
-   targeted repair, utilization clusters, and grade-bounded escape;
-6. then study adaptive operator allocation;
-7. defer full-school global escape until those prerequisites are complete.
+2. compare adaptive allocation with matched static controls across detached
+   states, counselor profiles, budgets, quality, runtime, memory, and
+   validation outcomes;
+3. retain only evidence-backed policy behavior for further offline research;
+4. require a separate production-promotion study before any adaptive
+   scheduling execution is enabled;
+5. defer full-school global escape until the preceding evidence justifies it.
 
 Future guidance may select students, pairs, neighborhoods, or grades to
 search. It must never authorize a candidate. CP-SAT and unchanged full-model

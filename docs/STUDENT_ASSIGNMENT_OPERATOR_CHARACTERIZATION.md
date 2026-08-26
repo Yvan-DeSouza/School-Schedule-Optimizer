@@ -428,8 +428,9 @@ did not justify their cost or would not have produced an interpretable result:
 - Only the Grade-10 escape received a downstream local-return probe. It was
   run from a validated branch and retained that branch when R2 returned
   `UNKNOWN`; other grade returns remain unmeasured.
-- No adaptive allocation replay was run. The characterization evidence is not
-  yet sufficient to calibrate policy priors or switching thresholds.
+- Adaptive allocation is now implemented as a diagnostic-only policy layer.
+  Matched static-versus-adaptive calibration remains an evidence gate; no
+  production policy or switching threshold is implied by the implementation.
 
 ## Pressure concentration and target selection
 
@@ -508,18 +509,24 @@ The classification below reflects evidence strength, not implementation status:
 
 ## Adaptive-calibration decision
 
-**NO-GO for adaptive-controller calibration.**
+**Diagnostic adaptive calibration is now in progress; production promotion
+remains NO-GO.**
 
-The portfolio is implemented, but evidence is not yet complete enough to answer
-all required policy questions. The current study now has bounded target-scale
-R2, student-pressure, utilization-cluster, and grade-escape evidence, but it
-still lacks repeated matched policy trials, complete role-specific
-student-pressure metrics at target scale, full grade-opportunity correlation,
-and downstream return-to-local evidence for every grade/operator family. A
-controller should not be calibrated from implementation presence or from
-mixing v1 and v2 totals.
+The portfolio is implemented and the offline policy can select among current
+student-pressure, utilization-cluster, local, and grade-escape diagnostics.
+The evidence is not yet sufficient to promote it: repeated matched policy
+trials, role-specific target-scale metrics, full grade-opportunity correlation,
+and downstream return-to-local evidence are still required. Calibration must
+not mix v1 and v2 totals or memorize a benchmark-winning operator.
 
-The next evidence gate is to produce a current mixed-grade detached snapshot,
-run its bounded medium characterization, promote only informative operators to
-target scale, and then repeat grade-escape plus local-return experiments. Only
-after those records are complete should adaptive allocation be calibrated.
+The current evidence gate is to run matched static controls and adaptive policy
+replays first on medium detached states, then promote only informative policy
+comparisons to target scale. Grade escape must return to local search before
+further allocation is judged. Only after those records are complete should an
+adaptive policy enter a separate production-promotion study.
+
+The diagnostic runtime now executes adaptive, stateless-role, and caller-
+supplied fixed-cycle selections through the same operator-session boundary.
+This keeps CP-SAT, full-model validation, adoption, and incumbent retention
+matched across policy controls; the selection policy remains diagnostic metadata
+and is not used by ordinary student assignment.

@@ -20,17 +20,19 @@ quality facts to allocate a shared offline budget.
 
 ## Scope and non-goals
 
-The implemented diagnostic portfolio contains existing local, targeted,
-utilization-cluster, and grade-bounded operators. The allocator below still
-uses only its explicitly configured local subset; broader families are
-characterized separately before any adaptive calibration.
+The implemented diagnostic portfolio exposes the complete current set of
+existing local, targeted, utilization-cluster, and grade-bounded operators.
+The allocator can select among them for offline calibration. This does not
+make the portfolio a production policy: portfolio classification and matched
+adaptive-versus-static evidence are still required before any promotion.
 
 | Operator | Search scope | Role |
 | --- | --- | --- |
 | `r2` | ordinary radius 2, no student bound | local descent |
+| `targeted_r4_s1` | targeted radius 4, one student | targeted repair |
 | `targeted_r8_s1` | targeted radius 8, one student | targeted repair |
-| `targeted_r8_s2` | targeted radius 8, two students | targeted repair |
 | `targeted_r4_s2` | targeted radius 4, two students | targeted repair |
+| `targeted_r8_s2` | targeted radius 8, two students | targeted repair |
 | `targeted_utilization_r16_s2` through `targeted_utilization_r64_s10` | bounded utilization clusters | utilization repair |
 | `grade_bounded_g9` through `grade_bounded_g12` | one actual grade unrestricted; other grades frozen | basin escape |
 
@@ -129,12 +131,19 @@ history, adopted gains, resource facts, and the stop reason. A native solver
 call can exceed its requested slice before returning, so external overrun is
 reported rather than hidden.
 
-The adaptive allocator currently remains an offline policy diagnostic. Its
-new session-request shape describes an operator family, allocated chunk,
-attempt cap, per-attempt CP-SAT ceiling, worker count, target policy, and
-selected targets. The allocator does not yet execute continuous sessions as
-ordinary scheduling behavior, and no adaptive-versus-static promotion study
-is implied by this interface addition.
+The adaptive allocator remains an offline policy diagnostic. Its session
+request shape describes an operator family, allocated chunk, attempt cap,
+per-attempt CP-SAT ceiling, worker count, target policy, selected targets, or
+selected grade. The allocator does not execute as ordinary scheduling
+behavior. Static R2, specialized, utilization, fixed-cycle, stateless-role,
+and adaptive comparisons are research controls; this interface does not imply
+production promotion.
+
+Two solver-free controls are available for calibration. The stateless-role
+selector uses the same current-state role signals with an empty operator
+history, while the fixed-cycle selector follows an explicitly supplied
+operator sequence. Neither control runs a solver or authorizes a schedule;
+they exist so matched comparisons can separate value from policy complexity.
 
 ## Offline replay and comparison
 
@@ -176,6 +185,115 @@ The policy must never be promoted by changing the objective definition. If
 same-priority components require product-level rescaling or a new counselor
 contract, that is a separate Objective Semantics decision.
 
+## Current offline policy implementation
+
+The current implementation is versioned as
+`v2-local-allocator-diagnostic-2`. It is a deterministic, JSON-safe policy
+layer over the existing diagnostic operator sessions. It is not called by
+ordinary student assignment, backend scheduling services, Celery execution,
+approval, or persistence workflows.
+
+The policy portfolio exposes the complete current diagnostic family:
+
+- local descent: `r2`;
+- student-pressure repair: `targeted_r4_s1`, `targeted_r8_s1`,
+  `targeted_r4_s2`, and `targeted_r8_s2`;
+- utilization repair: `targeted_utilization_r16_s2`,
+  `targeted_utilization_r16_s4`, `targeted_utilization_r32_s4`,
+  `targeted_utilization_r32_s6`, `targeted_utilization_r64_s6`,
+  `targeted_utilization_r64_s8`, and `targeted_utilization_r64_s10`;
+- basin escape: `grade_bounded_g9`, `grade_bounded_g10`,
+  `grade_bounded_g11`, and `grade_bounded_g12`.
+
+Role selection is based on current state signals. Student repair uses the
+current student-local weighted pressure and its concentration; utilization
+repair uses the global utilization share, pressured-group concentration, and
+optimistic movable leverage; grade escape is eligible only after repeated
+non-improvement and selects the grade with the strongest current actionable
+opportunity. The policy does not contain a fixed preference for Grade 10,
+R64/S8, R4/S2, or any other benchmark winner.
+
+Within a selected role, history contributes observed adoption rate,
+gain-per-minute, unknown rate, exact-scope exhaustion, and remaining-budget
+signals. `UNKNOWN`, `validation_unknown`, `hard_invalid`, and
+`validation_error` remain distinct. A proven exact scope may be skipped for
+the current policy state, but no operator is globally blacklisted because of
+one failed state. Every decision records the selected role, state signals,
+history effects, budget estimate, target scope or grade, and deterministic
+tie-break reason.
+
+The adaptive runner executes the selected family through
+`run_student_assignment_operator_session_diagnostic`, with one bounded
+operation inside a single monotonic session budget. After an adopted result it
+recomputes quality, pressure, utilization guidance, grade opportunity, and
+history before selecting again. CP-SAT produces every candidate and the
+unchanged full-model validator is the only adoption authority. A failed,
+partial, unknown, unvalidated, or non-improving result leaves the complete
+incumbent unchanged.
+
+The current implementation is an offline calibration capability, not a
+production policy. Static R2, specialized, utilization, fixed-cycle, and
+stateless-role comparisons remain required before any promotion decision. The
+available target-shaped evidence shows useful bounded operator behavior, but
+does not yet prove that adaptive allocation outperforms a strong fixed policy
+across multiple states, counselor profiles, or total budgets. Real mixed-grade
+school data remains a later production-promotion gate.
+
+## Initial calibration evidence
+
+The matched diagnostic controls are defined by policy selection, not by a
+second solver implementation: R2-only is a one-element fixed cycle containing
+`r2`; student-repair controls use a caller-selected targeted family such as
+`targeted_r8_s2`; utilization-only controls use a caller-selected utilization
+family; fixed-cycle controls use an explicit ordered tuple of existing
+operators; and stateless-role controls use the current role signals with all
+history-derived learning cleared. Every control shares the adaptive runner's
+CP-SAT execution, full-model validation, strict-improvement adoption, and
+complete-incumbent retention.
+
+The first clean target-scale comparison used the detached v2 artifact with
+input fingerprint `c07c77d0aa077a3e72240f27644d86b8a1a4faecb2f72a900aacc3fcb792d28a`
+and the validated semantic source seed containing `10,945` required groups.
+The initial incumbent was materialized through the existing operator-session
+boundary and validated with the unchanged full model: `10,635` assignments,
+zero unmet requests, and complete status.
+
+With one bounded attempt, eight workers, and the same 30-second session budget,
+the adaptive policy selected `targeted_utilization_r16_s4` from current
+utilization pressure. Its external operation took `46.635` seconds, returned
+`UNKNOWN` without a candidate, and retained the complete incumbent. A matched
+R2-only control took `68.721` seconds externally and likewise returned
+`UNKNOWN` without a candidate. Both controls preserved the same assignments,
+zero unmet requests, and the same objective components. The external time is
+larger than the nominal CP-SAT slice because model construction and cleanup are
+inside the diagnostic operation boundary.
+
+This is capability and resource evidence, not a promotion result: it is one
+target state, one attempt, and no strict improvement. A separate specialized
+control was not counted because its clean-process seed validation failed before
+the operator probe completed. More repeated target states and matched static
+controls are required before concluding that adaptive allocation is better than
+a fixed policy.
+
+The matched-control execution seam was then verified with fresh clean-process
+target-scale controls using the same detached input and validated source seed.
+The R2 fixed-cycle control took `34.422` seconds externally for one bounded
+attempt and returned `UNKNOWN` without a candidate; the stateless-role control
+selected `targeted_utilization_r16_s4`, took `34.135` seconds, and likewise
+returned `UNKNOWN` without a candidate. Both retained the complete incumbent
+with `10,635` assignments, zero unmet requests, and weighted v2 components of
+`10,272` section utilization, `462` semester balance, `3,216` difficulty, and
+`23,646` category diversity. These controls establish that static policies now
+use the same execution and validation path, but they are still single-attempt
+observations and do not establish a promotion winner.
+
+A subsequent fixed student-repair control using `targeted_r8_s2` also passed
+seed validation and used the shared execution path. Its one bounded attempt
+took `54.137` seconds externally, returned `UNKNOWN` without a strict
+improvement, and retained the same complete incumbent and component values.
+The earlier seed-validation failure remains historical excluded evidence; it is
+not conflated with this later valid no-improvement control.
+
 ## Initial evidence gate
 
 The first medium screening run used the v2 realistic quality-tradeoff
@@ -183,6 +301,57 @@ fixture. It produced a complete two-assignment incumbent and a complete final
 result under a bounded shared diagnostic budget; a targeted S1 scope was
 proven locally infeasible while preserving the incumbent. The policy and
 session record remained deterministic and JSON-safe.
+
+As a small run-to-run variation check, three repeated one-attempt medium
+trials were run for each of adaptive, R2-only, and stateless-role controls.
+All nine trials preserved the complete two-assignment incumbent and zero unmet
+requests. Adaptive selected `targeted_r4_s1` in all three trials and returned
+`INFEASIBLE`; R2-only selected `r2` in all three and returned `INFEASIBLE`; and
+stateless-role selected `targeted_r4_s1` in all three and returned
+`INFEASIBLE`. External trial times ranged from `0.2045` to `0.2290` seconds
+for adaptive, `0.2153` to `0.2290` seconds for R2-only, and `0.1188` to
+`0.2183` seconds for stateless-role. This is a repeatability sample, not a
+quality-ranking claim: the fixture has too little student scope to exercise
+the larger S2 and utilization controls meaningfully.
+
+A separate solver-backed medium profile screen used the same mixed-grade
+fixture with five counselor profiles. All five produced complete results. The
+student-quality-heavy, difficulty/category-heavy, and sequence-heavy profiles
+selected the student-pressure role; the utilization-heavy profile selected
+the utilization role; and the balanced profile selected utilization because
+the fixture's observed utilization signal exceeded its student-local signal.
+The role signals were bounded to policy-only `[0, 1]` values, including when
+rounded per-student pressure made the raw local share exceed one. Sequence
+responsiveness is recorded as profile behavior only; applicable sequence
+opportunities were present in this fixture, but no production conclusion is
+drawn from this small screen.
+
+A bounded budget screen on the same medium input used one, three, and six
+second total windows for adaptive, R2-only, and stateless-role controls. Every
+trial retained the complete `510`-assignment, zero-unmet incumbent. Short
+windows ended as unresolved `UNKNOWN` attempts before validation; a longer
+adaptive attempt reached the validation boundary but recorded
+`validation_unknown` rather than adopting a candidate. This demonstrates that
+the shared budget is an actual operational constraint and that unresolved
+validation is preserved as evidence, not converted into infeasibility or a
+quality result. These windows are calibration observations, not product
+presets.
+
+An additional matched control screen exercised two detached medium states with
+the same one-attempt, one-worker, approximately two-second policy budget. The
+small quality-tradeoff state retained its complete two-assignment incumbent:
+adaptive and stateless-role selected `targeted_r4_s1`, fixed R2 selected `r2`,
+and the fixed targeted control reported no eligible target for its requested
+scope rather than constructing a candidate. The production-shaped
+80-student state retained its complete `510`-assignment incumbent with zero
+unmet requests under every
+control. Adaptive and stateless-role selected `targeted_utilization_r16_s4`;
+fixed targeted repair selected `targeted_r4_s1`, and fixed local descent
+selected `r2`. All four attempts were unresolved `UNKNOWN` within the short
+window and none was adopted. External operation times were approximately
+`1.80`--`1.91` seconds on the 80-student state. This is evidence that the
+policies share the same execution boundary and respond to state, not evidence
+that adaptive allocation wins on quality.
 
 One target-scale smoke run used the durable detached input with the canonical
 source seed materialized under the v2 profile. It retained all `10,635`
@@ -204,18 +373,16 @@ starting `6,875` in their bounded trials. Those results are documented in
 `STUDENT_ASSIGNMENT_SEARCH_STRATEGY.md`; the single adaptive smoke run is not
 being presented as a quality win.
 
-## Deferred roadmap
+## Current calibration roadmap
 
-The research order before adaptive calibration is:
+The current offline research order is:
 
-1. characterize every implemented v2 operator family on matched inputs;
+1. measure matched static controls against the adaptive allocator;
 2. measure student-pressure, utilization, and grade-escape role-specific
-   productivity, resource cost, and stagnation;
-3. test the allocator only as an offline replay/diagnostic against that
-   evidence;
-4. return to faster local operators after any successful grade escape;
-5. consider full-school unrestricted escape only if evidence justifies it;
-6. run production-promotion and policy studies only after these gates.
+   productivity, resource cost, and stagnation across multiple states;
+3. return to faster local operators after any successful grade escape;
+4. consider full-school unrestricted escape only if evidence justifies it;
+5. run production-promotion and policy studies only after these gates.
 
 Heuristics may choose a student, pair, neighborhood, or grade to explore.
 They must never authorize a candidate. CP-SAT plus unchanged full-model
@@ -242,9 +409,9 @@ wall time. Peak process memory remained below 1 GB in the measured runs.
 
 This closes the reusable-session qualification gate for diagnostic research,
 not the production-promotion gate. Utilization-cluster and grade-bounded
-families are now implemented as separate diagnostic capabilities. The next
-evidence gate is comprehensive cross-family characterization; it does not
-authorize adaptive allocation or global search.
+families are now implemented as separate diagnostic capabilities. The current
+evidence gate is matched cross-family static-versus-adaptive calibration; it
+does not authorize production adaptive allocation or global search.
 
 The first larger-neighborhood diagnostic is now implemented as an opt-in
 utilization-cluster family. It uses the existing global section-utilization

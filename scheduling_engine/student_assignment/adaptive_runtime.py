@@ -18,11 +18,12 @@ from .adaptive_search import (
     DEFAULT_ADAPTIVE_OPERATOR_PORTFOLIO,
     build_adaptive_search_state,
     choose_adaptive_operator,
+    select_fixed_cycle_operator,
+    select_stateless_role_operator,
 )
 from .core import (
-    run_student_assignment_ordinary_repair_diagnostic,
+    run_student_assignment_operator_session_diagnostic,
     run_student_assignment_targeted_s1_diagnostic,
-    run_student_assignment_targeted_s2_diagnostic,
 )
 from .runtime import semantic_student_assignment_input_fingerprint
 from .search_experiments import source_decision_fingerprint
@@ -86,54 +87,57 @@ def _operator_result(data, spec, *, selected_student_ids, current_source_decisio
                     hard_feasibility_validation_time_limit_seconds=None,
                     hard_feasibility_worker_count=None,
                     hard_feasibility_validation_worker_count=None):
-    common = {
-        "neighborhood_radius": spec.radius,
-        "time_limit_seconds": time_limit_seconds,
-        "total_time_limit_seconds": time_limit_seconds,
-        "worker_count": worker_count,
-        "alternate_source_decisions": current_source_decisions,
-        "capture_final_source_decisions": True,
-        "collect_resource_telemetry": collect_resource_telemetry,
-    }
-    if hard_feasibility_time_limit_seconds is not None:
-        common["hard_feasibility_time_limit_seconds"] = hard_feasibility_time_limit_seconds
-    if hard_feasibility_validation_time_limit_seconds is not None:
-        common["hard_feasibility_validation_time_limit_seconds"] = (
-            hard_feasibility_validation_time_limit_seconds
-        )
-    if hard_feasibility_worker_count is not None:
-        common["hard_feasibility_worker_count"] = hard_feasibility_worker_count
-    if hard_feasibility_validation_worker_count is not None:
-        common["hard_feasibility_validation_worker_count"] = (
-            hard_feasibility_validation_worker_count
-        )
-    if spec.name == "r2":
-        ordinary_common = {
-            key: value
-            for key, value in common.items()
-            if key not in {
-                "hard_feasibility_time_limit_seconds",
-                "hard_feasibility_worker_count",
-            }
-        }
-        return run_student_assignment_ordinary_repair_diagnostic(
-            data,
-            max_changed_students=None,
-            **ordinary_common,
-        )
+    # Keep the original narrow wrapper available for compatibility with the
+    # existing diagnostic test seam.  All newly exposed families use the
+    # reusable operator-session boundary below.
     if spec.name == "targeted_r8_s1":
         return run_student_assignment_targeted_s1_diagnostic(
             data,
             selected_student_id=selected_student_ids[0],
-            **common,
+            neighborhood_radius=spec.radius,
+            time_limit_seconds=time_limit_seconds,
+            total_time_limit_seconds=time_limit_seconds,
+            worker_count=worker_count,
+            alternate_source_decisions=current_source_decisions,
+            capture_final_source_decisions=True,
+            collect_resource_telemetry=collect_resource_telemetry,
+            hard_feasibility_validation_time_limit_seconds=(
+                hard_feasibility_validation_time_limit_seconds
+            ),
+            hard_feasibility_validation_worker_count=(
+                hard_feasibility_validation_worker_count
+            ),
         )
-    if spec.name in {"targeted_r8_s2", "targeted_r4_s2"}:
-        return run_student_assignment_targeted_s2_diagnostic(
-            data,
-            selected_student_ids=selected_student_ids,
-            **common,
-        )
-    raise ValueError(f"Unsupported adaptive diagnostic operator: {spec.name}")
+    if spec.name == "r2":
+        target_policy = "dynamic"
+        selected = ()
+    else:
+        # The policy has already selected this scope from the current state.
+        # Passing it as fixed input makes the executed attempt correspond to
+        # the explanation record; the next policy iteration recomputes scope.
+        target_policy = "fixed"
+        selected = tuple(selected_student_ids)
+    return run_student_assignment_operator_session_diagnostic(
+        data,
+        operator_family=spec.name,
+        initial_source_decisions=current_source_decisions,
+        total_time_limit_seconds=time_limit_seconds,
+        max_attempts=1,
+        per_attempt_time_limit_seconds=time_limit_seconds,
+        worker_count=worker_count,
+        target_policy=target_policy,
+        selected_student_ids=selected,
+        selected_grade=spec.selected_grade,
+        utilization_cluster_policy="interaction_aware",
+        hard_feasibility_validation_time_limit_seconds=(
+            hard_feasibility_validation_time_limit_seconds
+        ),
+        hard_feasibility_validation_worker_count=(
+            hard_feasibility_validation_worker_count
+        ),
+        collect_resource_telemetry=collect_resource_telemetry,
+        capture_final_source_decisions=True,
+    )
 
 
 def run_adaptive_local_search_diagnostic(
@@ -152,16 +156,29 @@ def run_adaptive_local_search_diagnostic(
     hard_feasibility_worker_count=None,
     hard_feasibility_validation_worker_count=None,
     session_id=None,
+    selection_policy="adaptive",
+    fixed_cycle=(),
 ):
-    """Run the diagnostic v2 allocator inside one shared wall-clock budget.
+    """Run a diagnostic v2 operator session inside one shared wall-clock budget.
 
-    This is not called by ``solve_student_assignment``. It is suitable for
-    offline comparison only. A failed, unknown, partial, or unvalidated
-    candidate is recorded and never replaces the current incumbent.
+    ``selection_policy`` controls only which already-existing operator is
+    selected for each iteration. ``adaptive`` is the allocator under study;
+    ``stateless_role`` and ``fixed_cycle`` are matched solver controls. All
+    policies use the same CP-SAT operator boundary, complete-result checks,
+    full-model validation, and strict adoption rule. This function is not
+    called by ``solve_student_assignment`` and is suitable for offline
+    comparison only. A failed, unknown, partial, or unvalidated candidate is
+    recorded and never replaces the current incumbent.
     """
 
     if data.objective_semantics_version != "v2":
         raise ValueError("adaptive local search requires Objective Semantics v2")
+    if selection_policy not in {"adaptive", "stateless_role", "fixed_cycle"}:
+        raise ValueError(
+            "selection_policy must be adaptive, stateless_role, or fixed_cycle"
+        )
+    if selection_policy == "fixed_cycle" and not tuple(fixed_cycle):
+        raise ValueError("fixed_cycle selection requires at least one operator")
     if initial_result.status != "complete" or initial_result.unmet_requests:
         raise ValueError("adaptive search requires a complete initial incumbent")
     current_source_decisions = tuple(initial_source_decisions) or _source_decisions_from_result(
@@ -198,38 +215,78 @@ def run_adaptive_local_search_diagnostic(
             elapsed_seconds=elapsed,
             remaining_seconds=remaining,
             history=tuple(history),
+            source_decisions=current_source_decisions,
+            recent_memory_peak_bytes=int(
+                (current_result.optimization_facts or {})
+                .get("operation_resource_monitor", {})
+                .get("peak_working_set_bytes", 0)
+                or 0
+            ),
         )
-        decision = choose_adaptive_operator(
-            state,
-            portfolio=portfolio,
-            ranked_students=ranked,
-        )
+        if selection_policy == "adaptive":
+            decision = choose_adaptive_operator(
+                state,
+                portfolio=portfolio,
+                ranked_students=ranked,
+            )
+        elif selection_policy == "stateless_role":
+            decision = select_stateless_role_operator(
+                state,
+                portfolio=portfolio,
+                ranked_students=ranked,
+            )
+        else:
+            decision = select_fixed_cycle_operator(
+                state,
+                fixed_cycle,
+                ranked_students=ranked,
+            )
         if decision is None:
             stopping_reason = "no_eligible_operator"
             break
-        decisions.append(decision.to_dict())
+        decision_payload = decision.to_dict()
+        decision_payload["selection_policy"] = selection_policy
+        decisions.append(decision_payload)
         selected = tuple(decision.selected_student_ids)
         operation_limit = min(per_operator, remaining)
         operation_started = monotonic()
-        result = _operator_result(
-            data,
-            decision.operator,
-            selected_student_ids=selected,
-            current_source_decisions=current_source_decisions,
-            time_limit_seconds=operation_limit,
-            worker_count=worker_count,
-            collect_resource_telemetry=collect_resource_telemetry,
-            hard_feasibility_time_limit_seconds=hard_feasibility_time_limit_seconds,
-            hard_feasibility_validation_time_limit_seconds=(
-                hard_feasibility_validation_time_limit_seconds
-            ),
-            hard_feasibility_worker_count=hard_feasibility_worker_count,
-            hard_feasibility_validation_worker_count=(
-                hard_feasibility_validation_worker_count
-            ),
-        )
+        validation_error = None
+        try:
+            result = _operator_result(
+                data,
+                decision.operator,
+                selected_student_ids=selected,
+                current_source_decisions=current_source_decisions,
+                time_limit_seconds=operation_limit,
+                worker_count=worker_count,
+                collect_resource_telemetry=collect_resource_telemetry,
+                hard_feasibility_time_limit_seconds=hard_feasibility_time_limit_seconds,
+                hard_feasibility_validation_time_limit_seconds=(
+                    hard_feasibility_validation_time_limit_seconds
+                ),
+                hard_feasibility_worker_count=hard_feasibility_worker_count,
+                hard_feasibility_validation_worker_count=(
+                    hard_feasibility_validation_worker_count
+                ),
+            )
+        except ValueError as exc:
+            # An operator may be given too little of the shared budget to
+            # validate its supplied incumbent. Treat that as a recorded
+            # validation failure, not as a policy/runtime crash; the current
+            # complete incumbent remains authoritative and adoptable.
+            result = current_result
+            validation_error = str(exc)
         operation_elapsed = monotonic() - operation_started
         local = dict((result.optimization_facts or {}).get("stage_2_local_bootstrap") or {})
+        if validation_error is not None:
+            local.update({
+                "status": "validation_error",
+                "candidate_found": False,
+                "candidate_validated": False,
+                "validation_classification": "validation_error",
+                "validation_error": validation_error,
+                "stopping_reason": "candidate_validation_error",
+            })
         candidate_source = _source_decisions_from_result(result)
         candidate_value = _weighted_substantive_value(result)
         candidate_found = bool(local.get("candidate_found", False))
@@ -264,9 +321,23 @@ def run_adaptive_local_search_diagnostic(
                 changed_source_decision_count=int(
                     local.get("changed_source_decision_count", 0) or 0
                 ),
-                unknown=status == "unknown",
+                unknown=(
+                    status == "unknown"
+                    or local.get("validation_classification") == "validation_unknown"
+                ),
                 infeasible=status == "infeasible",
                 stopping_reason=local.get("stopping_reason"),
+                role_specific_gain=float(local.get("role_specific_gain", gain) or 0),
+                validation_classification=str(
+                    local.get("validation_classification", "not_attempted")
+                ),
+                validation_solver_outcome=local.get("validation_solver_outcome"),
+                validation_error=local.get("validation_error"),
+                target_scope=selected,
+                selected_grade=decision.operator.selected_grade,
+                utilization_cluster=tuple(
+                    local.get("utilization_cluster", ()) or ()
+                ),
             )
         )
         if monotonic() - started >= configured_budget:
@@ -278,7 +349,7 @@ def run_adaptive_local_search_diagnostic(
     final_quality = _quality_report(data, current_result)
     record = AdaptiveSessionRecord(
         session_id=str(session_id or uuid4()),
-        policy_version=state.policy_version if "state" in locals() else "v2-local-allocator-diagnostic-1",
+        policy_version=state.policy_version if "state" in locals() else "v2-local-allocator-diagnostic-2",
         input_fingerprint=semantic_student_assignment_input_fingerprint(data),
         source_seed_fingerprint=source_decision_fingerprint(initial_source_decisions or _source_decisions_from_result(initial_result)),
         objective_semantics_version=data.objective_semantics_version,
@@ -306,6 +377,7 @@ def run_adaptive_local_search_diagnostic(
         resource=dict(
             (current_result.optimization_facts or {}).get("operation_resource_monitor") or {}
         ),
+        selection_policy=selection_policy,
     )
     return AdaptiveSessionResult(
         record=record,

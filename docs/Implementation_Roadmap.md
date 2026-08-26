@@ -859,7 +859,7 @@ The immediate implementation boundary is now counselor-reviewed A–D block and 
 
 *End of Implementation Roadmap.*
 
-## Current diagnostic-search update (2026-08-25)
+## Current diagnostic-search update (2026-08-26)
 
 Objective Semantics v2 and the reusable continuous student-assignment
 operator-session boundary are implemented as pure-engine diagnostics. The
@@ -868,12 +868,12 @@ validated repeated-session baselines for dynamic targeted R4/R8 S1/S2 and a
 safe retained-incumbent R2 baseline. It did not enable those operators in
 ordinary production scheduling.
 
-The next research increment is now a diagnostic-only characterization study
-over the implemented student-pressure, utilization-cluster, and actual-grade-
-bounded operator families. Its evidence catalog, capability cards,
-limitations, and explicit adaptive-calibration NO-GO decision are recorded in
+The characterization study is complete enough to expose the implemented
+student-pressure, utilization-cluster, and actual-grade-bounded operator
+families to an offline adaptive allocator. Its evidence catalog, capability
+cards, limitations, and prior adaptive-calibration gate are recorded in
 `docs/STUDENT_ASSIGNMENT_OPERATOR_CHARACTERIZATION.md`; escape semantics are
-recorded in `docs/STUDENT_ASSIGNMENT_ESCAPE_STRATEGIES.md`. Adaptive
-allocation, full-school escape, and production promotion remain deferred until
-the portfolio is characterized with matched detached inputs and repeatable
-resource/quality evidence.
+recorded in `docs/STUDENT_ASSIGNMENT_ESCAPE_STRATEGIES.md`. The current
+increment calibrates adaptive allocation against matched static controls only.
+It remains diagnostic-only; full-school escape and production promotion remain
+deferred until repeatable resource/quality evidence justifies them.
