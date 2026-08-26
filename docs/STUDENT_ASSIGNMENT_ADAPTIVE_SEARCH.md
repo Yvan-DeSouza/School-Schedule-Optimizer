@@ -242,3 +242,15 @@ not the production-promotion gate. It supports investigating larger
 neighborhood escape operators next. It does not authorize R16/R32/R64,
 adaptive allocation, grade-bounded search, or global search without a separate
 evidence-gated study.
+
+The first larger-neighborhood diagnostic is now implemented as an opt-in
+utilization-cluster family. It uses the existing global section-utilization
+pairwise penalty only as solver-neutral target-selection guidance. The
+families are R16/S2, R16/S4, R32/S4, R32/S6, R64/S6, R64/S8, and R64/S10;
+the selected scope is bounded to the operator's changed-student cap. Dynamic
+sessions recompute the cluster after adoption and fixed sessions hold a
+caller-supplied cluster. The guidance records are explicitly marked as
+non-attributive, and every candidate still requires CP-SAT plus unchanged
+full-model validation. Target-scale results and the decision not to promote
+this family into ordinary scheduling are recorded in
+`STUDENT_ASSIGNMENT_UTILIZATION_CLUSTER_SEARCH.md`.

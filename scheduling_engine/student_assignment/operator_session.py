@@ -20,6 +20,13 @@ OPERATOR_FAMILIES = (
     "targeted_r8_s1",
     "targeted_r4_s2",
     "targeted_r8_s2",
+    "targeted_utilization_r16_s2",
+    "targeted_utilization_r16_s4",
+    "targeted_utilization_r32_s4",
+    "targeted_utilization_r32_s6",
+    "targeted_utilization_r64_s6",
+    "targeted_utilization_r64_s8",
+    "targeted_utilization_r64_s10",
 )
 TARGET_POLICIES = ("dynamic", "fixed")
 
@@ -33,6 +40,13 @@ def operator_session_target_count(operator_family):
         "targeted_r8_s1": 1,
         "targeted_r4_s2": 2,
         "targeted_r8_s2": 2,
+        "targeted_utilization_r16_s2": 2,
+        "targeted_utilization_r16_s4": 4,
+        "targeted_utilization_r32_s4": 4,
+        "targeted_utilization_r32_s6": 6,
+        "targeted_utilization_r64_s6": 6,
+        "targeted_utilization_r64_s8": 8,
+        "targeted_utilization_r64_s10": 10,
     }[operator_family]
 
 
@@ -75,6 +89,7 @@ class ContinuousOperatorSessionConfig:
     worker_count: int = 8
     target_policy: str = "dynamic"
     selected_student_ids: tuple = ()
+    utilization_cluster_policy: str = "interaction_aware"
     minimum_next_attempt_seconds: float = 1.0
     collect_resource_telemetry: bool = True
     hard_feasibility_validation_time_limit_seconds: float | None = None
@@ -95,6 +110,16 @@ class ContinuousOperatorSessionConfig:
             raise ValueError("worker_count must be positive")
         if self.minimum_next_attempt_seconds < 0:
             raise ValueError("minimum_next_attempt_seconds cannot be negative")
+        if self.utilization_cluster_policy not in {
+            "top_individual",
+            "delivery_group_focused",
+            "interaction_aware",
+            "mixed",
+        }:
+            raise ValueError(
+                "Unsupported utilization_cluster_policy: "
+                f"{self.utilization_cluster_policy}"
+            )
         if self.operator_family == "r2" and self.selected_student_ids:
             raise ValueError("r2 does not accept targeted student IDs")
         if self.target_policy == "fixed" and self.operator_family != "r2":
@@ -112,6 +137,13 @@ class ContinuousOperatorSessionConfig:
             "targeted_r8_s1": 8,
             "targeted_r4_s2": 4,
             "targeted_r8_s2": 8,
+            "targeted_utilization_r16_s2": 16,
+            "targeted_utilization_r16_s4": 16,
+            "targeted_utilization_r32_s4": 32,
+            "targeted_utilization_r32_s6": 32,
+            "targeted_utilization_r64_s6": 64,
+            "targeted_utilization_r64_s8": 64,
+            "targeted_utilization_r64_s10": 64,
         }[self.operator_family]
 
     @property
@@ -122,6 +154,13 @@ class ContinuousOperatorSessionConfig:
             "targeted_r8_s1": 1,
             "targeted_r4_s2": 2,
             "targeted_r8_s2": 2,
+            "targeted_utilization_r16_s2": 2,
+            "targeted_utilization_r16_s4": 4,
+            "targeted_utilization_r32_s4": 4,
+            "targeted_utilization_r32_s6": 6,
+            "targeted_utilization_r64_s6": 6,
+            "targeted_utilization_r64_s8": 8,
+            "targeted_utilization_r64_s10": 10,
         }[self.operator_family]
 
     @property

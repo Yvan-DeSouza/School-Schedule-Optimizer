@@ -398,3 +398,22 @@ It does not currently expose independent timers for every setup sub-phase or a
 separate quality-reconstruction timer at session scope. Those phases are
 therefore included in the reported non-CP remainder rather than fabricated as
 individual measurements.
+
+## Utilization-cluster search boundary
+
+The next diagnostic family uses the existing global pairwise section-
+utilization penalty to select bounded multi-student scopes. It is documented
+in [`STUDENT_ASSIGNMENT_UTILIZATION_CLUSTER_SEARCH.md`](STUDENT_ASSIGNMENT_UTILIZATION_CLUSTER_SEARCH.md).
+The guidance is intentionally not a student-local objective: it computes
+optimistic single-request leverage while ignoring feasibility interactions,
+then lets the unchanged CP-SAT model and full-model validator decide whether a
+candidate is legal and better.
+
+The opt-in families are `targeted_utilization_r16_s2`,
+`targeted_utilization_r16_s4`, `targeted_utilization_r32_s4`,
+`targeted_utilization_r32_s6`, `targeted_utilization_r64_s6`,
+`targeted_utilization_r64_s8`, and `targeted_utilization_r64_s10`. The
+selected candidate pool equals the changed-student cap, dynamic sessions
+retarget after adoption, and fixed sessions retain their supplied scope.
+This capability remains diagnostic-only; no ordinary production portfolio or
+adaptive controller has been changed.

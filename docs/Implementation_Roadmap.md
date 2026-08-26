@@ -868,9 +868,11 @@ validated repeated-session baselines for dynamic targeted R4/R8 S1/S2 and a
 safe retained-incumbent R2 baseline. It did not enable those operators in
 ordinary production scheduling.
 
-The next research increment, if separately authorized, is targeted
-utilization-cluster search using progressively larger R16/R32/R64 neighborhoods
-and intelligently selected multi-student scopes. Adaptive allocation over the
-expanded portfolio, grade-bounded unrestricted escape, full-school escape, and
-production promotion remain deferred until that family is characterized with
-the same detached-input, validation, resource, and repeatability evidence.
+The next research increment is now implemented as a diagnostic-only
+utilization-cluster study using progressively larger R16/R32/R64 neighborhoods
+and intelligently selected multi-student scopes. Its target-scale evidence,
+limitations, and non-promotion boundary are recorded in
+`docs/STUDENT_ASSIGNMENT_UTILIZATION_CLUSTER_SEARCH.md`. Adaptive allocation
+over the expanded portfolio, grade-bounded unrestricted escape, full-school
+escape, and production promotion remain deferred until separately justified by
+detached-input, validation, resource, and repeatability evidence.

@@ -18,6 +18,13 @@ from .search_guidance import (
     rank_students_by_quality_pressure,
     reconcile_student_quality_pressure,
 )
+from .utilization_guidance import (
+    DeliveryGroupUtilizationPressure,
+    StudentUtilizationLeverage,
+    UtilizationClusterSelection,
+    build_utilization_cluster_guidance,
+    select_utilization_cluster_targets,
+)
 from .search_experiments import (
     RANKING_POLICY_DETERMINISTIC,
     RANKING_POLICY_RAW,
@@ -67,6 +74,11 @@ __all__ = [
     "StudentTargetPressure",
     "rank_students_by_quality_pressure",
     "reconcile_student_quality_pressure",
+    "DeliveryGroupUtilizationPressure",
+    "StudentUtilizationLeverage",
+    "UtilizationClusterSelection",
+    "build_utilization_cluster_guidance",
+    "select_utilization_cluster_targets",
     "ADAPTIVE_POLICY_VERSION",
     "AdaptiveOperatorAttempt",
     "AdaptiveOperatorSpec",

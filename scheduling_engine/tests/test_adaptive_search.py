@@ -30,6 +30,7 @@ from scheduling_engine.student_assignment.core import (
 from scheduling_engine.student_assignment.operator_session import (
     ContinuousOperatorSessionConfig,
     build_continuous_operator_session_record,
+    operator_session_target_count,
     select_operator_session_targets,
 )
 
@@ -563,6 +564,7 @@ def test_continuous_targeted_operator_families_reuse_context_across_improvements
         ("targeted_r8_s1", (1,)),
         ("targeted_r4_s2", (1, 2)),
         ("targeted_r8_s2", (1, 2)),
+        ("targeted_utilization_r16_s2", (1, 2)),
     )
     for operator_family, selected_student_ids in cases:
         result = run_student_assignment_operator_session_diagnostic(
@@ -596,6 +598,76 @@ def test_continuous_targeted_operator_families_reuse_context_across_improvements
             for item in facts["iterations"]
             if item["adopted"]
         )
+
+
+def test_utilization_cluster_session_records_guidance_and_effective_radius():
+    data, source = _multi_attempt_operator_fixture((1, 2, 3, 4, 5, 6))
+    result = run_student_assignment_operator_session_diagnostic(
+        data,
+        operator_family="targeted_utilization_r16_s2",
+        initial_source_decisions=source,
+        total_time_limit_seconds=8,
+        max_attempts=1,
+        per_attempt_time_limit_seconds=2,
+        worker_count=1,
+        target_policy="dynamic",
+        hard_feasibility_validation_time_limit_seconds=2,
+        hard_feasibility_validation_worker_count=1,
+        collect_resource_telemetry=False,
+    )
+    facts = result.optimization_facts["stage_2_local_bootstrap"]
+    assert result.status == "complete"
+    assert len(facts["session_target_history"]) == 1
+    assert len(facts["session_target_history"][0]) == 2
+    guidance = facts["session_target_guidance"][0]
+    assert guidance["guidance_only"] is True
+    assert guidance["objective_attribution"] is False
+    assert facts["effective_neighborhood_radius"] <= 16
+    assert facts["eligible_targeted_source_decision_count"] > 0
+
+
+def test_utilization_cluster_operator_ladder_has_explicit_radius_and_scope_caps():
+    expected = {
+        "targeted_utilization_r16_s2": (16, 2),
+        "targeted_utilization_r16_s4": (16, 4),
+        "targeted_utilization_r32_s4": (32, 4),
+        "targeted_utilization_r32_s6": (32, 6),
+        "targeted_utilization_r64_s6": (64, 6),
+        "targeted_utilization_r64_s8": (64, 8),
+        "targeted_utilization_r64_s10": (64, 10),
+    }
+    for family, (radius, scope_size) in expected.items():
+        config = ContinuousOperatorSessionConfig(operator_family=family)
+        assert config.neighborhood_radius == radius
+        assert config.max_changed_students == scope_size
+        assert operator_session_target_count(family) == scope_size
+
+
+def test_r32_utilization_cluster_keeps_multi_student_candidate_within_scope():
+    data, source = _multi_attempt_operator_fixture((1, 2, 3, 4, 5, 6))
+    result = run_student_assignment_operator_session_diagnostic(
+        data,
+        operator_family="targeted_utilization_r32_s4",
+        initial_source_decisions=source,
+        total_time_limit_seconds=8,
+        max_attempts=1,
+        per_attempt_time_limit_seconds=2,
+        worker_count=1,
+        target_policy="dynamic",
+        hard_feasibility_validation_time_limit_seconds=2,
+        hard_feasibility_validation_worker_count=1,
+        collect_resource_telemetry=False,
+    )
+    facts = result.optimization_facts["stage_2_local_bootstrap"]
+    assert result.status == "complete"
+    assert len(facts["session_target_history"][0]) == 4
+    iteration = facts["iterations"][0]
+    assert iteration["candidate_validated"] is True
+    assert iteration["changed_student_count"] <= 4
+    assert iteration["changed_source_decision_count"] <= 32
+    assert set(iteration["affected_student_ids"]).issubset(
+        set(facts["session_target_history"][0])
+    )
 
 
 def test_continuous_targeted_session_retargets_after_adoption(monkeypatch):

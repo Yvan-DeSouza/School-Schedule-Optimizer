@@ -158,7 +158,9 @@ ranking and operator contract is documented separately in
 grade-bounded escape, and full-school unrestricted search remain outside the
 current implementation. Any search policy may choose where to explore, but
 CP-SAT and full hard-model validation remain the only authorities for accepting
-a candidate.
+a candidate. The utilization-cluster policy is a specific example: its
+optimistic utilization-leverage facts select a multi-student neighborhood but
+never become student-local objective contributions or a permission to move.
 
 ## Why these normalization methods were selected
 

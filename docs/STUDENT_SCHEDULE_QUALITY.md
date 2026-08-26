@@ -1149,6 +1149,16 @@ candidate.
 
 ### Objective Semantics v2 targeted-repair evidence gate
 
+Utilization-cluster guidance does not introduce a new quality metric. The
+section-utilization metric remains the global pairwise absolute-difference
+penalty defined by the objective model. The diagnostic utilization-cluster
+families may use current section counts and optimistic single-request deltas
+to choose a bounded multi-student neighborhood, but those deltas are guidance
+only and are not added to the quality report or attributed to students. The
+unchanged full model and full-model validator determine actual candidate
+quality. The target-scale study and its non-promotion boundary are recorded
+in [`STUDENT_ASSIGNMENT_UTILIZATION_CLUSTER_SEARCH.md`](STUDENT_ASSIGNMENT_UTILIZATION_CLUSTER_SEARCH.md).
+
 ### Continuous operator-session implementation boundary
 
 The mature-R2 continuation has now been generalized in the pure engine into

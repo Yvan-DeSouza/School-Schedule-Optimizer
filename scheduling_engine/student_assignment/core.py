@@ -131,6 +131,7 @@ from .objective_semantics import (
     resolve_importance_scores,
 )
 from .search_guidance import rank_students_by_quality_pressure
+from .utilization_guidance import select_utilization_cluster_targets
 from .operator_session import select_operator_session_targets
 
 
@@ -1076,6 +1077,7 @@ def run_student_assignment_operator_session_diagnostic(
     worker_count=8,
     target_policy="dynamic",
     selected_student_ids=(),
+    utilization_cluster_policy="interaction_aware",
     minimum_next_attempt_seconds=1.0,
     hard_feasibility_validation_time_limit_seconds=None,
     hard_feasibility_validation_worker_count=None,
@@ -1101,6 +1103,7 @@ def run_student_assignment_operator_session_diagnostic(
         worker_count=worker_count,
         target_policy=target_policy,
         selected_student_ids=tuple(selected_student_ids),
+        utilization_cluster_policy=utilization_cluster_policy,
         minimum_next_attempt_seconds=minimum_next_attempt_seconds,
         collect_resource_telemetry=collect_resource_telemetry,
         hard_feasibility_validation_time_limit_seconds=(
@@ -1131,6 +1134,7 @@ def run_student_assignment_operator_session_diagnostic(
             "max_changed_students": config.max_changed_students,
             "target_policy": config.target_policy,
             "selected_student_ids": tuple(config.selected_student_ids),
+            "utilization_cluster_policy": config.utilization_cluster_policy,
             "minimum_next_attempt_seconds": config.minimum_next_attempt_seconds,
             "source_seed_fingerprint": (
                 sha256(
@@ -3622,6 +3626,7 @@ def _solve_student_assignment(
             stopping_reason = None
             local_session_started = monotonic()
             session_target_history = []
+            session_target_guidance = []
             selected_student_ids = tuple(local_config.get("selected_student_ids", ()))
 
             def _current_substantive_value(candidate_solver):
@@ -3703,29 +3708,73 @@ def _solve_student_assignment(
                     selected_student_ids = tuple(
                         local_config.get("selected_student_ids", ())
                     )
+                    required_targets = (
+                        int(local_config["max_changed_students"])
+                        if local_config.get("max_changed_students") is not None
+                        else None
+                    )
+                    target_guidance = {
+                        "guidance_only": True,
+                        "objective_attribution": False,
+                    }
                     if operator_session and local_config.get("max_changed_students"):
-                        if local_config.get("target_policy") == "dynamic":
+                        utilization_cluster = str(
+                            local_config.get("operator_family", "")
+                        ).startswith("targeted_utilization_")
+                        current_quality = None
+                        if (
+                            utilization_cluster
+                            or local_config.get("target_policy") == "dynamic"
+                        ):
                             current_quality = _full_quality_for_solver(
                                 stage_2_seed_solver
                             )
-                            ranked_students = rank_students_by_quality_pressure(
-                                data, current_quality
+                        if utilization_cluster:
+                            utilization_selection = (
+                                select_utilization_cluster_targets(
+                                    data,
+                                    current_quality,
+                                    _source_decision_fingerprint(stage_2_seed_solver),
+                                    target_scope_size=required_targets,
+                                    policy=local_config.get(
+                                        "utilization_cluster_policy",
+                                        "interaction_aware",
+                                    ),
+                                    fixed_student_ids=(
+                                        selected_student_ids
+                                        if local_config.get("target_policy") == "fixed"
+                                        else ()
+                                    ),
+                                )
                             )
-                            ranked_student_ids = tuple(
-                                item.student_id for item in ranked_students
+                            selected_student_ids = (
+                                utilization_selection.selected_student_ids
+                            )
+                            target_guidance = dict(
+                                utilization_selection.guidance_facts
                             )
                         else:
-                            ranked_student_ids = ()
-                        selected_student_ids = select_operator_session_targets(
-                            local_config.get("operator_family"),
-                            target_policy=local_config.get("target_policy", "dynamic"),
-                            ranked_student_ids=ranked_student_ids,
-                            fixed_student_ids=selected_student_ids,
-                        )
-                        required_targets = int(local_config["max_changed_students"])
+                            if local_config.get("target_policy") == "dynamic":
+                                ranked_students = rank_students_by_quality_pressure(
+                                    data, current_quality
+                                )
+                                ranked_student_ids = tuple(
+                                    item.student_id for item in ranked_students
+                                )
+                            else:
+                                ranked_student_ids = ()
+                            selected_student_ids = select_operator_session_targets(
+                                local_config.get("operator_family"),
+                                target_policy=local_config.get("target_policy", "dynamic"),
+                                ranked_student_ids=ranked_student_ids,
+                                fixed_student_ids=selected_student_ids,
+                            )
+                            target_guidance["policy"] = "student_quality_pressure"
+                            target_guidance["selected_student_ids"] = selected_student_ids
                         if len(selected_student_ids) != required_targets:
                             stopping_reason = "no_eligible_target"
                             break
+                        session_target_guidance.append(target_guidance)
                     session_target_history.append(selected_student_ids)
                     probe_selected_student_ids = (
                         selected_student_ids if operator_session else ()
@@ -3763,6 +3812,10 @@ def _solve_student_assignment(
                     iterations.append({
                         "iteration": iteration_count + 1,
                         "radius": radii[radius_index],
+                        "effective_neighborhood_radius": local_result.effective_neighborhood_radius,
+                        "eligible_targeted_source_decision_count": (
+                            local_result.eligible_targeted_source_decision_count
+                        ),
                         "status": local_result.status,
                         "elapsed_seconds": local_result.elapsed_seconds,
                         "solver_wall_time_seconds": local_result.solver_wall_time_seconds,
@@ -3800,6 +3853,7 @@ def _solve_student_assignment(
                         "affected_student_ids": tuple(local_result.affected_student_ids),
                         "affected_section_ids": tuple(local_result.affected_section_ids),
                         "section_load_deltas": dict(local_result.section_load_deltas),
+                        "target_guidance": dict(target_guidance),
                         "best_bound": local_result.best_bound,
                         "attempt_number_for_radius": radius_attempts[current_radius],
                         "cumulative_session_elapsed_seconds": (
@@ -3883,6 +3937,10 @@ def _solve_student_assignment(
                     "session_context_reused": operator_session,
                     "static_probe_context_built_once": operator_session,
                     "session_target_history": tuple(session_target_history),
+                    "session_target_guidance": tuple(session_target_guidance),
+                    "utilization_cluster_policy": local_config.get(
+                        "utilization_cluster_policy"
+                    ),
                     "variable_neighborhood": variable_neighborhood,
                     "target_importance_level": target_level,
                     "status": last_result.status if last_result is not None else "unknown",
@@ -3906,6 +3964,16 @@ def _solve_student_assignment(
                     "deadline_elapsed_seconds": stage_2_deadline.elapsed() if stage_2_deadline else None,
                     "deadline_remaining_seconds": stage_2_deadline.remaining() if stage_2_deadline else None,
                     "neighborhood_radius": iterations[-1]["radius"] if iterations else None,
+                    "effective_neighborhood_radius": (
+                        iterations[-1].get("effective_neighborhood_radius")
+                        if iterations else None
+                    ),
+                    "eligible_targeted_source_decision_count": (
+                        iterations[-1].get(
+                            "eligible_targeted_source_decision_count"
+                        )
+                        if iterations else 0
+                    ),
                     "baseline_substantive_value": iterations[0]["incumbent_before"] if iterations else current_seed_value,
                     "requested_threshold": iterations[0]["incumbent_before"] - 1 if iterations else None,
                     "candidate_substantive_value": final_value,

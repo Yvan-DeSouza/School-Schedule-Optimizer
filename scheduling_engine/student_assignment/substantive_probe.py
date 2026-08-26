@@ -86,6 +86,8 @@ class SubstantiveSoftTierProbeResult:
     changed_student_count: int = 0
     max_changed_students: int | None = None
     selected_student_ids: tuple = ()
+    eligible_targeted_source_decision_count: int = 0
+    effective_neighborhood_radius: int | None = None
 
 
 def _model_family_variable_counts(model):
@@ -180,6 +182,19 @@ def probe_substantive_soft_tier(
 
     operation_started = monotonic()
     selected_student_ids = tuple(sorted(set(selected_student_ids), key=repr))
+    eligible_targeted_source_decision_count = (
+        sum(
+            owner in selected_student_ids
+            for owner in context.source_decision_owners
+        )
+        if selected_student_ids
+        else len(context.complete_required_decision_groups)
+    )
+    effective_neighborhood_radius = (
+        min(int(neighborhood_radius), eligible_targeted_source_decision_count)
+        if neighborhood_radius is not None
+        else None
+    )
     if selected_student_ids and neighborhood_radius is None:
         raise ValueError(
             "selected_student_ids requires a source-decision neighborhood radius"
@@ -233,6 +248,8 @@ def probe_substantive_soft_tier(
             },
             max_changed_students=max_changed_students,
             selected_student_ids=selected_student_ids,
+            eligible_targeted_source_decision_count=eligible_targeted_source_decision_count,
+            effective_neighborhood_radius=effective_neighborhood_radius,
         )
 
     target_entries = [
@@ -564,4 +581,6 @@ def probe_substantive_soft_tier(
         changed_student_count=changed_student_count,
         max_changed_students=max_changed_students,
         selected_student_ids=selected_student_ids,
+        eligible_targeted_source_decision_count=eligible_targeted_source_decision_count,
+        effective_neighborhood_radius=effective_neighborhood_radius,
     )
