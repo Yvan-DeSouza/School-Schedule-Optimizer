@@ -331,16 +331,33 @@ def probe_substantive_soft_tier(
 
     attempt_setup_started = monotonic()
     _emit_phase("attempt_preparation", "started")
+    probe_phase_started = monotonic()
+    _emit_phase("probe_model_clone", "started")
     with timing.measure("model_clone_seconds"):
         probe_model = context.model.Clone()
+    _emit_phase(
+        "probe_model_clone",
+        "completed",
+        elapsed_seconds=monotonic() - probe_phase_started,
+    )
+    probe_phase_started = monotonic()
+    _emit_phase("probe_completion_constraints", "started")
     with timing.measure("completion_constraints_seconds"):
         for decision_group in context.complete_required_decision_groups:
             probe_model.AddExactlyOne(
                 probe_model.GetIntVarFromProtoIndex(variable.Index())
                 for variable in decision_group
             )
+    _emit_phase(
+        "probe_completion_constraints",
+        "completed",
+        elapsed_seconds=monotonic() - probe_phase_started,
+        constraint_count=len(probe_model.Proto().constraints),
+    )
 
     if selected_grade is not None:
+        probe_phase_started = monotonic()
+        _emit_phase("probe_grade_scope_constraints", "started")
         with timing.measure("grade_scope_constraints_seconds"):
             for group_index, decision_group in enumerate(
                 context.complete_required_decision_groups
@@ -370,7 +387,14 @@ def probe_substantive_soft_tier(
                         )
                         == 1
                     )
+        _emit_phase(
+            "probe_grade_scope_constraints",
+            "completed",
+            elapsed_seconds=monotonic() - probe_phase_started,
+        )
     elif neighborhood_radius is not None:
+        probe_phase_started = monotonic()
+        _emit_phase("probe_neighborhood_constraints", "started")
         with timing.measure("neighborhood_constraints_seconds"):
             changed_group_terms = []
             changed_literals_by_student = {}
@@ -434,6 +458,11 @@ def probe_substantive_soft_tier(
                     sum(changed_student_variables or [0])
                     <= max(0, int(max_changed_students))
                 )
+        _emit_phase(
+            "probe_neighborhood_constraints",
+            "completed",
+            elapsed_seconds=monotonic() - probe_phase_started,
+        )
     elif max_changed_students is not None:
         raise ValueError(
             "max_changed_students requires a source-decision neighborhood radius"
@@ -442,6 +471,8 @@ def probe_substantive_soft_tier(
     # Preserve every objective that precedes the target tier. This includes
     # all fulfillment tiers and any more important soft tier present in a
     # caller's input. The production lexicographic ordering is untouched.
+    probe_phase_started = monotonic()
+    _emit_phase("probe_objective_bound_constraints", "started")
     with timing.measure("objective_and_bound_constraints_seconds"):
         for index, metadata in enumerate(context.objective_metadata):
             if index >= target_index:
@@ -476,12 +507,25 @@ def probe_substantive_soft_tier(
                 probe_model, term_specs
             )
             probe_model.Minimize(component_expressions[minimize_component])
+    _emit_phase(
+        "probe_objective_bound_constraints",
+        "completed",
+        elapsed_seconds=monotonic() - probe_phase_started,
+        constraint_count=len(probe_model.Proto().constraints),
+    )
+    probe_phase_started = monotonic()
+    _emit_phase("probe_hint_application", "started")
     with timing.measure("hint_application_seconds"):
         set_solver_hints(
             probe_model,
             seed_solver,
             source_model=context.model,
         )
+    _emit_phase(
+        "probe_hint_application",
+        "completed",
+        elapsed_seconds=monotonic() - probe_phase_started,
+    )
 
     _emit_phase(
         "attempt_preparation",

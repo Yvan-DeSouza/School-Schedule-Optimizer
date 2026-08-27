@@ -86,6 +86,9 @@ def test_calibration_controls_use_named_existing_operator_families():
         "targeted_utilization_r64_s8",
         "r2",
     )
+    r8 = build_calibration_policy("student_repair_r8_only")
+    assert r8["selection_policy"] == "fixed_cycle"
+    assert tuple(spec.name for spec in r8["fixed_cycle"]) == ("targeted_r8_s2",)
 
 
 def test_operator_result_forwards_specified_continuous_session(monkeypatch):

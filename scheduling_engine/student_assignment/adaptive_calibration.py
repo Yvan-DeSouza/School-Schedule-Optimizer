@@ -149,6 +149,9 @@ CALIBRATION_SESSION_OVERRIDES = {
 CALIBRATION_FIXED_CYCLES = {
     "r2_only": ("r2",),
     "student_repair_only": ("targeted_r4_s2",),
+    # A named R8-only control keeps the broader student-pressure family
+    # independently measurable without changing the ordinary scheduler.
+    "student_repair_r8_only": ("targeted_r8_s2",),
     "utilization_only": ("targeted_utilization_r64_s8",),
     "fixed_cycle": (
         "targeted_r4_s2",

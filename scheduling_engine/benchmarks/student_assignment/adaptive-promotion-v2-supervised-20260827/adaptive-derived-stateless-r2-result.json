@@ -1,0 +1,4797 @@
+{
+  "schema": "student_assignment_adaptive_calibration_trial_v2",
+  "protocol_version": "adaptive-calibration-v2",
+  "policy": "r2_only",
+  "profile": "balanced",
+  "profile_fingerprint": "d1eb7b0501db1b8fd6a2cf0598f4788a6864e4eb11ced45617f102f6f6b628da",
+  "input_fingerprint": "c07c77d0aa077a3e72240f27644d86b8a1a4faecb2f72a900aacc3fcb792d28a",
+  "source_seed_fingerprint": "f6e181769e9dc4e7597c31ddccde06810cc7ba758fb9d61d6f203b1f00f58aa6",
+  "configured_budget_seconds": 3600.0,
+  "per_operator_time_limit_seconds": null,
+  "worker_count": null,
+  "initial_substantive_value": 37098.0,
+  "final_substantive_value": 37098.0,
+  "final_assignment_count": 10635,
+  "final_unmet_count": 0,
+  "final_special_commitment_count": 310,
+  "candidate_complete": false,
+  "candidate_from_terminated_worker": false,
+  "attempts": [],
+  "decisions": [],
+  "timing": {
+    "policy_selection_seconds": 0.0,
+    "operator_execution_seconds": 0.0,
+    "finalization_seconds": 0.0,
+    "external_overrun_seconds": 0.0,
+    "total_elapsed_seconds": 1905.0423461999744
+  },
+  "phase_timings": {
+    "parent": {
+      "total_seconds": 38.38484509999398
+    },
+    "worker": {
+      "last_observed_phase": {
+        "elapsed_seconds": 1887.1939817999955,
+        "event": "started",
+        "phase": "cp_sat",
+        "phase_history": [
+          {
+            "constraint_count": 164949,
+            "elapsed_seconds": 42.71897540008649,
+            "event": "completed",
+            "phase": "model_construction",
+            "variable_count": 110921
+          },
+          {
+            "elapsed_seconds": 495.20891509996727,
+            "event": "started",
+            "phase": "mature_seed_materialization"
+          },
+          {
+            "elapsed_seconds": 0.29741340002510697,
+            "event": "completed",
+            "phase": "mature_seed_materialization"
+          },
+          {
+            "elapsed_seconds": 495.536579699954,
+            "event": "started",
+            "phase": "mature_seed_validation"
+          },
+          {
+            "elapsed_seconds": 17.13085970003158,
+            "event": "completed",
+            "phase": "mature_seed_validation",
+            "validated": true
+          },
+          {
+            "elapsed_seconds": 515.9204120999202,
+            "event": "started",
+            "phase": "operator_static_setup"
+          },
+          {
+            "elapsed_seconds": 0.030515699996612966,
+            "event": "completed",
+            "phase": "operator_static_setup"
+          },
+          {
+            "elapsed_seconds": 515.9888855000027,
+            "event": "started",
+            "iteration": 1,
+            "phase": "target_preparation"
+          },
+          {
+            "elapsed_seconds": 0.05962439998984337,
+            "event": "completed",
+            "iteration": 1,
+            "phase": "target_preparation",
+            "selected_student_ids": []
+          },
+          {
+            "elapsed_seconds": 522.7502257999731,
+            "event": "started",
+            "phase": "attempt_preparation"
+          },
+          {
+            "elapsed_seconds": 522.8807850999292,
+            "event": "started",
+            "phase": "probe_model_clone"
+          },
+          {
+            "elapsed_seconds": 0.6472223999444395,
+            "event": "completed",
+            "phase": "probe_model_clone"
+          },
+          {
+            "elapsed_seconds": 523.7373761999188,
+            "event": "started",
+            "phase": "probe_completion_constraints"
+          },
+          {
+            "constraint_count": 175894,
+            "elapsed_seconds": 5.922902899910696,
+            "event": "completed",
+            "phase": "probe_completion_constraints"
+          },
+          {
+            "elapsed_seconds": 529.7504440000048,
+            "event": "started",
+            "phase": "probe_neighborhood_constraints"
+          },
+          {
+            "elapsed_seconds": 3.888664499972947,
+            "event": "completed",
+            "phase": "probe_neighborhood_constraints"
+          },
+          {
+            "elapsed_seconds": 533.711234999937,
+            "event": "started",
+            "phase": "probe_objective_bound_constraints"
+          },
+          {
+            "constraint_count": 175900,
+            "elapsed_seconds": 12.780310999951325,
+            "event": "completed",
+            "phase": "probe_objective_bound_constraints"
+          },
+          {
+            "elapsed_seconds": 546.609744999907,
+            "event": "started",
+            "phase": "probe_hint_application"
+          },
+          {
+            "elapsed_seconds": 13.865992299979553,
+            "event": "completed",
+            "phase": "probe_hint_application"
+          },
+          {
+            "elapsed_seconds": 37.81008720002137,
+            "event": "completed",
+            "phase": "attempt_preparation"
+          },
+          {
+            "elapsed_seconds": 560.5957844000077,
+            "event": "started",
+            "phase": "cp_sat"
+          },
+          {
+            "elapsed_seconds": 117.19465139997192,
+            "event": "completed",
+            "phase": "cp_sat",
+            "status": "unknown"
+          },
+          {
+            "elapsed_seconds": 680.9584012998967,
+            "event": "started",
+            "iteration": 1,
+            "phase": "candidate_validation"
+          },
+          {
+            "elapsed_seconds": 0.18212180002592504,
+            "event": "completed",
+            "iteration": 1,
+            "phase": "candidate_validation",
+            "validated": false
+          },
+          {
+            "cumulative_seconds": 698.7403694998939,
+            "elapsed_seconds": 260.87854489998426,
+            "event": "completed",
+            "iteration": 3,
+            "operator": "r2",
+            "phase": "operator_execution"
+          },
+          {
+            "elapsed_seconds": 712.7889193999581,
+            "event": "started",
+            "iteration": 3,
+            "phase": "candidate_processing"
+          },
+          {
+            "cumulative_seconds": 2.230396099970676,
+            "elapsed_seconds": 0.7108311000047252,
+            "event": "completed",
+            "phase": "candidate_processing"
+          },
+          {
+            "adopted": false,
+            "candidate_assignment_count": 0,
+            "candidate_complete": true,
+            "candidate_components": {},
+            "candidate_found": false,
+            "candidate_objective_vector": [],
+            "candidate_source_decisions": [],
+            "candidate_special_commitment_count": 0,
+            "candidate_substantive_value": null,
+            "candidate_unmet_count": 0,
+            "candidate_validated": false,
+            "elapsed_seconds": 713.550971699995,
+            "event": "completed",
+            "iteration": 3,
+            "phase": "candidate_processing"
+          },
+          {
+            "elapsed_seconds": 713.5787125999341,
+            "event": "started",
+            "iteration": 4,
+            "phase": "policy_quality_evaluation"
+          },
+          {
+            "cumulative_seconds": 1.96439270011615,
+            "elapsed_seconds": 0.5302518999669701,
+            "event": "completed",
+            "phase": "policy_quality_evaluation"
+          },
+          {
+            "elapsed_seconds": 714.1727477000095,
+            "event": "started",
+            "iteration": 4,
+            "phase": "target_preparation"
+          },
+          {
+            "cumulative_seconds": 11.090466000023298,
+            "elapsed_seconds": 3.6221255999989808,
+            "event": "completed",
+            "phase": "target_preparation"
+          },
+          {
+            "elapsed_seconds": 717.8705805999925,
+            "event": "started",
+            "iteration": 4,
+            "phase": "policy_selection"
+          },
+          {
+            "cumulative_seconds": 0.16147769999224693,
+            "elapsed_seconds": 0.06204690004233271,
+            "event": "completed",
+            "iteration": 4,
+            "phase": "policy_selection"
+          },
+          {
+            "elapsed_seconds": 718.0054753998993,
+            "event": "started",
+            "iteration": 4,
+            "operator": "r2",
+            "phase": "operator_execution"
+          },
+          {
+            "elapsed_seconds": 718.3099767999956,
+            "event": "started",
+            "phase": "student_assignment_input"
+          },
+          {
+            "elapsed_seconds": 718.3873285999289,
+            "event": "completed",
+            "phase": "student_assignment_input",
+            "request_count": 10760,
+            "section_count": 317
+          },
+          {
+            "elapsed_seconds": 718.6846985999728,
+            "event": "started",
+            "phase": "model_construction"
+          },
+          {
+            "constraint_count": 164949,
+            "elapsed_seconds": 138.48018649988808,
+            "event": "completed",
+            "phase": "model_construction",
+            "variable_count": 110921
+          },
+          {
+            "elapsed_seconds": 857.2400690999348,
+            "event": "started",
+            "phase": "mature_seed_materialization"
+          },
+          {
+            "elapsed_seconds": 0.3225632000248879,
+            "event": "completed",
+            "phase": "mature_seed_materialization"
+          },
+          {
+            "elapsed_seconds": 857.5983723999234,
+            "event": "started",
+            "phase": "mature_seed_validation"
+          },
+          {
+            "elapsed_seconds": 16.0656570000574,
+            "event": "completed",
+            "phase": "mature_seed_validation",
+            "validated": true
+          },
+          {
+            "elapsed_seconds": 876.1338582999306,
+            "event": "started",
+            "phase": "operator_static_setup"
+          },
+          {
+            "elapsed_seconds": 0.06764680007472634,
+            "event": "completed",
+            "phase": "operator_static_setup"
+          },
+          {
+            "elapsed_seconds": 876.3252671000082,
+            "event": "started",
+            "iteration": 1,
+            "phase": "target_preparation"
+          },
+          {
+            "elapsed_seconds": 0.17710629990324378,
+            "event": "completed",
+            "iteration": 1,
+            "phase": "target_preparation",
+            "selected_student_ids": []
+          },
+          {
+            "elapsed_seconds": 881.926929899957,
+            "event": "started",
+            "phase": "attempt_preparation"
+          },
+          {
+            "elapsed_seconds": 881.9594094000058,
+            "event": "started",
+            "phase": "probe_model_clone"
+          },
+          {
+            "elapsed_seconds": 0.3662540999939665,
+            "event": "completed",
+            "phase": "probe_model_clone"
+          },
+          {
+            "elapsed_seconds": 882.4097686999012,
+            "event": "started",
+            "phase": "probe_completion_constraints"
+          },
+          {
+            "constraint_count": 175894,
+            "elapsed_seconds": 6.004868499934673,
+            "event": "completed",
+            "phase": "probe_completion_constraints"
+          },
+          {
+            "elapsed_seconds": 888.5299826998962,
+            "event": "started",
+            "phase": "probe_neighborhood_constraints"
+          },
+          {
+            "elapsed_seconds": 4.72902550001163,
+            "event": "completed",
+            "phase": "probe_neighborhood_constraints"
+          },
+          {
+            "elapsed_seconds": 893.2923396999249,
+            "event": "started",
+            "phase": "probe_objective_bound_constraints"
+          },
+          {
+            "constraint_count": 175900,
+            "elapsed_seconds": 12.823873899993487,
+            "event": "completed",
+            "phase": "probe_objective_bound_constraints"
+          },
+          {
+            "elapsed_seconds": 906.1848677999806,
+            "event": "started",
+            "phase": "probe_hint_application"
+          },
+          {
+            "elapsed_seconds": 16.612314000027254,
+            "event": "completed",
+            "phase": "probe_hint_application"
+          },
+          {
+            "elapsed_seconds": 40.924251900054514,
+            "event": "completed",
+            "phase": "attempt_preparation"
+          },
+          {
+            "elapsed_seconds": 922.9068044999149,
+            "event": "started",
+            "phase": "cp_sat"
+          },
+          {
+            "elapsed_seconds": 22.92125280003529,
+            "event": "completed",
+            "phase": "cp_sat",
+            "status": "unknown"
+          },
+          {
+            "elapsed_seconds": 947.3641378999455,
+            "event": "started",
+            "iteration": 1,
+            "phase": "candidate_validation"
+          },
+          {
+            "elapsed_seconds": 0.047789899981580675,
+            "event": "completed",
+            "iteration": 1,
+            "phase": "candidate_validation",
+            "validated": false
+          },
+          {
+            "cumulative_seconds": 947.2000809999881,
+            "elapsed_seconds": 248.45971150009427,
+            "event": "completed",
+            "iteration": 4,
+            "operator": "r2",
+            "phase": "operator_execution"
+          },
+          {
+            "elapsed_seconds": 966.4976291999919,
+            "event": "started",
+            "iteration": 4,
+            "phase": "candidate_processing"
+          },
+          {
+            "cumulative_seconds": 2.5110350999748334,
+            "elapsed_seconds": 0.2806390000041574,
+            "event": "completed",
+            "phase": "candidate_processing"
+          },
+          {
+            "adopted": false,
+            "candidate_assignment_count": 0,
+            "candidate_complete": true,
+            "candidate_components": {},
+            "candidate_found": false,
+            "candidate_objective_vector": [],
+            "candidate_source_decisions": [],
+            "candidate_special_commitment_count": 0,
+            "candidate_substantive_value": null,
+            "candidate_unmet_count": 0,
+            "candidate_validated": false,
+            "elapsed_seconds": 966.825195799931,
+            "event": "completed",
+            "iteration": 4,
+            "phase": "candidate_processing"
+          },
+          {
+            "elapsed_seconds": 966.8602416999638,
+            "event": "started",
+            "iteration": 5,
+            "phase": "policy_quality_evaluation"
+          },
+          {
+            "cumulative_seconds": 2.491477800067514,
+            "elapsed_seconds": 0.5270850999513641,
+            "event": "completed",
+            "phase": "policy_quality_evaluation"
+          },
+          {
+            "elapsed_seconds": 967.4143106999109,
+            "event": "started",
+            "iteration": 5,
+            "phase": "target_preparation"
+          },
+          {
+            "cumulative_seconds": 12.885988300084136,
+            "elapsed_seconds": 1.7955223000608385,
+            "event": "completed",
+            "phase": "target_preparation"
+          },
+          {
+            "elapsed_seconds": 969.254671499948,
+            "event": "started",
+            "iteration": 5,
+            "phase": "policy_selection"
+          },
+          {
+            "cumulative_seconds": 0.1875490000238642,
+            "elapsed_seconds": 0.026071300031617284,
+            "event": "completed",
+            "iteration": 5,
+            "phase": "policy_selection"
+          },
+          {
+            "elapsed_seconds": 969.3208380999276,
+            "event": "started",
+            "iteration": 5,
+            "operator": "r2",
+            "phase": "operator_execution"
+          },
+          {
+            "elapsed_seconds": 969.4668097000103,
+            "event": "started",
+            "phase": "student_assignment_input"
+          },
+          {
+            "elapsed_seconds": 969.4982605999103,
+            "event": "completed",
+            "phase": "student_assignment_input",
+            "request_count": 10760,
+            "section_count": 317
+          },
+          {
+            "elapsed_seconds": 969.6093688999536,
+            "event": "started",
+            "phase": "model_construction"
+          },
+          {
+            "constraint_count": 164949,
+            "elapsed_seconds": 20.66958440002054,
+            "event": "completed",
+            "phase": "model_construction",
+            "variable_count": 110921
+          },
+          {
+            "elapsed_seconds": 990.3089218999958,
+            "event": "started",
+            "phase": "mature_seed_materialization"
+          },
+          {
+            "elapsed_seconds": 0.23330650001298636,
+            "event": "completed",
+            "phase": "mature_seed_materialization"
+          },
+          {
+            "elapsed_seconds": 990.5759486999596,
+            "event": "started",
+            "phase": "mature_seed_validation"
+          },
+          {
+            "elapsed_seconds": 7.719573299982585,
+            "event": "completed",
+            "phase": "mature_seed_validation",
+            "validated": true
+          },
+          {
+            "elapsed_seconds": 999.1227369999979,
+            "event": "started",
+            "phase": "operator_static_setup"
+          },
+          {
+            "elapsed_seconds": 0.062291800044476986,
+            "event": "completed",
+            "phase": "operator_static_setup"
+          },
+          {
+            "elapsed_seconds": 999.2137638999848,
+            "event": "started",
+            "iteration": 1,
+            "phase": "target_preparation"
+          },
+          {
+            "elapsed_seconds": 0.026088000042364,
+            "event": "completed",
+            "iteration": 1,
+            "phase": "target_preparation",
+            "selected_student_ids": []
+          },
+          {
+            "elapsed_seconds": 1001.6951239999617,
+            "event": "started",
+            "phase": "attempt_preparation"
+          },
+          {
+            "elapsed_seconds": 1001.7243054999271,
+            "event": "started",
+            "phase": "probe_model_clone"
+          },
+          {
+            "elapsed_seconds": 0.2636706999037415,
+            "event": "completed",
+            "phase": "probe_model_clone"
+          },
+          {
+            "elapsed_seconds": 1002.0724302999442,
+            "event": "started",
+            "phase": "probe_completion_constraints"
+          },
+          {
+            "constraint_count": 175894,
+            "elapsed_seconds": 3.1148009999888018,
+            "event": "completed",
+            "phase": "probe_completion_constraints"
+          },
+          {
+            "elapsed_seconds": 1005.2685647999169,
+            "event": "started",
+            "phase": "probe_neighborhood_constraints"
+          },
+          {
+            "elapsed_seconds": 2.1710540999192744,
+            "event": "completed",
+            "phase": "probe_neighborhood_constraints"
+          },
+          {
+            "elapsed_seconds": 1007.4745508999331,
+            "event": "started",
+            "phase": "probe_objective_bound_constraints"
+          },
+          {
+            "constraint_count": 175900,
+            "elapsed_seconds": 4.841224299976602,
+            "event": "completed",
+            "phase": "probe_objective_bound_constraints"
+          },
+          {
+            "elapsed_seconds": 1012.3474221999058,
+            "event": "started",
+            "phase": "probe_hint_application"
+          },
+          {
+            "elapsed_seconds": 5.509427800076082,
+            "event": "completed",
+            "phase": "probe_hint_application"
+          },
+          {
+            "elapsed_seconds": 16.192066799965687,
+            "event": "completed",
+            "phase": "attempt_preparation"
+          },
+          {
+            "elapsed_seconds": 1018.0198042999255,
+            "event": "started",
+            "phase": "cp_sat"
+          },
+          {
+            "elapsed_seconds": 119.81548660004046,
+            "event": "completed",
+            "phase": "cp_sat",
+            "status": "unknown"
+          },
+          {
+            "elapsed_seconds": 1139.6876063999953,
+            "event": "started",
+            "iteration": 1,
+            "phase": "candidate_validation"
+          },
+          {
+            "elapsed_seconds": 0.20233310002367944,
+            "event": "completed",
+            "iteration": 1,
+            "phase": "candidate_validation",
+            "validated": false
+          },
+          {
+            "cumulative_seconds": 1136.462564800051,
+            "elapsed_seconds": 189.2624838000629,
+            "event": "completed",
+            "iteration": 5,
+            "operator": "r2",
+            "phase": "operator_execution"
+          },
+          {
+            "elapsed_seconds": 1158.6448419999797,
+            "event": "started",
+            "iteration": 5,
+            "phase": "candidate_processing"
+          },
+          {
+            "cumulative_seconds": 2.9571831999346614,
+            "elapsed_seconds": 0.44614809995982796,
+            "event": "completed",
+            "phase": "candidate_processing"
+          },
+          {
+            "adopted": false,
+            "candidate_assignment_count": 0,
+            "candidate_complete": true,
+            "candidate_components": {},
+            "candidate_found": false,
+            "candidate_objective_vector": [],
+            "candidate_source_decisions": [],
+            "candidate_special_commitment_count": 0,
+            "candidate_substantive_value": null,
+            "candidate_unmet_count": 0,
+            "candidate_validated": false,
+            "elapsed_seconds": 1159.124348299927,
+            "event": "completed",
+            "iteration": 5,
+            "phase": "candidate_processing"
+          },
+          {
+            "elapsed_seconds": 1159.162402799935,
+            "event": "started",
+            "iteration": 6,
+            "phase": "policy_quality_evaluation"
+          },
+          {
+            "cumulative_seconds": 2.8513412000611424,
+            "elapsed_seconds": 0.35986339999362826,
+            "event": "completed",
+            "phase": "policy_quality_evaluation"
+          },
+          {
+            "elapsed_seconds": 1159.5543648999883,
+            "event": "started",
+            "iteration": 6,
+            "phase": "target_preparation"
+          },
+          {
+            "cumulative_seconds": 14.651797000085935,
+            "elapsed_seconds": 1.7658087000017986,
+            "event": "completed",
+            "phase": "target_preparation"
+          },
+          {
+            "elapsed_seconds": 1161.3502854999388,
+            "event": "started",
+            "iteration": 6,
+            "phase": "policy_selection"
+          },
+          {
+            "cumulative_seconds": 0.2176917000906542,
+            "elapsed_seconds": 0.030142700066789985,
+            "event": "completed",
+            "iteration": 6,
+            "phase": "policy_selection"
+          },
+          {
+            "elapsed_seconds": 1161.4131575999781,
+            "event": "started",
+            "iteration": 6,
+            "operator": "r2",
+            "phase": "operator_execution"
+          },
+          {
+            "elapsed_seconds": 1161.5557749998989,
+            "event": "started",
+            "phase": "student_assignment_input"
+          },
+          {
+            "elapsed_seconds": 1161.6021750000073,
+            "event": "completed",
+            "phase": "student_assignment_input",
+            "request_count": 10760,
+            "section_count": 317
+          },
+          {
+            "elapsed_seconds": 1161.7550413999707,
+            "event": "started",
+            "phase": "model_construction"
+          },
+          {
+            "constraint_count": 164949,
+            "elapsed_seconds": 19.44609549990855,
+            "event": "completed",
+            "phase": "model_construction",
+            "variable_count": 110921
+          },
+          {
+            "elapsed_seconds": 1181.2916749999858,
+            "event": "started",
+            "phase": "mature_seed_materialization"
+          },
+          {
+            "elapsed_seconds": 0.3023554999381304,
+            "event": "completed",
+            "phase": "mature_seed_materialization"
+          },
+          {
+            "elapsed_seconds": 1181.6281599999638,
+            "event": "started",
+            "phase": "mature_seed_validation"
+          },
+          {
+            "elapsed_seconds": 7.673715400043875,
+            "event": "completed",
+            "phase": "mature_seed_validation",
+            "validated": true
+          },
+          {
+            "elapsed_seconds": 1190.7095489999047,
+            "event": "started",
+            "phase": "operator_static_setup"
+          },
+          {
+            "elapsed_seconds": 0.03185120003763586,
+            "event": "completed",
+            "phase": "operator_static_setup"
+          },
+          {
+            "elapsed_seconds": 1190.775203499943,
+            "event": "started",
+            "iteration": 1,
+            "phase": "target_preparation"
+          },
+          {
+            "elapsed_seconds": 0.031527700019069016,
+            "event": "completed",
+            "iteration": 1,
+            "phase": "target_preparation",
+            "selected_student_ids": []
+          },
+          {
+            "elapsed_seconds": 1193.8774996999418,
+            "event": "started",
+            "phase": "attempt_preparation"
+          },
+          {
+            "elapsed_seconds": 1193.9081571999704,
+            "event": "started",
+            "phase": "probe_model_clone"
+          },
+          {
+            "elapsed_seconds": 0.27496019995305687,
+            "event": "completed",
+            "phase": "probe_model_clone"
+          },
+          {
+            "elapsed_seconds": 1194.3125914999982,
+            "event": "started",
+            "phase": "probe_completion_constraints"
+          },
+          {
+            "constraint_count": 175894,
+            "elapsed_seconds": 2.5662115999730304,
+            "event": "completed",
+            "phase": "probe_completion_constraints"
+          },
+          {
+            "elapsed_seconds": 1196.9111812999472,
+            "event": "started",
+            "phase": "probe_neighborhood_constraints"
+          },
+          {
+            "elapsed_seconds": 1.9731838000006974,
+            "event": "completed",
+            "phase": "probe_neighborhood_constraints"
+          },
+          {
+            "elapsed_seconds": 1198.9168681999436,
+            "event": "started",
+            "phase": "probe_objective_bound_constraints"
+          },
+          {
+            "constraint_count": 175900,
+            "elapsed_seconds": 5.565783099969849,
+            "event": "completed",
+            "phase": "probe_objective_bound_constraints"
+          },
+          {
+            "elapsed_seconds": 1204.7335382999154,
+            "event": "started",
+            "phase": "probe_hint_application"
+          },
+          {
+            "elapsed_seconds": 6.351593300001696,
+            "event": "completed",
+            "phase": "probe_hint_application"
+          },
+          {
+            "elapsed_seconds": 17.257818200043403,
+            "event": "completed",
+            "phase": "attempt_preparation"
+          },
+          {
+            "elapsed_seconds": 1211.1686471999856,
+            "event": "started",
+            "phase": "cp_sat"
+          },
+          {
+            "elapsed_seconds": 120.71857820008881,
+            "event": "completed",
+            "phase": "cp_sat",
+            "status": "unknown"
+          },
+          {
+            "elapsed_seconds": 1332.9235565999988,
+            "event": "started",
+            "iteration": 1,
+            "phase": "candidate_validation"
+          },
+          {
+            "elapsed_seconds": 0.14196029992308468,
+            "event": "completed",
+            "iteration": 1,
+            "phase": "candidate_validation",
+            "validated": false
+          },
+          {
+            "cumulative_seconds": 1324.8347013000166,
+            "elapsed_seconds": 188.37213649996556,
+            "event": "completed",
+            "iteration": 6,
+            "operator": "r2",
+            "phase": "operator_execution"
+          },
+          {
+            "elapsed_seconds": 1349.820150299929,
+            "event": "started",
+            "iteration": 6,
+            "phase": "candidate_processing"
+          },
+          {
+            "cumulative_seconds": 3.251185999950394,
+            "elapsed_seconds": 0.29400280001573265,
+            "event": "completed",
+            "phase": "candidate_processing"
+          },
+          {
+            "adopted": false,
+            "candidate_assignment_count": 0,
+            "candidate_complete": true,
+            "candidate_components": {},
+            "candidate_found": false,
+            "candidate_objective_vector": [],
+            "candidate_source_decisions": [],
+            "candidate_special_commitment_count": 0,
+            "candidate_substantive_value": null,
+            "candidate_unmet_count": 0,
+            "candidate_validated": false,
+            "elapsed_seconds": 1350.160090799909,
+            "event": "completed",
+            "iteration": 6,
+            "phase": "candidate_processing"
+          },
+          {
+            "elapsed_seconds": 1350.191613300005,
+            "event": "started",
+            "iteration": 7,
+            "phase": "policy_quality_evaluation"
+          },
+          {
+            "cumulative_seconds": 3.139053200138733,
+            "elapsed_seconds": 0.28771200007759035,
+            "event": "completed",
+            "phase": "policy_quality_evaluation"
+          },
+          {
+            "elapsed_seconds": 1350.5077564999228,
+            "event": "started",
+            "iteration": 7,
+            "phase": "target_preparation"
+          },
+          {
+            "cumulative_seconds": 16.461708400165662,
+            "elapsed_seconds": 1.8099114000797272,
+            "event": "completed",
+            "phase": "target_preparation"
+          },
+          {
+            "elapsed_seconds": 1352.3485985998996,
+            "event": "started",
+            "iteration": 7,
+            "phase": "policy_selection"
+          },
+          {
+            "cumulative_seconds": 0.25265120004769415,
+            "elapsed_seconds": 0.03495949995703995,
+            "event": "completed",
+            "iteration": 7,
+            "phase": "policy_selection"
+          },
+          {
+            "elapsed_seconds": 1352.415750999935,
+            "event": "started",
+            "iteration": 7,
+            "operator": "r2",
+            "phase": "operator_execution"
+          },
+          {
+            "elapsed_seconds": 1352.5517268999247,
+            "event": "started",
+            "phase": "student_assignment_input"
+          },
+          {
+            "elapsed_seconds": 1352.583134299959,
+            "event": "completed",
+            "phase": "student_assignment_input",
+            "request_count": 10760,
+            "section_count": 317
+          },
+          {
+            "elapsed_seconds": 1352.6876083000097,
+            "event": "started",
+            "phase": "model_construction"
+          },
+          {
+            "constraint_count": 164949,
+            "elapsed_seconds": 26.090767599991523,
+            "event": "completed",
+            "phase": "model_construction",
+            "variable_count": 110921
+          },
+          {
+            "elapsed_seconds": 1378.8454971999163,
+            "event": "started",
+            "phase": "mature_seed_materialization"
+          },
+          {
+            "elapsed_seconds": 0.2610821999842301,
+            "event": "completed",
+            "phase": "mature_seed_materialization"
+          },
+          {
+            "elapsed_seconds": 1379.1839293999365,
+            "event": "started",
+            "phase": "mature_seed_validation"
+          },
+          {
+            "elapsed_seconds": 9.551243199966848,
+            "event": "completed",
+            "phase": "mature_seed_validation",
+            "validated": true
+          },
+          {
+            "elapsed_seconds": 1390.296142899897,
+            "event": "started",
+            "phase": "operator_static_setup"
+          },
+          {
+            "elapsed_seconds": 0.1300941000226885,
+            "event": "completed",
+            "phase": "operator_static_setup"
+          },
+          {
+            "elapsed_seconds": 1390.4911605999805,
+            "event": "started",
+            "iteration": 1,
+            "phase": "target_preparation"
+          },
+          {
+            "elapsed_seconds": 0.05619279993698001,
+            "event": "completed",
+            "iteration": 1,
+            "phase": "target_preparation",
+            "selected_student_ids": []
+          },
+          {
+            "elapsed_seconds": 1393.799291000003,
+            "event": "started",
+            "phase": "attempt_preparation"
+          },
+          {
+            "elapsed_seconds": 1393.8429762999294,
+            "event": "started",
+            "phase": "probe_model_clone"
+          },
+          {
+            "elapsed_seconds": 0.3296406000154093,
+            "event": "completed",
+            "phase": "probe_model_clone"
+          },
+          {
+            "elapsed_seconds": 1394.2131285999203,
+            "event": "started",
+            "phase": "probe_completion_constraints"
+          },
+          {
+            "constraint_count": 175894,
+            "elapsed_seconds": 2.6524091000901535,
+            "event": "completed",
+            "phase": "probe_completion_constraints"
+          },
+          {
+            "elapsed_seconds": 1396.9037226999644,
+            "event": "started",
+            "phase": "probe_neighborhood_constraints"
+          },
+          {
+            "elapsed_seconds": 3.4903368999948725,
+            "event": "completed",
+            "phase": "probe_neighborhood_constraints"
+          },
+          {
+            "elapsed_seconds": 1400.4336634000065,
+            "event": "started",
+            "phase": "probe_objective_bound_constraints"
+          },
+          {
+            "constraint_count": 175900,
+            "elapsed_seconds": 6.984612499945797,
+            "event": "completed",
+            "phase": "probe_objective_bound_constraints"
+          },
+          {
+            "elapsed_seconds": 1407.500331899966,
+            "event": "started",
+            "phase": "probe_hint_application"
+          },
+          {
+            "elapsed_seconds": 8.89211539993994,
+            "event": "completed",
+            "phase": "probe_hint_application"
+          },
+          {
+            "elapsed_seconds": 22.676079500000924,
+            "event": "completed",
+            "phase": "attempt_preparation"
+          },
+          {
+            "elapsed_seconds": 1416.5101528000087,
+            "event": "started",
+            "phase": "cp_sat"
+          },
+          {
+            "elapsed_seconds": 112.57457649998832,
+            "event": "completed",
+            "phase": "cp_sat",
+            "status": "unknown"
+          },
+          {
+            "elapsed_seconds": 1530.4596589999273,
+            "event": "started",
+            "iteration": 1,
+            "phase": "candidate_validation"
+          },
+          {
+            "elapsed_seconds": 0.04940669995266944,
+            "event": "completed",
+            "iteration": 1,
+            "phase": "candidate_validation",
+            "validated": false
+          },
+          {
+            "cumulative_seconds": 1527.395518300007,
+            "elapsed_seconds": 202.5608169999905,
+            "event": "completed",
+            "iteration": 7,
+            "operator": "r2",
+            "phase": "operator_execution"
+          },
+          {
+            "elapsed_seconds": 1555.0263957999414,
+            "event": "started",
+            "iteration": 7,
+            "phase": "candidate_processing"
+          },
+          {
+            "cumulative_seconds": 3.839622699888423,
+            "elapsed_seconds": 0.588436699938029,
+            "event": "completed",
+            "phase": "candidate_processing"
+          },
+          {
+            "adopted": false,
+            "candidate_assignment_count": 0,
+            "candidate_complete": true,
+            "candidate_components": {},
+            "candidate_found": false,
+            "candidate_objective_vector": [],
+            "candidate_source_decisions": [],
+            "candidate_special_commitment_count": 0,
+            "candidate_substantive_value": null,
+            "candidate_unmet_count": 0,
+            "candidate_validated": false,
+            "elapsed_seconds": 1555.6916406999808,
+            "event": "completed",
+            "iteration": 7,
+            "phase": "candidate_processing"
+          },
+          {
+            "elapsed_seconds": 1555.7869709999068,
+            "event": "started",
+            "iteration": 8,
+            "phase": "policy_quality_evaluation"
+          },
+          {
+            "cumulative_seconds": 3.8156967002432793,
+            "elapsed_seconds": 0.6766435001045465,
+            "event": "completed",
+            "phase": "policy_quality_evaluation"
+          },
+          {
+            "elapsed_seconds": 1556.538317999919,
+            "event": "started",
+            "iteration": 8,
+            "phase": "target_preparation"
+          },
+          {
+            "cumulative_seconds": 20.32897210016381,
+            "elapsed_seconds": 3.867263699998148,
+            "event": "completed",
+            "phase": "target_preparation"
+          },
+          {
+            "elapsed_seconds": 1560.4774271999486,
+            "event": "started",
+            "iteration": 8,
+            "phase": "policy_selection"
+          },
+          {
+            "cumulative_seconds": 0.3145508001325652,
+            "elapsed_seconds": 0.061899600084871054,
+            "event": "completed",
+            "iteration": 8,
+            "phase": "policy_selection"
+          },
+          {
+            "elapsed_seconds": 1560.6124176000012,
+            "event": "started",
+            "iteration": 8,
+            "operator": "r2",
+            "phase": "operator_execution"
+          },
+          {
+            "elapsed_seconds": 1560.9099633999867,
+            "event": "started",
+            "phase": "student_assignment_input"
+          },
+          {
+            "elapsed_seconds": 1560.9936569998972,
+            "event": "completed",
+            "phase": "student_assignment_input",
+            "request_count": 10760,
+            "section_count": 317
+          },
+          {
+            "elapsed_seconds": 1561.1635463999119,
+            "event": "started",
+            "phase": "model_construction"
+          },
+          {
+            "constraint_count": 164949,
+            "elapsed_seconds": 42.791439400054514,
+            "event": "completed",
+            "phase": "model_construction",
+            "variable_count": 110921
+          },
+          {
+            "elapsed_seconds": 1604.066861399915,
+            "event": "started",
+            "phase": "mature_seed_materialization"
+          },
+          {
+            "elapsed_seconds": 0.4996627999935299,
+            "event": "completed",
+            "phase": "mature_seed_materialization"
+          },
+          {
+            "elapsed_seconds": 1604.6540205999045,
+            "event": "started",
+            "phase": "mature_seed_validation"
+          },
+          {
+            "elapsed_seconds": 15.847202899982221,
+            "event": "completed",
+            "phase": "mature_seed_validation",
+            "validated": true
+          },
+          {
+            "elapsed_seconds": 1622.270123199909,
+            "event": "started",
+            "phase": "operator_static_setup"
+          },
+          {
+            "elapsed_seconds": 0.18834100000094622,
+            "event": "completed",
+            "phase": "operator_static_setup"
+          },
+          {
+            "elapsed_seconds": 1622.5054439000087,
+            "event": "started",
+            "iteration": 1,
+            "phase": "target_preparation"
+          },
+          {
+            "elapsed_seconds": 0.09421779995318502,
+            "event": "completed",
+            "iteration": 1,
+            "phase": "target_preparation",
+            "selected_student_ids": []
+          },
+          {
+            "elapsed_seconds": 1628.992433300009,
+            "event": "started",
+            "phase": "attempt_preparation"
+          },
+          {
+            "elapsed_seconds": 1629.214882100001,
+            "event": "started",
+            "phase": "probe_model_clone"
+          },
+          {
+            "elapsed_seconds": 0.6973940000170842,
+            "event": "completed",
+            "phase": "probe_model_clone"
+          },
+          {
+            "elapsed_seconds": 1629.9988035999704,
+            "event": "started",
+            "phase": "probe_completion_constraints"
+          },
+          {
+            "constraint_count": 175894,
+            "elapsed_seconds": 5.129807599936612,
+            "event": "completed",
+            "phase": "probe_completion_constraints"
+          },
+          {
+            "elapsed_seconds": 1635.396115399897,
+            "event": "started",
+            "phase": "probe_neighborhood_constraints"
+          },
+          {
+            "elapsed_seconds": 3.5424881000071764,
+            "event": "completed",
+            "phase": "probe_neighborhood_constraints"
+          },
+          {
+            "elapsed_seconds": 1638.9999074999942,
+            "event": "started",
+            "phase": "probe_objective_bound_constraints"
+          },
+          {
+            "constraint_count": 175900,
+            "elapsed_seconds": 9.44405949988868,
+            "event": "completed",
+            "phase": "probe_objective_bound_constraints"
+          },
+          {
+            "elapsed_seconds": 1648.5724434999283,
+            "event": "started",
+            "phase": "probe_hint_application"
+          },
+          {
+            "elapsed_seconds": 9.769205500022508,
+            "event": "completed",
+            "phase": "probe_hint_application"
+          },
+          {
+            "elapsed_seconds": 29.410779500030912,
+            "event": "completed",
+            "phase": "attempt_preparation"
+          },
+          {
+            "elapsed_seconds": 1658.4466514999513,
+            "event": "started",
+            "phase": "cp_sat"
+          },
+          {
+            "elapsed_seconds": 116.40195729990955,
+            "event": "completed",
+            "phase": "cp_sat",
+            "status": "unknown"
+          },
+          {
+            "elapsed_seconds": 1777.9618075999897,
+            "event": "started",
+            "iteration": 1,
+            "phase": "candidate_validation"
+          },
+          {
+            "elapsed_seconds": 0.20145269995555282,
+            "event": "completed",
+            "iteration": 1,
+            "phase": "candidate_validation",
+            "validated": false
+          },
+          {
+            "cumulative_seconds": 1767.4221525000175,
+            "elapsed_seconds": 240.02663420001045,
+            "event": "completed",
+            "iteration": 8,
+            "operator": "r2",
+            "phase": "operator_execution"
+          },
+          {
+            "elapsed_seconds": 1800.6752378999954,
+            "event": "started",
+            "iteration": 8,
+            "phase": "candidate_processing"
+          },
+          {
+            "cumulative_seconds": 4.195330599904992,
+            "elapsed_seconds": 0.3557079000165686,
+            "event": "completed",
+            "phase": "candidate_processing"
+          },
+          {
+            "adopted": false,
+            "candidate_assignment_count": 0,
+            "candidate_complete": true,
+            "candidate_components": {},
+            "candidate_found": false,
+            "candidate_objective_vector": [],
+            "candidate_source_decisions": [],
+            "candidate_special_commitment_count": 0,
+            "candidate_substantive_value": null,
+            "candidate_unmet_count": 0,
+            "candidate_validated": false,
+            "elapsed_seconds": 1801.0751166999107,
+            "event": "completed",
+            "iteration": 8,
+            "phase": "candidate_processing"
+          },
+          {
+            "elapsed_seconds": 1801.1059208000079,
+            "event": "started",
+            "iteration": 9,
+            "phase": "policy_quality_evaluation"
+          },
+          {
+            "cumulative_seconds": 4.148213100153953,
+            "elapsed_seconds": 0.3325163999106735,
+            "event": "completed",
+            "phase": "policy_quality_evaluation"
+          },
+          {
+            "elapsed_seconds": 1801.4681568999076,
+            "event": "started",
+            "iteration": 9,
+            "phase": "target_preparation"
+          },
+          {
+            "cumulative_seconds": 23.21709650021512,
+            "elapsed_seconds": 2.8881244000513107,
+            "event": "completed",
+            "phase": "target_preparation"
+          },
+          {
+            "elapsed_seconds": 1804.393984299968,
+            "event": "started",
+            "iteration": 9,
+            "phase": "policy_selection"
+          },
+          {
+            "cumulative_seconds": 0.34509370021987706,
+            "elapsed_seconds": 0.030542900087311864,
+            "event": "completed",
+            "iteration": 9,
+            "phase": "policy_selection"
+          },
+          {
+            "elapsed_seconds": 1804.4559677999932,
+            "event": "started",
+            "iteration": 9,
+            "operator": "r2",
+            "phase": "operator_execution"
+          },
+          {
+            "elapsed_seconds": 1804.604453100008,
+            "event": "started",
+            "phase": "student_assignment_input"
+          },
+          {
+            "elapsed_seconds": 1804.6400544999633,
+            "event": "completed",
+            "phase": "student_assignment_input",
+            "request_count": 10760,
+            "section_count": 317
+          },
+          {
+            "elapsed_seconds": 1804.7592553999275,
+            "event": "started",
+            "phase": "model_construction"
+          },
+          {
+            "constraint_count": 164949,
+            "elapsed_seconds": 28.70484869997017,
+            "event": "completed",
+            "phase": "model_construction",
+            "variable_count": 110921
+          },
+          {
+            "elapsed_seconds": 1833.5551935998956,
+            "event": "started",
+            "phase": "mature_seed_materialization"
+          },
+          {
+            "elapsed_seconds": 0.4952271000947803,
+            "event": "completed",
+            "phase": "mature_seed_materialization"
+          },
+          {
+            "elapsed_seconds": 1834.1240710999118,
+            "event": "started",
+            "phase": "mature_seed_validation"
+          },
+          {
+            "elapsed_seconds": 15.33929839998018,
+            "event": "completed",
+            "phase": "mature_seed_validation",
+            "validated": true
+          },
+          {
+            "elapsed_seconds": 1850.9107446999988,
+            "event": "started",
+            "phase": "operator_static_setup"
+          },
+          {
+            "elapsed_seconds": 0.061960300081409514,
+            "event": "completed",
+            "phase": "operator_static_setup"
+          },
+          {
+            "elapsed_seconds": 1851.0295050999848,
+            "event": "started",
+            "iteration": 1,
+            "phase": "target_preparation"
+          },
+          {
+            "elapsed_seconds": 0.04687669989652932,
+            "event": "completed",
+            "iteration": 1,
+            "phase": "target_preparation",
+            "selected_student_ids": []
+          },
+          {
+            "elapsed_seconds": 1856.5418780999025,
+            "event": "started",
+            "phase": "attempt_preparation"
+          },
+          {
+            "elapsed_seconds": 1856.6279701999156,
+            "event": "started",
+            "phase": "probe_model_clone"
+          },
+          {
+            "elapsed_seconds": 0.5620369000826031,
+            "event": "completed",
+            "phase": "probe_model_clone"
+          },
+          {
+            "elapsed_seconds": 1857.230049799895,
+            "event": "started",
+            "phase": "probe_completion_constraints"
+          },
+          {
+            "constraint_count": 175894,
+            "elapsed_seconds": 4.935420800000429,
+            "event": "completed",
+            "phase": "probe_completion_constraints"
+          },
+          {
+            "elapsed_seconds": 1862.2001147998963,
+            "event": "started",
+            "phase": "probe_neighborhood_constraints"
+          },
+          {
+            "elapsed_seconds": 3.922504200018011,
+            "event": "completed",
+            "phase": "probe_neighborhood_constraints"
+          },
+          {
+            "elapsed_seconds": 1866.1713768999325,
+            "event": "started",
+            "phase": "probe_objective_bound_constraints"
+          },
+          {
+            "constraint_count": 175900,
+            "elapsed_seconds": 8.710763600072823,
+            "event": "completed",
+            "phase": "probe_objective_bound_constraints"
+          },
+          {
+            "elapsed_seconds": 1874.922101299977,
+            "event": "started",
+            "phase": "probe_hint_application"
+          },
+          {
+            "elapsed_seconds": 12.140321100014262,
+            "event": "completed",
+            "phase": "probe_hint_application"
+          },
+          {
+            "elapsed_seconds": 30.590304799959995,
+            "event": "completed",
+            "phase": "attempt_preparation"
+          },
+          {
+            "elapsed_seconds": 1887.1939817999955,
+            "event": "started",
+            "phase": "cp_sat"
+          }
+        ]
+      }
+    },
+    "policy": {},
+    "parent_preparation_seconds": 38.38484509999398,
+    "worker_last_phase": {
+      "elapsed_seconds": 1887.1939817999955,
+      "event": "started",
+      "phase": "cp_sat",
+      "phase_history": [
+        {
+          "constraint_count": 164949,
+          "elapsed_seconds": 42.71897540008649,
+          "event": "completed",
+          "phase": "model_construction",
+          "variable_count": 110921
+        },
+        {
+          "elapsed_seconds": 495.20891509996727,
+          "event": "started",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 0.29741340002510697,
+          "event": "completed",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 495.536579699954,
+          "event": "started",
+          "phase": "mature_seed_validation"
+        },
+        {
+          "elapsed_seconds": 17.13085970003158,
+          "event": "completed",
+          "phase": "mature_seed_validation",
+          "validated": true
+        },
+        {
+          "elapsed_seconds": 515.9204120999202,
+          "event": "started",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 0.030515699996612966,
+          "event": "completed",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 515.9888855000027,
+          "event": "started",
+          "iteration": 1,
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 0.05962439998984337,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "target_preparation",
+          "selected_student_ids": []
+        },
+        {
+          "elapsed_seconds": 522.7502257999731,
+          "event": "started",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 522.8807850999292,
+          "event": "started",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 0.6472223999444395,
+          "event": "completed",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 523.7373761999188,
+          "event": "started",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "constraint_count": 175894,
+          "elapsed_seconds": 5.922902899910696,
+          "event": "completed",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "elapsed_seconds": 529.7504440000048,
+          "event": "started",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 3.888664499972947,
+          "event": "completed",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 533.711234999937,
+          "event": "started",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "constraint_count": 175900,
+          "elapsed_seconds": 12.780310999951325,
+          "event": "completed",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "elapsed_seconds": 546.609744999907,
+          "event": "started",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 13.865992299979553,
+          "event": "completed",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 37.81008720002137,
+          "event": "completed",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 560.5957844000077,
+          "event": "started",
+          "phase": "cp_sat"
+        },
+        {
+          "elapsed_seconds": 117.19465139997192,
+          "event": "completed",
+          "phase": "cp_sat",
+          "status": "unknown"
+        },
+        {
+          "elapsed_seconds": 680.9584012998967,
+          "event": "started",
+          "iteration": 1,
+          "phase": "candidate_validation"
+        },
+        {
+          "elapsed_seconds": 0.18212180002592504,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "candidate_validation",
+          "validated": false
+        },
+        {
+          "cumulative_seconds": 698.7403694998939,
+          "elapsed_seconds": 260.87854489998426,
+          "event": "completed",
+          "iteration": 3,
+          "operator": "r2",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 712.7889193999581,
+          "event": "started",
+          "iteration": 3,
+          "phase": "candidate_processing"
+        },
+        {
+          "cumulative_seconds": 2.230396099970676,
+          "elapsed_seconds": 0.7108311000047252,
+          "event": "completed",
+          "phase": "candidate_processing"
+        },
+        {
+          "adopted": false,
+          "candidate_assignment_count": 0,
+          "candidate_complete": true,
+          "candidate_components": {},
+          "candidate_found": false,
+          "candidate_objective_vector": [],
+          "candidate_source_decisions": [],
+          "candidate_special_commitment_count": 0,
+          "candidate_substantive_value": null,
+          "candidate_unmet_count": 0,
+          "candidate_validated": false,
+          "elapsed_seconds": 713.550971699995,
+          "event": "completed",
+          "iteration": 3,
+          "phase": "candidate_processing"
+        },
+        {
+          "elapsed_seconds": 713.5787125999341,
+          "event": "started",
+          "iteration": 4,
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "cumulative_seconds": 1.96439270011615,
+          "elapsed_seconds": 0.5302518999669701,
+          "event": "completed",
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "elapsed_seconds": 714.1727477000095,
+          "event": "started",
+          "iteration": 4,
+          "phase": "target_preparation"
+        },
+        {
+          "cumulative_seconds": 11.090466000023298,
+          "elapsed_seconds": 3.6221255999989808,
+          "event": "completed",
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 717.8705805999925,
+          "event": "started",
+          "iteration": 4,
+          "phase": "policy_selection"
+        },
+        {
+          "cumulative_seconds": 0.16147769999224693,
+          "elapsed_seconds": 0.06204690004233271,
+          "event": "completed",
+          "iteration": 4,
+          "phase": "policy_selection"
+        },
+        {
+          "elapsed_seconds": 718.0054753998993,
+          "event": "started",
+          "iteration": 4,
+          "operator": "r2",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 718.3099767999956,
+          "event": "started",
+          "phase": "student_assignment_input"
+        },
+        {
+          "elapsed_seconds": 718.3873285999289,
+          "event": "completed",
+          "phase": "student_assignment_input",
+          "request_count": 10760,
+          "section_count": 317
+        },
+        {
+          "elapsed_seconds": 718.6846985999728,
+          "event": "started",
+          "phase": "model_construction"
+        },
+        {
+          "constraint_count": 164949,
+          "elapsed_seconds": 138.48018649988808,
+          "event": "completed",
+          "phase": "model_construction",
+          "variable_count": 110921
+        },
+        {
+          "elapsed_seconds": 857.2400690999348,
+          "event": "started",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 0.3225632000248879,
+          "event": "completed",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 857.5983723999234,
+          "event": "started",
+          "phase": "mature_seed_validation"
+        },
+        {
+          "elapsed_seconds": 16.0656570000574,
+          "event": "completed",
+          "phase": "mature_seed_validation",
+          "validated": true
+        },
+        {
+          "elapsed_seconds": 876.1338582999306,
+          "event": "started",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 0.06764680007472634,
+          "event": "completed",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 876.3252671000082,
+          "event": "started",
+          "iteration": 1,
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 0.17710629990324378,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "target_preparation",
+          "selected_student_ids": []
+        },
+        {
+          "elapsed_seconds": 881.926929899957,
+          "event": "started",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 881.9594094000058,
+          "event": "started",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 0.3662540999939665,
+          "event": "completed",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 882.4097686999012,
+          "event": "started",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "constraint_count": 175894,
+          "elapsed_seconds": 6.004868499934673,
+          "event": "completed",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "elapsed_seconds": 888.5299826998962,
+          "event": "started",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 4.72902550001163,
+          "event": "completed",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 893.2923396999249,
+          "event": "started",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "constraint_count": 175900,
+          "elapsed_seconds": 12.823873899993487,
+          "event": "completed",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "elapsed_seconds": 906.1848677999806,
+          "event": "started",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 16.612314000027254,
+          "event": "completed",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 40.924251900054514,
+          "event": "completed",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 922.9068044999149,
+          "event": "started",
+          "phase": "cp_sat"
+        },
+        {
+          "elapsed_seconds": 22.92125280003529,
+          "event": "completed",
+          "phase": "cp_sat",
+          "status": "unknown"
+        },
+        {
+          "elapsed_seconds": 947.3641378999455,
+          "event": "started",
+          "iteration": 1,
+          "phase": "candidate_validation"
+        },
+        {
+          "elapsed_seconds": 0.047789899981580675,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "candidate_validation",
+          "validated": false
+        },
+        {
+          "cumulative_seconds": 947.2000809999881,
+          "elapsed_seconds": 248.45971150009427,
+          "event": "completed",
+          "iteration": 4,
+          "operator": "r2",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 966.4976291999919,
+          "event": "started",
+          "iteration": 4,
+          "phase": "candidate_processing"
+        },
+        {
+          "cumulative_seconds": 2.5110350999748334,
+          "elapsed_seconds": 0.2806390000041574,
+          "event": "completed",
+          "phase": "candidate_processing"
+        },
+        {
+          "adopted": false,
+          "candidate_assignment_count": 0,
+          "candidate_complete": true,
+          "candidate_components": {},
+          "candidate_found": false,
+          "candidate_objective_vector": [],
+          "candidate_source_decisions": [],
+          "candidate_special_commitment_count": 0,
+          "candidate_substantive_value": null,
+          "candidate_unmet_count": 0,
+          "candidate_validated": false,
+          "elapsed_seconds": 966.825195799931,
+          "event": "completed",
+          "iteration": 4,
+          "phase": "candidate_processing"
+        },
+        {
+          "elapsed_seconds": 966.8602416999638,
+          "event": "started",
+          "iteration": 5,
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "cumulative_seconds": 2.491477800067514,
+          "elapsed_seconds": 0.5270850999513641,
+          "event": "completed",
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "elapsed_seconds": 967.4143106999109,
+          "event": "started",
+          "iteration": 5,
+          "phase": "target_preparation"
+        },
+        {
+          "cumulative_seconds": 12.885988300084136,
+          "elapsed_seconds": 1.7955223000608385,
+          "event": "completed",
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 969.254671499948,
+          "event": "started",
+          "iteration": 5,
+          "phase": "policy_selection"
+        },
+        {
+          "cumulative_seconds": 0.1875490000238642,
+          "elapsed_seconds": 0.026071300031617284,
+          "event": "completed",
+          "iteration": 5,
+          "phase": "policy_selection"
+        },
+        {
+          "elapsed_seconds": 969.3208380999276,
+          "event": "started",
+          "iteration": 5,
+          "operator": "r2",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 969.4668097000103,
+          "event": "started",
+          "phase": "student_assignment_input"
+        },
+        {
+          "elapsed_seconds": 969.4982605999103,
+          "event": "completed",
+          "phase": "student_assignment_input",
+          "request_count": 10760,
+          "section_count": 317
+        },
+        {
+          "elapsed_seconds": 969.6093688999536,
+          "event": "started",
+          "phase": "model_construction"
+        },
+        {
+          "constraint_count": 164949,
+          "elapsed_seconds": 20.66958440002054,
+          "event": "completed",
+          "phase": "model_construction",
+          "variable_count": 110921
+        },
+        {
+          "elapsed_seconds": 990.3089218999958,
+          "event": "started",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 0.23330650001298636,
+          "event": "completed",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 990.5759486999596,
+          "event": "started",
+          "phase": "mature_seed_validation"
+        },
+        {
+          "elapsed_seconds": 7.719573299982585,
+          "event": "completed",
+          "phase": "mature_seed_validation",
+          "validated": true
+        },
+        {
+          "elapsed_seconds": 999.1227369999979,
+          "event": "started",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 0.062291800044476986,
+          "event": "completed",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 999.2137638999848,
+          "event": "started",
+          "iteration": 1,
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 0.026088000042364,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "target_preparation",
+          "selected_student_ids": []
+        },
+        {
+          "elapsed_seconds": 1001.6951239999617,
+          "event": "started",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 1001.7243054999271,
+          "event": "started",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 0.2636706999037415,
+          "event": "completed",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 1002.0724302999442,
+          "event": "started",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "constraint_count": 175894,
+          "elapsed_seconds": 3.1148009999888018,
+          "event": "completed",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "elapsed_seconds": 1005.2685647999169,
+          "event": "started",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 2.1710540999192744,
+          "event": "completed",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 1007.4745508999331,
+          "event": "started",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "constraint_count": 175900,
+          "elapsed_seconds": 4.841224299976602,
+          "event": "completed",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "elapsed_seconds": 1012.3474221999058,
+          "event": "started",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 5.509427800076082,
+          "event": "completed",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 16.192066799965687,
+          "event": "completed",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 1018.0198042999255,
+          "event": "started",
+          "phase": "cp_sat"
+        },
+        {
+          "elapsed_seconds": 119.81548660004046,
+          "event": "completed",
+          "phase": "cp_sat",
+          "status": "unknown"
+        },
+        {
+          "elapsed_seconds": 1139.6876063999953,
+          "event": "started",
+          "iteration": 1,
+          "phase": "candidate_validation"
+        },
+        {
+          "elapsed_seconds": 0.20233310002367944,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "candidate_validation",
+          "validated": false
+        },
+        {
+          "cumulative_seconds": 1136.462564800051,
+          "elapsed_seconds": 189.2624838000629,
+          "event": "completed",
+          "iteration": 5,
+          "operator": "r2",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 1158.6448419999797,
+          "event": "started",
+          "iteration": 5,
+          "phase": "candidate_processing"
+        },
+        {
+          "cumulative_seconds": 2.9571831999346614,
+          "elapsed_seconds": 0.44614809995982796,
+          "event": "completed",
+          "phase": "candidate_processing"
+        },
+        {
+          "adopted": false,
+          "candidate_assignment_count": 0,
+          "candidate_complete": true,
+          "candidate_components": {},
+          "candidate_found": false,
+          "candidate_objective_vector": [],
+          "candidate_source_decisions": [],
+          "candidate_special_commitment_count": 0,
+          "candidate_substantive_value": null,
+          "candidate_unmet_count": 0,
+          "candidate_validated": false,
+          "elapsed_seconds": 1159.124348299927,
+          "event": "completed",
+          "iteration": 5,
+          "phase": "candidate_processing"
+        },
+        {
+          "elapsed_seconds": 1159.162402799935,
+          "event": "started",
+          "iteration": 6,
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "cumulative_seconds": 2.8513412000611424,
+          "elapsed_seconds": 0.35986339999362826,
+          "event": "completed",
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "elapsed_seconds": 1159.5543648999883,
+          "event": "started",
+          "iteration": 6,
+          "phase": "target_preparation"
+        },
+        {
+          "cumulative_seconds": 14.651797000085935,
+          "elapsed_seconds": 1.7658087000017986,
+          "event": "completed",
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 1161.3502854999388,
+          "event": "started",
+          "iteration": 6,
+          "phase": "policy_selection"
+        },
+        {
+          "cumulative_seconds": 0.2176917000906542,
+          "elapsed_seconds": 0.030142700066789985,
+          "event": "completed",
+          "iteration": 6,
+          "phase": "policy_selection"
+        },
+        {
+          "elapsed_seconds": 1161.4131575999781,
+          "event": "started",
+          "iteration": 6,
+          "operator": "r2",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 1161.5557749998989,
+          "event": "started",
+          "phase": "student_assignment_input"
+        },
+        {
+          "elapsed_seconds": 1161.6021750000073,
+          "event": "completed",
+          "phase": "student_assignment_input",
+          "request_count": 10760,
+          "section_count": 317
+        },
+        {
+          "elapsed_seconds": 1161.7550413999707,
+          "event": "started",
+          "phase": "model_construction"
+        },
+        {
+          "constraint_count": 164949,
+          "elapsed_seconds": 19.44609549990855,
+          "event": "completed",
+          "phase": "model_construction",
+          "variable_count": 110921
+        },
+        {
+          "elapsed_seconds": 1181.2916749999858,
+          "event": "started",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 0.3023554999381304,
+          "event": "completed",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 1181.6281599999638,
+          "event": "started",
+          "phase": "mature_seed_validation"
+        },
+        {
+          "elapsed_seconds": 7.673715400043875,
+          "event": "completed",
+          "phase": "mature_seed_validation",
+          "validated": true
+        },
+        {
+          "elapsed_seconds": 1190.7095489999047,
+          "event": "started",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 0.03185120003763586,
+          "event": "completed",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 1190.775203499943,
+          "event": "started",
+          "iteration": 1,
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 0.031527700019069016,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "target_preparation",
+          "selected_student_ids": []
+        },
+        {
+          "elapsed_seconds": 1193.8774996999418,
+          "event": "started",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 1193.9081571999704,
+          "event": "started",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 0.27496019995305687,
+          "event": "completed",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 1194.3125914999982,
+          "event": "started",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "constraint_count": 175894,
+          "elapsed_seconds": 2.5662115999730304,
+          "event": "completed",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "elapsed_seconds": 1196.9111812999472,
+          "event": "started",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 1.9731838000006974,
+          "event": "completed",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 1198.9168681999436,
+          "event": "started",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "constraint_count": 175900,
+          "elapsed_seconds": 5.565783099969849,
+          "event": "completed",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "elapsed_seconds": 1204.7335382999154,
+          "event": "started",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 6.351593300001696,
+          "event": "completed",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 17.257818200043403,
+          "event": "completed",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 1211.1686471999856,
+          "event": "started",
+          "phase": "cp_sat"
+        },
+        {
+          "elapsed_seconds": 120.71857820008881,
+          "event": "completed",
+          "phase": "cp_sat",
+          "status": "unknown"
+        },
+        {
+          "elapsed_seconds": 1332.9235565999988,
+          "event": "started",
+          "iteration": 1,
+          "phase": "candidate_validation"
+        },
+        {
+          "elapsed_seconds": 0.14196029992308468,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "candidate_validation",
+          "validated": false
+        },
+        {
+          "cumulative_seconds": 1324.8347013000166,
+          "elapsed_seconds": 188.37213649996556,
+          "event": "completed",
+          "iteration": 6,
+          "operator": "r2",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 1349.820150299929,
+          "event": "started",
+          "iteration": 6,
+          "phase": "candidate_processing"
+        },
+        {
+          "cumulative_seconds": 3.251185999950394,
+          "elapsed_seconds": 0.29400280001573265,
+          "event": "completed",
+          "phase": "candidate_processing"
+        },
+        {
+          "adopted": false,
+          "candidate_assignment_count": 0,
+          "candidate_complete": true,
+          "candidate_components": {},
+          "candidate_found": false,
+          "candidate_objective_vector": [],
+          "candidate_source_decisions": [],
+          "candidate_special_commitment_count": 0,
+          "candidate_substantive_value": null,
+          "candidate_unmet_count": 0,
+          "candidate_validated": false,
+          "elapsed_seconds": 1350.160090799909,
+          "event": "completed",
+          "iteration": 6,
+          "phase": "candidate_processing"
+        },
+        {
+          "elapsed_seconds": 1350.191613300005,
+          "event": "started",
+          "iteration": 7,
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "cumulative_seconds": 3.139053200138733,
+          "elapsed_seconds": 0.28771200007759035,
+          "event": "completed",
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "elapsed_seconds": 1350.5077564999228,
+          "event": "started",
+          "iteration": 7,
+          "phase": "target_preparation"
+        },
+        {
+          "cumulative_seconds": 16.461708400165662,
+          "elapsed_seconds": 1.8099114000797272,
+          "event": "completed",
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 1352.3485985998996,
+          "event": "started",
+          "iteration": 7,
+          "phase": "policy_selection"
+        },
+        {
+          "cumulative_seconds": 0.25265120004769415,
+          "elapsed_seconds": 0.03495949995703995,
+          "event": "completed",
+          "iteration": 7,
+          "phase": "policy_selection"
+        },
+        {
+          "elapsed_seconds": 1352.415750999935,
+          "event": "started",
+          "iteration": 7,
+          "operator": "r2",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 1352.5517268999247,
+          "event": "started",
+          "phase": "student_assignment_input"
+        },
+        {
+          "elapsed_seconds": 1352.583134299959,
+          "event": "completed",
+          "phase": "student_assignment_input",
+          "request_count": 10760,
+          "section_count": 317
+        },
+        {
+          "elapsed_seconds": 1352.6876083000097,
+          "event": "started",
+          "phase": "model_construction"
+        },
+        {
+          "constraint_count": 164949,
+          "elapsed_seconds": 26.090767599991523,
+          "event": "completed",
+          "phase": "model_construction",
+          "variable_count": 110921
+        },
+        {
+          "elapsed_seconds": 1378.8454971999163,
+          "event": "started",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 0.2610821999842301,
+          "event": "completed",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 1379.1839293999365,
+          "event": "started",
+          "phase": "mature_seed_validation"
+        },
+        {
+          "elapsed_seconds": 9.551243199966848,
+          "event": "completed",
+          "phase": "mature_seed_validation",
+          "validated": true
+        },
+        {
+          "elapsed_seconds": 1390.296142899897,
+          "event": "started",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 0.1300941000226885,
+          "event": "completed",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 1390.4911605999805,
+          "event": "started",
+          "iteration": 1,
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 0.05619279993698001,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "target_preparation",
+          "selected_student_ids": []
+        },
+        {
+          "elapsed_seconds": 1393.799291000003,
+          "event": "started",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 1393.8429762999294,
+          "event": "started",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 0.3296406000154093,
+          "event": "completed",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 1394.2131285999203,
+          "event": "started",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "constraint_count": 175894,
+          "elapsed_seconds": 2.6524091000901535,
+          "event": "completed",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "elapsed_seconds": 1396.9037226999644,
+          "event": "started",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 3.4903368999948725,
+          "event": "completed",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 1400.4336634000065,
+          "event": "started",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "constraint_count": 175900,
+          "elapsed_seconds": 6.984612499945797,
+          "event": "completed",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "elapsed_seconds": 1407.500331899966,
+          "event": "started",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 8.89211539993994,
+          "event": "completed",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 22.676079500000924,
+          "event": "completed",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 1416.5101528000087,
+          "event": "started",
+          "phase": "cp_sat"
+        },
+        {
+          "elapsed_seconds": 112.57457649998832,
+          "event": "completed",
+          "phase": "cp_sat",
+          "status": "unknown"
+        },
+        {
+          "elapsed_seconds": 1530.4596589999273,
+          "event": "started",
+          "iteration": 1,
+          "phase": "candidate_validation"
+        },
+        {
+          "elapsed_seconds": 0.04940669995266944,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "candidate_validation",
+          "validated": false
+        },
+        {
+          "cumulative_seconds": 1527.395518300007,
+          "elapsed_seconds": 202.5608169999905,
+          "event": "completed",
+          "iteration": 7,
+          "operator": "r2",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 1555.0263957999414,
+          "event": "started",
+          "iteration": 7,
+          "phase": "candidate_processing"
+        },
+        {
+          "cumulative_seconds": 3.839622699888423,
+          "elapsed_seconds": 0.588436699938029,
+          "event": "completed",
+          "phase": "candidate_processing"
+        },
+        {
+          "adopted": false,
+          "candidate_assignment_count": 0,
+          "candidate_complete": true,
+          "candidate_components": {},
+          "candidate_found": false,
+          "candidate_objective_vector": [],
+          "candidate_source_decisions": [],
+          "candidate_special_commitment_count": 0,
+          "candidate_substantive_value": null,
+          "candidate_unmet_count": 0,
+          "candidate_validated": false,
+          "elapsed_seconds": 1555.6916406999808,
+          "event": "completed",
+          "iteration": 7,
+          "phase": "candidate_processing"
+        },
+        {
+          "elapsed_seconds": 1555.7869709999068,
+          "event": "started",
+          "iteration": 8,
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "cumulative_seconds": 3.8156967002432793,
+          "elapsed_seconds": 0.6766435001045465,
+          "event": "completed",
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "elapsed_seconds": 1556.538317999919,
+          "event": "started",
+          "iteration": 8,
+          "phase": "target_preparation"
+        },
+        {
+          "cumulative_seconds": 20.32897210016381,
+          "elapsed_seconds": 3.867263699998148,
+          "event": "completed",
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 1560.4774271999486,
+          "event": "started",
+          "iteration": 8,
+          "phase": "policy_selection"
+        },
+        {
+          "cumulative_seconds": 0.3145508001325652,
+          "elapsed_seconds": 0.061899600084871054,
+          "event": "completed",
+          "iteration": 8,
+          "phase": "policy_selection"
+        },
+        {
+          "elapsed_seconds": 1560.6124176000012,
+          "event": "started",
+          "iteration": 8,
+          "operator": "r2",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 1560.9099633999867,
+          "event": "started",
+          "phase": "student_assignment_input"
+        },
+        {
+          "elapsed_seconds": 1560.9936569998972,
+          "event": "completed",
+          "phase": "student_assignment_input",
+          "request_count": 10760,
+          "section_count": 317
+        },
+        {
+          "elapsed_seconds": 1561.1635463999119,
+          "event": "started",
+          "phase": "model_construction"
+        },
+        {
+          "constraint_count": 164949,
+          "elapsed_seconds": 42.791439400054514,
+          "event": "completed",
+          "phase": "model_construction",
+          "variable_count": 110921
+        },
+        {
+          "elapsed_seconds": 1604.066861399915,
+          "event": "started",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 0.4996627999935299,
+          "event": "completed",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 1604.6540205999045,
+          "event": "started",
+          "phase": "mature_seed_validation"
+        },
+        {
+          "elapsed_seconds": 15.847202899982221,
+          "event": "completed",
+          "phase": "mature_seed_validation",
+          "validated": true
+        },
+        {
+          "elapsed_seconds": 1622.270123199909,
+          "event": "started",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 0.18834100000094622,
+          "event": "completed",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 1622.5054439000087,
+          "event": "started",
+          "iteration": 1,
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 0.09421779995318502,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "target_preparation",
+          "selected_student_ids": []
+        },
+        {
+          "elapsed_seconds": 1628.992433300009,
+          "event": "started",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 1629.214882100001,
+          "event": "started",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 0.6973940000170842,
+          "event": "completed",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 1629.9988035999704,
+          "event": "started",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "constraint_count": 175894,
+          "elapsed_seconds": 5.129807599936612,
+          "event": "completed",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "elapsed_seconds": 1635.396115399897,
+          "event": "started",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 3.5424881000071764,
+          "event": "completed",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 1638.9999074999942,
+          "event": "started",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "constraint_count": 175900,
+          "elapsed_seconds": 9.44405949988868,
+          "event": "completed",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "elapsed_seconds": 1648.5724434999283,
+          "event": "started",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 9.769205500022508,
+          "event": "completed",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 29.410779500030912,
+          "event": "completed",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 1658.4466514999513,
+          "event": "started",
+          "phase": "cp_sat"
+        },
+        {
+          "elapsed_seconds": 116.40195729990955,
+          "event": "completed",
+          "phase": "cp_sat",
+          "status": "unknown"
+        },
+        {
+          "elapsed_seconds": 1777.9618075999897,
+          "event": "started",
+          "iteration": 1,
+          "phase": "candidate_validation"
+        },
+        {
+          "elapsed_seconds": 0.20145269995555282,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "candidate_validation",
+          "validated": false
+        },
+        {
+          "cumulative_seconds": 1767.4221525000175,
+          "elapsed_seconds": 240.02663420001045,
+          "event": "completed",
+          "iteration": 8,
+          "operator": "r2",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 1800.6752378999954,
+          "event": "started",
+          "iteration": 8,
+          "phase": "candidate_processing"
+        },
+        {
+          "cumulative_seconds": 4.195330599904992,
+          "elapsed_seconds": 0.3557079000165686,
+          "event": "completed",
+          "phase": "candidate_processing"
+        },
+        {
+          "adopted": false,
+          "candidate_assignment_count": 0,
+          "candidate_complete": true,
+          "candidate_components": {},
+          "candidate_found": false,
+          "candidate_objective_vector": [],
+          "candidate_source_decisions": [],
+          "candidate_special_commitment_count": 0,
+          "candidate_substantive_value": null,
+          "candidate_unmet_count": 0,
+          "candidate_validated": false,
+          "elapsed_seconds": 1801.0751166999107,
+          "event": "completed",
+          "iteration": 8,
+          "phase": "candidate_processing"
+        },
+        {
+          "elapsed_seconds": 1801.1059208000079,
+          "event": "started",
+          "iteration": 9,
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "cumulative_seconds": 4.148213100153953,
+          "elapsed_seconds": 0.3325163999106735,
+          "event": "completed",
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "elapsed_seconds": 1801.4681568999076,
+          "event": "started",
+          "iteration": 9,
+          "phase": "target_preparation"
+        },
+        {
+          "cumulative_seconds": 23.21709650021512,
+          "elapsed_seconds": 2.8881244000513107,
+          "event": "completed",
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 1804.393984299968,
+          "event": "started",
+          "iteration": 9,
+          "phase": "policy_selection"
+        },
+        {
+          "cumulative_seconds": 0.34509370021987706,
+          "elapsed_seconds": 0.030542900087311864,
+          "event": "completed",
+          "iteration": 9,
+          "phase": "policy_selection"
+        },
+        {
+          "elapsed_seconds": 1804.4559677999932,
+          "event": "started",
+          "iteration": 9,
+          "operator": "r2",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 1804.604453100008,
+          "event": "started",
+          "phase": "student_assignment_input"
+        },
+        {
+          "elapsed_seconds": 1804.6400544999633,
+          "event": "completed",
+          "phase": "student_assignment_input",
+          "request_count": 10760,
+          "section_count": 317
+        },
+        {
+          "elapsed_seconds": 1804.7592553999275,
+          "event": "started",
+          "phase": "model_construction"
+        },
+        {
+          "constraint_count": 164949,
+          "elapsed_seconds": 28.70484869997017,
+          "event": "completed",
+          "phase": "model_construction",
+          "variable_count": 110921
+        },
+        {
+          "elapsed_seconds": 1833.5551935998956,
+          "event": "started",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 0.4952271000947803,
+          "event": "completed",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 1834.1240710999118,
+          "event": "started",
+          "phase": "mature_seed_validation"
+        },
+        {
+          "elapsed_seconds": 15.33929839998018,
+          "event": "completed",
+          "phase": "mature_seed_validation",
+          "validated": true
+        },
+        {
+          "elapsed_seconds": 1850.9107446999988,
+          "event": "started",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 0.061960300081409514,
+          "event": "completed",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 1851.0295050999848,
+          "event": "started",
+          "iteration": 1,
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 0.04687669989652932,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "target_preparation",
+          "selected_student_ids": []
+        },
+        {
+          "elapsed_seconds": 1856.5418780999025,
+          "event": "started",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 1856.6279701999156,
+          "event": "started",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 0.5620369000826031,
+          "event": "completed",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 1857.230049799895,
+          "event": "started",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "constraint_count": 175894,
+          "elapsed_seconds": 4.935420800000429,
+          "event": "completed",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "elapsed_seconds": 1862.2001147998963,
+          "event": "started",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 3.922504200018011,
+          "event": "completed",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 1866.1713768999325,
+          "event": "started",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "constraint_count": 175900,
+          "elapsed_seconds": 8.710763600072823,
+          "event": "completed",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "elapsed_seconds": 1874.922101299977,
+          "event": "started",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 12.140321100014262,
+          "event": "completed",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 30.590304799959995,
+          "event": "completed",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 1887.1939817999955,
+          "event": "started",
+          "phase": "cp_sat"
+        }
+      ]
+    }
+  },
+  "final_components": {
+    "section_utilization_balance": {
+      "raw_penalty": 6401.0,
+      "denominator": 39280,
+      "normalized_penalty": 1629.0,
+      "importance_score": 6,
+      "weighted_normalized_contribution": 9774.0
+    },
+    "student_semester_load_balance": {
+      "raw_penalty": 175.0,
+      "denominator": 22549,
+      "normalized_penalty": 77.0,
+      "importance_score": 6,
+      "weighted_normalized_contribution": 462.0
+    },
+    "difficulty_balance": {
+      "raw_penalty": 35973.0,
+      "denominator": 670174,
+      "normalized_penalty": 536.0,
+      "importance_score": 6,
+      "weighted_normalized_contribution": 3216.0
+    },
+    "course_category_diversity": {
+      "raw_penalty": 22150.0,
+      "denominator": 56200,
+      "normalized_penalty": 3941.0,
+      "importance_score": 6,
+      "weighted_normalized_contribution": 23646.0
+    },
+    "course_sequence_preferences": {
+      "raw_penalty": -0.0,
+      "denominator": 0,
+      "normalized_penalty": 0.0,
+      "importance_score": 6,
+      "weighted_normalized_contribution": 0.0
+    }
+  },
+  "resource": {
+    "available": true,
+    "root_pid": 19612,
+    "process_count": 1,
+    "tree_rss_bytes": 712495104,
+    "tree_uss_bytes": 674746368,
+    "system_available_memory_bytes": 809594880,
+    "pids": [
+      19612
+    ]
+  },
+  "execution_status": "resource_guard_terminated",
+  "hard_wall_seconds": 3600.0,
+  "termination_grace_seconds": 5.0,
+  "hard_deadline_elapsed_seconds": null,
+  "resource_guard": {
+    "max_process_tree_rss_bytes": 4294967296,
+    "min_system_available_memory_bytes": 1073741824,
+    "facts": {
+      "trigger": "min_system_available_memory_bytes",
+      "limit": 1073741824,
+      "measurement": 809594880,
+      "snapshot": {
+        "available": true,
+        "root_pid": 19612,
+        "process_count": 1,
+        "tree_rss_bytes": 712495104,
+        "tree_uss_bytes": 674746368,
+        "system_available_memory_bytes": 809594880,
+        "pids": [
+          19612
+        ]
+      },
+      "elapsed_seconds": 1904.8420709000202
+    }
+  },
+  "worker_pid": 19612,
+  "worker_exit_code": null,
+  "output_protocol_complete": true,
+  "solver_reached": false,
+  "retained_source_fingerprint": "f6e181769e9dc4e7597c31ddccde06810cc7ba758fb9d61d6f203b1f00f58aa6",
+  "retained_incumbent": {
+    "complete": true,
+    "full_model_validated": true,
+    "source_fingerprint": "f6e181769e9dc4e7597c31ddccde06810cc7ba758fb9d61d6f203b1f00f58aa6",
+    "assignment_count": 10635,
+    "unmet_request_count": 0,
+    "special_commitment_count": 310,
+    "substantive_value": 37098.0
+  },
+  "candidate_diagnostic": "not_authoritative_after_worker_termination",
+  "supervision": {
+    "execution_status": "resource_guard_terminated",
+    "payload": null,
+    "worker_pid": 19612,
+    "worker_exit_code": null,
+    "elapsed_seconds": 1905.0423461999744,
+    "hard_deadline_elapsed_seconds": null,
+    "resource_guard_facts": {
+      "trigger": "min_system_available_memory_bytes",
+      "limit": 1073741824,
+      "measurement": 809594880,
+      "snapshot": {
+        "available": true,
+        "root_pid": 19612,
+        "process_count": 1,
+        "tree_rss_bytes": 712495104,
+        "tree_uss_bytes": 674746368,
+        "system_available_memory_bytes": 809594880,
+        "pids": [
+          19612
+        ]
+      },
+      "elapsed_seconds": 1904.8420709000202
+    },
+    "resource_snapshot": {
+      "available": true,
+      "root_pid": 19612,
+      "process_count": 1,
+      "tree_rss_bytes": 712495104,
+      "tree_uss_bytes": 674746368,
+      "system_available_memory_bytes": 809594880,
+      "pids": [
+        19612
+      ]
+    },
+    "last_worker_phase": {
+      "elapsed_seconds": 1887.1939817999955,
+      "event": "started",
+      "phase": "cp_sat",
+      "phase_history": [
+        {
+          "constraint_count": 164949,
+          "elapsed_seconds": 42.71897540008649,
+          "event": "completed",
+          "phase": "model_construction",
+          "variable_count": 110921
+        },
+        {
+          "elapsed_seconds": 495.20891509996727,
+          "event": "started",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 0.29741340002510697,
+          "event": "completed",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 495.536579699954,
+          "event": "started",
+          "phase": "mature_seed_validation"
+        },
+        {
+          "elapsed_seconds": 17.13085970003158,
+          "event": "completed",
+          "phase": "mature_seed_validation",
+          "validated": true
+        },
+        {
+          "elapsed_seconds": 515.9204120999202,
+          "event": "started",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 0.030515699996612966,
+          "event": "completed",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 515.9888855000027,
+          "event": "started",
+          "iteration": 1,
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 0.05962439998984337,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "target_preparation",
+          "selected_student_ids": []
+        },
+        {
+          "elapsed_seconds": 522.7502257999731,
+          "event": "started",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 522.8807850999292,
+          "event": "started",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 0.6472223999444395,
+          "event": "completed",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 523.7373761999188,
+          "event": "started",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "constraint_count": 175894,
+          "elapsed_seconds": 5.922902899910696,
+          "event": "completed",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "elapsed_seconds": 529.7504440000048,
+          "event": "started",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 3.888664499972947,
+          "event": "completed",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 533.711234999937,
+          "event": "started",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "constraint_count": 175900,
+          "elapsed_seconds": 12.780310999951325,
+          "event": "completed",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "elapsed_seconds": 546.609744999907,
+          "event": "started",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 13.865992299979553,
+          "event": "completed",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 37.81008720002137,
+          "event": "completed",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 560.5957844000077,
+          "event": "started",
+          "phase": "cp_sat"
+        },
+        {
+          "elapsed_seconds": 117.19465139997192,
+          "event": "completed",
+          "phase": "cp_sat",
+          "status": "unknown"
+        },
+        {
+          "elapsed_seconds": 680.9584012998967,
+          "event": "started",
+          "iteration": 1,
+          "phase": "candidate_validation"
+        },
+        {
+          "elapsed_seconds": 0.18212180002592504,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "candidate_validation",
+          "validated": false
+        },
+        {
+          "cumulative_seconds": 698.7403694998939,
+          "elapsed_seconds": 260.87854489998426,
+          "event": "completed",
+          "iteration": 3,
+          "operator": "r2",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 712.7889193999581,
+          "event": "started",
+          "iteration": 3,
+          "phase": "candidate_processing"
+        },
+        {
+          "cumulative_seconds": 2.230396099970676,
+          "elapsed_seconds": 0.7108311000047252,
+          "event": "completed",
+          "phase": "candidate_processing"
+        },
+        {
+          "adopted": false,
+          "candidate_assignment_count": 0,
+          "candidate_complete": true,
+          "candidate_components": {},
+          "candidate_found": false,
+          "candidate_objective_vector": [],
+          "candidate_source_decisions": [],
+          "candidate_special_commitment_count": 0,
+          "candidate_substantive_value": null,
+          "candidate_unmet_count": 0,
+          "candidate_validated": false,
+          "elapsed_seconds": 713.550971699995,
+          "event": "completed",
+          "iteration": 3,
+          "phase": "candidate_processing"
+        },
+        {
+          "elapsed_seconds": 713.5787125999341,
+          "event": "started",
+          "iteration": 4,
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "cumulative_seconds": 1.96439270011615,
+          "elapsed_seconds": 0.5302518999669701,
+          "event": "completed",
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "elapsed_seconds": 714.1727477000095,
+          "event": "started",
+          "iteration": 4,
+          "phase": "target_preparation"
+        },
+        {
+          "cumulative_seconds": 11.090466000023298,
+          "elapsed_seconds": 3.6221255999989808,
+          "event": "completed",
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 717.8705805999925,
+          "event": "started",
+          "iteration": 4,
+          "phase": "policy_selection"
+        },
+        {
+          "cumulative_seconds": 0.16147769999224693,
+          "elapsed_seconds": 0.06204690004233271,
+          "event": "completed",
+          "iteration": 4,
+          "phase": "policy_selection"
+        },
+        {
+          "elapsed_seconds": 718.0054753998993,
+          "event": "started",
+          "iteration": 4,
+          "operator": "r2",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 718.3099767999956,
+          "event": "started",
+          "phase": "student_assignment_input"
+        },
+        {
+          "elapsed_seconds": 718.3873285999289,
+          "event": "completed",
+          "phase": "student_assignment_input",
+          "request_count": 10760,
+          "section_count": 317
+        },
+        {
+          "elapsed_seconds": 718.6846985999728,
+          "event": "started",
+          "phase": "model_construction"
+        },
+        {
+          "constraint_count": 164949,
+          "elapsed_seconds": 138.48018649988808,
+          "event": "completed",
+          "phase": "model_construction",
+          "variable_count": 110921
+        },
+        {
+          "elapsed_seconds": 857.2400690999348,
+          "event": "started",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 0.3225632000248879,
+          "event": "completed",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 857.5983723999234,
+          "event": "started",
+          "phase": "mature_seed_validation"
+        },
+        {
+          "elapsed_seconds": 16.0656570000574,
+          "event": "completed",
+          "phase": "mature_seed_validation",
+          "validated": true
+        },
+        {
+          "elapsed_seconds": 876.1338582999306,
+          "event": "started",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 0.06764680007472634,
+          "event": "completed",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 876.3252671000082,
+          "event": "started",
+          "iteration": 1,
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 0.17710629990324378,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "target_preparation",
+          "selected_student_ids": []
+        },
+        {
+          "elapsed_seconds": 881.926929899957,
+          "event": "started",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 881.9594094000058,
+          "event": "started",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 0.3662540999939665,
+          "event": "completed",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 882.4097686999012,
+          "event": "started",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "constraint_count": 175894,
+          "elapsed_seconds": 6.004868499934673,
+          "event": "completed",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "elapsed_seconds": 888.5299826998962,
+          "event": "started",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 4.72902550001163,
+          "event": "completed",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 893.2923396999249,
+          "event": "started",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "constraint_count": 175900,
+          "elapsed_seconds": 12.823873899993487,
+          "event": "completed",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "elapsed_seconds": 906.1848677999806,
+          "event": "started",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 16.612314000027254,
+          "event": "completed",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 40.924251900054514,
+          "event": "completed",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 922.9068044999149,
+          "event": "started",
+          "phase": "cp_sat"
+        },
+        {
+          "elapsed_seconds": 22.92125280003529,
+          "event": "completed",
+          "phase": "cp_sat",
+          "status": "unknown"
+        },
+        {
+          "elapsed_seconds": 947.3641378999455,
+          "event": "started",
+          "iteration": 1,
+          "phase": "candidate_validation"
+        },
+        {
+          "elapsed_seconds": 0.047789899981580675,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "candidate_validation",
+          "validated": false
+        },
+        {
+          "cumulative_seconds": 947.2000809999881,
+          "elapsed_seconds": 248.45971150009427,
+          "event": "completed",
+          "iteration": 4,
+          "operator": "r2",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 966.4976291999919,
+          "event": "started",
+          "iteration": 4,
+          "phase": "candidate_processing"
+        },
+        {
+          "cumulative_seconds": 2.5110350999748334,
+          "elapsed_seconds": 0.2806390000041574,
+          "event": "completed",
+          "phase": "candidate_processing"
+        },
+        {
+          "adopted": false,
+          "candidate_assignment_count": 0,
+          "candidate_complete": true,
+          "candidate_components": {},
+          "candidate_found": false,
+          "candidate_objective_vector": [],
+          "candidate_source_decisions": [],
+          "candidate_special_commitment_count": 0,
+          "candidate_substantive_value": null,
+          "candidate_unmet_count": 0,
+          "candidate_validated": false,
+          "elapsed_seconds": 966.825195799931,
+          "event": "completed",
+          "iteration": 4,
+          "phase": "candidate_processing"
+        },
+        {
+          "elapsed_seconds": 966.8602416999638,
+          "event": "started",
+          "iteration": 5,
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "cumulative_seconds": 2.491477800067514,
+          "elapsed_seconds": 0.5270850999513641,
+          "event": "completed",
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "elapsed_seconds": 967.4143106999109,
+          "event": "started",
+          "iteration": 5,
+          "phase": "target_preparation"
+        },
+        {
+          "cumulative_seconds": 12.885988300084136,
+          "elapsed_seconds": 1.7955223000608385,
+          "event": "completed",
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 969.254671499948,
+          "event": "started",
+          "iteration": 5,
+          "phase": "policy_selection"
+        },
+        {
+          "cumulative_seconds": 0.1875490000238642,
+          "elapsed_seconds": 0.026071300031617284,
+          "event": "completed",
+          "iteration": 5,
+          "phase": "policy_selection"
+        },
+        {
+          "elapsed_seconds": 969.3208380999276,
+          "event": "started",
+          "iteration": 5,
+          "operator": "r2",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 969.4668097000103,
+          "event": "started",
+          "phase": "student_assignment_input"
+        },
+        {
+          "elapsed_seconds": 969.4982605999103,
+          "event": "completed",
+          "phase": "student_assignment_input",
+          "request_count": 10760,
+          "section_count": 317
+        },
+        {
+          "elapsed_seconds": 969.6093688999536,
+          "event": "started",
+          "phase": "model_construction"
+        },
+        {
+          "constraint_count": 164949,
+          "elapsed_seconds": 20.66958440002054,
+          "event": "completed",
+          "phase": "model_construction",
+          "variable_count": 110921
+        },
+        {
+          "elapsed_seconds": 990.3089218999958,
+          "event": "started",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 0.23330650001298636,
+          "event": "completed",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 990.5759486999596,
+          "event": "started",
+          "phase": "mature_seed_validation"
+        },
+        {
+          "elapsed_seconds": 7.719573299982585,
+          "event": "completed",
+          "phase": "mature_seed_validation",
+          "validated": true
+        },
+        {
+          "elapsed_seconds": 999.1227369999979,
+          "event": "started",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 0.062291800044476986,
+          "event": "completed",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 999.2137638999848,
+          "event": "started",
+          "iteration": 1,
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 0.026088000042364,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "target_preparation",
+          "selected_student_ids": []
+        },
+        {
+          "elapsed_seconds": 1001.6951239999617,
+          "event": "started",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 1001.7243054999271,
+          "event": "started",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 0.2636706999037415,
+          "event": "completed",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 1002.0724302999442,
+          "event": "started",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "constraint_count": 175894,
+          "elapsed_seconds": 3.1148009999888018,
+          "event": "completed",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "elapsed_seconds": 1005.2685647999169,
+          "event": "started",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 2.1710540999192744,
+          "event": "completed",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 1007.4745508999331,
+          "event": "started",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "constraint_count": 175900,
+          "elapsed_seconds": 4.841224299976602,
+          "event": "completed",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "elapsed_seconds": 1012.3474221999058,
+          "event": "started",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 5.509427800076082,
+          "event": "completed",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 16.192066799965687,
+          "event": "completed",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 1018.0198042999255,
+          "event": "started",
+          "phase": "cp_sat"
+        },
+        {
+          "elapsed_seconds": 119.81548660004046,
+          "event": "completed",
+          "phase": "cp_sat",
+          "status": "unknown"
+        },
+        {
+          "elapsed_seconds": 1139.6876063999953,
+          "event": "started",
+          "iteration": 1,
+          "phase": "candidate_validation"
+        },
+        {
+          "elapsed_seconds": 0.20233310002367944,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "candidate_validation",
+          "validated": false
+        },
+        {
+          "cumulative_seconds": 1136.462564800051,
+          "elapsed_seconds": 189.2624838000629,
+          "event": "completed",
+          "iteration": 5,
+          "operator": "r2",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 1158.6448419999797,
+          "event": "started",
+          "iteration": 5,
+          "phase": "candidate_processing"
+        },
+        {
+          "cumulative_seconds": 2.9571831999346614,
+          "elapsed_seconds": 0.44614809995982796,
+          "event": "completed",
+          "phase": "candidate_processing"
+        },
+        {
+          "adopted": false,
+          "candidate_assignment_count": 0,
+          "candidate_complete": true,
+          "candidate_components": {},
+          "candidate_found": false,
+          "candidate_objective_vector": [],
+          "candidate_source_decisions": [],
+          "candidate_special_commitment_count": 0,
+          "candidate_substantive_value": null,
+          "candidate_unmet_count": 0,
+          "candidate_validated": false,
+          "elapsed_seconds": 1159.124348299927,
+          "event": "completed",
+          "iteration": 5,
+          "phase": "candidate_processing"
+        },
+        {
+          "elapsed_seconds": 1159.162402799935,
+          "event": "started",
+          "iteration": 6,
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "cumulative_seconds": 2.8513412000611424,
+          "elapsed_seconds": 0.35986339999362826,
+          "event": "completed",
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "elapsed_seconds": 1159.5543648999883,
+          "event": "started",
+          "iteration": 6,
+          "phase": "target_preparation"
+        },
+        {
+          "cumulative_seconds": 14.651797000085935,
+          "elapsed_seconds": 1.7658087000017986,
+          "event": "completed",
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 1161.3502854999388,
+          "event": "started",
+          "iteration": 6,
+          "phase": "policy_selection"
+        },
+        {
+          "cumulative_seconds": 0.2176917000906542,
+          "elapsed_seconds": 0.030142700066789985,
+          "event": "completed",
+          "iteration": 6,
+          "phase": "policy_selection"
+        },
+        {
+          "elapsed_seconds": 1161.4131575999781,
+          "event": "started",
+          "iteration": 6,
+          "operator": "r2",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 1161.5557749998989,
+          "event": "started",
+          "phase": "student_assignment_input"
+        },
+        {
+          "elapsed_seconds": 1161.6021750000073,
+          "event": "completed",
+          "phase": "student_assignment_input",
+          "request_count": 10760,
+          "section_count": 317
+        },
+        {
+          "elapsed_seconds": 1161.7550413999707,
+          "event": "started",
+          "phase": "model_construction"
+        },
+        {
+          "constraint_count": 164949,
+          "elapsed_seconds": 19.44609549990855,
+          "event": "completed",
+          "phase": "model_construction",
+          "variable_count": 110921
+        },
+        {
+          "elapsed_seconds": 1181.2916749999858,
+          "event": "started",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 0.3023554999381304,
+          "event": "completed",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 1181.6281599999638,
+          "event": "started",
+          "phase": "mature_seed_validation"
+        },
+        {
+          "elapsed_seconds": 7.673715400043875,
+          "event": "completed",
+          "phase": "mature_seed_validation",
+          "validated": true
+        },
+        {
+          "elapsed_seconds": 1190.7095489999047,
+          "event": "started",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 0.03185120003763586,
+          "event": "completed",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 1190.775203499943,
+          "event": "started",
+          "iteration": 1,
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 0.031527700019069016,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "target_preparation",
+          "selected_student_ids": []
+        },
+        {
+          "elapsed_seconds": 1193.8774996999418,
+          "event": "started",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 1193.9081571999704,
+          "event": "started",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 0.27496019995305687,
+          "event": "completed",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 1194.3125914999982,
+          "event": "started",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "constraint_count": 175894,
+          "elapsed_seconds": 2.5662115999730304,
+          "event": "completed",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "elapsed_seconds": 1196.9111812999472,
+          "event": "started",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 1.9731838000006974,
+          "event": "completed",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 1198.9168681999436,
+          "event": "started",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "constraint_count": 175900,
+          "elapsed_seconds": 5.565783099969849,
+          "event": "completed",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "elapsed_seconds": 1204.7335382999154,
+          "event": "started",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 6.351593300001696,
+          "event": "completed",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 17.257818200043403,
+          "event": "completed",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 1211.1686471999856,
+          "event": "started",
+          "phase": "cp_sat"
+        },
+        {
+          "elapsed_seconds": 120.71857820008881,
+          "event": "completed",
+          "phase": "cp_sat",
+          "status": "unknown"
+        },
+        {
+          "elapsed_seconds": 1332.9235565999988,
+          "event": "started",
+          "iteration": 1,
+          "phase": "candidate_validation"
+        },
+        {
+          "elapsed_seconds": 0.14196029992308468,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "candidate_validation",
+          "validated": false
+        },
+        {
+          "cumulative_seconds": 1324.8347013000166,
+          "elapsed_seconds": 188.37213649996556,
+          "event": "completed",
+          "iteration": 6,
+          "operator": "r2",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 1349.820150299929,
+          "event": "started",
+          "iteration": 6,
+          "phase": "candidate_processing"
+        },
+        {
+          "cumulative_seconds": 3.251185999950394,
+          "elapsed_seconds": 0.29400280001573265,
+          "event": "completed",
+          "phase": "candidate_processing"
+        },
+        {
+          "adopted": false,
+          "candidate_assignment_count": 0,
+          "candidate_complete": true,
+          "candidate_components": {},
+          "candidate_found": false,
+          "candidate_objective_vector": [],
+          "candidate_source_decisions": [],
+          "candidate_special_commitment_count": 0,
+          "candidate_substantive_value": null,
+          "candidate_unmet_count": 0,
+          "candidate_validated": false,
+          "elapsed_seconds": 1350.160090799909,
+          "event": "completed",
+          "iteration": 6,
+          "phase": "candidate_processing"
+        },
+        {
+          "elapsed_seconds": 1350.191613300005,
+          "event": "started",
+          "iteration": 7,
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "cumulative_seconds": 3.139053200138733,
+          "elapsed_seconds": 0.28771200007759035,
+          "event": "completed",
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "elapsed_seconds": 1350.5077564999228,
+          "event": "started",
+          "iteration": 7,
+          "phase": "target_preparation"
+        },
+        {
+          "cumulative_seconds": 16.461708400165662,
+          "elapsed_seconds": 1.8099114000797272,
+          "event": "completed",
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 1352.3485985998996,
+          "event": "started",
+          "iteration": 7,
+          "phase": "policy_selection"
+        },
+        {
+          "cumulative_seconds": 0.25265120004769415,
+          "elapsed_seconds": 0.03495949995703995,
+          "event": "completed",
+          "iteration": 7,
+          "phase": "policy_selection"
+        },
+        {
+          "elapsed_seconds": 1352.415750999935,
+          "event": "started",
+          "iteration": 7,
+          "operator": "r2",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 1352.5517268999247,
+          "event": "started",
+          "phase": "student_assignment_input"
+        },
+        {
+          "elapsed_seconds": 1352.583134299959,
+          "event": "completed",
+          "phase": "student_assignment_input",
+          "request_count": 10760,
+          "section_count": 317
+        },
+        {
+          "elapsed_seconds": 1352.6876083000097,
+          "event": "started",
+          "phase": "model_construction"
+        },
+        {
+          "constraint_count": 164949,
+          "elapsed_seconds": 26.090767599991523,
+          "event": "completed",
+          "phase": "model_construction",
+          "variable_count": 110921
+        },
+        {
+          "elapsed_seconds": 1378.8454971999163,
+          "event": "started",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 0.2610821999842301,
+          "event": "completed",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 1379.1839293999365,
+          "event": "started",
+          "phase": "mature_seed_validation"
+        },
+        {
+          "elapsed_seconds": 9.551243199966848,
+          "event": "completed",
+          "phase": "mature_seed_validation",
+          "validated": true
+        },
+        {
+          "elapsed_seconds": 1390.296142899897,
+          "event": "started",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 0.1300941000226885,
+          "event": "completed",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 1390.4911605999805,
+          "event": "started",
+          "iteration": 1,
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 0.05619279993698001,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "target_preparation",
+          "selected_student_ids": []
+        },
+        {
+          "elapsed_seconds": 1393.799291000003,
+          "event": "started",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 1393.8429762999294,
+          "event": "started",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 0.3296406000154093,
+          "event": "completed",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 1394.2131285999203,
+          "event": "started",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "constraint_count": 175894,
+          "elapsed_seconds": 2.6524091000901535,
+          "event": "completed",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "elapsed_seconds": 1396.9037226999644,
+          "event": "started",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 3.4903368999948725,
+          "event": "completed",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 1400.4336634000065,
+          "event": "started",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "constraint_count": 175900,
+          "elapsed_seconds": 6.984612499945797,
+          "event": "completed",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "elapsed_seconds": 1407.500331899966,
+          "event": "started",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 8.89211539993994,
+          "event": "completed",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 22.676079500000924,
+          "event": "completed",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 1416.5101528000087,
+          "event": "started",
+          "phase": "cp_sat"
+        },
+        {
+          "elapsed_seconds": 112.57457649998832,
+          "event": "completed",
+          "phase": "cp_sat",
+          "status": "unknown"
+        },
+        {
+          "elapsed_seconds": 1530.4596589999273,
+          "event": "started",
+          "iteration": 1,
+          "phase": "candidate_validation"
+        },
+        {
+          "elapsed_seconds": 0.04940669995266944,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "candidate_validation",
+          "validated": false
+        },
+        {
+          "cumulative_seconds": 1527.395518300007,
+          "elapsed_seconds": 202.5608169999905,
+          "event": "completed",
+          "iteration": 7,
+          "operator": "r2",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 1555.0263957999414,
+          "event": "started",
+          "iteration": 7,
+          "phase": "candidate_processing"
+        },
+        {
+          "cumulative_seconds": 3.839622699888423,
+          "elapsed_seconds": 0.588436699938029,
+          "event": "completed",
+          "phase": "candidate_processing"
+        },
+        {
+          "adopted": false,
+          "candidate_assignment_count": 0,
+          "candidate_complete": true,
+          "candidate_components": {},
+          "candidate_found": false,
+          "candidate_objective_vector": [],
+          "candidate_source_decisions": [],
+          "candidate_special_commitment_count": 0,
+          "candidate_substantive_value": null,
+          "candidate_unmet_count": 0,
+          "candidate_validated": false,
+          "elapsed_seconds": 1555.6916406999808,
+          "event": "completed",
+          "iteration": 7,
+          "phase": "candidate_processing"
+        },
+        {
+          "elapsed_seconds": 1555.7869709999068,
+          "event": "started",
+          "iteration": 8,
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "cumulative_seconds": 3.8156967002432793,
+          "elapsed_seconds": 0.6766435001045465,
+          "event": "completed",
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "elapsed_seconds": 1556.538317999919,
+          "event": "started",
+          "iteration": 8,
+          "phase": "target_preparation"
+        },
+        {
+          "cumulative_seconds": 20.32897210016381,
+          "elapsed_seconds": 3.867263699998148,
+          "event": "completed",
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 1560.4774271999486,
+          "event": "started",
+          "iteration": 8,
+          "phase": "policy_selection"
+        },
+        {
+          "cumulative_seconds": 0.3145508001325652,
+          "elapsed_seconds": 0.061899600084871054,
+          "event": "completed",
+          "iteration": 8,
+          "phase": "policy_selection"
+        },
+        {
+          "elapsed_seconds": 1560.6124176000012,
+          "event": "started",
+          "iteration": 8,
+          "operator": "r2",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 1560.9099633999867,
+          "event": "started",
+          "phase": "student_assignment_input"
+        },
+        {
+          "elapsed_seconds": 1560.9936569998972,
+          "event": "completed",
+          "phase": "student_assignment_input",
+          "request_count": 10760,
+          "section_count": 317
+        },
+        {
+          "elapsed_seconds": 1561.1635463999119,
+          "event": "started",
+          "phase": "model_construction"
+        },
+        {
+          "constraint_count": 164949,
+          "elapsed_seconds": 42.791439400054514,
+          "event": "completed",
+          "phase": "model_construction",
+          "variable_count": 110921
+        },
+        {
+          "elapsed_seconds": 1604.066861399915,
+          "event": "started",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 0.4996627999935299,
+          "event": "completed",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 1604.6540205999045,
+          "event": "started",
+          "phase": "mature_seed_validation"
+        },
+        {
+          "elapsed_seconds": 15.847202899982221,
+          "event": "completed",
+          "phase": "mature_seed_validation",
+          "validated": true
+        },
+        {
+          "elapsed_seconds": 1622.270123199909,
+          "event": "started",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 0.18834100000094622,
+          "event": "completed",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 1622.5054439000087,
+          "event": "started",
+          "iteration": 1,
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 0.09421779995318502,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "target_preparation",
+          "selected_student_ids": []
+        },
+        {
+          "elapsed_seconds": 1628.992433300009,
+          "event": "started",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 1629.214882100001,
+          "event": "started",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 0.6973940000170842,
+          "event": "completed",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 1629.9988035999704,
+          "event": "started",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "constraint_count": 175894,
+          "elapsed_seconds": 5.129807599936612,
+          "event": "completed",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "elapsed_seconds": 1635.396115399897,
+          "event": "started",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 3.5424881000071764,
+          "event": "completed",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 1638.9999074999942,
+          "event": "started",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "constraint_count": 175900,
+          "elapsed_seconds": 9.44405949988868,
+          "event": "completed",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "elapsed_seconds": 1648.5724434999283,
+          "event": "started",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 9.769205500022508,
+          "event": "completed",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 29.410779500030912,
+          "event": "completed",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 1658.4466514999513,
+          "event": "started",
+          "phase": "cp_sat"
+        },
+        {
+          "elapsed_seconds": 116.40195729990955,
+          "event": "completed",
+          "phase": "cp_sat",
+          "status": "unknown"
+        },
+        {
+          "elapsed_seconds": 1777.9618075999897,
+          "event": "started",
+          "iteration": 1,
+          "phase": "candidate_validation"
+        },
+        {
+          "elapsed_seconds": 0.20145269995555282,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "candidate_validation",
+          "validated": false
+        },
+        {
+          "cumulative_seconds": 1767.4221525000175,
+          "elapsed_seconds": 240.02663420001045,
+          "event": "completed",
+          "iteration": 8,
+          "operator": "r2",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 1800.6752378999954,
+          "event": "started",
+          "iteration": 8,
+          "phase": "candidate_processing"
+        },
+        {
+          "cumulative_seconds": 4.195330599904992,
+          "elapsed_seconds": 0.3557079000165686,
+          "event": "completed",
+          "phase": "candidate_processing"
+        },
+        {
+          "adopted": false,
+          "candidate_assignment_count": 0,
+          "candidate_complete": true,
+          "candidate_components": {},
+          "candidate_found": false,
+          "candidate_objective_vector": [],
+          "candidate_source_decisions": [],
+          "candidate_special_commitment_count": 0,
+          "candidate_substantive_value": null,
+          "candidate_unmet_count": 0,
+          "candidate_validated": false,
+          "elapsed_seconds": 1801.0751166999107,
+          "event": "completed",
+          "iteration": 8,
+          "phase": "candidate_processing"
+        },
+        {
+          "elapsed_seconds": 1801.1059208000079,
+          "event": "started",
+          "iteration": 9,
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "cumulative_seconds": 4.148213100153953,
+          "elapsed_seconds": 0.3325163999106735,
+          "event": "completed",
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "elapsed_seconds": 1801.4681568999076,
+          "event": "started",
+          "iteration": 9,
+          "phase": "target_preparation"
+        },
+        {
+          "cumulative_seconds": 23.21709650021512,
+          "elapsed_seconds": 2.8881244000513107,
+          "event": "completed",
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 1804.393984299968,
+          "event": "started",
+          "iteration": 9,
+          "phase": "policy_selection"
+        },
+        {
+          "cumulative_seconds": 0.34509370021987706,
+          "elapsed_seconds": 0.030542900087311864,
+          "event": "completed",
+          "iteration": 9,
+          "phase": "policy_selection"
+        },
+        {
+          "elapsed_seconds": 1804.4559677999932,
+          "event": "started",
+          "iteration": 9,
+          "operator": "r2",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 1804.604453100008,
+          "event": "started",
+          "phase": "student_assignment_input"
+        },
+        {
+          "elapsed_seconds": 1804.6400544999633,
+          "event": "completed",
+          "phase": "student_assignment_input",
+          "request_count": 10760,
+          "section_count": 317
+        },
+        {
+          "elapsed_seconds": 1804.7592553999275,
+          "event": "started",
+          "phase": "model_construction"
+        },
+        {
+          "constraint_count": 164949,
+          "elapsed_seconds": 28.70484869997017,
+          "event": "completed",
+          "phase": "model_construction",
+          "variable_count": 110921
+        },
+        {
+          "elapsed_seconds": 1833.5551935998956,
+          "event": "started",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 0.4952271000947803,
+          "event": "completed",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 1834.1240710999118,
+          "event": "started",
+          "phase": "mature_seed_validation"
+        },
+        {
+          "elapsed_seconds": 15.33929839998018,
+          "event": "completed",
+          "phase": "mature_seed_validation",
+          "validated": true
+        },
+        {
+          "elapsed_seconds": 1850.9107446999988,
+          "event": "started",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 0.061960300081409514,
+          "event": "completed",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 1851.0295050999848,
+          "event": "started",
+          "iteration": 1,
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 0.04687669989652932,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "target_preparation",
+          "selected_student_ids": []
+        },
+        {
+          "elapsed_seconds": 1856.5418780999025,
+          "event": "started",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 1856.6279701999156,
+          "event": "started",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 0.5620369000826031,
+          "event": "completed",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 1857.230049799895,
+          "event": "started",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "constraint_count": 175894,
+          "elapsed_seconds": 4.935420800000429,
+          "event": "completed",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "elapsed_seconds": 1862.2001147998963,
+          "event": "started",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 3.922504200018011,
+          "event": "completed",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 1866.1713768999325,
+          "event": "started",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "constraint_count": 175900,
+          "elapsed_seconds": 8.710763600072823,
+          "event": "completed",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "elapsed_seconds": 1874.922101299977,
+          "event": "started",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 12.140321100014262,
+          "event": "completed",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 30.590304799959995,
+          "event": "completed",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 1887.1939817999955,
+          "event": "started",
+          "phase": "cp_sat"
+        }
+      ]
+    },
+    "cleanup": {
+      "requested_pid": 19612,
+      "initial_process_count": 1,
+      "remaining_process_count": 0,
+      "cleanup_elapsed_seconds": 0.14839980006217957,
+      "descendants_clean": true
+    },
+    "protocol_error": null
+  },
+  "preparation": {
+    "elapsed_seconds": 38.38484509999398,
+    "benchmark_load_seconds": 1.625796900014393,
+    "branch_materialization_seconds": 8.00006091594696e-07,
+    "branch_validation_seconds": 34.97810289997142,
+    "parent_branch_validation": {
+      "full_model_validation": true,
+      "complete": true,
+      "unmet_request_count": 0,
+      "assignment_count": 10635,
+      "special_commitment_count": 310,
+      "solver_outcome": "feasible",
+      "elapsed_seconds": 34.97810289997142,
+      "source_fingerprint_matches": true
+    },
+    "input_fingerprint": "c07c77d0aa077a3e72240f27644d86b8a1a4faecb2f72a900aacc3fcb792d28a",
+    "initial_status": "complete",
+    "initial_solver_outcome": "feasible",
+    "initial_assignment_count": 10635,
+    "initial_unmet_count": 0,
+    "branch_revalidated": true,
+    "branch_source_fingerprint": "f6e181769e9dc4e7597c31ddccde06810cc7ba758fb9d61d6f203b1f00f58aa6"
+  }
+}

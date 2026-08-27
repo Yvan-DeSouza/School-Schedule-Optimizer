@@ -658,6 +658,7 @@ def test_adaptive_runner_adopts_only_validated_strict_improvement(monkeypatch):
         "scheduling_engine.student_assignment.adaptive_runtime._quality_report",
         lambda *_args: quality,
     )
+    events = []
     result = run_adaptive_local_search_diagnostic(
         data,
         initial_result=initial,
@@ -665,6 +666,7 @@ def test_adaptive_runner_adopts_only_validated_strict_improvement(monkeypatch):
         per_operator_time_limit_seconds=0.1,
         max_iterations=1,
         portfolio=(AdaptiveOperatorSpec("targeted_r8_s1", 8, 1, True, 1, "targeted_repair"),),
+        phase_callback=lambda phase, **facts: events.append((phase, facts)),
     )
     assert result.result is candidate
     assert result.record.attempts[0]["adopted"] is True
@@ -677,6 +679,12 @@ def test_adaptive_runner_adopts_only_validated_strict_improvement(monkeypatch):
     assert result.record.phase_timings["candidate_processing"] >= 0
     assert result.record.phase_timings["finalization"] >= 0
     assert result.record.phase_timings["total"] >= 0
+    decisions = [facts for phase, facts in events if phase == "policy_decision"]
+    assert len(decisions) == 1
+    assert decisions[0]["selected_role"] == "targeted_repair"
+    assert decisions[0]["selected_operator"] == "targeted_r8_s1"
+    assert "reasons" in decisions[0]
+    assert "signal_values" in decisions[0]
 
 
 def test_runner_executes_fixed_cycle_control_through_shared_operator_boundary(monkeypatch):

@@ -1,0 +1,195 @@
+{
+  "schema": "student_assignment_adaptive_calibration_trial_v2",
+  "protocol_version": "adaptive-calibration-v2",
+  "policy": "fixed_cycle",
+  "profile": "balanced",
+  "profile_fingerprint": "d1eb7b0501db1b8fd6a2cf0598f4788a6864e4eb11ced45617f102f6f6b628da",
+  "input_fingerprint": "c07c77d0aa077a3e72240f27644d86b8a1a4faecb2f72a900aacc3fcb792d28a",
+  "source_seed_fingerprint": "f6e181769e9dc4e7597c31ddccde06810cc7ba758fb9d61d6f203b1f00f58aa6",
+  "configured_budget_seconds": 2100.0,
+  "per_operator_time_limit_seconds": null,
+  "worker_count": null,
+  "initial_substantive_value": 37098.0,
+  "final_substantive_value": 37098.0,
+  "final_assignment_count": 10635,
+  "final_unmet_count": 0,
+  "final_special_commitment_count": 310,
+  "candidate_complete": false,
+  "candidate_from_terminated_worker": false,
+  "attempts": [],
+  "decisions": [],
+  "timing": {
+    "policy_selection_seconds": 0.0,
+    "operator_execution_seconds": 0.0,
+    "finalization_seconds": 0.0,
+    "external_overrun_seconds": 0.0,
+    "total_elapsed_seconds": 0.10833129996899515
+  },
+  "phase_timings": {
+    "parent": {
+      "total_seconds": 76.85231310001109
+    },
+    "worker": {
+      "last_observed_phase": {}
+    },
+    "policy": {},
+    "parent_preparation_seconds": 76.85231310001109,
+    "worker_last_phase": {}
+  },
+  "final_components": {
+    "section_utilization_balance": {
+      "raw_penalty": 6401.0,
+      "denominator": 39280,
+      "normalized_penalty": 1629.0,
+      "importance_score": 6,
+      "weighted_normalized_contribution": 9774.0
+    },
+    "student_semester_load_balance": {
+      "raw_penalty": 175.0,
+      "denominator": 22549,
+      "normalized_penalty": 77.0,
+      "importance_score": 6,
+      "weighted_normalized_contribution": 462.0
+    },
+    "difficulty_balance": {
+      "raw_penalty": 35973.0,
+      "denominator": 670174,
+      "normalized_penalty": 536.0,
+      "importance_score": 6,
+      "weighted_normalized_contribution": 3216.0
+    },
+    "course_category_diversity": {
+      "raw_penalty": 22150.0,
+      "denominator": 56200,
+      "normalized_penalty": 3941.0,
+      "importance_score": 6,
+      "weighted_normalized_contribution": 23646.0
+    },
+    "course_sequence_preferences": {
+      "raw_penalty": -0.0,
+      "denominator": 0,
+      "normalized_penalty": 0.0,
+      "importance_score": 6,
+      "weighted_normalized_contribution": 0.0
+    }
+  },
+  "resource": {
+    "available": true,
+    "root_pid": 21008,
+    "process_count": 1,
+    "tree_rss_bytes": 10604544,
+    "tree_uss_bytes": 3629056,
+    "system_available_memory_bytes": 983846912,
+    "pids": [
+      21008
+    ]
+  },
+  "execution_status": "resource_guard_terminated",
+  "hard_wall_seconds": 2100.0,
+  "termination_grace_seconds": 5.0,
+  "hard_deadline_elapsed_seconds": null,
+  "resource_guard": {
+    "max_process_tree_rss_bytes": 4294967296,
+    "min_system_available_memory_bytes": 1073741824,
+    "facts": {
+      "trigger": "min_system_available_memory_bytes",
+      "limit": 1073741824,
+      "measurement": 983846912,
+      "snapshot": {
+        "available": true,
+        "root_pid": 21008,
+        "process_count": 1,
+        "tree_rss_bytes": 10604544,
+        "tree_uss_bytes": 3629056,
+        "system_available_memory_bytes": 983846912,
+        "pids": [
+          21008
+        ]
+      },
+      "elapsed_seconds": 0.021605800022371113
+    }
+  },
+  "worker_pid": 21008,
+  "worker_exit_code": null,
+  "output_protocol_complete": true,
+  "solver_reached": false,
+  "retained_source_fingerprint": "f6e181769e9dc4e7597c31ddccde06810cc7ba758fb9d61d6f203b1f00f58aa6",
+  "retained_incumbent": {
+    "complete": true,
+    "full_model_validated": true,
+    "source_fingerprint": "f6e181769e9dc4e7597c31ddccde06810cc7ba758fb9d61d6f203b1f00f58aa6",
+    "assignment_count": 10635,
+    "unmet_request_count": 0,
+    "special_commitment_count": 310,
+    "substantive_value": 37098.0
+  },
+  "candidate_diagnostic": "not_authoritative_after_worker_termination",
+  "supervision": {
+    "execution_status": "resource_guard_terminated",
+    "payload": null,
+    "worker_pid": 21008,
+    "worker_exit_code": null,
+    "elapsed_seconds": 0.10833129996899515,
+    "hard_deadline_elapsed_seconds": null,
+    "resource_guard_facts": {
+      "trigger": "min_system_available_memory_bytes",
+      "limit": 1073741824,
+      "measurement": 983846912,
+      "snapshot": {
+        "available": true,
+        "root_pid": 21008,
+        "process_count": 1,
+        "tree_rss_bytes": 10604544,
+        "tree_uss_bytes": 3629056,
+        "system_available_memory_bytes": 983846912,
+        "pids": [
+          21008
+        ]
+      },
+      "elapsed_seconds": 0.021605800022371113
+    },
+    "resource_snapshot": {
+      "available": true,
+      "root_pid": 21008,
+      "process_count": 1,
+      "tree_rss_bytes": 10604544,
+      "tree_uss_bytes": 3629056,
+      "system_available_memory_bytes": 983846912,
+      "pids": [
+        21008
+      ]
+    },
+    "last_worker_phase": {},
+    "cleanup": {
+      "requested_pid": 21008,
+      "initial_process_count": 1,
+      "remaining_process_count": 0,
+      "cleanup_elapsed_seconds": 0.02302269998472184,
+      "descendants_clean": true
+    },
+    "protocol_error": null
+  },
+  "preparation": {
+    "elapsed_seconds": 76.85231310001109,
+    "benchmark_load_seconds": 2.9786461999174207,
+    "branch_materialization_seconds": 7.00005330145359e-07,
+    "branch_validation_seconds": 70.18516210000962,
+    "parent_branch_validation": {
+      "full_model_validation": true,
+      "complete": true,
+      "unmet_request_count": 0,
+      "assignment_count": 10635,
+      "special_commitment_count": 310,
+      "solver_outcome": "feasible",
+      "elapsed_seconds": 70.18516210000962,
+      "source_fingerprint_matches": true
+    },
+    "input_fingerprint": "c07c77d0aa077a3e72240f27644d86b8a1a4faecb2f72a900aacc3fcb792d28a",
+    "initial_status": "complete",
+    "initial_solver_outcome": "feasible",
+    "initial_assignment_count": 10635,
+    "initial_unmet_count": 0,
+    "branch_revalidated": true,
+    "branch_source_fingerprint": "f6e181769e9dc4e7597c31ddccde06810cc7ba758fb9d61d6f203b1f00f58aa6"
+  }
+}

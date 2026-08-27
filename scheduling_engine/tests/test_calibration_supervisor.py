@@ -4,6 +4,10 @@ import json
 from pathlib import Path
 import sys
 
+from scheduling_engine.benchmark_adaptive_calibration import (
+    _write_immediate_worker_branch,
+    _write_worker_phase,
+)
 from scheduling_engine.student_assignment.calibration_supervisor import (
     CalibrationExecutionProfile,
     EXECUTION_COMPLETED,
@@ -19,6 +23,62 @@ from scheduling_engine.student_assignment.calibration_supervisor import (
 
 def _python_worker(source, *arguments):
     return [sys.executable, "-c", source, *map(str, arguments)]
+
+
+def test_worker_phase_status_retains_bounded_history(tmp_path):
+    status = tmp_path / "status.json"
+
+    for index in range(300):
+        _write_worker_phase(status, f"phase_{index}", 0.0, event="completed")
+
+    payload = json.loads(status.read_text(encoding="utf-8"))
+    assert payload["phase"] == "phase_299"
+    assert len(payload["phase_history"]) == 256
+    assert payload["phase_history"][0]["phase"] == "phase_44"
+    assert payload["phase_history"][-1]["phase"] == "phase_299"
+
+
+def test_immediate_worker_branch_normalizes_and_writes_adopted_candidate(
+    tmp_path, monkeypatch
+):
+    calls = {}
+
+    def fake_write(path, **kwargs):
+        calls["path"] = path
+        calls.update(kwargs)
+        return {"source_decision_fingerprint": "derived-fingerprint"}
+
+    monkeypatch.setattr(
+        "scheduling_engine.benchmark_adaptive_calibration.write_diagnostic_branch_checkpoint",
+        fake_write,
+    )
+    result = _write_immediate_worker_branch(
+        tmp_path / "derived.json.gz",
+        data=object(),
+        parent_branch={"source_decision_fingerprint": "parent-fingerprint"},
+        facts={
+            "adopted": True,
+            "candidate_complete": True,
+            "candidate_validated": True,
+            "candidate_source_decisions": [
+                [["course", 1], [7, 2, None, 1, 3, None]],
+            ],
+            "candidate_objective_vector": [-1],
+            "candidate_components": {"substantive": 1},
+            "candidate_assignment_count": 1,
+            "candidate_unmet_count": 0,
+            "candidate_special_commitment_count": 0,
+            "iteration": 4,
+        },
+        policy="adaptive",
+        profile="balanced",
+    )
+
+    assert result["source_fingerprint"] == "derived-fingerprint"
+    assert calls["source_decisions"] == (
+        (("course", 1), (7, 2, None, 1, 3, None)),
+    )
+    assert calls["parent_source_decision_fingerprint"] == "parent-fingerprint"
 
 
 def test_supervisor_accepts_complete_worker_protocol(tmp_path):

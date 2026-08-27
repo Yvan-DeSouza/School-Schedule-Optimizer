@@ -367,6 +367,23 @@ def run_adaptive_local_search_diagnostic(
             worker_count=worker_count,
             selected_student_ids=selected,
         )
+        # Preserve the factual policy explanation in the live phase stream as
+        # well as in the eventual result payload. A supervised worker can be
+        # stopped before its final JSON is returned, so this compact event is
+        # the durable record of why a role/operator was selected in that case.
+        # It is observational and cannot affect the search.
+        _emit_phase(
+            "policy_decision",
+            "completed",
+            iteration=len(history) + 1,
+            selection_policy=selection_policy,
+            selected_role=decision.operator.portfolio_role,
+            selected_operator=decision.operator.name,
+            selected_student_ids=selected,
+            selected_grade=decision.operator.selected_grade,
+            reasons=tuple(decision.reasons),
+            signal_values=dict(decision.signal_values),
+        )
         decisions.append(decision_payload)
         operation_started = monotonic()
         _emit_phase(
@@ -452,6 +469,41 @@ def run_adaptive_local_search_diagnostic(
             current_value = candidate_value
             stopping_reason = "validated_improvement_adopted"
         _record_phase("candidate_processing", phase_started)
+        stage_2_facts = dict((result.optimization_facts or {}).get("stage_2") or {})
+        # These facts are observational breadcrumbs for the supervised
+        # calibration worker.  They allow a validated improvement to be
+        # persisted immediately, even if the outer worker is later stopped
+        # before the policy returns its final JSON payload.
+        _emit_phase(
+            "candidate_processing",
+            "completed",
+            iteration=len(history) + 1,
+            candidate_found=candidate_found,
+            candidate_validated=candidate_validated,
+            candidate_complete=hard_complete,
+            adopted=adopted,
+            candidate_substantive_value=(
+                candidate_value if candidate_found else None
+            ),
+            candidate_source_decisions=(
+                tuple(candidate_source) if candidate_found else ()
+            ),
+            candidate_objective_vector=tuple(
+                stage_2_facts.get("objective_values") or ()
+            ) if candidate_found else (),
+            candidate_components=(
+                dict(result.objective_components or {}) if candidate_found else {}
+            ),
+            candidate_assignment_count=(
+                len(result.assignments) if candidate_found else 0
+            ),
+            candidate_unmet_count=(
+                len(result.unmet_requests) if candidate_found else 0
+            ),
+            candidate_special_commitment_count=(
+                len(result.commitment_assignments) if candidate_found else 0
+            ),
+        )
         status = str(local.get("status") or result.solver_outcome or "unknown")
         history.append(
             AdaptiveOperatorAttempt(

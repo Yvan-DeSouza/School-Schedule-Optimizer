@@ -300,6 +300,135 @@ branch revalidation, and complete-incumbent retention on a practical screen;
 target-scale policy promotion still requires repeated matched trials and
 resource-aware comparison.
 
+## Supervised v2 adaptive-promotion study (2026-08-27)
+
+Study `adaptive-promotion-v2-supervised-20260827` was opened to characterize
+the current diagnostic policies under a true parent-side process boundary.
+It used only the detached mixed-grade v2 benchmark with input fingerprint
+`c07c77d0aa077a3e72240f27644d86b8a1a4faecb2f72a900aacc3fcb792d28a` and the
+validated baseline source fingerprint
+`d5036a44e71d5a3b2a94eebe51d645bb4034179a0dd29537492ea81feda2e900`.
+The source facts remained 1,400 students, 10,760 requests, 10,945 required
+groups, 10,635 assignments, zero unmet required requests, and 310 special
+commitments. The baseline v2 substantive value was `37,596`.
+
+The historical student-pressure branch with fingerprint
+`e147beadd23c31a068acaa928cae3fb2fe5262ad6af92e695f5fa2ccbbe8e386` was
+formally treated as unavailable and comparison-unrecoverable. It was not
+reconstructed or replaced with another branch. New student-pressure branch
+generation attempts were bounded at 300 seconds and 1,800 seconds after
+resource-guard qualification. They produced no complete validated strict
+improvement: the first 300-second attempt reached candidate extraction before the
+hard wall, while the longer attempts were terminated during preparation or
+before a worker payload was returned. The optional utilization-only branch
+attempt likewise produced no complete validated branch. Two additional
+300-second qualification runs retained bounded worker phase history and
+observed repeated CP-SAT, extraction, full-model validation, and candidate-
+processing phases, but no strict substantive improvement was adopted. A final
+qualification run reached candidate validation before its hard wall; no
+immediate branch was written because no adopted candidate was observed.
+An independent `student_repair_r8_only` control then ran the live
+`targeted_r8_s2` family for the full 1,800-second supervised wall. It observed
+46 bounded attempts and repeated model construction, CP-SAT, and validation;
+the final observed neighborhood probes were `infeasible`, but the outer policy
+was hard-wall terminated before returning a complete policy payload. It
+produced no strict adopted improvement or branch. That local infeasibility
+evidence is not a proof of global infeasibility.
+
+Three matched long baseline cells were then run from the immutable baseline
+state, each with eight workers, the balanced profile, and an 1,800-second
+parent-side hard wall. Adaptive terminated at 1,800.207 seconds with the
+worker last observed in CP-SAT; stateless-role terminated at 1,800.113 seconds
+with the worker last observed in model construction; fixed-cycle terminated
+at 1,800.198 seconds with the worker last observed in CP-SAT. None returned a
+worker payload or adopted an improvement. Every cell retained the validated
+`37,596` incumbent with 10,635 assignments and zero unmet requests, and every
+worker tree was descendant-clean after supervision. These are unresolved
+operational observations, not evidence that the baseline is infeasible or
+that any policy is superior.
+
+An adaptive baseline repeat with immediate branch persistence did produce a
+complete, full-model-validated strict improvement before parent termination.
+The detached branch is `adaptive-derived.json.gz`, with branch id
+`supervised-adaptive-balanced-derived-iteration-12`, source fingerprint
+`f2e945f268314542f37667775a15be46d3db2a6aaa75f47142ac7ca5d27b7631`, and
+substantive value `37,128` (from `37,596`). It retained `10,635` assignments,
+zero unmet required requests, and all `310` special commitments. The parent
+revalidated the branch against the current DTO and full model before exposing
+it. The canonical benchmark and historical lineages remained unchanged.
+
+Matched derived-state adaptive, stateless-role, and fixed-cycle cells were
+then launched from that exact branch. All three retained the complete,
+full-model-validated `37,128` incumbent and returned no authoritative adopted
+candidate before their bounded wall. The adaptive and stateless cells ended at
+approximately `1,800` seconds. The fixed-cycle cell reached the same bounded
+search boundary; its parent reported `7,609.98` seconds only because the host
+entered sleep during the run, as confirmed by Windows power events. This is
+not solver-quality evidence and does not indicate a supervision defect. A
+matched R2 follow-on was then run from the derived branch: the first attempt
+was resource-guard terminated at `140.02` seconds during a transient memory
+dip, and a clean retry ran six observed R2 attempts for `3,600.27` seconds.
+It found no validated improvement and retained `37,128`.
+
+The derived adaptive worker's bounded phase history did observe three
+complete, full-model-validated/adopted candidates at `37,002`, `36,990`, and
+`36,984`, selected respectively through targeted utilization `R32/S6`, grade
+`G12`, and targeted utilization `R64/S6`. The parent process did not return an
+authoritative policy payload and no durable branch was emitted for those
+candidates, so they are retained as non-authoritative worker observations only;
+the externally retained derived incumbent remains `37,128`.
+
+The observed adaptive quality curve for that worker was:
+
+| Cumulative worker time | Operator | Best observed substantive |
+| ---: | --- | ---: |
+| start | derived incumbent | 37,128 |
+| 1,297.83 s | targeted utilization R32/S6 | 37,002 |
+| 1,487.45 s | grade-bounded G12 | 36,990 |
+| 1,748.68 s | targeted utilization R64/S6 | 36,984 |
+
+These values are worker-phase observations only; they are not promoted
+branches because the parent payload was unavailable.
+
+A separate R2 follow-on from the stronger immediately persisted stateless branch
+at `37,098` was also run. It was resource-guard terminated at `1,905.04`
+seconds during CP-SAT when available memory fell to `809,594,880` bytes below
+the 1 GiB study floor. It found no candidate and retained the complete
+`37,098` incumbent; this is bounded resource evidence, not an R2 infeasibility
+proof.
+
+An additional fixed-cycle follow-up from that same `37,098` branch kept the
+1,800-second policy budget but allowed a separate 2,100-second parent wall for
+finalization. It was stopped during preflight because available memory was
+`983,846,912` bytes, below the 1 GiB safety floor; no model or solver phase ran.
+This is a resource-availability observation only.
+
+The repeat cells also used immediate worker persistence. The adaptive repeat
+produced a complete, full-model-validated detached branch at `37,116`, and
+the stateless-role repeat produced one at `37,098`, although neither parent
+returned an authoritative policy payload before termination. The fixed-cycle
+repeat was resource-guard terminated at `1,610.97` seconds when available
+memory fell to `1,049,546,752` bytes against the 1 GiB study floor. The
+stateless repeat was resource-guard terminated at `1,133.89` seconds during
+candidate validation when available memory measured `1,048,657,920` bytes.
+All worker trees were cleaned up. These branch artifacts strengthen the
+observed ability of adaptive and stateless policies to find improvements, but
+the incomplete fixed/stateless parent runs and lack of matched R2 follow-ons
+from the new branches mean that policy ranking and downstream-basin behavior
+remain unresolved.
+
+The study therefore establishes a valid new derived state and exercises the
+derived controls, but it does not establish adaptive-promotion readiness,
+policy ranking, or downstream-basin behavior. Its durable manifest and result
+artifacts are retained in
+`benchmarks/student_assignment/adaptive-promotion-v2-supervised-20260827/`;
+the next valid study must obtain clean, comparable derived-state policy-cell
+outcomes and matched downstream behavior before stronger policy ranking; an
+immediately persisted branch is useful evidence but does not replace those
+comparisons. The supervisor
+retains bounded phase history and immediate diagnostic branch persistence;
+neither mechanism changes ordinary production scheduling.
+
 ## Initial calibration evidence
 
 The matched diagnostic controls are defined by policy selection, not by a
@@ -567,7 +696,8 @@ derived student-repair state, and neither is promotion-ready.
 
 The detached calibration runner now has an optional pure-engine parent
 supervisor. It launches one JSON-producing worker, clears stale output before
-launch, records the worker's last phase and process-tree resource facts, and
+launch, records bounded phase history—including the selected role/operator and
+its factual policy reasons/signals—plus process-tree resource facts, and
 terminates the worker tree at a hard wall or configured resource guard. A
 terminated worker never contributes a candidate; the already validated
 starting incumbent is retained and the execution status is reported as an

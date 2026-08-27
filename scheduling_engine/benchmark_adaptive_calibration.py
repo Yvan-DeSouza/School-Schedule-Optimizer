@@ -66,6 +66,14 @@ def _source_decisions_from_result(result):
     )
 
 
+def _tuple_tree(value):
+    """Normalize JSON-decoded source-decision trees for branch writing."""
+
+    if isinstance(value, (list, tuple)):
+        return tuple(_tuple_tree(item) for item in value)
+    return value
+
+
 def _prepare_generated_incumbent(
     data,
     *,
@@ -172,6 +180,21 @@ def _write_worker_phase(path, phase, started, **facts):
     }
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
+    # Keep a bounded breadcrumb history in addition to the latest phase.  A
+    # hard-wall termination can happen between two callbacks, so the latest
+    # phase alone is insufficient to distinguish a slow model-build substep
+    # from a slow native solve.  This is observational telemetry only and is
+    # intentionally capped so status writes cannot grow with session length.
+    phase_history = []
+    if path.exists():
+        try:
+            previous = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(previous, dict):
+                phase_history = list(previous.get("phase_history") or ())
+        except (OSError, ValueError, TypeError):
+            phase_history = []
+    phase_history.append(dict(payload))
+    payload["phase_history"] = phase_history[-256:]
     temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
     temporary.write_text(
         json.dumps(payload, sort_keys=True, separators=(",", ":")),
@@ -244,11 +267,6 @@ def _write_prepared_incumbent(path, *, data, branch, result):
 
 def _read_prepared_incumbent(path, *, data, branch):
     """Rehydrate facts already validated by the supervising parent."""
-
-    def _tuple_tree(value):
-        if isinstance(value, (list, tuple)):
-            return tuple(_tuple_tree(item) for item in value)
-        return value
 
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
     if payload.get("schema") != "student_assignment_calibration_prepared_incumbent_v1":
@@ -368,14 +386,110 @@ def _write_validated_supervised_branch(
     return payload["derived_branch"]
 
 
+def _write_immediate_worker_branch(
+    path,
+    *,
+    data,
+    parent_branch,
+    facts,
+    policy,
+    profile,
+):
+    """Persist a worker-validated improvement before policy finalization.
+
+    A supervised worker may be stopped after a candidate passes the existing
+    full-model validator but before the outer adaptive policy returns its
+    final JSON record.  The branch is diagnostic-only and remains subject to
+    parent-side revalidation before reuse; writing it here prevents a valid
+    intermediate state from disappearing at the process boundary.
+    """
+
+    if not path or not facts.get("adopted"):
+        return None
+    if not facts.get("candidate_complete") or not facts.get("candidate_validated"):
+        return None
+    raw_decisions = facts.get("candidate_source_decisions") or ()
+    if not raw_decisions:
+        return None
+    source_decisions = tuple(
+        (_tuple_tree(item[0]), _tuple_tree(item[1]))
+        for item in raw_decisions
+    )
+    branch_path = Path(path)
+    payload = write_diagnostic_branch_checkpoint(
+        branch_path,
+        data=data,
+        source_decisions=source_decisions,
+        parent_source_decision_fingerprint=parent_branch[
+            "source_decision_fingerprint"
+        ],
+        branch_id=(
+            f"supervised-{policy}-{profile}-derived-"
+            f"iteration-{int(facts.get('iteration', 0) or 0)}"
+        ),
+        provenance={
+            "runner": "benchmark_adaptive_calibration_supervisor",
+            "policy": policy,
+            "profile": profile,
+            "parent_source_decision_fingerprint": parent_branch[
+                "source_decision_fingerprint"
+            ],
+            "immediate_worker_persistence": True,
+            "candidate_processing_elapsed_seconds": facts.get(
+                "elapsed_seconds"
+            ),
+        },
+        objective_vector=tuple(facts.get("candidate_objective_vector") or ()),
+        substantive_components=dict(facts.get("candidate_components") or {}),
+        validation={
+            "full_model_validation": True,
+            "complete": True,
+            "assignment_count": facts.get("candidate_assignment_count"),
+            "unmet_request_count": facts.get("candidate_unmet_count", 0),
+            "special_commitment_count": facts.get(
+                "candidate_special_commitment_count", 0
+            ),
+        },
+    )
+    return {
+        "path": str(branch_path),
+        "source_fingerprint": payload["source_decision_fingerprint"],
+        "parent_source_fingerprint": parent_branch[
+            "source_decision_fingerprint"
+        ],
+        "full_model_validated": True,
+        "immediate_worker_persistence": True,
+        "iteration": int(facts.get("iteration", 0) or 0),
+    }
+
+
 def _run_supervised_worker(args):
     """Execute one prepared calibration branch inside the isolated worker."""
 
     started = perf_counter()
     phase_timings = {}
 
+    branch = None
+    immediate_branch = None
+
     def _worker_phase_callback(phase, event="completed", **facts):
         """Persist the latest engine phase for hard-stop diagnosis."""
+
+        nonlocal immediate_branch
+        if phase == "candidate_processing" and event == "completed":
+            try:
+                immediate_branch = _write_immediate_worker_branch(
+                    getattr(args, "validated_branch_output", None),
+                    data=data,
+                    parent_branch=branch,
+                    facts=facts,
+                    policy=args.policy,
+                    profile=args.profile,
+                ) or immediate_branch
+            except (OSError, ValueError, TypeError, KeyError):
+                # Branch persistence is diagnostic evidence.  It must never
+                # change the solver's candidate or validation behavior.
+                pass
 
         _write_worker_phase(
             args.worker_status,
@@ -460,6 +574,8 @@ def _run_supervised_worker(args):
     payload["final_source_decision_fingerprint"] = source_decision_fingerprint(
         trial.source_decisions
     )
+    if immediate_branch is not None:
+        payload["immediate_worker_branch"] = immediate_branch
     payload["final_objective_vector"] = list(
         trial.record.final_objective_vector
     )
@@ -695,6 +811,11 @@ def run_supervised_calibration_trial(
         ) as worker_directory:
             worker_output = Path(worker_directory) / "result.json"
             worker_status = Path(worker_directory) / "status.json"
+            if validated_branch_output:
+                # A caller may reuse a diagnostic output path.  Never mistake
+                # a branch from an earlier process for an improvement from
+                # this trial.
+                Path(validated_branch_output).unlink(missing_ok=True)
             command = [
                 sys.executable,
                 "-m",
@@ -723,6 +844,13 @@ def run_supervised_calibration_trial(
                 "--workers",
                 str(int(worker_count)),
             ]
+            if validated_branch_output:
+                command.extend(
+                    [
+                        "--validated-branch-output",
+                        str(Path(validated_branch_output).resolve()),
+                    ]
+                )
             _write_prepared_incumbent(
                 Path(worker_directory) / "prepared-incumbent.json",
                 data=data,
@@ -784,6 +912,55 @@ def run_supervised_calibration_trial(
                     supervision=supervision,
                     preparation_elapsed_seconds=parent_preparation_elapsed,
                 )
+            if (
+                validated_branch_output
+                and Path(validated_branch_output).exists()
+                and not payload.get("derived_branch")
+            ):
+                # The worker can persist a validated improvement before the
+                # outer policy returns.  Revalidate it in the parent before
+                # exposing it as reusable study state.
+                try:
+                    worker_branch = read_diagnostic_branch_checkpoint(
+                        validated_branch_output,
+                        data=data,
+                    )
+                    branch_validation = validate_diagnostic_branch_checkpoint(
+                        validated_branch_output,
+                        data=data,
+                        time_limit_seconds=max(30.0, float(data.time_limit_seconds)),
+                        worker_count=1,
+                    )
+                    if (
+                        branch_validation["validation"].get(
+                            "full_model_validation"
+                        )
+                        and branch_validation["validation"].get("complete")
+                        and int(
+                            branch_validation["validation"].get(
+                                "unmet_request_count", 0
+                            )
+                            or 0
+                        )
+                        == 0
+                    ):
+                        payload["derived_branch"] = {
+                            "path": str(Path(validated_branch_output)),
+                            "source_fingerprint": worker_branch[
+                                "source_decision_fingerprint"
+                            ],
+                            "parent_source_fingerprint": branch[
+                                "source_decision_fingerprint"
+                            ],
+                            "full_model_validated": True,
+                            "parent_revalidated_after_worker": True,
+                            "validation": branch_validation["validation"],
+                        }
+                except (OSError, ValueError, TypeError, KeyError):
+                    # A partially written or invalid artifact is never
+                    # promoted.  The normal termination payload remains the
+                    # authoritative result.
+                    pass
             _write_validated_supervised_branch(
                 validated_branch_output,
                 data=data,
@@ -966,6 +1143,7 @@ def main(argv=None):  # pragma: no cover - clean-process experiment surface
             "stateless_role",
             "r2_only",
             "student_repair_only",
+            "student_repair_r8_only",
             "utilization_only",
             "fixed_cycle",
         ),

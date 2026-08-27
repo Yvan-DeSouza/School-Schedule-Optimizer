@@ -1280,3 +1280,114 @@ characterization of the implemented operator portfolio. Adaptive allocation
 remains a separate future study and is not production-wired; grade-bounded
 search is implemented diagnostically and is covered by the operator
 characterization evidence catalog. Full-school global search remains deferred.
+
+### Supervised Objective Semantics v2 promotion study (2026-08-27)
+
+Study `adaptive-promotion-v2-supervised-20260827` used the immutable detached
+mixed-grade v2 input (`c07c77d0aa077a3e72240f27644d86b8a1a4faecb2f72a900aacc3fcb792d28a`)
+and the validated baseline source state
+(`d5036a44e71d5a3b2a94eebe51d645bb4034179a0dd29537492ea81feda2e900`). Its
+baseline was `37,596` with 1,400 students, 10,760 requests, 10,945 required
+groups, 10,635 assignments, zero unmet required requests, and 310 special
+commitments.
+
+The unavailable historical student-pressure branch
+`e147beadd23c31a068acaa928cae3fb2fe5262ad6af92e695f5fa2ccbbe8e386` was not
+reconstructed or replaced. New student-pressure and optional utilization
+branch-generation cells produced no complete validated derived branch. Three
+additional 300-second qualification runs retained bounded worker phase
+history and observed repeated CP-SAT/extraction/validation cycles, but no
+strict substantive improvement was adopted and no immediate branch artifact
+was written. The
+matched adaptive, stateless-role, and fixed-cycle baseline cells each used
+eight workers and an 1,800-second parent-side hard wall; each terminated at
+that bound without a returned worker payload or adopted candidate and retained
+the complete validated `37,596` baseline. Cleanup was descendant-clean in all
+cases. The detailed phase and resource facts are recorded in the study
+manifest and result artifacts under
+`benchmarks/student_assignment/adaptive-promotion-v2-supervised-20260827/`.
+
+An adaptive baseline repeat with immediate branch persistence did produce a
+complete, full-model-validated strict improvement before parent termination.
+The detached branch is `adaptive-derived.json.gz`, with branch id
+`supervised-adaptive-balanced-derived-iteration-12`, source fingerprint
+`f2e945f268314542f37667775a15be46d3db2a6aaa75f47142ac7ca5d27b7631`, and
+substantive value `37,128` (from `37,596`). It retained `10,635` assignments,
+zero unmet required requests, and all `310` special commitments. The parent
+revalidated the branch against the current DTO and full model before exposing
+it. The canonical benchmark and historical lineages remained unchanged.
+
+Matched derived-state adaptive, stateless-role, and fixed-cycle cells were
+then launched from that exact branch. All three retained the complete,
+full-model-validated `37,128` incumbent and returned no authoritative adopted
+candidate before their bounded wall. The adaptive and stateless cells ended at
+approximately `1,800` seconds. The fixed-cycle cell reached the same bounded
+search boundary; its parent reported `7,609.98` seconds only because the host
+entered sleep during the run, as confirmed by Windows power events. This is
+not solver-quality evidence and does not indicate a supervision defect. A
+matched R2 follow-on was then run from the derived branch: the first attempt
+was resource-guard terminated at `140.02` seconds during a transient memory
+dip, and a clean retry ran six observed R2 attempts for `3,600.27` seconds.
+It found no validated improvement and retained `37,128`.
+
+The derived adaptive worker's bounded phase history did observe three
+complete, full-model-validated/adopted candidates at `37,002`, `36,990`, and
+`36,984`, selected respectively through targeted utilization `R32/S6`, grade
+`G12`, and targeted utilization `R64/S6`. The parent process did not return an
+authoritative policy payload and no durable branch was emitted for those
+candidates, so they are retained as non-authoritative worker observations only;
+the externally retained derived incumbent remains `37,128`.
+
+The observed adaptive quality curve for that worker was:
+
+| Cumulative worker time | Operator | Best observed substantive |
+| ---: | --- | ---: |
+| start | derived incumbent | 37,128 |
+| 1,297.83 s | targeted utilization R32/S6 | 37,002 |
+| 1,487.45 s | grade-bounded G12 | 36,990 |
+| 1,748.68 s | targeted utilization R64/S6 | 36,984 |
+
+These values are worker-phase observations only; they are not promoted
+branches because the parent payload was unavailable.
+
+A separate R2 follow-on from the stronger immediately persisted stateless branch
+at `37,098` was also run. It was resource-guard terminated at `1,905.04`
+seconds during CP-SAT when available memory fell to `809,594,880` bytes below
+the 1 GiB study floor. It found no candidate and retained the complete
+`37,098` incumbent; this is bounded resource evidence, not an R2 infeasibility
+proof.
+
+An additional fixed-cycle follow-up from that same `37,098` branch kept the
+1,800-second policy budget but allowed a separate 2,100-second parent wall for
+finalization. It was stopped during preflight because available memory was
+`983,846,912` bytes, below the 1 GiB safety floor; no model or solver phase ran.
+This is a resource-availability observation only.
+
+The repeat cells also used immediate worker persistence. The adaptive repeat
+produced a complete, full-model-validated detached branch at `37,116`, and
+the stateless-role repeat produced one at `37,098`, although neither parent
+returned an authoritative policy payload before termination. The fixed-cycle
+repeat was resource-guard terminated at `1,610.97` seconds when available
+memory fell to `1,049,546,752` bytes against the 1 GiB study floor. The
+stateless repeat was resource-guard terminated at `1,133.89` seconds during
+candidate validation when available memory measured `1,048,657,920` bytes.
+All worker trees were cleaned up. These branch artifacts strengthen the
+observed ability of adaptive and stateless policies to find improvements, but
+the incomplete fixed/stateless parent runs and lack of matched R2 follow-ons
+from the new branches mean that policy ranking and downstream-basin behavior
+remain unresolved.
+
+This is an operationally bounded, incomplete promotion study. It does not
+prove a policy ranking, derived-state quality, or adaptive production
+readiness. It does not classify `UNKNOWN` or a hard
+wall as infeasibility. The current v2 quality/search evidence remains
+diagnostic and detached from ordinary scheduling and approval. The supervisor
+records bounded phase history and supports immediate diagnostic persistence of
+a complete validated adopted candidate; that capability produced the detached
+branch documented above, but it is not itself a production promotion decision.
+An independent `student_repair_r8_only` control also ran the live
+`targeted_r8_s2` family for the full 1,800-second supervised wall. It observed
+46 bounded attempts and no strict adopted improvement or branch. Its final
+observed neighborhood probes were `infeasible`, but the outer policy was
+terminated before returning its complete payload; this is bounded local
+evidence, not a global infeasibility result.
