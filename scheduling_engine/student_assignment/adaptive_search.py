@@ -265,6 +265,10 @@ class AdaptiveSessionRecord:
     operator_execution_seconds: float = 0.0
     finalization_seconds: float = 0.0
     external_overrun_seconds: float = 0.0
+    # Optional diagnostic facts.  Keeping this field defaulted preserves
+    # compatibility with existing in-memory records and historical JSON while
+    # allowing supervised trials to localize setup before CP-SAT is reached.
+    phase_timings: dict = field(default_factory=dict)
 
     def to_dict(self):
         return asdict(self)

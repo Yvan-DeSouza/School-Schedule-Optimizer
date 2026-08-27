@@ -135,6 +135,29 @@ the same as Celery concurrency. Process-tree metrics help validate that
 native solver child processes and worker recycling do not create unexpected
 resident-memory accumulation; they do not authorize increasing concurrency.
 
+Offline calibration experiments may additionally run inside the pure-engine
+`calibration_supervisor` boundary. The parent process owns a hard wall-clock
+deadline, optional process-tree RSS and system-available-memory guards, and
+best-effort process-tree cleanup. A stopped worker cannot publish an in-flight
+candidate: the caller retains the previously complete, full-model-validated
+incumbent and records the termination status separately. This boundary is
+diagnostic infrastructure only; it does not interrupt ordinary scheduling,
+change CP-SAT limits, or make telemetry authoritative over a result.
+
+The supervised JSON protocol distinguishes normal completion, hard-deadline
+termination, resource-guard termination, worker crashes, protocol failures,
+and parent cancellation. Worker phase files are operational breadcrumbs rather
+than scheduling evidence. Output paths are cleared before each launch so a
+stale successful payload cannot be mistaken for the current trial.
+
+For calibration workers, the parent’s full-model branch validation is the
+authoritative check and is performed once per trial. A prepared-incumbent JSON
+artifact transfers only the validated result facts needed by the isolated
+worker; the worker checks its input/source fingerprints before rehydrating and
+does not run a duplicate CP-SAT validation. The worker status file records the
+last phase, including model construction and target preparation, so a hard
+stop before CP-SAT is distinguishable from a solver timeout.
+
 ## Testing requirements
 
 Tests assert lifecycle behavior, JSON compatibility, nonnegative numeric

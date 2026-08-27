@@ -965,6 +965,15 @@ endpoint is globally optimal.
 The fresh trials used the mature checkpoint directly and did not run Stage 1.
 No canonical checkpoint or frontier was written by either process.
 
+A later supervised clean-process recheck used the same frozen semantic
+incumbent and the corrected mature-checkpoint path. It was externally bounded
+at `600` seconds with no candidate output before the hard deadline; process-tree
+cleanup completed successfully and the `65,025` incumbent was retained. This
+is an unresolved operational observation, not an additional candidate result,
+and is kept separate from the accepted scorecard above. It reinforces that
+the older/current-tree endpoint discrepancy must not be converted into a
+global-optimality or production-promotion claim.
+
 ### Matched R4/S2 versus R8/S2 scorecard
 
 The historical R4/S2 comparison consists of the original run plus two clean

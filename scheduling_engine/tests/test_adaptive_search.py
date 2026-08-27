@@ -188,6 +188,42 @@ def test_grade_bounded_operator_uses_actual_grade_without_radius_or_student_cap(
     assert facts["grade_opportunity"]["student_ids"] == (1,)
 
 
+def test_operator_session_emits_live_phase_breadcrumbs_without_changing_result():
+    data, source = _multi_attempt_operator_fixture((1, 2))
+    events = []
+
+    result = run_student_assignment_operator_session_diagnostic(
+        data,
+        operator_family="targeted_r4_s2",
+        target_policy="fixed",
+        selected_student_ids=(1, 2),
+        initial_source_decisions=source,
+        total_time_limit_seconds=8,
+        max_attempts=1,
+        per_attempt_time_limit_seconds=2,
+        worker_count=1,
+        hard_feasibility_validation_time_limit_seconds=2,
+        hard_feasibility_validation_worker_count=1,
+        collect_resource_telemetry=False,
+        phase_callback=lambda phase, **facts: events.append((phase, facts)),
+    )
+
+    assert result.status == "complete"
+    assert not result.unmet_requests
+    phases = {phase for phase, _facts in events}
+    assert {
+        "student_assignment_input",
+        "model_construction",
+        "mature_seed_materialization",
+        "mature_seed_validation",
+        "operator_static_setup",
+        "target_preparation",
+        "attempt_preparation",
+        "cp_sat",
+        "candidate_validation",
+    }.issubset(phases)
+
+
 def test_grade_opportunity_facts_cover_all_supported_grades_and_locks():
     original_data, source = _multi_attempt_operator_fixture((1, 2))
     data = replace(original_data, student_grades=((1, 9), (2, 12)))
@@ -634,6 +670,13 @@ def test_adaptive_runner_adopts_only_validated_strict_improvement(monkeypatch):
     assert result.record.attempts[0]["adopted"] is True
     assert result.source_decisions == (("a", 2),)
     assert result.record.final_assignment_count == 2
+    assert result.record.phase_timings["initial_quality_evaluation"] >= 0
+    assert result.record.phase_timings["target_preparation"] >= 0
+    assert result.record.phase_timings["policy_selection"] >= 0
+    assert result.record.phase_timings["operator_execution"] >= 0
+    assert result.record.phase_timings["candidate_processing"] >= 0
+    assert result.record.phase_timings["finalization"] >= 0
+    assert result.record.phase_timings["total"] >= 0
 
 
 def test_runner_executes_fixed_cycle_control_through_shared_operator_boundary(monkeypatch):

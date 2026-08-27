@@ -112,7 +112,8 @@ def _operator_result(data, spec, *, selected_student_ids, current_source_decisio
                     hard_feasibility_time_limit_seconds=None,
                     hard_feasibility_validation_time_limit_seconds=None,
                     hard_feasibility_worker_count=None,
-                    hard_feasibility_validation_worker_count=None):
+                    hard_feasibility_validation_worker_count=None,
+                    phase_callback=None):
     # Every policy family uses the same reusable continuous-session boundary.
     # The policy spec describes the session granularity; the outer caller still
     # caps it by the remaining shared deadline.  This keeps multi-attempt
@@ -163,6 +164,7 @@ def _operator_result(data, spec, *, selected_student_ids, current_source_decisio
         ),
         collect_resource_telemetry=collect_resource_telemetry,
         capture_final_source_decisions=True,
+        phase_callback=phase_callback,
     )
 
 
@@ -185,6 +187,7 @@ def run_adaptive_local_search_diagnostic(
     session_id=None,
     selection_policy="adaptive",
     fixed_cycle=(),
+    phase_callback=None,
 ):
     """Run a diagnostic v2 operator session inside one shared wall-clock budget.
 
@@ -221,7 +224,35 @@ def run_adaptive_local_search_diagnostic(
     decisions = []
     current_result = initial_result
     initial_components = dict(current_result.objective_components or {})
+    phase_timings = {}
+
+    def _emit_phase(phase, event="completed", **facts):
+        """Publish optional live breadcrumbs without affecting the search."""
+
+        if phase_callback is None:
+            return
+        try:
+            phase_callback(str(phase), event=str(event), **facts)
+        except Exception:
+            # Calibration telemetry is observational. A broken status sink
+            # must never change candidate selection or solver behavior.
+            return
+
+    def _record_phase(name, phase_started):
+        elapsed = monotonic() - phase_started
+        phase_timings[name] = phase_timings.get(name, 0.0) + elapsed
+        _emit_phase(
+            name,
+            "completed",
+            elapsed_seconds=elapsed,
+            cumulative_seconds=phase_timings[name],
+        )
+        return elapsed
+
+    phase_started = monotonic()
+    _emit_phase("initial_quality_evaluation", "started")
     initial_quality = _quality_report(data, current_result)
+    _record_phase("initial_quality_evaluation", phase_started)
     current_value = _weighted_quality_value(initial_quality, current_result)
     iteration_limit = (
         max(1, int(max_iterations)) if max_iterations is not None else None
@@ -236,7 +267,20 @@ def run_adaptive_local_search_diagnostic(
             break
         elapsed = monotonic() - started
         remaining = max(0.0, configured_budget - elapsed)
+        phase_started = monotonic()
+        _emit_phase(
+            "policy_quality_evaluation",
+            "started",
+            iteration=len(history) + 1,
+        )
         quality = _quality_report(data, current_result)
+        _record_phase("policy_quality_evaluation", phase_started)
+        phase_started = monotonic()
+        _emit_phase(
+            "target_preparation",
+            "started",
+            iteration=len(history) + 1,
+        )
         ranked = rank_students_by_quality_pressure(data, quality)
         state = build_adaptive_search_state(
             data,
@@ -252,7 +296,13 @@ def run_adaptive_local_search_diagnostic(
                 or 0
             ),
         )
+        _record_phase("target_preparation", phase_started)
         selection_started = monotonic()
+        _emit_phase(
+            "policy_selection",
+            "started",
+            iteration=len(history) + 1,
+        )
         if selection_policy == "adaptive":
             decision = choose_adaptive_operator(
                 state,
@@ -271,7 +321,18 @@ def run_adaptive_local_search_diagnostic(
                 fixed_cycle,
                 ranked_students=ranked,
             )
-        policy_selection_seconds += monotonic() - selection_started
+        selection_elapsed = monotonic() - selection_started
+        policy_selection_seconds += selection_elapsed
+        phase_timings["policy_selection"] = (
+            phase_timings.get("policy_selection", 0.0) + selection_elapsed
+        )
+        _emit_phase(
+            "policy_selection",
+            "completed",
+            elapsed_seconds=selection_elapsed,
+            cumulative_seconds=phase_timings["policy_selection"],
+            iteration=len(history) + 1,
+        )
         if decision is None:
             stopping_reason = "no_eligible_operator"
             break
@@ -308,6 +369,12 @@ def run_adaptive_local_search_diagnostic(
         )
         decisions.append(decision_payload)
         operation_started = monotonic()
+        _emit_phase(
+            "operator_execution",
+            "started",
+            iteration=len(history) + 1,
+            operator=decision.operator.name,
+        )
         validation_error = None
         try:
             result = _operator_result(
@@ -327,6 +394,7 @@ def run_adaptive_local_search_diagnostic(
                 hard_feasibility_validation_worker_count=(
                     hard_feasibility_validation_worker_count
                 ),
+                phase_callback=phase_callback,
             )
         except ValueError as exc:
             # An operator may be given too little of the shared budget to
@@ -337,6 +405,23 @@ def run_adaptive_local_search_diagnostic(
             validation_error = str(exc)
         operation_elapsed = monotonic() - operation_started
         operator_execution_seconds += operation_elapsed
+        phase_timings["operator_execution"] = (
+            phase_timings.get("operator_execution", 0.0) + operation_elapsed
+        )
+        _emit_phase(
+            "operator_execution",
+            "completed",
+            elapsed_seconds=operation_elapsed,
+            cumulative_seconds=phase_timings["operator_execution"],
+            iteration=len(history) + 1,
+            operator=decision.operator.name,
+        )
+        phase_started = monotonic()
+        _emit_phase(
+            "candidate_processing",
+            "started",
+            iteration=len(history) + 1,
+        )
         local = dict((result.optimization_facts or {}).get("stage_2_local_bootstrap") or {})
         if validation_error is not None:
             local.update({
@@ -366,6 +451,7 @@ def run_adaptive_local_search_diagnostic(
             current_source_decisions = candidate_source
             current_value = candidate_value
             stopping_reason = "validated_improvement_adopted"
+        _record_phase("candidate_processing", phase_started)
         status = str(local.get("status") or result.solver_outcome or "unknown")
         history.append(
             AdaptiveOperatorAttempt(
@@ -422,10 +508,20 @@ def run_adaptive_local_search_diagnostic(
     if stopping_reason == "validated_improvement_adopted" and monotonic() - started >= configured_budget:
         stopping_reason = "shared_budget_exhausted"
     finalization_started = monotonic()
+    _emit_phase("finalization", "started")
     final_components = dict(current_result.objective_components or {})
     final_quality = _quality_report(data, current_result)
     finalization_seconds = monotonic() - finalization_started
+    phase_timings["finalization"] = finalization_seconds
+    _emit_phase(
+        "finalization",
+        "completed",
+        elapsed_seconds=finalization_seconds,
+        cumulative_seconds=finalization_seconds,
+    )
     elapsed_seconds = monotonic() - started
+    phase_timings["total"] = elapsed_seconds
+    _emit_phase("total", "completed", elapsed_seconds=elapsed_seconds)
     record = AdaptiveSessionRecord(
         session_id=str(session_id or uuid4()),
         policy_version=state.policy_version if "state" in locals() else "v2-local-allocator-diagnostic-2",
@@ -464,6 +560,7 @@ def run_adaptive_local_search_diagnostic(
             0.0,
             elapsed_seconds - configured_budget,
         ),
+        phase_timings=dict(phase_timings),
     )
     return AdaptiveSessionResult(
         record=record,

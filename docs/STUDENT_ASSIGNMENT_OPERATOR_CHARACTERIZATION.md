@@ -549,13 +549,68 @@ directional evidence that stateful escalation and return-to-local behavior can
 find additional validated improvements, but it is not a promotion result.
 The matched stateless control exceeded its nominal 1,800-second budget by
 approximately 7,562 seconds before its final attempt reached CP-SAT. Because
-the current diagnostic wrapper has no hard outer process deadline around model
-construction/setup, that cell cannot be compared fairly with the bounded
-adaptive and fixed-cycle cells.
+the historical diagnostic wrapper had no hard outer process deadline around
+model construction/setup, that cell cannot be compared fairly with the
+bounded adaptive and fixed-cycle cells. The detached calibration runner now
+provides a separate supervised boundary with a hard wall and optional resource
+guards; that later boundary does not retroactively make this historical cell
+valid quality evidence.
 
 The target-scale study is consequently **inconclusive**. Fixed cycle is the
 strongest simple control observed in the baseline screen, adaptive remains a
-research candidate, and ordinary scheduling remains unchanged. Before more
-expensive target-scale policy or finalist-repeat studies, the diagnostic
-runner needs a reliable outer wall-clock/resource boundary and the comparison
-must use semantically identical detached states under that boundary.
+research candidate, and ordinary scheduling remains unchanged. A subsequent
+supervised target-scale recheck reached its `600`-second hard deadline without
+a candidate and retained the complete starting incumbent, so the new boundary
+improves operational safety but does not yet establish a promotion result.
+Future comparisons must use semantically identical detached states under that
+boundary.
+
+### Supervised-boundary qualification results (2026-08-26)
+
+The current detached target input was exercised again under the supervised
+`adaptive-calibration-v2` boundary. The parent-side preparation now reports
+benchmark loading, temporary branch materialization, and authoritative branch
+validation separately; the worker rehydrates a prepared, fingerprint-checked
+incumbent rather than repeating that validation. On the exact target input,
+parent preparation was approximately `55.9` seconds for the adaptive trial
+(`52.9` seconds of branch validation) and `58.6` seconds for the fixed-cycle
+trial (`56.6` seconds of branch validation). Both workers exited normally and
+cleanly, but their short `60`-second policy windows were consumed by operator
+setup before a CP-SAT attempt was reached. Both retained the complete
+`10,635`-assignment, zero-unmet incumbent at `37,596`.
+
+Short hard-wall smoke trials for adaptive and stateless-role execution used a
+`15`-second wall and a `2`-second cleanup grace. They terminated at
+approximately `15.14` and `15.30` seconds respectively, with the last live
+breadcrumb in `model_construction`, no solver attempt, no candidate accepted,
+the validated starting source fingerprint retained, and no descendant
+processes remaining. This proves operational containment and incumbent safety;
+it is not evidence about policy quality.
+
+The historical student-repair branch fingerprint
+`e147beadd23c31a068acaa928cae3fb2fe5262ad6af92e695f5fa2ccbbe8e386` is not
+present in the current checkout. A fresh `student_repair_only` regeneration
+attempt from the frozen baseline used three targeted R4/S2 attempts under a
+`300`-second policy window. CP-SAT was reached and the first two attempts were
+fully validated, but no strict validated improvement was found; the final
+attempt ended in a validation error after the shared policy budget was
+consumed. Therefore the historical derived-state adaptive/fixed/stateless
+comparison has not been recovered and must not be replaced by the baseline or
+by this non-equivalent regeneration attempt.
+
+The supervised boundary is consequently operationally qualified for bounded
+experiments, but the promotion-readiness study remains incomplete: the first
+fresh target adaptive-versus-fixed screen reached CP-SAT without finding a
+strict improvement, and no fair stateless derived-state comparison exists.
+
+A later matched fresh baseline screen used a `300`-second policy window, an
+external `420`-second wall, eight workers, and the same canonical source
+fingerprint. Adaptive completed in approximately `341.4` seconds of policy
+time (`347.3` seconds worker time); fixed cycle completed in approximately
+`344.8` seconds of policy time (`352.7` seconds worker time). Adaptive reached
+three CP-SAT attempts and fixed cycle reached three; both produced complete
+fully validated trial outcomes but no strict substantive improvement, so both
+retained `37,596`, `10,635` assignments, zero unmet requests, and `310`
+special commitments. These are valid bounded search observations, not
+promotion results: the first two attempts were validated but non-improving and
+the final attempt in each trial ended with CP-SAT `UNKNOWN` before validation.

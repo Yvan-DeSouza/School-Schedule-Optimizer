@@ -8,6 +8,10 @@ from types import SimpleNamespace
 import pytest
 
 from scheduling_engine.dto import TimeSlotDTO
+import scheduling_engine.benchmark_adaptive_calibration as benchmark_calibration
+from scheduling_engine.benchmark_adaptive_calibration import (
+    _write_validated_supervised_branch,
+)
 import scheduling_engine.student_assignment.adaptive_runtime as adaptive_runtime
 from scheduling_engine.realistic_student_assignment_validation import (
     build_realistic_quality_tradeoff_fixture,
@@ -219,6 +223,93 @@ def test_diagnostic_branch_rejects_stored_unmet_requests(tmp_path):
         read_diagnostic_branch_checkpoint(path, data=data)
 
 
+def test_supervised_branch_output_requires_strict_complete_result(tmp_path):
+    data = _v2_data()
+    probe = run_substantive_soft_tier_probe(
+        data,
+        threshold=None,
+        time_limit_seconds=5,
+        worker_count=1,
+    )
+    parent_path = tmp_path / "parent.json.gz"
+    write_diagnostic_branch_checkpoint(
+        parent_path,
+        data=data,
+        source_decisions=probe.seed_source_decisions,
+        parent_source_decision_fingerprint="parent-fingerprint",
+        branch_id="parent",
+        provenance={},
+        objective_vector=probe.seed_objective_vector,
+        substantive_components=probe.seed_component_values,
+        validation={
+            "full_model_validation": True,
+            "complete": True,
+            "assignment_count": probe.seed_assignment_count,
+            "unmet_request_count": 0,
+            "special_commitment_count": 0,
+        },
+    )
+    parent = read_diagnostic_branch_checkpoint(parent_path, data=data)
+    source_decisions = [
+        [list(key), list(value)]
+        for key, value in probe.seed_source_decisions
+    ]
+    payload = {
+        "execution_status": "completed",
+        "candidate_complete": True,
+        "initial_substantive_value": 10,
+        "final_substantive_value": 9,
+        "final_source_decisions": source_decisions,
+        "final_objective_vector": [-1],
+        "final_components": {},
+        "final_assignment_count": probe.seed_assignment_count,
+        "final_unmet_count": 0,
+        "final_special_commitment_count": 0,
+    }
+
+    output_path = tmp_path / "derived.json.gz"
+    derived = _write_validated_supervised_branch(
+        output_path,
+        data=data,
+        parent_branch=parent,
+        payload=payload,
+        policy="student_repair_only",
+        profile="balanced",
+    )
+
+    assert output_path.exists()
+    assert derived["full_model_validated"] is True
+    loaded = read_diagnostic_branch_checkpoint(output_path, data=data)
+    assert loaded["parent_source_decision_fingerprint"] == parent[
+        "source_decision_fingerprint"
+    ]
+
+
+def test_supervised_branch_output_does_not_persist_non_improvement(tmp_path):
+    data = _v2_data()
+    output_path = tmp_path / "not-written.json.gz"
+    payload = {
+        "execution_status": "completed",
+        "candidate_complete": True,
+        "initial_substantive_value": 10,
+        "final_substantive_value": 10,
+        "final_source_decisions": (((1,), (1,)),),
+    }
+
+    assert (
+        _write_validated_supervised_branch(
+            output_path,
+            data=data,
+            parent_branch={"source_decision_fingerprint": "parent"},
+            payload=payload,
+            policy="student_repair_only",
+            profile="balanced",
+        )
+        is None
+    )
+    assert not output_path.exists()
+
+
 def test_diagnostic_branch_is_revalidated_by_the_current_full_model(tmp_path):
     data = _v2_data()
     probe = run_substantive_soft_tier_probe(
@@ -261,3 +352,83 @@ def test_session_override_profiles_are_bounded_and_include_grade_families():
     assert CALIBRATION_SESSION_OVERRIDES["r2"]["session_max_attempts"] == 5
     assert CALIBRATION_SESSION_OVERRIDES["targeted_r4_s2"]["session_max_attempts"] == 5
     assert CALIBRATION_SESSION_OVERRIDES["grade_bounded_g10"]["session_max_attempts"] == 1
+
+
+def test_supervised_preparation_elapsed_is_not_total_worker_lifetime(
+    monkeypatch, tmp_path
+):
+    """Parent preparation telemetry must stop when the worker is launched."""
+
+    data = _v2_data()
+    result = SimpleNamespace(
+        status="complete",
+        solver_outcome="feasible",
+        assignments=(),
+        unmet_requests=(),
+        commitment_assignments=(),
+        objective_components={},
+        optimization_facts={},
+    )
+    branch = {
+        "source_decision_fingerprint": "branch-fingerprint",
+        "source_decisions": (),
+    }
+    monkeypatch.setattr(
+        benchmark_calibration,
+        "read_durable_stage2_benchmark",
+        lambda _path: {"data": data, "manifest": {"stage1": {}}},
+    )
+    monkeypatch.setattr(
+        benchmark_calibration,
+        "read_diagnostic_branch_checkpoint",
+        lambda *args, **kwargs: branch,
+    )
+    monkeypatch.setattr(
+        benchmark_calibration,
+        "validate_diagnostic_branch_checkpoint",
+        lambda *args, **kwargs: {
+            "result": result,
+            "validation": {"elapsed_seconds": 0.01},
+        },
+    )
+
+    class FakeSupervision:
+        execution_status = benchmark_calibration.EXECUTION_COMPLETED
+        payload = {"timing": {}, "phase_timings": {}}
+        worker_pid = 123
+        worker_exit_code = 0
+        elapsed_seconds = 0.25
+        cleanup = {}
+
+        def to_dict(self):
+            return {"elapsed_seconds": self.elapsed_seconds}
+
+    monkeypatch.setattr(
+        benchmark_calibration,
+        "supervise_json_worker",
+        lambda *args, **kwargs: FakeSupervision(),
+    )
+    monkeypatch.setattr(
+        benchmark_calibration,
+        "run_matched_calibration_trial",
+        lambda *args, **kwargs: SimpleNamespace(
+            to_dict=lambda: {"timing": {}, "phase_timings": {}, "attempts": []},
+            source_decisions=(),
+            record=SimpleNamespace(final_objective_vector=()),
+        ),
+    )
+
+    payload = benchmark_calibration.run_supervised_calibration_trial(
+        policy="adaptive",
+        profile="balanced",
+        benchmark_directory=tmp_path / "benchmark",
+        branch_input=tmp_path / "branch.json.gz",
+        total_time_limit_seconds=1,
+        per_operator_time_limit_seconds=1,
+        worker_count=1,
+        hard_wall_seconds=1,
+    )
+
+    assert payload["preparation"]["elapsed_seconds"] == pytest.approx(
+        payload["parent_preparation_seconds"]
+    )

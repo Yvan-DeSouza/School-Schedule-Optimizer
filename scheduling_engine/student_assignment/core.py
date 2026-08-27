@@ -180,6 +180,19 @@ def _objective_values(solver, objectives):
     )
 
 
+def _notify_phase(phase_callback, phase, event="completed", **facts):
+    """Send optional diagnostic breadcrumbs without affecting the engine."""
+
+    if phase_callback is None:
+        return
+    try:
+        phase_callback(str(phase), event=str(event), **facts)
+    except Exception:
+        # The callback belongs to offline calibration infrastructure. A
+        # telemetry failure must never alter scheduling behavior.
+        return
+
+
 def _candidate_semester_from_occupancy(occupancy, semester_by_timeslot):
     """Return the semester represented by one commitment occupancy.
 
@@ -1129,6 +1142,8 @@ def run_student_assignment_operator_session_diagnostic(
     hard_feasibility_validation_worker_count=None,
     collect_resource_telemetry=True,
     capture_final_source_decisions=True,
+    timeline_max_events=128,
+    phase_callback=None,
 ):
     """Run one operator family continuously in one diagnostic engine call.
 
@@ -1207,6 +1222,7 @@ def run_student_assignment_operator_session_diagnostic(
         collect_incumbent_timeline=False,
         capture_final_source_decisions=capture_final_source_decisions,
         collect_resource_telemetry=config.collect_resource_telemetry,
+        phase_callback=phase_callback,
     )
 
 
@@ -1230,6 +1246,7 @@ def run_student_assignment_variable_neighborhood_diagnostic(
     max_changed_students=None,
     capture_final_source_decisions=False,
     collect_resource_telemetry=False,
+    phase_callback=None,
 ):
     """Run bounded R2/R4/R8 CP-SAT local descent for diagnostics only.
 
@@ -1262,6 +1279,14 @@ def run_student_assignment_variable_neighborhood_diagnostic(
         retain_incumbent_on_non_improvement=True,
         alternate_source_decisions=alternate_source_decisions,
         alternate_source_variable_values=alternate_source_variable_values,
+        # A supplied semantic incumbent is already the comparison starting
+        # point. Re-running the independent Stage 1 bootstrap here would spend
+        # the diagnostic budget rediscovering the checkpoint instead of
+        # measuring the requested neighborhood operator.
+        mature_checkpoint_only=bool(
+            alternate_source_decisions
+            or alternate_source_variable_values is not None
+        ),
         hard_feasibility_time_limit_seconds=hard_feasibility_time_limit_seconds,
         hard_feasibility_validation_time_limit_seconds=(
             hard_feasibility_validation_time_limit_seconds
@@ -1272,6 +1297,7 @@ def run_student_assignment_variable_neighborhood_diagnostic(
         timeline_max_events=timeline_max_events,
         capture_final_source_decisions=capture_final_source_decisions,
         collect_resource_telemetry=collect_resource_telemetry,
+        phase_callback=phase_callback,
     )
 
 
@@ -1449,6 +1475,7 @@ def _solve_student_assignment(
     optimization_worker_count=None,
     capture_final_source_decisions=False,
     collect_resource_telemetry=False,
+    phase_callback=None,
 ):
     # This monitor covers the complete diagnostic/engine operation, including
     # input validation, model construction, Stage 1, Stage 2, extraction, and
@@ -1459,6 +1486,7 @@ def _solve_student_assignment(
     operation_resource_monitor = ProcessResourceMonitor(
         enabled=collect_resource_telemetry
     ).start()
+    _notify_phase(phase_callback, "student_assignment_input", "started")
     if data.scope.scope_type == "scoped":
         # Keep the complete request list in the detached run snapshot, but do
         # not let a partial rerun silently rewrite demand outside its approved
@@ -1476,6 +1504,13 @@ def _solve_student_assignment(
             ),
         )
     offering_sections = _validate_input(data)
+    _notify_phase(
+        phase_callback,
+        "student_assignment_input",
+        "completed",
+        request_count=len(data.requests),
+        section_count=len(data.sections),
+    )
     if data.objective_semantics_version not in {
         OBJECTIVE_SEMANTICS_V1,
         OBJECTIVE_SEMANTICS_V2,
@@ -1502,6 +1537,7 @@ def _solve_student_assignment(
     input_semantic_fingerprint = semantic_student_assignment_input_fingerprint(data)
     model = cp_model.CpModel()
     model_build_started = monotonic()
+    _notify_phase(phase_callback, "model_construction", "started")
     sections = {item.section_id: item for item in data.sections}
     timeslots_by_id = {item.id: item for item in data.timeslots}
     requests_by_id = {item.request_id: item for item in data.requests}
@@ -3186,6 +3222,15 @@ def _solve_student_assignment(
             values[selected_variable.Index()] = 1
         return values, None
 
+    _notify_phase(
+        phase_callback,
+        "model_construction",
+        "completed",
+        elapsed_seconds=monotonic() - model_build_started,
+        variable_count=len(model.Proto().variables),
+        constraint_count=len(model.Proto().constraints),
+    )
+
     stage_1_seed_time_limit = (
         max(
             data.time_limit_seconds,
@@ -3228,6 +3273,7 @@ def _solve_student_assignment(
         }
     else:
         stage_1_seed_started = monotonic()
+        _notify_phase(phase_callback, "hard_feasibility_seed", "started")
         (
             hard_feasibility_seed_model,
             hard_feasibility_seed_solver,
@@ -3244,7 +3290,15 @@ def _solve_student_assignment(
             ),
         )
         stage_1_seed_elapsed = monotonic() - stage_1_seed_started
+        _notify_phase(
+            phase_callback,
+            "hard_feasibility_seed",
+            "completed",
+            elapsed_seconds=stage_1_seed_elapsed,
+            outcome=_outcome_name(_hard_feasibility_outcome),
+        )
         stage_1_validation_started = monotonic()
+        _notify_phase(phase_callback, "hard_feasibility_validation", "started")
         validated_seed_solver = _validate_complete_hard_feasibility_seed(
             model,
             hard_feasibility_seed_model,
@@ -3258,6 +3312,13 @@ def _solve_student_assignment(
             ),
         )
         stage_1_validation_elapsed = monotonic() - stage_1_validation_started
+        _notify_phase(
+            phase_callback,
+            "hard_feasibility_validation",
+            "completed",
+            elapsed_seconds=stage_1_validation_elapsed,
+            validated=validated_seed_solver is not None,
+        )
         stage_1_timings = {
             "model_construction_wall_time_seconds": monotonic() - model_build_started,
             "seed_requested_time_limit_seconds": float(stage_1_seed_time_limit),
@@ -3306,11 +3367,22 @@ def _solve_student_assignment(
             alternate_values = dict(alternate_source_variable_values)
         else:
             alternate_materialization_started = monotonic()
+            _notify_phase(
+                phase_callback,
+                "mature_seed_materialization",
+                "started",
+            )
             alternate_values, alternate_seed_resolution_failure = (
                 _source_variable_values(alternate_source_decisions)
             )
             alternate_seed_materialization_elapsed = (
                 monotonic() - alternate_materialization_started
+            )
+            _notify_phase(
+                phase_callback,
+                "mature_seed_materialization",
+                "completed",
+                elapsed_seconds=alternate_seed_materialization_elapsed,
             )
         if alternate_values is not None:
             alternate_validation_time_limit = max(
@@ -3327,6 +3399,11 @@ def _solve_student_assignment(
                     stage_2_total_time_limit_seconds,
                 )
             alternate_validation_started = monotonic()
+            _notify_phase(
+                phase_callback,
+                "mature_seed_validation",
+                "started",
+            )
             stage_2_seed_solver = _validate_source_decision_candidate(
                 model,
                 complete_required_decision_groups,
@@ -3340,6 +3417,13 @@ def _solve_student_assignment(
             )
             alternate_seed_validation_elapsed = (
                 monotonic() - alternate_validation_started
+            )
+            _notify_phase(
+                phase_callback,
+                "mature_seed_validation",
+                "completed",
+                elapsed_seconds=alternate_seed_validation_elapsed,
+                validated=stage_2_seed_solver is not None,
             )
             alternate_seed_validated = stage_2_seed_solver is not None
             if not alternate_seed_validated:
@@ -3657,6 +3741,8 @@ def _solve_student_assignment(
             # promotion decision can distinguish solver behavior from host
             # pressure without adding a runtime dependency.
             local_memory_monitor = ProcessMemoryMonitor().start()
+            operator_setup_started = monotonic()
+            _notify_phase(phase_callback, "operator_static_setup", "started")
             adaptive = bool(local_config.get("adaptive", False))
             operator_session = bool(local_config.get("operator_session", False))
             iterations = []
@@ -3725,6 +3811,13 @@ def _solve_student_assignment(
                     },
                 )
 
+            _notify_phase(
+                phase_callback,
+                "operator_static_setup",
+                "completed",
+                elapsed_seconds=monotonic() - operator_setup_started,
+            )
+
             if adaptive:
                 if grade_bounded:
                     radii = (None,)
@@ -3781,6 +3874,13 @@ def _solve_student_assignment(
                         min(per_probe_limit, _remaining_stage2_budget())
                     )
                     probe_limit = max(0.001, iteration_deadline.remaining())
+                    target_preparation_started = monotonic()
+                    _notify_phase(
+                        phase_callback,
+                        "target_preparation",
+                        "started",
+                        iteration=iteration_count + 1,
+                    )
                     selected_student_ids = tuple(
                         local_config.get("selected_student_ids", ())
                     )
@@ -3874,6 +3974,14 @@ def _solve_student_assignment(
                             break
                         session_target_guidance.append(target_guidance)
                     session_target_history.append(selected_student_ids)
+                    _notify_phase(
+                        phase_callback,
+                        "target_preparation",
+                        "completed",
+                        elapsed_seconds=monotonic() - target_preparation_started,
+                        iteration=iteration_count + 1,
+                        selected_student_ids=selected_student_ids,
+                    )
                     probe_selected_student_ids = (
                         selected_student_ids if operator_session else ()
                     )
@@ -3889,9 +3997,17 @@ def _solve_student_assignment(
                         selected_grade=(int(selected_grade) if grade_bounded else None),
                         time_limit_seconds=probe_limit,
                         worker_count=int(local_config.get("worker_count", 8)),
+                        phase_callback=phase_callback,
                     )
                     last_result = local_result
                     candidate_before_validation = local_result.candidate_substantive_value
+                    validation_started = monotonic()
+                    _notify_phase(
+                        phase_callback,
+                        "candidate_validation",
+                        "started",
+                        iteration=iteration_count + 1,
+                    )
                     (
                         local_validator,
                         validation_elapsed,
@@ -3899,6 +4015,14 @@ def _solve_student_assignment(
                     ) = _validate_local_result(
                         local_result,
                         iteration_deadline,
+                    )
+                    _notify_phase(
+                        phase_callback,
+                        "candidate_validation",
+                        "completed",
+                        elapsed_seconds=monotonic() - validation_started,
+                        iteration=iteration_count + 1,
+                        validated=local_validator is not None,
                     )
                     candidate_validated = local_validator is not None
                     if candidate_validated:
@@ -4155,6 +4279,7 @@ def _solve_student_assignment(
                 local_result = probe_substantive_soft_tier(
                     _build_probe_context(stage_2_seed_solver),
                     **local_config,
+                    phase_callback=phase_callback,
                 )
                 (
                     local_validator,
@@ -4289,6 +4414,7 @@ def _solve_student_assignment(
         return probe_substantive_soft_tier(
             _build_probe_context(stage_2_seed_solver),
             **substantive_soft_tier_probe,
+            phase_callback=phase_callback,
         )
 
     solver, outcome = _solve_lexicographically(

@@ -562,3 +562,33 @@ more complete matched detached states. The current conclusion is
 **EVIDENCE REMAINS INCONCLUSIVE**: fixed cycle is the strongest simple
 screening control, adaptive search is a useful research candidate on the
 derived student-repair state, and neither is promotion-ready.
+
+### Supervised calibration execution boundary
+
+The detached calibration runner now has an optional pure-engine parent
+supervisor. It launches one JSON-producing worker, clears stale output before
+launch, records the worker's last phase and process-tree resource facts, and
+terminates the worker tree at a hard wall or configured resource guard. A
+terminated worker never contributes a candidate; the already validated
+starting incumbent is retained and the execution status is reported as an
+operational fact. This protects long offline comparisons from model-construction
+or native-solver overrun without changing ordinary student assignment,
+CP-SAT constraints, objective semantics, or Stage 2 behavior.
+
+The supervised protocol is versioned as
+`student_assignment_adaptive_calibration_trial_v2` /
+`adaptive-calibration-v2`. The parent performs the authoritative full-model
+validation before launch and serializes a small prepared-incumbent artifact.
+The worker rehydrates and fingerprint-checks that artifact and the immutable
+branch, but does not repeat the same CP-SAT validation. This keeps the required
+authority check while preventing duplicate validation from consuming the
+policy comparison window. Parent preparation, worker setup, policy phases,
+and serialization remain visible as separate timing facts; they are not
+silently attributed to CP-SAT.
+
+The target-scale diagnostic profile defaults to an `1,800`-second worker wall,
+`5` seconds of termination grace, a `4 GiB` process-tree RSS guard, a `1,536
+MiB` minimum available-system-memory guard, and `250 ms` polling. These are
+execution-safety settings for offline experiments, not solver constraints or
+schedule-quality semantics; callers may choose a stricter bounded profile for
+screening.

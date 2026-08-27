@@ -1096,6 +1096,32 @@ def test_variable_neighborhood_forwards_changed_student_bound_to_probe():
     assert result.status == "complete"
 
 
+def test_variable_neighborhood_with_supplied_incumbent_skips_stage_one():
+    data = _substantive_probe_input()
+    seed = run_substantive_soft_tier_probe(
+        data,
+        threshold=1,
+        time_limit_seconds=5.0,
+        worker_count=1,
+    )
+
+    result = student_assignment_module.run_student_assignment_variable_neighborhood_diagnostic(
+        data,
+        neighborhood_radii=(0,),
+        max_iterations=1,
+        max_attempts_by_radius={0: 1},
+        per_probe_time_limit_seconds=0.5,
+        total_time_limit_seconds=5.0,
+        worker_count=1,
+        alternate_source_decisions=seed.seed_source_decisions,
+        alternate_source_variable_values=seed.seed_source_variable_values,
+    )
+
+    assert result.status == "complete"
+    assert result.optimization_facts["stage_1"]["timings"]["seed_skipped"] is True
+    assert result.optimization_facts["stage_2"]["alternate_seed_validated"] is True
+
+
 def test_monotonic_deadline_clamps_nested_allowances(monkeypatch):
     current = iter((104.0, 107.0, 107.0))
     monkeypatch.setattr(

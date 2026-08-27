@@ -369,6 +369,7 @@ def build_calibration_trial_record(
             "finalization_seconds": record.finalization_seconds,
             "external_overrun_seconds": record.external_overrun_seconds,
             "total_elapsed_seconds": record.elapsed_seconds,
+            "phase_timings": dict(record.phase_timings),
         },
         final_components=dict(record.final_components),
         resource=dict(record.resource),

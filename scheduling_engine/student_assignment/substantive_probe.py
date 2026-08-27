@@ -169,6 +169,7 @@ def probe_substantive_soft_tier(
     max_changed_students: int | None = None,
     selected_student_ids=(),
     selected_grade: int | None = None,
+    phase_callback=None,
 ) -> SubstantiveSoftTierProbeResult:
     """Ask whether the unchanged full model can beat one soft tier.
 
@@ -185,6 +186,19 @@ def probe_substantive_soft_tier(
     """
 
     operation_started = monotonic()
+
+    def _emit_phase(phase, event="completed", **facts):
+        """Publish optional live diagnostics without changing probe behavior."""
+
+        if phase_callback is None:
+            return
+        try:
+            phase_callback(str(phase), event=str(event), **facts)
+        except Exception:
+            # Evidence collection is strictly observational; an unavailable
+            # status sink must never affect CP-SAT or candidate acceptance.
+            return
+
     selected_student_ids = tuple(sorted(set(selected_student_ids), key=repr))
     if selected_grade is not None:
         selected_grade = int(selected_grade)
@@ -315,6 +329,8 @@ def probe_substantive_soft_tier(
     )
     seed_summary = dict(context.source_decision_summary(seed_solver))
 
+    attempt_setup_started = monotonic()
+    _emit_phase("attempt_preparation", "started")
     with timing.measure("model_clone_seconds"):
         probe_model = context.model.Clone()
     with timing.measure("completion_constraints_seconds"):
@@ -467,15 +483,28 @@ def probe_substantive_soft_tier(
             source_model=context.model,
         )
 
+    _emit_phase(
+        "attempt_preparation",
+        "completed",
+        elapsed_seconds=monotonic() - attempt_setup_started,
+    )
+
     with timing.measure("solver_creation_seconds"):
         solver = new_solver(
             time_limit_seconds,
             worker_count=worker_count,
         )
+    _emit_phase("cp_sat", "started")
     with timing.measure("cp_solver_solve_external_wall_seconds"):
         started = monotonic()
         status_code = solver.Solve(probe_model)
         elapsed = monotonic() - started
+    _emit_phase(
+        "cp_sat",
+        "completed",
+        elapsed_seconds=elapsed,
+        status=outcome_name(status_code),
+    )
     complete_candidate_found = status_code in {cp_model.OPTIMAL, cp_model.FEASIBLE}
 
     candidate_component_values = {}
@@ -492,6 +521,7 @@ def probe_substantive_soft_tier(
     candidate_quality_summary = {}
     quality_comparison = {}
     if complete_candidate_found:
+        _emit_phase("candidate_extraction", "started")
         with timing.measure("candidate_quality_evaluation_seconds"):
             candidate_component_values = dict(context.solver_objective_components(solver))
             candidate_substantive_value = float(
@@ -550,6 +580,7 @@ def probe_substantive_soft_tier(
                 quality_comparison = dict(
                     quality_facts.get("comparison", {})
                 )
+        _emit_phase("candidate_extraction", "completed")
 
     component_deltas = (
         {
