@@ -416,8 +416,6 @@ def test_supervised_preparation_elapsed_is_not_total_worker_lifetime(
         "run_matched_calibration_trial",
         lambda *args, **kwargs: SimpleNamespace(
             to_dict=lambda: {"timing": {}, "phase_timings": {}, "attempts": []},
-            source_decisions=(),
-            record=SimpleNamespace(final_objective_vector=()),
         ),
     )
 
@@ -435,3 +433,87 @@ def test_supervised_preparation_elapsed_is_not_total_worker_lifetime(
     assert payload["preparation"]["elapsed_seconds"] == pytest.approx(
         payload["parent_preparation_seconds"]
     )
+
+
+def test_supervised_worker_serializes_trial_record_with_branch_lineage(
+    monkeypatch, tmp_path
+):
+    """The worker accepts the compact trial record returned by calibration."""
+
+    data = _v2_data()
+    source_decisions = ((('course', 1), (2, 3)),)
+    branch = {
+        "source_decision_fingerprint": "canonical-fingerprint",
+        "source_decisions": source_decisions,
+        "objective_vector": (-1, 2),
+    }
+    result = SimpleNamespace(
+        status="complete",
+        solver_outcome="feasible",
+        assignments=(),
+        unmet_requests=(),
+        commitment_assignments=(),
+        objective_components={},
+        optimization_facts={},
+    )
+    written = {}
+
+    monkeypatch.setattr(
+        benchmark_calibration,
+        "read_durable_stage2_benchmark",
+        lambda _path: {"data": data, "manifest": {}},
+    )
+    monkeypatch.setattr(
+        benchmark_calibration,
+        "apply_calibration_profile",
+        lambda value, _profile: value,
+    )
+    monkeypatch.setattr(
+        benchmark_calibration,
+        "read_diagnostic_branch_checkpoint",
+        lambda *args, **kwargs: branch,
+    )
+    monkeypatch.setattr(
+        benchmark_calibration,
+        "validate_diagnostic_branch_checkpoint",
+        lambda *args, **kwargs: {
+            "result": result,
+            "validation": {"full_model_validation": True, "complete": True},
+        },
+    )
+    monkeypatch.setattr(
+        benchmark_calibration,
+        "_write_worker_phase",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        benchmark_calibration,
+        "_write_worker_output",
+        lambda path, payload: written.update(payload),
+    )
+    monkeypatch.setattr(
+        benchmark_calibration,
+        "run_matched_calibration_trial",
+        lambda *args, **kwargs: SimpleNamespace(
+            to_dict=lambda: {"attempts": [], "timing": {}, "phase_timings": {}},
+        ),
+    )
+
+    args = SimpleNamespace(
+        benchmark_directory=tmp_path / "benchmark",
+        branch_input=tmp_path / "branch.json.gz",
+        prepared_incumbent=None,
+        worker_status=tmp_path / "status.json",
+        worker_output=tmp_path / "result.json",
+        policy="fixed_cycle",
+        profile="balanced",
+        total_seconds=1,
+        per_operator_seconds=1,
+        workers=1,
+        validated_branch_output=None,
+    )
+
+    assert benchmark_calibration._run_supervised_worker(args) == 0
+    assert written["final_source_decisions"] == [[["course", 1], [2, 3]]]
+    assert written["final_source_decision_fingerprint"] == "canonical-fingerprint"
+    assert written["final_objective_vector"] == [-1, 2]

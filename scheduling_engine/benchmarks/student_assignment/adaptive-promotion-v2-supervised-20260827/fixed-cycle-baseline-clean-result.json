@@ -1,0 +1,5215 @@
+{
+  "attempts": [],
+  "candidate_complete": false,
+  "candidate_diagnostic": "not_authoritative_after_worker_termination",
+  "candidate_from_terminated_worker": false,
+  "configured_budget_seconds": 2100.0,
+  "decisions": [],
+  "execution_status": "hard_deadline_terminated",
+  "final_assignment_count": 10635,
+  "final_components": {
+    "course_category_diversity": {
+      "denominator": 56200,
+      "importance_score": 6,
+      "normalized_penalty": 3941.0,
+      "raw_penalty": 22150.0,
+      "weighted_normalized_contribution": 23646.0
+    },
+    "course_sequence_preferences": {
+      "denominator": 0,
+      "importance_score": 6,
+      "normalized_penalty": 0.0,
+      "raw_penalty": -0.0,
+      "weighted_normalized_contribution": 0.0
+    },
+    "difficulty_balance": {
+      "denominator": 670174,
+      "importance_score": 6,
+      "normalized_penalty": 536.0,
+      "raw_penalty": 35973.0,
+      "weighted_normalized_contribution": 3216.0
+    },
+    "section_utilization_balance": {
+      "denominator": 39280,
+      "importance_score": 6,
+      "normalized_penalty": 1712.0,
+      "raw_penalty": 6727.0,
+      "weighted_normalized_contribution": 10272.0
+    },
+    "student_semester_load_balance": {
+      "denominator": 22549,
+      "importance_score": 6,
+      "normalized_penalty": 77.0,
+      "raw_penalty": 175.0,
+      "weighted_normalized_contribution": 462.0
+    }
+  },
+  "final_special_commitment_count": 310,
+  "final_substantive_value": 37596.0,
+  "final_unmet_count": 0,
+  "hard_deadline_elapsed_seconds": 10646.070891099982,
+  "hard_wall_seconds": 2100.0,
+  "initial_substantive_value": 37596.0,
+  "input_fingerprint": "c07c77d0aa077a3e72240f27644d86b8a1a4faecb2f72a900aacc3fcb792d28a",
+  "output_protocol_complete": true,
+  "per_operator_time_limit_seconds": null,
+  "phase_timings": {
+    "parent": {
+      "total_seconds": 45.202607900020666
+    },
+    "parent_preparation_seconds": 45.202607900020666,
+    "policy": {},
+    "worker": {
+      "last_observed_phase": {
+        "elapsed_seconds": 10627.658715599915,
+        "event": "started",
+        "phase": "finalization",
+        "phase_history": [
+          {
+            "elapsed_seconds": 461.86049470002763,
+            "event": "completed",
+            "phase": "candidate_extraction"
+          },
+          {
+            "elapsed_seconds": 462.70574469992425,
+            "event": "started",
+            "iteration": 1,
+            "phase": "candidate_validation"
+          },
+          {
+            "elapsed_seconds": 8.355773800052702,
+            "event": "completed",
+            "iteration": 1,
+            "phase": "candidate_validation",
+            "validated": false
+          },
+          {
+            "cumulative_seconds": 473.39727780001704,
+            "elapsed_seconds": 95.9717731999699,
+            "event": "completed",
+            "iteration": 4,
+            "operator": "targeted_r4_s2",
+            "phase": "operator_execution"
+          },
+          {
+            "elapsed_seconds": 487.80883599992376,
+            "event": "started",
+            "iteration": 4,
+            "phase": "candidate_processing"
+          },
+          {
+            "cumulative_seconds": 1.0367015998344868,
+            "elapsed_seconds": 0.2303462999407202,
+            "event": "completed",
+            "phase": "candidate_processing"
+          },
+          {
+            "adopted": false,
+            "candidate_assignment_count": 0,
+            "candidate_complete": true,
+            "candidate_components": {},
+            "candidate_found": false,
+            "candidate_objective_vector": [],
+            "candidate_source_decisions": [],
+            "candidate_special_commitment_count": 0,
+            "candidate_substantive_value": null,
+            "candidate_unmet_count": 0,
+            "candidate_validated": false,
+            "elapsed_seconds": 488.08180599997286,
+            "event": "completed",
+            "iteration": 4,
+            "phase": "candidate_processing"
+          },
+          {
+            "elapsed_seconds": 488.1103951999685,
+            "event": "started",
+            "iteration": 5,
+            "phase": "policy_quality_evaluation"
+          },
+          {
+            "cumulative_seconds": 1.6600276998942718,
+            "elapsed_seconds": 0.3431285999249667,
+            "event": "completed",
+            "phase": "policy_quality_evaluation"
+          },
+          {
+            "elapsed_seconds": 488.48872659995686,
+            "event": "started",
+            "iteration": 5,
+            "phase": "target_preparation"
+          },
+          {
+            "cumulative_seconds": 10.123398100025952,
+            "elapsed_seconds": 2.6717553000198677,
+            "event": "completed",
+            "phase": "target_preparation"
+          },
+          {
+            "elapsed_seconds": 491.1907419000054,
+            "event": "started",
+            "iteration": 5,
+            "phase": "policy_selection"
+          },
+          {
+            "cumulative_seconds": 0.15685439994558692,
+            "elapsed_seconds": 0.03443210001569241,
+            "event": "completed",
+            "iteration": 5,
+            "phase": "policy_selection"
+          },
+          {
+            "elapsed_seconds": 491.2541087999707,
+            "event": "completed",
+            "iteration": 5,
+            "phase": "policy_decision",
+            "reasons": [
+              "fixed_cycle_control"
+            ],
+            "selected_grade": null,
+            "selected_operator": "targeted_utilization_r64_s8",
+            "selected_role": "utilization_repair",
+            "selected_student_ids": [
+              417,
+              360,
+              482,
+              25,
+              480,
+              90,
+              175,
+              514
+            ],
+            "selection_policy": "fixed_cycle",
+            "signal_values": {
+              "cycle_index": 1,
+              "remaining_seconds": 1315.287908899947,
+              "selected_role": "utilization_repair",
+              "selection_tie_break": "configured fixed cycle order"
+            }
+          },
+          {
+            "elapsed_seconds": 491.2915278999135,
+            "event": "started",
+            "iteration": 5,
+            "operator": "targeted_utilization_r64_s8",
+            "phase": "operator_execution"
+          },
+          {
+            "elapsed_seconds": 491.42856859997846,
+            "event": "started",
+            "phase": "student_assignment_input"
+          },
+          {
+            "elapsed_seconds": 491.46302219992504,
+            "event": "completed",
+            "phase": "student_assignment_input",
+            "request_count": 10760,
+            "section_count": 317
+          },
+          {
+            "elapsed_seconds": 491.572378700017,
+            "event": "started",
+            "phase": "model_construction"
+          },
+          {
+            "constraint_count": 164949,
+            "elapsed_seconds": 18.694998100050725,
+            "event": "completed",
+            "phase": "model_construction",
+            "variable_count": 110921
+          },
+          {
+            "elapsed_seconds": 510.3064605999971,
+            "event": "started",
+            "phase": "mature_seed_materialization"
+          },
+          {
+            "elapsed_seconds": 0.24037909996695817,
+            "event": "completed",
+            "phase": "mature_seed_materialization"
+          },
+          {
+            "elapsed_seconds": 510.57458599994425,
+            "event": "started",
+            "phase": "mature_seed_validation"
+          },
+          {
+            "elapsed_seconds": 8.07810669997707,
+            "event": "completed",
+            "phase": "mature_seed_validation",
+            "validated": true
+          },
+          {
+            "elapsed_seconds": 520.0283811999252,
+            "event": "started",
+            "phase": "operator_static_setup"
+          },
+          {
+            "elapsed_seconds": 0.0322076000738889,
+            "event": "completed",
+            "phase": "operator_static_setup"
+          },
+          {
+            "elapsed_seconds": 520.1044940999709,
+            "event": "started",
+            "iteration": 1,
+            "phase": "target_preparation"
+          },
+          {
+            "elapsed_seconds": 2.669127699919045,
+            "event": "completed",
+            "iteration": 1,
+            "phase": "target_preparation",
+            "selected_student_ids": [
+              9,
+              144,
+              439,
+              514,
+              714,
+              794,
+              799,
+              844
+            ]
+          },
+          {
+            "elapsed_seconds": 525.1073806999484,
+            "event": "started",
+            "phase": "attempt_preparation"
+          },
+          {
+            "elapsed_seconds": 525.1372754999902,
+            "event": "started",
+            "phase": "probe_model_clone"
+          },
+          {
+            "elapsed_seconds": 0.30868320004083216,
+            "event": "completed",
+            "phase": "probe_model_clone"
+          },
+          {
+            "elapsed_seconds": 525.5779055999592,
+            "event": "started",
+            "phase": "probe_completion_constraints"
+          },
+          {
+            "constraint_count": 175894,
+            "elapsed_seconds": 2.1250191999133676,
+            "event": "completed",
+            "phase": "probe_completion_constraints"
+          },
+          {
+            "elapsed_seconds": 527.8247957000276,
+            "event": "started",
+            "phase": "probe_neighborhood_constraints"
+          },
+          {
+            "elapsed_seconds": 2.459286900004372,
+            "event": "completed",
+            "phase": "probe_neighborhood_constraints"
+          },
+          {
+            "elapsed_seconds": 530.3154238000279,
+            "event": "started",
+            "phase": "probe_objective_bound_constraints"
+          },
+          {
+            "constraint_count": 200527,
+            "elapsed_seconds": 4.671690899995156,
+            "event": "completed",
+            "phase": "probe_objective_bound_constraints"
+          },
+          {
+            "elapsed_seconds": 535.0779697999824,
+            "event": "started",
+            "phase": "probe_hint_application"
+          },
+          {
+            "elapsed_seconds": 7.652620599954389,
+            "event": "completed",
+            "phase": "probe_hint_application"
+          },
+          {
+            "elapsed_seconds": 17.65631700004451,
+            "event": "completed",
+            "phase": "attempt_preparation"
+          },
+          {
+            "elapsed_seconds": 542.8002805999713,
+            "event": "started",
+            "phase": "cp_sat"
+          },
+          {
+            "elapsed_seconds": 5.1878232000162825,
+            "event": "completed",
+            "phase": "cp_sat",
+            "status": "optimal"
+          },
+          {
+            "elapsed_seconds": 548.161116699921,
+            "event": "started",
+            "phase": "candidate_extraction"
+          },
+          {
+            "elapsed_seconds": 560.1168392000254,
+            "event": "completed",
+            "phase": "candidate_extraction"
+          },
+          {
+            "elapsed_seconds": 561.1827844999498,
+            "event": "started",
+            "iteration": 1,
+            "phase": "candidate_validation"
+          },
+          {
+            "elapsed_seconds": 8.775690500042401,
+            "event": "completed",
+            "iteration": 1,
+            "phase": "candidate_validation",
+            "validated": false
+          },
+          {
+            "cumulative_seconds": 570.8121587999631,
+            "elapsed_seconds": 97.41488099994604,
+            "event": "completed",
+            "iteration": 5,
+            "operator": "targeted_utilization_r64_s8",
+            "phase": "operator_execution"
+          },
+          {
+            "elapsed_seconds": 588.7911604000255,
+            "event": "started",
+            "iteration": 5,
+            "phase": "candidate_processing"
+          },
+          {
+            "cumulative_seconds": 1.589196999790147,
+            "elapsed_seconds": 0.5524953999556601,
+            "event": "completed",
+            "phase": "candidate_processing"
+          },
+          {
+            "adopted": false,
+            "candidate_assignment_count": 0,
+            "candidate_complete": true,
+            "candidate_components": {},
+            "candidate_found": false,
+            "candidate_objective_vector": [],
+            "candidate_source_decisions": [],
+            "candidate_special_commitment_count": 0,
+            "candidate_substantive_value": null,
+            "candidate_unmet_count": 0,
+            "candidate_validated": false,
+            "elapsed_seconds": 589.3758889000164,
+            "event": "completed",
+            "iteration": 5,
+            "phase": "candidate_processing"
+          },
+          {
+            "elapsed_seconds": 589.4107384999515,
+            "event": "started",
+            "iteration": 6,
+            "phase": "policy_quality_evaluation"
+          },
+          {
+            "cumulative_seconds": 1.9630551999434829,
+            "elapsed_seconds": 0.3030275000492111,
+            "event": "completed",
+            "phase": "policy_quality_evaluation"
+          },
+          {
+            "elapsed_seconds": 589.7443786999211,
+            "event": "started",
+            "iteration": 6,
+            "phase": "target_preparation"
+          },
+          {
+            "cumulative_seconds": 12.189886800013483,
+            "elapsed_seconds": 2.0664886999875307,
+            "event": "completed",
+            "phase": "target_preparation"
+          },
+          {
+            "elapsed_seconds": 591.8477233999874,
+            "event": "started",
+            "iteration": 6,
+            "phase": "policy_selection"
+          },
+          {
+            "cumulative_seconds": 0.1951988999499008,
+            "elapsed_seconds": 0.038344500004313886,
+            "event": "completed",
+            "iteration": 6,
+            "phase": "policy_selection"
+          },
+          {
+            "elapsed_seconds": 591.9186950000003,
+            "event": "completed",
+            "iteration": 6,
+            "phase": "policy_decision",
+            "reasons": [
+              "fixed_cycle_control"
+            ],
+            "selected_grade": null,
+            "selected_operator": "r2",
+            "selected_role": "local_descent",
+            "selected_student_ids": [],
+            "selection_policy": "fixed_cycle",
+            "signal_values": {
+              "cycle_index": 2,
+              "remaining_seconds": 1213.9875686999876,
+              "selected_role": "local_descent",
+              "selection_tie_break": "configured fixed cycle order"
+            }
+          },
+          {
+            "elapsed_seconds": 591.956811800017,
+            "event": "started",
+            "iteration": 6,
+            "operator": "r2",
+            "phase": "operator_execution"
+          },
+          {
+            "elapsed_seconds": 592.1241221999517,
+            "event": "started",
+            "phase": "student_assignment_input"
+          },
+          {
+            "elapsed_seconds": 592.16525979992,
+            "event": "completed",
+            "phase": "student_assignment_input",
+            "request_count": 10760,
+            "section_count": 317
+          },
+          {
+            "elapsed_seconds": 592.3159339999547,
+            "event": "started",
+            "phase": "model_construction"
+          },
+          {
+            "constraint_count": 164949,
+            "elapsed_seconds": 26.04947889992036,
+            "event": "completed",
+            "phase": "model_construction",
+            "variable_count": 110921
+          },
+          {
+            "elapsed_seconds": 618.4463390000165,
+            "event": "started",
+            "phase": "mature_seed_materialization"
+          },
+          {
+            "elapsed_seconds": 0.24897520011290908,
+            "event": "completed",
+            "phase": "mature_seed_materialization"
+          },
+          {
+            "elapsed_seconds": 618.7908559999196,
+            "event": "started",
+            "phase": "mature_seed_validation"
+          },
+          {
+            "elapsed_seconds": 9.87202020001132,
+            "event": "completed",
+            "phase": "mature_seed_validation",
+            "validated": true
+          },
+          {
+            "elapsed_seconds": 629.6680019999621,
+            "event": "started",
+            "phase": "operator_static_setup"
+          },
+          {
+            "elapsed_seconds": 0.04087439994327724,
+            "event": "completed",
+            "phase": "operator_static_setup"
+          },
+          {
+            "elapsed_seconds": 629.7597744999221,
+            "event": "started",
+            "iteration": 1,
+            "phase": "target_preparation"
+          },
+          {
+            "elapsed_seconds": 0.0354429999133572,
+            "event": "completed",
+            "iteration": 1,
+            "phase": "target_preparation",
+            "selected_student_ids": []
+          },
+          {
+            "elapsed_seconds": 633.9741829999257,
+            "event": "started",
+            "phase": "attempt_preparation"
+          },
+          {
+            "elapsed_seconds": 634.0105080999201,
+            "event": "started",
+            "phase": "probe_model_clone"
+          },
+          {
+            "elapsed_seconds": 0.3601210000924766,
+            "event": "completed",
+            "phase": "probe_model_clone"
+          },
+          {
+            "elapsed_seconds": 634.4928377999458,
+            "event": "started",
+            "phase": "probe_completion_constraints"
+          },
+          {
+            "constraint_count": 175894,
+            "elapsed_seconds": 3.0038459999486804,
+            "event": "completed",
+            "phase": "probe_completion_constraints"
+          },
+          {
+            "elapsed_seconds": 637.5309297000058,
+            "event": "started",
+            "phase": "probe_neighborhood_constraints"
+          },
+          {
+            "elapsed_seconds": 2.765623699990101,
+            "event": "completed",
+            "phase": "probe_neighborhood_constraints"
+          },
+          {
+            "elapsed_seconds": 640.3403199999593,
+            "event": "started",
+            "phase": "probe_objective_bound_constraints"
+          },
+          {
+            "constraint_count": 175900,
+            "elapsed_seconds": 7.149199299979955,
+            "event": "completed",
+            "phase": "probe_objective_bound_constraints"
+          },
+          {
+            "elapsed_seconds": 647.5980142999906,
+            "event": "started",
+            "phase": "probe_hint_application"
+          },
+          {
+            "elapsed_seconds": 8.749166700057685,
+            "event": "completed",
+            "phase": "probe_hint_application"
+          },
+          {
+            "elapsed_seconds": 22.54950199997984,
+            "event": "completed",
+            "phase": "attempt_preparation"
+          },
+          {
+            "elapsed_seconds": 656.5843900999753,
+            "event": "started",
+            "phase": "cp_sat"
+          },
+          {
+            "elapsed_seconds": 114.42651040002238,
+            "event": "completed",
+            "phase": "cp_sat",
+            "status": "unknown"
+          },
+          {
+            "elapsed_seconds": 772.3312855999684,
+            "event": "started",
+            "iteration": 1,
+            "phase": "candidate_validation"
+          },
+          {
+            "elapsed_seconds": 0.048601699993014336,
+            "event": "completed",
+            "iteration": 1,
+            "phase": "candidate_validation",
+            "validated": false
+          },
+          {
+            "cumulative_seconds": 772.2685136999935,
+            "elapsed_seconds": 201.45635490003042,
+            "event": "completed",
+            "iteration": 6,
+            "operator": "r2",
+            "phase": "operator_execution"
+          },
+          {
+            "elapsed_seconds": 793.4480609999737,
+            "event": "started",
+            "iteration": 6,
+            "phase": "candidate_processing"
+          },
+          {
+            "cumulative_seconds": 2.1875386998290196,
+            "elapsed_seconds": 0.5983417000388727,
+            "event": "completed",
+            "phase": "candidate_processing"
+          },
+          {
+            "adopted": false,
+            "candidate_assignment_count": 0,
+            "candidate_complete": true,
+            "candidate_components": {},
+            "candidate_found": false,
+            "candidate_objective_vector": [],
+            "candidate_source_decisions": [],
+            "candidate_special_commitment_count": 0,
+            "candidate_substantive_value": null,
+            "candidate_unmet_count": 0,
+            "candidate_validated": false,
+            "elapsed_seconds": 794.0813674000092,
+            "event": "completed",
+            "iteration": 6,
+            "phase": "candidate_processing"
+          },
+          {
+            "elapsed_seconds": 794.1213414999656,
+            "event": "started",
+            "iteration": 7,
+            "phase": "policy_quality_evaluation"
+          },
+          {
+            "cumulative_seconds": 2.288727599894628,
+            "elapsed_seconds": 0.32567239995114505,
+            "event": "completed",
+            "phase": "policy_quality_evaluation"
+          },
+          {
+            "elapsed_seconds": 794.4765068999259,
+            "event": "started",
+            "iteration": 7,
+            "phase": "target_preparation"
+          },
+          {
+            "cumulative_seconds": 14.862490199971944,
+            "elapsed_seconds": 2.6726033999584615,
+            "event": "completed",
+            "phase": "target_preparation"
+          },
+          {
+            "elapsed_seconds": 797.1921716999495,
+            "event": "started",
+            "iteration": 7,
+            "phase": "policy_selection"
+          },
+          {
+            "cumulative_seconds": 0.24573620001319796,
+            "elapsed_seconds": 0.05053730006329715,
+            "event": "completed",
+            "iteration": 7,
+            "phase": "policy_selection"
+          },
+          {
+            "elapsed_seconds": 797.2747157999547,
+            "event": "completed",
+            "iteration": 7,
+            "phase": "policy_decision",
+            "reasons": [
+              "fixed_cycle_control"
+            ],
+            "selected_grade": null,
+            "selected_operator": "targeted_r4_s2",
+            "selected_role": "targeted_repair",
+            "selected_student_ids": [
+              1052,
+              1068
+            ],
+            "selection_policy": "fixed_cycle",
+            "signal_values": {
+              "cycle_index": 0,
+              "remaining_seconds": 1009.2769689999986,
+              "selected_role": "targeted_repair",
+              "selection_tie_break": "configured fixed cycle order"
+            }
+          },
+          {
+            "elapsed_seconds": 797.3148889999138,
+            "event": "started",
+            "iteration": 7,
+            "operator": "targeted_r4_s2",
+            "phase": "operator_execution"
+          },
+          {
+            "elapsed_seconds": 797.4729226999916,
+            "event": "started",
+            "phase": "student_assignment_input"
+          },
+          {
+            "elapsed_seconds": 797.5226089999778,
+            "event": "completed",
+            "phase": "student_assignment_input",
+            "request_count": 10760,
+            "section_count": 317
+          },
+          {
+            "elapsed_seconds": 797.7106543999398,
+            "event": "started",
+            "phase": "model_construction"
+          },
+          {
+            "constraint_count": 164949,
+            "elapsed_seconds": 25.401636600028723,
+            "event": "completed",
+            "phase": "model_construction",
+            "variable_count": 110921
+          },
+          {
+            "elapsed_seconds": 823.1574007999152,
+            "event": "started",
+            "phase": "mature_seed_materialization"
+          },
+          {
+            "elapsed_seconds": 0.43478860007598996,
+            "event": "completed",
+            "phase": "mature_seed_materialization"
+          },
+          {
+            "elapsed_seconds": 823.6639002999291,
+            "event": "started",
+            "phase": "mature_seed_validation"
+          },
+          {
+            "elapsed_seconds": 10.321765400003642,
+            "event": "completed",
+            "phase": "mature_seed_validation",
+            "validated": true
+          },
+          {
+            "elapsed_seconds": 835.0484536999138,
+            "event": "started",
+            "phase": "operator_static_setup"
+          },
+          {
+            "elapsed_seconds": 0.08864670002367347,
+            "event": "completed",
+            "phase": "operator_static_setup"
+          },
+          {
+            "elapsed_seconds": 835.1834603999741,
+            "event": "started",
+            "iteration": 1,
+            "phase": "target_preparation"
+          },
+          {
+            "elapsed_seconds": 0.9239612000528723,
+            "event": "completed",
+            "iteration": 1,
+            "phase": "target_preparation",
+            "selected_student_ids": [
+              1052,
+              1068
+            ]
+          },
+          {
+            "elapsed_seconds": 841.0395939999726,
+            "event": "started",
+            "phase": "attempt_preparation"
+          },
+          {
+            "elapsed_seconds": 841.1188029999612,
+            "event": "started",
+            "phase": "probe_model_clone"
+          },
+          {
+            "elapsed_seconds": 0.4729243000037968,
+            "event": "completed",
+            "phase": "probe_model_clone"
+          },
+          {
+            "elapsed_seconds": 841.671318299952,
+            "event": "started",
+            "phase": "probe_completion_constraints"
+          },
+          {
+            "constraint_count": 175894,
+            "elapsed_seconds": 3.298526500002481,
+            "event": "completed",
+            "phase": "probe_completion_constraints"
+          },
+          {
+            "elapsed_seconds": 845.0064005999593,
+            "event": "started",
+            "phase": "probe_neighborhood_constraints"
+          },
+          {
+            "elapsed_seconds": 3.5438922999892384,
+            "event": "completed",
+            "phase": "probe_neighborhood_constraints"
+          },
+          {
+            "elapsed_seconds": 848.5905333999544,
+            "event": "started",
+            "phase": "probe_objective_bound_constraints"
+          },
+          {
+            "constraint_count": 200575,
+            "elapsed_seconds": 6.243061700020917,
+            "event": "completed",
+            "phase": "probe_objective_bound_constraints"
+          },
+          {
+            "elapsed_seconds": 854.8460385999642,
+            "event": "started",
+            "phase": "probe_hint_application"
+          },
+          {
+            "elapsed_seconds": 63.280408999999054,
+            "event": "completed",
+            "phase": "probe_hint_application"
+          },
+          {
+            "elapsed_seconds": 77.12487369996961,
+            "event": "completed",
+            "phase": "attempt_preparation"
+          },
+          {
+            "elapsed_seconds": 918.193050700007,
+            "event": "started",
+            "phase": "cp_sat"
+          },
+          {
+            "elapsed_seconds": 4.97026809991803,
+            "event": "completed",
+            "phase": "cp_sat",
+            "status": "optimal"
+          },
+          {
+            "elapsed_seconds": 923.2193265999667,
+            "event": "started",
+            "phase": "candidate_extraction"
+          },
+          {
+            "elapsed_seconds": 928.0266836999217,
+            "event": "completed",
+            "phase": "candidate_extraction"
+          },
+          {
+            "elapsed_seconds": 928.4291587999323,
+            "event": "started",
+            "iteration": 1,
+            "phase": "candidate_validation"
+          },
+          {
+            "elapsed_seconds": 3.272633900051005,
+            "event": "completed",
+            "iteration": 1,
+            "phase": "candidate_validation",
+            "validated": false
+          },
+          {
+            "cumulative_seconds": 914.6168117000489,
+            "elapsed_seconds": 142.34829800005537,
+            "event": "completed",
+            "iteration": 7,
+            "operator": "targeted_r4_s2",
+            "phase": "operator_execution"
+          },
+          {
+            "elapsed_seconds": 939.6803422999801,
+            "event": "started",
+            "iteration": 7,
+            "phase": "candidate_processing"
+          },
+          {
+            "cumulative_seconds": 2.343382499879226,
+            "elapsed_seconds": 0.15584380005020648,
+            "event": "completed",
+            "phase": "candidate_processing"
+          },
+          {
+            "adopted": false,
+            "candidate_assignment_count": 0,
+            "candidate_complete": true,
+            "candidate_components": {},
+            "candidate_found": false,
+            "candidate_objective_vector": [],
+            "candidate_source_decisions": [],
+            "candidate_special_commitment_count": 0,
+            "candidate_substantive_value": null,
+            "candidate_unmet_count": 0,
+            "candidate_validated": false,
+            "elapsed_seconds": 939.8844610999804,
+            "event": "completed",
+            "iteration": 7,
+            "phase": "candidate_processing"
+          },
+          {
+            "elapsed_seconds": 939.9217949999729,
+            "event": "started",
+            "iteration": 8,
+            "phase": "policy_quality_evaluation"
+          },
+          {
+            "cumulative_seconds": 2.5553472999017686,
+            "elapsed_seconds": 0.26661970000714064,
+            "event": "completed",
+            "phase": "policy_quality_evaluation"
+          },
+          {
+            "elapsed_seconds": 940.2370496999938,
+            "event": "started",
+            "iteration": 8,
+            "phase": "target_preparation"
+          },
+          {
+            "cumulative_seconds": 17.38386389997322,
+            "elapsed_seconds": 2.521373700001277,
+            "event": "completed",
+            "phase": "target_preparation"
+          },
+          {
+            "elapsed_seconds": 942.7954117999179,
+            "event": "started",
+            "iteration": 8,
+            "phase": "policy_selection"
+          },
+          {
+            "cumulative_seconds": 0.26931799994781613,
+            "elapsed_seconds": 0.023581799934618175,
+            "event": "completed",
+            "iteration": 8,
+            "phase": "policy_selection"
+          },
+          {
+            "elapsed_seconds": 942.8454171000049,
+            "event": "completed",
+            "iteration": 8,
+            "phase": "policy_decision",
+            "reasons": [
+              "fixed_cycle_control"
+            ],
+            "selected_grade": null,
+            "selected_operator": "targeted_utilization_r64_s8",
+            "selected_role": "utilization_repair",
+            "selected_student_ids": [
+              417,
+              360,
+              482,
+              25,
+              480,
+              90,
+              175,
+              514
+            ],
+            "selection_policy": "fixed_cycle",
+            "signal_values": {
+              "cycle_index": 1,
+              "remaining_seconds": 863.4765564999543,
+              "selected_role": "utilization_repair",
+              "selection_tie_break": "configured fixed cycle order"
+            }
+          },
+          {
+            "elapsed_seconds": 942.8846801000182,
+            "event": "started",
+            "iteration": 8,
+            "operator": "targeted_utilization_r64_s8",
+            "phase": "operator_execution"
+          },
+          {
+            "elapsed_seconds": 943.0839187999954,
+            "event": "started",
+            "phase": "student_assignment_input"
+          },
+          {
+            "elapsed_seconds": 943.1226140999934,
+            "event": "completed",
+            "phase": "student_assignment_input",
+            "request_count": 10760,
+            "section_count": 317
+          },
+          {
+            "elapsed_seconds": 943.2116739000194,
+            "event": "started",
+            "phase": "model_construction"
+          },
+          {
+            "constraint_count": 164949,
+            "elapsed_seconds": 10.149593999958597,
+            "event": "completed",
+            "phase": "model_construction",
+            "variable_count": 110921
+          },
+          {
+            "elapsed_seconds": 953.378896899987,
+            "event": "started",
+            "phase": "mature_seed_materialization"
+          },
+          {
+            "elapsed_seconds": 0.1646597000071779,
+            "event": "completed",
+            "phase": "mature_seed_materialization"
+          },
+          {
+            "elapsed_seconds": 953.6074547999306,
+            "event": "started",
+            "phase": "mature_seed_validation"
+          },
+          {
+            "elapsed_seconds": 8.289272799971513,
+            "event": "completed",
+            "phase": "mature_seed_validation",
+            "validated": true
+          },
+          {
+            "elapsed_seconds": 963.2850713999942,
+            "event": "started",
+            "phase": "operator_static_setup"
+          },
+          {
+            "elapsed_seconds": 0.06649580004159361,
+            "event": "completed",
+            "phase": "operator_static_setup"
+          },
+          {
+            "elapsed_seconds": 963.4087486999342,
+            "event": "started",
+            "iteration": 1,
+            "phase": "target_preparation"
+          },
+          {
+            "elapsed_seconds": 3.6584424999309704,
+            "event": "completed",
+            "iteration": 1,
+            "phase": "target_preparation",
+            "selected_student_ids": [
+              9,
+              144,
+              439,
+              514,
+              714,
+              794,
+              799,
+              844
+            ]
+          },
+          {
+            "elapsed_seconds": 971.1816727999831,
+            "event": "started",
+            "phase": "attempt_preparation"
+          },
+          {
+            "elapsed_seconds": 971.2179345999612,
+            "event": "started",
+            "phase": "probe_model_clone"
+          },
+          {
+            "elapsed_seconds": 0.268042300012894,
+            "event": "completed",
+            "phase": "probe_model_clone"
+          },
+          {
+            "elapsed_seconds": 971.5968392000068,
+            "event": "started",
+            "phase": "probe_completion_constraints"
+          },
+          {
+            "constraint_count": 175894,
+            "elapsed_seconds": 2.785935299936682,
+            "event": "completed",
+            "phase": "probe_completion_constraints"
+          },
+          {
+            "elapsed_seconds": 974.4230247000232,
+            "event": "started",
+            "phase": "probe_neighborhood_constraints"
+          },
+          {
+            "elapsed_seconds": 3.685150200035423,
+            "event": "completed",
+            "phase": "probe_neighborhood_constraints"
+          },
+          {
+            "elapsed_seconds": 978.161702399957,
+            "event": "started",
+            "phase": "probe_objective_bound_constraints"
+          },
+          {
+            "constraint_count": 200527,
+            "elapsed_seconds": 6.748585800058208,
+            "event": "completed",
+            "phase": "probe_objective_bound_constraints"
+          },
+          {
+            "elapsed_seconds": 985.0106814999599,
+            "event": "started",
+            "phase": "probe_hint_application"
+          },
+          {
+            "elapsed_seconds": 9.200147700030357,
+            "event": "completed",
+            "phase": "probe_hint_application"
+          },
+          {
+            "elapsed_seconds": 23.070969499996863,
+            "event": "completed",
+            "phase": "attempt_preparation"
+          },
+          {
+            "elapsed_seconds": 994.2884557999205,
+            "event": "started",
+            "phase": "cp_sat"
+          },
+          {
+            "elapsed_seconds": 6.136077400064096,
+            "event": "completed",
+            "phase": "cp_sat",
+            "status": "optimal"
+          },
+          {
+            "elapsed_seconds": 1000.5795567999594,
+            "event": "started",
+            "phase": "candidate_extraction"
+          },
+          {
+            "elapsed_seconds": 1013.1300830999389,
+            "event": "completed",
+            "phase": "candidate_extraction"
+          },
+          {
+            "elapsed_seconds": 1014.6134629999287,
+            "event": "started",
+            "iteration": 1,
+            "phase": "candidate_validation"
+          },
+          {
+            "elapsed_seconds": 9.557627500034869,
+            "event": "completed",
+            "iteration": 1,
+            "phase": "candidate_validation",
+            "validated": false
+          },
+          {
+            "cumulative_seconds": 1015.4162651001243,
+            "elapsed_seconds": 100.79945340007544,
+            "event": "completed",
+            "iteration": 8,
+            "operator": "targeted_utilization_r64_s8",
+            "phase": "operator_execution"
+          },
+          {
+            "elapsed_seconds": 1043.717237200006,
+            "event": "started",
+            "iteration": 8,
+            "phase": "candidate_processing"
+          },
+          {
+            "cumulative_seconds": 2.698172999895178,
+            "elapsed_seconds": 0.3547905000159517,
+            "event": "completed",
+            "phase": "candidate_processing"
+          },
+          {
+            "adopted": false,
+            "candidate_assignment_count": 0,
+            "candidate_complete": true,
+            "candidate_components": {},
+            "candidate_found": false,
+            "candidate_objective_vector": [],
+            "candidate_source_decisions": [],
+            "candidate_special_commitment_count": 0,
+            "candidate_substantive_value": null,
+            "candidate_unmet_count": 0,
+            "candidate_validated": false,
+            "elapsed_seconds": 1044.1080768000102,
+            "event": "completed",
+            "iteration": 8,
+            "phase": "candidate_processing"
+          },
+          {
+            "elapsed_seconds": 1044.1379723999416,
+            "event": "started",
+            "iteration": 9,
+            "phase": "policy_quality_evaluation"
+          },
+          {
+            "cumulative_seconds": 2.861811799928546,
+            "elapsed_seconds": 0.3064645000267774,
+            "event": "completed",
+            "phase": "policy_quality_evaluation"
+          },
+          {
+            "elapsed_seconds": 1044.478259800002,
+            "event": "started",
+            "iteration": 9,
+            "phase": "target_preparation"
+          },
+          {
+            "cumulative_seconds": 20.211110499920323,
+            "elapsed_seconds": 2.8272465999471024,
+            "event": "completed",
+            "phase": "target_preparation"
+          },
+          {
+            "elapsed_seconds": 1047.3369297999889,
+            "event": "started",
+            "iteration": 9,
+            "phase": "policy_selection"
+          },
+          {
+            "cumulative_seconds": 0.30190780002158135,
+            "elapsed_seconds": 0.03258980007376522,
+            "event": "completed",
+            "iteration": 9,
+            "phase": "policy_selection"
+          },
+          {
+            "elapsed_seconds": 1047.3998956999276,
+            "event": "completed",
+            "iteration": 9,
+            "phase": "policy_decision",
+            "reasons": [
+              "fixed_cycle_control"
+            ],
+            "selected_grade": null,
+            "selected_operator": "r2",
+            "selected_role": "local_descent",
+            "selected_student_ids": [],
+            "selection_policy": "fixed_cycle",
+            "signal_values": {
+              "cycle_index": 2,
+              "remaining_seconds": 759.2603394000325,
+              "selected_role": "local_descent",
+              "selection_tie_break": "configured fixed cycle order"
+            }
+          },
+          {
+            "elapsed_seconds": 1047.4334128999617,
+            "event": "started",
+            "iteration": 9,
+            "operator": "r2",
+            "phase": "operator_execution"
+          },
+          {
+            "elapsed_seconds": 1047.5978951000143,
+            "event": "started",
+            "phase": "student_assignment_input"
+          },
+          {
+            "elapsed_seconds": 1047.6327316999668,
+            "event": "completed",
+            "phase": "student_assignment_input",
+            "request_count": 10760,
+            "section_count": 317
+          },
+          {
+            "elapsed_seconds": 1047.7854017999489,
+            "event": "started",
+            "phase": "model_construction"
+          },
+          {
+            "constraint_count": 164949,
+            "elapsed_seconds": 26.36156910005957,
+            "event": "completed",
+            "phase": "model_construction",
+            "variable_count": 110921
+          },
+          {
+            "elapsed_seconds": 1074.1924392000074,
+            "event": "started",
+            "phase": "mature_seed_materialization"
+          },
+          {
+            "elapsed_seconds": 0.3384890001034364,
+            "event": "completed",
+            "phase": "mature_seed_materialization"
+          },
+          {
+            "elapsed_seconds": 1074.5784323000116,
+            "event": "started",
+            "phase": "mature_seed_validation"
+          },
+          {
+            "elapsed_seconds": 9.560387199977413,
+            "event": "completed",
+            "phase": "mature_seed_validation",
+            "validated": true
+          },
+          {
+            "elapsed_seconds": 1085.594952299958,
+            "event": "started",
+            "phase": "operator_static_setup"
+          },
+          {
+            "elapsed_seconds": 0.03926510002929717,
+            "event": "completed",
+            "phase": "operator_static_setup"
+          },
+          {
+            "elapsed_seconds": 1085.6696844999678,
+            "event": "started",
+            "iteration": 1,
+            "phase": "target_preparation"
+          },
+          {
+            "elapsed_seconds": 0.029395899968221784,
+            "event": "completed",
+            "iteration": 1,
+            "phase": "target_preparation",
+            "selected_student_ids": []
+          },
+          {
+            "elapsed_seconds": 1089.0143004999263,
+            "event": "started",
+            "phase": "attempt_preparation"
+          },
+          {
+            "elapsed_seconds": 1089.0666144000133,
+            "event": "started",
+            "phase": "probe_model_clone"
+          },
+          {
+            "elapsed_seconds": 0.443185199983418,
+            "event": "completed",
+            "phase": "probe_model_clone"
+          },
+          {
+            "elapsed_seconds": 1089.5516032999149,
+            "event": "started",
+            "phase": "probe_completion_constraints"
+          },
+          {
+            "constraint_count": 175894,
+            "elapsed_seconds": 2.8714970999863,
+            "event": "completed",
+            "phase": "probe_completion_constraints"
+          },
+          {
+            "elapsed_seconds": 1092.4589112999383,
+            "event": "started",
+            "phase": "probe_neighborhood_constraints"
+          },
+          {
+            "elapsed_seconds": 2.434509600047022,
+            "event": "completed",
+            "phase": "probe_neighborhood_constraints"
+          },
+          {
+            "elapsed_seconds": 1094.9268444000045,
+            "event": "started",
+            "phase": "probe_objective_bound_constraints"
+          },
+          {
+            "constraint_count": 175900,
+            "elapsed_seconds": 6.839411800028756,
+            "event": "completed",
+            "phase": "probe_objective_bound_constraints"
+          },
+          {
+            "elapsed_seconds": 1101.8048270000145,
+            "event": "started",
+            "phase": "probe_hint_application"
+          },
+          {
+            "elapsed_seconds": 8.484279800090007,
+            "event": "completed",
+            "phase": "probe_hint_application"
+          },
+          {
+            "elapsed_seconds": 21.307483099983074,
+            "event": "completed",
+            "phase": "attempt_preparation"
+          },
+          {
+            "elapsed_seconds": 1110.3536502999486,
+            "event": "started",
+            "phase": "cp_sat"
+          },
+          {
+            "elapsed_seconds": 120.39686640002765,
+            "event": "completed",
+            "phase": "cp_sat",
+            "status": "unknown"
+          },
+          {
+            "elapsed_seconds": 1231.4388993999455,
+            "event": "started",
+            "iteration": 1,
+            "phase": "candidate_validation"
+          },
+          {
+            "elapsed_seconds": 0.01423840003553778,
+            "event": "completed",
+            "iteration": 1,
+            "phase": "candidate_validation",
+            "validated": false
+          },
+          {
+            "cumulative_seconds": 1218.8044023000402,
+            "elapsed_seconds": 203.38813719991595,
+            "event": "completed",
+            "iteration": 9,
+            "operator": "r2",
+            "phase": "operator_execution"
+          },
+          {
+            "elapsed_seconds": 1250.8732038999442,
+            "event": "started",
+            "iteration": 9,
+            "phase": "candidate_processing"
+          },
+          {
+            "cumulative_seconds": 3.0366618998814374,
+            "elapsed_seconds": 0.33848889998625964,
+            "event": "completed",
+            "phase": "candidate_processing"
+          },
+          {
+            "adopted": false,
+            "candidate_assignment_count": 0,
+            "candidate_complete": true,
+            "candidate_components": {},
+            "candidate_found": false,
+            "candidate_objective_vector": [],
+            "candidate_source_decisions": [],
+            "candidate_special_commitment_count": 0,
+            "candidate_substantive_value": null,
+            "candidate_unmet_count": 0,
+            "candidate_validated": false,
+            "elapsed_seconds": 1251.2484789999435,
+            "event": "completed",
+            "iteration": 9,
+            "phase": "candidate_processing"
+          },
+          {
+            "elapsed_seconds": 1251.3020833999617,
+            "event": "started",
+            "iteration": 10,
+            "phase": "policy_quality_evaluation"
+          },
+          {
+            "cumulative_seconds": 3.2462287999223918,
+            "elapsed_seconds": 0.3844169999938458,
+            "event": "completed",
+            "phase": "policy_quality_evaluation"
+          },
+          {
+            "elapsed_seconds": 1251.7397224999731,
+            "event": "started",
+            "iteration": 10,
+            "phase": "target_preparation"
+          },
+          {
+            "cumulative_seconds": 23.637148199952208,
+            "elapsed_seconds": 3.426037700031884,
+            "event": "completed",
+            "phase": "target_preparation"
+          },
+          {
+            "elapsed_seconds": 1255.2012655999279,
+            "event": "started",
+            "iteration": 10,
+            "phase": "policy_selection"
+          },
+          {
+            "cumulative_seconds": 0.346178499981761,
+            "elapsed_seconds": 0.04427069996017963,
+            "event": "completed",
+            "iteration": 10,
+            "phase": "policy_selection"
+          },
+          {
+            "elapsed_seconds": 1255.277670999989,
+            "event": "completed",
+            "iteration": 10,
+            "phase": "policy_decision",
+            "reasons": [
+              "fixed_cycle_control"
+            ],
+            "selected_grade": null,
+            "selected_operator": "targeted_r4_s2",
+            "selected_role": "targeted_repair",
+            "selected_student_ids": [
+              1052,
+              1068
+            ],
+            "selection_policy": "fixed_cycle",
+            "signal_values": {
+              "cycle_index": 0,
+              "remaining_seconds": 552.0962302000262,
+              "selected_role": "targeted_repair",
+              "selection_tie_break": "configured fixed cycle order"
+            }
+          },
+          {
+            "elapsed_seconds": 1255.3129948999267,
+            "event": "started",
+            "iteration": 10,
+            "operator": "targeted_r4_s2",
+            "phase": "operator_execution"
+          },
+          {
+            "elapsed_seconds": 1255.5646662999643,
+            "event": "started",
+            "phase": "student_assignment_input"
+          },
+          {
+            "elapsed_seconds": 1255.6232600000221,
+            "event": "completed",
+            "phase": "student_assignment_input",
+            "request_count": 10760,
+            "section_count": 317
+          },
+          {
+            "elapsed_seconds": 1255.8292935999343,
+            "event": "started",
+            "phase": "model_construction"
+          },
+          {
+            "constraint_count": 164949,
+            "elapsed_seconds": 25.600988800055347,
+            "event": "completed",
+            "phase": "model_construction",
+            "variable_count": 110921
+          },
+          {
+            "elapsed_seconds": 1281.4863744999748,
+            "event": "started",
+            "phase": "mature_seed_materialization"
+          },
+          {
+            "elapsed_seconds": 0.47639189998153597,
+            "event": "completed",
+            "phase": "mature_seed_materialization"
+          },
+          {
+            "elapsed_seconds": 1282.0153322999831,
+            "event": "started",
+            "phase": "mature_seed_validation"
+          },
+          {
+            "elapsed_seconds": 10.058755000005476,
+            "event": "completed",
+            "phase": "mature_seed_validation",
+            "validated": true
+          },
+          {
+            "elapsed_seconds": 1292.9408197000157,
+            "event": "started",
+            "phase": "operator_static_setup"
+          },
+          {
+            "elapsed_seconds": 0.08708389999810606,
+            "event": "completed",
+            "phase": "operator_static_setup"
+          },
+          {
+            "elapsed_seconds": 1293.0543869999237,
+            "event": "started",
+            "iteration": 1,
+            "phase": "target_preparation"
+          },
+          {
+            "elapsed_seconds": 1.6238743000430986,
+            "event": "completed",
+            "iteration": 1,
+            "phase": "target_preparation",
+            "selected_student_ids": [
+              1052,
+              1068
+            ]
+          },
+          {
+            "elapsed_seconds": 1297.8825953999767,
+            "event": "started",
+            "phase": "attempt_preparation"
+          },
+          {
+            "elapsed_seconds": 1297.921456699958,
+            "event": "started",
+            "phase": "probe_model_clone"
+          },
+          {
+            "elapsed_seconds": 0.38647820008918643,
+            "event": "completed",
+            "phase": "probe_model_clone"
+          },
+          {
+            "elapsed_seconds": 1298.3943793999497,
+            "event": "started",
+            "phase": "probe_completion_constraints"
+          },
+          {
+            "constraint_count": 175894,
+            "elapsed_seconds": 2.6423837000038475,
+            "event": "completed",
+            "phase": "probe_completion_constraints"
+          },
+          {
+            "elapsed_seconds": 1301.0952094999375,
+            "event": "started",
+            "phase": "probe_neighborhood_constraints"
+          },
+          {
+            "elapsed_seconds": 3.3215896000619978,
+            "event": "completed",
+            "phase": "probe_neighborhood_constraints"
+          },
+          {
+            "elapsed_seconds": 1304.4641455999808,
+            "event": "started",
+            "phase": "probe_objective_bound_constraints"
+          },
+          {
+            "constraint_count": 200575,
+            "elapsed_seconds": 6.471105400007218,
+            "event": "completed",
+            "phase": "probe_objective_bound_constraints"
+          },
+          {
+            "elapsed_seconds": 1311.0139791999245,
+            "event": "started",
+            "phase": "probe_hint_application"
+          },
+          {
+            "elapsed_seconds": 8.864202200085856,
+            "event": "completed",
+            "phase": "probe_hint_application"
+          },
+          {
+            "elapsed_seconds": 22.107088499935344,
+            "event": "completed",
+            "phase": "attempt_preparation"
+          },
+          {
+            "elapsed_seconds": 1320.0965236999327,
+            "event": "started",
+            "phase": "cp_sat"
+          },
+          {
+            "elapsed_seconds": 5.677890000049956,
+            "event": "completed",
+            "phase": "cp_sat",
+            "status": "optimal"
+          },
+          {
+            "elapsed_seconds": 1325.878121900023,
+            "event": "started",
+            "phase": "candidate_extraction"
+          },
+          {
+            "elapsed_seconds": 1337.0083030000096,
+            "event": "completed",
+            "phase": "candidate_extraction"
+          },
+          {
+            "elapsed_seconds": 1338.207348200027,
+            "event": "started",
+            "iteration": 1,
+            "phase": "candidate_validation"
+          },
+          {
+            "elapsed_seconds": 11.369963900069706,
+            "event": "completed",
+            "iteration": 1,
+            "phase": "candidate_validation",
+            "validated": false
+          },
+          {
+            "cumulative_seconds": 1333.301467500045,
+            "elapsed_seconds": 114.49706520000473,
+            "event": "completed",
+            "iteration": 10,
+            "operator": "targeted_r4_s2",
+            "phase": "operator_execution"
+          },
+          {
+            "elapsed_seconds": 1369.833372300025,
+            "event": "started",
+            "iteration": 10,
+            "phase": "candidate_processing"
+          },
+          {
+            "cumulative_seconds": 5.743092999793589,
+            "elapsed_seconds": 2.7064310999121517,
+            "event": "completed",
+            "phase": "candidate_processing"
+          },
+          {
+            "adopted": false,
+            "candidate_assignment_count": 0,
+            "candidate_complete": true,
+            "candidate_components": {},
+            "candidate_found": false,
+            "candidate_objective_vector": [],
+            "candidate_source_decisions": [],
+            "candidate_special_commitment_count": 0,
+            "candidate_substantive_value": null,
+            "candidate_unmet_count": 0,
+            "candidate_validated": false,
+            "elapsed_seconds": 1372.797739099944,
+            "event": "completed",
+            "iteration": 10,
+            "phase": "candidate_processing"
+          },
+          {
+            "elapsed_seconds": 10627.658715599915,
+            "event": "started",
+            "phase": "finalization"
+          }
+        ]
+      }
+    },
+    "worker_last_phase": {
+      "elapsed_seconds": 10627.658715599915,
+      "event": "started",
+      "phase": "finalization",
+      "phase_history": [
+        {
+          "elapsed_seconds": 461.86049470002763,
+          "event": "completed",
+          "phase": "candidate_extraction"
+        },
+        {
+          "elapsed_seconds": 462.70574469992425,
+          "event": "started",
+          "iteration": 1,
+          "phase": "candidate_validation"
+        },
+        {
+          "elapsed_seconds": 8.355773800052702,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "candidate_validation",
+          "validated": false
+        },
+        {
+          "cumulative_seconds": 473.39727780001704,
+          "elapsed_seconds": 95.9717731999699,
+          "event": "completed",
+          "iteration": 4,
+          "operator": "targeted_r4_s2",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 487.80883599992376,
+          "event": "started",
+          "iteration": 4,
+          "phase": "candidate_processing"
+        },
+        {
+          "cumulative_seconds": 1.0367015998344868,
+          "elapsed_seconds": 0.2303462999407202,
+          "event": "completed",
+          "phase": "candidate_processing"
+        },
+        {
+          "adopted": false,
+          "candidate_assignment_count": 0,
+          "candidate_complete": true,
+          "candidate_components": {},
+          "candidate_found": false,
+          "candidate_objective_vector": [],
+          "candidate_source_decisions": [],
+          "candidate_special_commitment_count": 0,
+          "candidate_substantive_value": null,
+          "candidate_unmet_count": 0,
+          "candidate_validated": false,
+          "elapsed_seconds": 488.08180599997286,
+          "event": "completed",
+          "iteration": 4,
+          "phase": "candidate_processing"
+        },
+        {
+          "elapsed_seconds": 488.1103951999685,
+          "event": "started",
+          "iteration": 5,
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "cumulative_seconds": 1.6600276998942718,
+          "elapsed_seconds": 0.3431285999249667,
+          "event": "completed",
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "elapsed_seconds": 488.48872659995686,
+          "event": "started",
+          "iteration": 5,
+          "phase": "target_preparation"
+        },
+        {
+          "cumulative_seconds": 10.123398100025952,
+          "elapsed_seconds": 2.6717553000198677,
+          "event": "completed",
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 491.1907419000054,
+          "event": "started",
+          "iteration": 5,
+          "phase": "policy_selection"
+        },
+        {
+          "cumulative_seconds": 0.15685439994558692,
+          "elapsed_seconds": 0.03443210001569241,
+          "event": "completed",
+          "iteration": 5,
+          "phase": "policy_selection"
+        },
+        {
+          "elapsed_seconds": 491.2541087999707,
+          "event": "completed",
+          "iteration": 5,
+          "phase": "policy_decision",
+          "reasons": [
+            "fixed_cycle_control"
+          ],
+          "selected_grade": null,
+          "selected_operator": "targeted_utilization_r64_s8",
+          "selected_role": "utilization_repair",
+          "selected_student_ids": [
+            417,
+            360,
+            482,
+            25,
+            480,
+            90,
+            175,
+            514
+          ],
+          "selection_policy": "fixed_cycle",
+          "signal_values": {
+            "cycle_index": 1,
+            "remaining_seconds": 1315.287908899947,
+            "selected_role": "utilization_repair",
+            "selection_tie_break": "configured fixed cycle order"
+          }
+        },
+        {
+          "elapsed_seconds": 491.2915278999135,
+          "event": "started",
+          "iteration": 5,
+          "operator": "targeted_utilization_r64_s8",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 491.42856859997846,
+          "event": "started",
+          "phase": "student_assignment_input"
+        },
+        {
+          "elapsed_seconds": 491.46302219992504,
+          "event": "completed",
+          "phase": "student_assignment_input",
+          "request_count": 10760,
+          "section_count": 317
+        },
+        {
+          "elapsed_seconds": 491.572378700017,
+          "event": "started",
+          "phase": "model_construction"
+        },
+        {
+          "constraint_count": 164949,
+          "elapsed_seconds": 18.694998100050725,
+          "event": "completed",
+          "phase": "model_construction",
+          "variable_count": 110921
+        },
+        {
+          "elapsed_seconds": 510.3064605999971,
+          "event": "started",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 0.24037909996695817,
+          "event": "completed",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 510.57458599994425,
+          "event": "started",
+          "phase": "mature_seed_validation"
+        },
+        {
+          "elapsed_seconds": 8.07810669997707,
+          "event": "completed",
+          "phase": "mature_seed_validation",
+          "validated": true
+        },
+        {
+          "elapsed_seconds": 520.0283811999252,
+          "event": "started",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 0.0322076000738889,
+          "event": "completed",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 520.1044940999709,
+          "event": "started",
+          "iteration": 1,
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 2.669127699919045,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "target_preparation",
+          "selected_student_ids": [
+            9,
+            144,
+            439,
+            514,
+            714,
+            794,
+            799,
+            844
+          ]
+        },
+        {
+          "elapsed_seconds": 525.1073806999484,
+          "event": "started",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 525.1372754999902,
+          "event": "started",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 0.30868320004083216,
+          "event": "completed",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 525.5779055999592,
+          "event": "started",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "constraint_count": 175894,
+          "elapsed_seconds": 2.1250191999133676,
+          "event": "completed",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "elapsed_seconds": 527.8247957000276,
+          "event": "started",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 2.459286900004372,
+          "event": "completed",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 530.3154238000279,
+          "event": "started",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "constraint_count": 200527,
+          "elapsed_seconds": 4.671690899995156,
+          "event": "completed",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "elapsed_seconds": 535.0779697999824,
+          "event": "started",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 7.652620599954389,
+          "event": "completed",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 17.65631700004451,
+          "event": "completed",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 542.8002805999713,
+          "event": "started",
+          "phase": "cp_sat"
+        },
+        {
+          "elapsed_seconds": 5.1878232000162825,
+          "event": "completed",
+          "phase": "cp_sat",
+          "status": "optimal"
+        },
+        {
+          "elapsed_seconds": 548.161116699921,
+          "event": "started",
+          "phase": "candidate_extraction"
+        },
+        {
+          "elapsed_seconds": 560.1168392000254,
+          "event": "completed",
+          "phase": "candidate_extraction"
+        },
+        {
+          "elapsed_seconds": 561.1827844999498,
+          "event": "started",
+          "iteration": 1,
+          "phase": "candidate_validation"
+        },
+        {
+          "elapsed_seconds": 8.775690500042401,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "candidate_validation",
+          "validated": false
+        },
+        {
+          "cumulative_seconds": 570.8121587999631,
+          "elapsed_seconds": 97.41488099994604,
+          "event": "completed",
+          "iteration": 5,
+          "operator": "targeted_utilization_r64_s8",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 588.7911604000255,
+          "event": "started",
+          "iteration": 5,
+          "phase": "candidate_processing"
+        },
+        {
+          "cumulative_seconds": 1.589196999790147,
+          "elapsed_seconds": 0.5524953999556601,
+          "event": "completed",
+          "phase": "candidate_processing"
+        },
+        {
+          "adopted": false,
+          "candidate_assignment_count": 0,
+          "candidate_complete": true,
+          "candidate_components": {},
+          "candidate_found": false,
+          "candidate_objective_vector": [],
+          "candidate_source_decisions": [],
+          "candidate_special_commitment_count": 0,
+          "candidate_substantive_value": null,
+          "candidate_unmet_count": 0,
+          "candidate_validated": false,
+          "elapsed_seconds": 589.3758889000164,
+          "event": "completed",
+          "iteration": 5,
+          "phase": "candidate_processing"
+        },
+        {
+          "elapsed_seconds": 589.4107384999515,
+          "event": "started",
+          "iteration": 6,
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "cumulative_seconds": 1.9630551999434829,
+          "elapsed_seconds": 0.3030275000492111,
+          "event": "completed",
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "elapsed_seconds": 589.7443786999211,
+          "event": "started",
+          "iteration": 6,
+          "phase": "target_preparation"
+        },
+        {
+          "cumulative_seconds": 12.189886800013483,
+          "elapsed_seconds": 2.0664886999875307,
+          "event": "completed",
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 591.8477233999874,
+          "event": "started",
+          "iteration": 6,
+          "phase": "policy_selection"
+        },
+        {
+          "cumulative_seconds": 0.1951988999499008,
+          "elapsed_seconds": 0.038344500004313886,
+          "event": "completed",
+          "iteration": 6,
+          "phase": "policy_selection"
+        },
+        {
+          "elapsed_seconds": 591.9186950000003,
+          "event": "completed",
+          "iteration": 6,
+          "phase": "policy_decision",
+          "reasons": [
+            "fixed_cycle_control"
+          ],
+          "selected_grade": null,
+          "selected_operator": "r2",
+          "selected_role": "local_descent",
+          "selected_student_ids": [],
+          "selection_policy": "fixed_cycle",
+          "signal_values": {
+            "cycle_index": 2,
+            "remaining_seconds": 1213.9875686999876,
+            "selected_role": "local_descent",
+            "selection_tie_break": "configured fixed cycle order"
+          }
+        },
+        {
+          "elapsed_seconds": 591.956811800017,
+          "event": "started",
+          "iteration": 6,
+          "operator": "r2",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 592.1241221999517,
+          "event": "started",
+          "phase": "student_assignment_input"
+        },
+        {
+          "elapsed_seconds": 592.16525979992,
+          "event": "completed",
+          "phase": "student_assignment_input",
+          "request_count": 10760,
+          "section_count": 317
+        },
+        {
+          "elapsed_seconds": 592.3159339999547,
+          "event": "started",
+          "phase": "model_construction"
+        },
+        {
+          "constraint_count": 164949,
+          "elapsed_seconds": 26.04947889992036,
+          "event": "completed",
+          "phase": "model_construction",
+          "variable_count": 110921
+        },
+        {
+          "elapsed_seconds": 618.4463390000165,
+          "event": "started",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 0.24897520011290908,
+          "event": "completed",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 618.7908559999196,
+          "event": "started",
+          "phase": "mature_seed_validation"
+        },
+        {
+          "elapsed_seconds": 9.87202020001132,
+          "event": "completed",
+          "phase": "mature_seed_validation",
+          "validated": true
+        },
+        {
+          "elapsed_seconds": 629.6680019999621,
+          "event": "started",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 0.04087439994327724,
+          "event": "completed",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 629.7597744999221,
+          "event": "started",
+          "iteration": 1,
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 0.0354429999133572,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "target_preparation",
+          "selected_student_ids": []
+        },
+        {
+          "elapsed_seconds": 633.9741829999257,
+          "event": "started",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 634.0105080999201,
+          "event": "started",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 0.3601210000924766,
+          "event": "completed",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 634.4928377999458,
+          "event": "started",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "constraint_count": 175894,
+          "elapsed_seconds": 3.0038459999486804,
+          "event": "completed",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "elapsed_seconds": 637.5309297000058,
+          "event": "started",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 2.765623699990101,
+          "event": "completed",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 640.3403199999593,
+          "event": "started",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "constraint_count": 175900,
+          "elapsed_seconds": 7.149199299979955,
+          "event": "completed",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "elapsed_seconds": 647.5980142999906,
+          "event": "started",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 8.749166700057685,
+          "event": "completed",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 22.54950199997984,
+          "event": "completed",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 656.5843900999753,
+          "event": "started",
+          "phase": "cp_sat"
+        },
+        {
+          "elapsed_seconds": 114.42651040002238,
+          "event": "completed",
+          "phase": "cp_sat",
+          "status": "unknown"
+        },
+        {
+          "elapsed_seconds": 772.3312855999684,
+          "event": "started",
+          "iteration": 1,
+          "phase": "candidate_validation"
+        },
+        {
+          "elapsed_seconds": 0.048601699993014336,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "candidate_validation",
+          "validated": false
+        },
+        {
+          "cumulative_seconds": 772.2685136999935,
+          "elapsed_seconds": 201.45635490003042,
+          "event": "completed",
+          "iteration": 6,
+          "operator": "r2",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 793.4480609999737,
+          "event": "started",
+          "iteration": 6,
+          "phase": "candidate_processing"
+        },
+        {
+          "cumulative_seconds": 2.1875386998290196,
+          "elapsed_seconds": 0.5983417000388727,
+          "event": "completed",
+          "phase": "candidate_processing"
+        },
+        {
+          "adopted": false,
+          "candidate_assignment_count": 0,
+          "candidate_complete": true,
+          "candidate_components": {},
+          "candidate_found": false,
+          "candidate_objective_vector": [],
+          "candidate_source_decisions": [],
+          "candidate_special_commitment_count": 0,
+          "candidate_substantive_value": null,
+          "candidate_unmet_count": 0,
+          "candidate_validated": false,
+          "elapsed_seconds": 794.0813674000092,
+          "event": "completed",
+          "iteration": 6,
+          "phase": "candidate_processing"
+        },
+        {
+          "elapsed_seconds": 794.1213414999656,
+          "event": "started",
+          "iteration": 7,
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "cumulative_seconds": 2.288727599894628,
+          "elapsed_seconds": 0.32567239995114505,
+          "event": "completed",
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "elapsed_seconds": 794.4765068999259,
+          "event": "started",
+          "iteration": 7,
+          "phase": "target_preparation"
+        },
+        {
+          "cumulative_seconds": 14.862490199971944,
+          "elapsed_seconds": 2.6726033999584615,
+          "event": "completed",
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 797.1921716999495,
+          "event": "started",
+          "iteration": 7,
+          "phase": "policy_selection"
+        },
+        {
+          "cumulative_seconds": 0.24573620001319796,
+          "elapsed_seconds": 0.05053730006329715,
+          "event": "completed",
+          "iteration": 7,
+          "phase": "policy_selection"
+        },
+        {
+          "elapsed_seconds": 797.2747157999547,
+          "event": "completed",
+          "iteration": 7,
+          "phase": "policy_decision",
+          "reasons": [
+            "fixed_cycle_control"
+          ],
+          "selected_grade": null,
+          "selected_operator": "targeted_r4_s2",
+          "selected_role": "targeted_repair",
+          "selected_student_ids": [
+            1052,
+            1068
+          ],
+          "selection_policy": "fixed_cycle",
+          "signal_values": {
+            "cycle_index": 0,
+            "remaining_seconds": 1009.2769689999986,
+            "selected_role": "targeted_repair",
+            "selection_tie_break": "configured fixed cycle order"
+          }
+        },
+        {
+          "elapsed_seconds": 797.3148889999138,
+          "event": "started",
+          "iteration": 7,
+          "operator": "targeted_r4_s2",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 797.4729226999916,
+          "event": "started",
+          "phase": "student_assignment_input"
+        },
+        {
+          "elapsed_seconds": 797.5226089999778,
+          "event": "completed",
+          "phase": "student_assignment_input",
+          "request_count": 10760,
+          "section_count": 317
+        },
+        {
+          "elapsed_seconds": 797.7106543999398,
+          "event": "started",
+          "phase": "model_construction"
+        },
+        {
+          "constraint_count": 164949,
+          "elapsed_seconds": 25.401636600028723,
+          "event": "completed",
+          "phase": "model_construction",
+          "variable_count": 110921
+        },
+        {
+          "elapsed_seconds": 823.1574007999152,
+          "event": "started",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 0.43478860007598996,
+          "event": "completed",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 823.6639002999291,
+          "event": "started",
+          "phase": "mature_seed_validation"
+        },
+        {
+          "elapsed_seconds": 10.321765400003642,
+          "event": "completed",
+          "phase": "mature_seed_validation",
+          "validated": true
+        },
+        {
+          "elapsed_seconds": 835.0484536999138,
+          "event": "started",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 0.08864670002367347,
+          "event": "completed",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 835.1834603999741,
+          "event": "started",
+          "iteration": 1,
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 0.9239612000528723,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "target_preparation",
+          "selected_student_ids": [
+            1052,
+            1068
+          ]
+        },
+        {
+          "elapsed_seconds": 841.0395939999726,
+          "event": "started",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 841.1188029999612,
+          "event": "started",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 0.4729243000037968,
+          "event": "completed",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 841.671318299952,
+          "event": "started",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "constraint_count": 175894,
+          "elapsed_seconds": 3.298526500002481,
+          "event": "completed",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "elapsed_seconds": 845.0064005999593,
+          "event": "started",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 3.5438922999892384,
+          "event": "completed",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 848.5905333999544,
+          "event": "started",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "constraint_count": 200575,
+          "elapsed_seconds": 6.243061700020917,
+          "event": "completed",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "elapsed_seconds": 854.8460385999642,
+          "event": "started",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 63.280408999999054,
+          "event": "completed",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 77.12487369996961,
+          "event": "completed",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 918.193050700007,
+          "event": "started",
+          "phase": "cp_sat"
+        },
+        {
+          "elapsed_seconds": 4.97026809991803,
+          "event": "completed",
+          "phase": "cp_sat",
+          "status": "optimal"
+        },
+        {
+          "elapsed_seconds": 923.2193265999667,
+          "event": "started",
+          "phase": "candidate_extraction"
+        },
+        {
+          "elapsed_seconds": 928.0266836999217,
+          "event": "completed",
+          "phase": "candidate_extraction"
+        },
+        {
+          "elapsed_seconds": 928.4291587999323,
+          "event": "started",
+          "iteration": 1,
+          "phase": "candidate_validation"
+        },
+        {
+          "elapsed_seconds": 3.272633900051005,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "candidate_validation",
+          "validated": false
+        },
+        {
+          "cumulative_seconds": 914.6168117000489,
+          "elapsed_seconds": 142.34829800005537,
+          "event": "completed",
+          "iteration": 7,
+          "operator": "targeted_r4_s2",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 939.6803422999801,
+          "event": "started",
+          "iteration": 7,
+          "phase": "candidate_processing"
+        },
+        {
+          "cumulative_seconds": 2.343382499879226,
+          "elapsed_seconds": 0.15584380005020648,
+          "event": "completed",
+          "phase": "candidate_processing"
+        },
+        {
+          "adopted": false,
+          "candidate_assignment_count": 0,
+          "candidate_complete": true,
+          "candidate_components": {},
+          "candidate_found": false,
+          "candidate_objective_vector": [],
+          "candidate_source_decisions": [],
+          "candidate_special_commitment_count": 0,
+          "candidate_substantive_value": null,
+          "candidate_unmet_count": 0,
+          "candidate_validated": false,
+          "elapsed_seconds": 939.8844610999804,
+          "event": "completed",
+          "iteration": 7,
+          "phase": "candidate_processing"
+        },
+        {
+          "elapsed_seconds": 939.9217949999729,
+          "event": "started",
+          "iteration": 8,
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "cumulative_seconds": 2.5553472999017686,
+          "elapsed_seconds": 0.26661970000714064,
+          "event": "completed",
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "elapsed_seconds": 940.2370496999938,
+          "event": "started",
+          "iteration": 8,
+          "phase": "target_preparation"
+        },
+        {
+          "cumulative_seconds": 17.38386389997322,
+          "elapsed_seconds": 2.521373700001277,
+          "event": "completed",
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 942.7954117999179,
+          "event": "started",
+          "iteration": 8,
+          "phase": "policy_selection"
+        },
+        {
+          "cumulative_seconds": 0.26931799994781613,
+          "elapsed_seconds": 0.023581799934618175,
+          "event": "completed",
+          "iteration": 8,
+          "phase": "policy_selection"
+        },
+        {
+          "elapsed_seconds": 942.8454171000049,
+          "event": "completed",
+          "iteration": 8,
+          "phase": "policy_decision",
+          "reasons": [
+            "fixed_cycle_control"
+          ],
+          "selected_grade": null,
+          "selected_operator": "targeted_utilization_r64_s8",
+          "selected_role": "utilization_repair",
+          "selected_student_ids": [
+            417,
+            360,
+            482,
+            25,
+            480,
+            90,
+            175,
+            514
+          ],
+          "selection_policy": "fixed_cycle",
+          "signal_values": {
+            "cycle_index": 1,
+            "remaining_seconds": 863.4765564999543,
+            "selected_role": "utilization_repair",
+            "selection_tie_break": "configured fixed cycle order"
+          }
+        },
+        {
+          "elapsed_seconds": 942.8846801000182,
+          "event": "started",
+          "iteration": 8,
+          "operator": "targeted_utilization_r64_s8",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 943.0839187999954,
+          "event": "started",
+          "phase": "student_assignment_input"
+        },
+        {
+          "elapsed_seconds": 943.1226140999934,
+          "event": "completed",
+          "phase": "student_assignment_input",
+          "request_count": 10760,
+          "section_count": 317
+        },
+        {
+          "elapsed_seconds": 943.2116739000194,
+          "event": "started",
+          "phase": "model_construction"
+        },
+        {
+          "constraint_count": 164949,
+          "elapsed_seconds": 10.149593999958597,
+          "event": "completed",
+          "phase": "model_construction",
+          "variable_count": 110921
+        },
+        {
+          "elapsed_seconds": 953.378896899987,
+          "event": "started",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 0.1646597000071779,
+          "event": "completed",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 953.6074547999306,
+          "event": "started",
+          "phase": "mature_seed_validation"
+        },
+        {
+          "elapsed_seconds": 8.289272799971513,
+          "event": "completed",
+          "phase": "mature_seed_validation",
+          "validated": true
+        },
+        {
+          "elapsed_seconds": 963.2850713999942,
+          "event": "started",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 0.06649580004159361,
+          "event": "completed",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 963.4087486999342,
+          "event": "started",
+          "iteration": 1,
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 3.6584424999309704,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "target_preparation",
+          "selected_student_ids": [
+            9,
+            144,
+            439,
+            514,
+            714,
+            794,
+            799,
+            844
+          ]
+        },
+        {
+          "elapsed_seconds": 971.1816727999831,
+          "event": "started",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 971.2179345999612,
+          "event": "started",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 0.268042300012894,
+          "event": "completed",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 971.5968392000068,
+          "event": "started",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "constraint_count": 175894,
+          "elapsed_seconds": 2.785935299936682,
+          "event": "completed",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "elapsed_seconds": 974.4230247000232,
+          "event": "started",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 3.685150200035423,
+          "event": "completed",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 978.161702399957,
+          "event": "started",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "constraint_count": 200527,
+          "elapsed_seconds": 6.748585800058208,
+          "event": "completed",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "elapsed_seconds": 985.0106814999599,
+          "event": "started",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 9.200147700030357,
+          "event": "completed",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 23.070969499996863,
+          "event": "completed",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 994.2884557999205,
+          "event": "started",
+          "phase": "cp_sat"
+        },
+        {
+          "elapsed_seconds": 6.136077400064096,
+          "event": "completed",
+          "phase": "cp_sat",
+          "status": "optimal"
+        },
+        {
+          "elapsed_seconds": 1000.5795567999594,
+          "event": "started",
+          "phase": "candidate_extraction"
+        },
+        {
+          "elapsed_seconds": 1013.1300830999389,
+          "event": "completed",
+          "phase": "candidate_extraction"
+        },
+        {
+          "elapsed_seconds": 1014.6134629999287,
+          "event": "started",
+          "iteration": 1,
+          "phase": "candidate_validation"
+        },
+        {
+          "elapsed_seconds": 9.557627500034869,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "candidate_validation",
+          "validated": false
+        },
+        {
+          "cumulative_seconds": 1015.4162651001243,
+          "elapsed_seconds": 100.79945340007544,
+          "event": "completed",
+          "iteration": 8,
+          "operator": "targeted_utilization_r64_s8",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 1043.717237200006,
+          "event": "started",
+          "iteration": 8,
+          "phase": "candidate_processing"
+        },
+        {
+          "cumulative_seconds": 2.698172999895178,
+          "elapsed_seconds": 0.3547905000159517,
+          "event": "completed",
+          "phase": "candidate_processing"
+        },
+        {
+          "adopted": false,
+          "candidate_assignment_count": 0,
+          "candidate_complete": true,
+          "candidate_components": {},
+          "candidate_found": false,
+          "candidate_objective_vector": [],
+          "candidate_source_decisions": [],
+          "candidate_special_commitment_count": 0,
+          "candidate_substantive_value": null,
+          "candidate_unmet_count": 0,
+          "candidate_validated": false,
+          "elapsed_seconds": 1044.1080768000102,
+          "event": "completed",
+          "iteration": 8,
+          "phase": "candidate_processing"
+        },
+        {
+          "elapsed_seconds": 1044.1379723999416,
+          "event": "started",
+          "iteration": 9,
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "cumulative_seconds": 2.861811799928546,
+          "elapsed_seconds": 0.3064645000267774,
+          "event": "completed",
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "elapsed_seconds": 1044.478259800002,
+          "event": "started",
+          "iteration": 9,
+          "phase": "target_preparation"
+        },
+        {
+          "cumulative_seconds": 20.211110499920323,
+          "elapsed_seconds": 2.8272465999471024,
+          "event": "completed",
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 1047.3369297999889,
+          "event": "started",
+          "iteration": 9,
+          "phase": "policy_selection"
+        },
+        {
+          "cumulative_seconds": 0.30190780002158135,
+          "elapsed_seconds": 0.03258980007376522,
+          "event": "completed",
+          "iteration": 9,
+          "phase": "policy_selection"
+        },
+        {
+          "elapsed_seconds": 1047.3998956999276,
+          "event": "completed",
+          "iteration": 9,
+          "phase": "policy_decision",
+          "reasons": [
+            "fixed_cycle_control"
+          ],
+          "selected_grade": null,
+          "selected_operator": "r2",
+          "selected_role": "local_descent",
+          "selected_student_ids": [],
+          "selection_policy": "fixed_cycle",
+          "signal_values": {
+            "cycle_index": 2,
+            "remaining_seconds": 759.2603394000325,
+            "selected_role": "local_descent",
+            "selection_tie_break": "configured fixed cycle order"
+          }
+        },
+        {
+          "elapsed_seconds": 1047.4334128999617,
+          "event": "started",
+          "iteration": 9,
+          "operator": "r2",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 1047.5978951000143,
+          "event": "started",
+          "phase": "student_assignment_input"
+        },
+        {
+          "elapsed_seconds": 1047.6327316999668,
+          "event": "completed",
+          "phase": "student_assignment_input",
+          "request_count": 10760,
+          "section_count": 317
+        },
+        {
+          "elapsed_seconds": 1047.7854017999489,
+          "event": "started",
+          "phase": "model_construction"
+        },
+        {
+          "constraint_count": 164949,
+          "elapsed_seconds": 26.36156910005957,
+          "event": "completed",
+          "phase": "model_construction",
+          "variable_count": 110921
+        },
+        {
+          "elapsed_seconds": 1074.1924392000074,
+          "event": "started",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 0.3384890001034364,
+          "event": "completed",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 1074.5784323000116,
+          "event": "started",
+          "phase": "mature_seed_validation"
+        },
+        {
+          "elapsed_seconds": 9.560387199977413,
+          "event": "completed",
+          "phase": "mature_seed_validation",
+          "validated": true
+        },
+        {
+          "elapsed_seconds": 1085.594952299958,
+          "event": "started",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 0.03926510002929717,
+          "event": "completed",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 1085.6696844999678,
+          "event": "started",
+          "iteration": 1,
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 0.029395899968221784,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "target_preparation",
+          "selected_student_ids": []
+        },
+        {
+          "elapsed_seconds": 1089.0143004999263,
+          "event": "started",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 1089.0666144000133,
+          "event": "started",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 0.443185199983418,
+          "event": "completed",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 1089.5516032999149,
+          "event": "started",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "constraint_count": 175894,
+          "elapsed_seconds": 2.8714970999863,
+          "event": "completed",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "elapsed_seconds": 1092.4589112999383,
+          "event": "started",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 2.434509600047022,
+          "event": "completed",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 1094.9268444000045,
+          "event": "started",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "constraint_count": 175900,
+          "elapsed_seconds": 6.839411800028756,
+          "event": "completed",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "elapsed_seconds": 1101.8048270000145,
+          "event": "started",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 8.484279800090007,
+          "event": "completed",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 21.307483099983074,
+          "event": "completed",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 1110.3536502999486,
+          "event": "started",
+          "phase": "cp_sat"
+        },
+        {
+          "elapsed_seconds": 120.39686640002765,
+          "event": "completed",
+          "phase": "cp_sat",
+          "status": "unknown"
+        },
+        {
+          "elapsed_seconds": 1231.4388993999455,
+          "event": "started",
+          "iteration": 1,
+          "phase": "candidate_validation"
+        },
+        {
+          "elapsed_seconds": 0.01423840003553778,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "candidate_validation",
+          "validated": false
+        },
+        {
+          "cumulative_seconds": 1218.8044023000402,
+          "elapsed_seconds": 203.38813719991595,
+          "event": "completed",
+          "iteration": 9,
+          "operator": "r2",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 1250.8732038999442,
+          "event": "started",
+          "iteration": 9,
+          "phase": "candidate_processing"
+        },
+        {
+          "cumulative_seconds": 3.0366618998814374,
+          "elapsed_seconds": 0.33848889998625964,
+          "event": "completed",
+          "phase": "candidate_processing"
+        },
+        {
+          "adopted": false,
+          "candidate_assignment_count": 0,
+          "candidate_complete": true,
+          "candidate_components": {},
+          "candidate_found": false,
+          "candidate_objective_vector": [],
+          "candidate_source_decisions": [],
+          "candidate_special_commitment_count": 0,
+          "candidate_substantive_value": null,
+          "candidate_unmet_count": 0,
+          "candidate_validated": false,
+          "elapsed_seconds": 1251.2484789999435,
+          "event": "completed",
+          "iteration": 9,
+          "phase": "candidate_processing"
+        },
+        {
+          "elapsed_seconds": 1251.3020833999617,
+          "event": "started",
+          "iteration": 10,
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "cumulative_seconds": 3.2462287999223918,
+          "elapsed_seconds": 0.3844169999938458,
+          "event": "completed",
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "elapsed_seconds": 1251.7397224999731,
+          "event": "started",
+          "iteration": 10,
+          "phase": "target_preparation"
+        },
+        {
+          "cumulative_seconds": 23.637148199952208,
+          "elapsed_seconds": 3.426037700031884,
+          "event": "completed",
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 1255.2012655999279,
+          "event": "started",
+          "iteration": 10,
+          "phase": "policy_selection"
+        },
+        {
+          "cumulative_seconds": 0.346178499981761,
+          "elapsed_seconds": 0.04427069996017963,
+          "event": "completed",
+          "iteration": 10,
+          "phase": "policy_selection"
+        },
+        {
+          "elapsed_seconds": 1255.277670999989,
+          "event": "completed",
+          "iteration": 10,
+          "phase": "policy_decision",
+          "reasons": [
+            "fixed_cycle_control"
+          ],
+          "selected_grade": null,
+          "selected_operator": "targeted_r4_s2",
+          "selected_role": "targeted_repair",
+          "selected_student_ids": [
+            1052,
+            1068
+          ],
+          "selection_policy": "fixed_cycle",
+          "signal_values": {
+            "cycle_index": 0,
+            "remaining_seconds": 552.0962302000262,
+            "selected_role": "targeted_repair",
+            "selection_tie_break": "configured fixed cycle order"
+          }
+        },
+        {
+          "elapsed_seconds": 1255.3129948999267,
+          "event": "started",
+          "iteration": 10,
+          "operator": "targeted_r4_s2",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 1255.5646662999643,
+          "event": "started",
+          "phase": "student_assignment_input"
+        },
+        {
+          "elapsed_seconds": 1255.6232600000221,
+          "event": "completed",
+          "phase": "student_assignment_input",
+          "request_count": 10760,
+          "section_count": 317
+        },
+        {
+          "elapsed_seconds": 1255.8292935999343,
+          "event": "started",
+          "phase": "model_construction"
+        },
+        {
+          "constraint_count": 164949,
+          "elapsed_seconds": 25.600988800055347,
+          "event": "completed",
+          "phase": "model_construction",
+          "variable_count": 110921
+        },
+        {
+          "elapsed_seconds": 1281.4863744999748,
+          "event": "started",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 0.47639189998153597,
+          "event": "completed",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 1282.0153322999831,
+          "event": "started",
+          "phase": "mature_seed_validation"
+        },
+        {
+          "elapsed_seconds": 10.058755000005476,
+          "event": "completed",
+          "phase": "mature_seed_validation",
+          "validated": true
+        },
+        {
+          "elapsed_seconds": 1292.9408197000157,
+          "event": "started",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 0.08708389999810606,
+          "event": "completed",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 1293.0543869999237,
+          "event": "started",
+          "iteration": 1,
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 1.6238743000430986,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "target_preparation",
+          "selected_student_ids": [
+            1052,
+            1068
+          ]
+        },
+        {
+          "elapsed_seconds": 1297.8825953999767,
+          "event": "started",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 1297.921456699958,
+          "event": "started",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 0.38647820008918643,
+          "event": "completed",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 1298.3943793999497,
+          "event": "started",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "constraint_count": 175894,
+          "elapsed_seconds": 2.6423837000038475,
+          "event": "completed",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "elapsed_seconds": 1301.0952094999375,
+          "event": "started",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 3.3215896000619978,
+          "event": "completed",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 1304.4641455999808,
+          "event": "started",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "constraint_count": 200575,
+          "elapsed_seconds": 6.471105400007218,
+          "event": "completed",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "elapsed_seconds": 1311.0139791999245,
+          "event": "started",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 8.864202200085856,
+          "event": "completed",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 22.107088499935344,
+          "event": "completed",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 1320.0965236999327,
+          "event": "started",
+          "phase": "cp_sat"
+        },
+        {
+          "elapsed_seconds": 5.677890000049956,
+          "event": "completed",
+          "phase": "cp_sat",
+          "status": "optimal"
+        },
+        {
+          "elapsed_seconds": 1325.878121900023,
+          "event": "started",
+          "phase": "candidate_extraction"
+        },
+        {
+          "elapsed_seconds": 1337.0083030000096,
+          "event": "completed",
+          "phase": "candidate_extraction"
+        },
+        {
+          "elapsed_seconds": 1338.207348200027,
+          "event": "started",
+          "iteration": 1,
+          "phase": "candidate_validation"
+        },
+        {
+          "elapsed_seconds": 11.369963900069706,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "candidate_validation",
+          "validated": false
+        },
+        {
+          "cumulative_seconds": 1333.301467500045,
+          "elapsed_seconds": 114.49706520000473,
+          "event": "completed",
+          "iteration": 10,
+          "operator": "targeted_r4_s2",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 1369.833372300025,
+          "event": "started",
+          "iteration": 10,
+          "phase": "candidate_processing"
+        },
+        {
+          "cumulative_seconds": 5.743092999793589,
+          "elapsed_seconds": 2.7064310999121517,
+          "event": "completed",
+          "phase": "candidate_processing"
+        },
+        {
+          "adopted": false,
+          "candidate_assignment_count": 0,
+          "candidate_complete": true,
+          "candidate_components": {},
+          "candidate_found": false,
+          "candidate_objective_vector": [],
+          "candidate_source_decisions": [],
+          "candidate_special_commitment_count": 0,
+          "candidate_substantive_value": null,
+          "candidate_unmet_count": 0,
+          "candidate_validated": false,
+          "elapsed_seconds": 1372.797739099944,
+          "event": "completed",
+          "iteration": 10,
+          "phase": "candidate_processing"
+        },
+        {
+          "elapsed_seconds": 10627.658715599915,
+          "event": "started",
+          "phase": "finalization"
+        }
+      ]
+    }
+  },
+  "policy": "fixed_cycle",
+  "preparation": {
+    "benchmark_load_seconds": 1.977637300034985,
+    "branch_materialization_seconds": 0.7495195000665262,
+    "branch_revalidated": true,
+    "branch_source_fingerprint": "d5036a44e71d5a3b2a94eebe51d645bb4034179a0dd29537492ea81feda2e900",
+    "branch_validation_seconds": 40.478909000055864,
+    "elapsed_seconds": 45.202607900020666,
+    "initial_assignment_count": 10635,
+    "initial_solver_outcome": "feasible",
+    "initial_status": "complete",
+    "initial_unmet_count": 0,
+    "input_fingerprint": "c07c77d0aa077a3e72240f27644d86b8a1a4faecb2f72a900aacc3fcb792d28a",
+    "parent_branch_validation": {
+      "assignment_count": 10635,
+      "complete": true,
+      "elapsed_seconds": 40.478909000055864,
+      "full_model_validation": true,
+      "solver_outcome": "feasible",
+      "source_fingerprint_matches": true,
+      "special_commitment_count": 310,
+      "unmet_request_count": 0
+    }
+  },
+  "profile": "balanced",
+  "profile_fingerprint": "d1eb7b0501db1b8fd6a2cf0598f4788a6864e4eb11ced45617f102f6f6b628da",
+  "protocol_version": "adaptive-calibration-v2",
+  "resource": {
+    "available": true,
+    "pids": [
+      21312
+    ],
+    "process_count": 1,
+    "root_pid": 21312,
+    "system_available_memory_bytes": 5693071360,
+    "tree_rss_bytes": 707702784,
+    "tree_uss_bytes": 669065216
+  },
+  "resource_guard": {
+    "facts": {},
+    "max_process_tree_rss_bytes": 4294967296,
+    "min_system_available_memory_bytes": 1610612736
+  },
+  "retained_incumbent": {
+    "assignment_count": 10635,
+    "complete": true,
+    "full_model_validated": true,
+    "source_fingerprint": "d5036a44e71d5a3b2a94eebe51d645bb4034179a0dd29537492ea81feda2e900",
+    "special_commitment_count": 310,
+    "substantive_value": 37596.0,
+    "unmet_request_count": 0
+  },
+  "retained_source_fingerprint": "d5036a44e71d5a3b2a94eebe51d645bb4034179a0dd29537492ea81feda2e900",
+  "schema": "student_assignment_adaptive_calibration_trial_v2",
+  "solver_reached": false,
+  "source_seed_fingerprint": "d5036a44e71d5a3b2a94eebe51d645bb4034179a0dd29537492ea81feda2e900",
+  "supervision": {
+    "cleanup": {
+      "cleanup_elapsed_seconds": 1.688567899982445,
+      "descendants_clean": true,
+      "initial_process_count": 1,
+      "remaining_process_count": 0,
+      "requested_pid": 21312
+    },
+    "elapsed_seconds": 10646.070891099982,
+    "execution_status": "hard_deadline_terminated",
+    "hard_deadline_elapsed_seconds": 10646.070891099982,
+    "last_worker_phase": {
+      "elapsed_seconds": 10627.658715599915,
+      "event": "started",
+      "phase": "finalization",
+      "phase_history": [
+        {
+          "elapsed_seconds": 461.86049470002763,
+          "event": "completed",
+          "phase": "candidate_extraction"
+        },
+        {
+          "elapsed_seconds": 462.70574469992425,
+          "event": "started",
+          "iteration": 1,
+          "phase": "candidate_validation"
+        },
+        {
+          "elapsed_seconds": 8.355773800052702,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "candidate_validation",
+          "validated": false
+        },
+        {
+          "cumulative_seconds": 473.39727780001704,
+          "elapsed_seconds": 95.9717731999699,
+          "event": "completed",
+          "iteration": 4,
+          "operator": "targeted_r4_s2",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 487.80883599992376,
+          "event": "started",
+          "iteration": 4,
+          "phase": "candidate_processing"
+        },
+        {
+          "cumulative_seconds": 1.0367015998344868,
+          "elapsed_seconds": 0.2303462999407202,
+          "event": "completed",
+          "phase": "candidate_processing"
+        },
+        {
+          "adopted": false,
+          "candidate_assignment_count": 0,
+          "candidate_complete": true,
+          "candidate_components": {},
+          "candidate_found": false,
+          "candidate_objective_vector": [],
+          "candidate_source_decisions": [],
+          "candidate_special_commitment_count": 0,
+          "candidate_substantive_value": null,
+          "candidate_unmet_count": 0,
+          "candidate_validated": false,
+          "elapsed_seconds": 488.08180599997286,
+          "event": "completed",
+          "iteration": 4,
+          "phase": "candidate_processing"
+        },
+        {
+          "elapsed_seconds": 488.1103951999685,
+          "event": "started",
+          "iteration": 5,
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "cumulative_seconds": 1.6600276998942718,
+          "elapsed_seconds": 0.3431285999249667,
+          "event": "completed",
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "elapsed_seconds": 488.48872659995686,
+          "event": "started",
+          "iteration": 5,
+          "phase": "target_preparation"
+        },
+        {
+          "cumulative_seconds": 10.123398100025952,
+          "elapsed_seconds": 2.6717553000198677,
+          "event": "completed",
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 491.1907419000054,
+          "event": "started",
+          "iteration": 5,
+          "phase": "policy_selection"
+        },
+        {
+          "cumulative_seconds": 0.15685439994558692,
+          "elapsed_seconds": 0.03443210001569241,
+          "event": "completed",
+          "iteration": 5,
+          "phase": "policy_selection"
+        },
+        {
+          "elapsed_seconds": 491.2541087999707,
+          "event": "completed",
+          "iteration": 5,
+          "phase": "policy_decision",
+          "reasons": [
+            "fixed_cycle_control"
+          ],
+          "selected_grade": null,
+          "selected_operator": "targeted_utilization_r64_s8",
+          "selected_role": "utilization_repair",
+          "selected_student_ids": [
+            417,
+            360,
+            482,
+            25,
+            480,
+            90,
+            175,
+            514
+          ],
+          "selection_policy": "fixed_cycle",
+          "signal_values": {
+            "cycle_index": 1,
+            "remaining_seconds": 1315.287908899947,
+            "selected_role": "utilization_repair",
+            "selection_tie_break": "configured fixed cycle order"
+          }
+        },
+        {
+          "elapsed_seconds": 491.2915278999135,
+          "event": "started",
+          "iteration": 5,
+          "operator": "targeted_utilization_r64_s8",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 491.42856859997846,
+          "event": "started",
+          "phase": "student_assignment_input"
+        },
+        {
+          "elapsed_seconds": 491.46302219992504,
+          "event": "completed",
+          "phase": "student_assignment_input",
+          "request_count": 10760,
+          "section_count": 317
+        },
+        {
+          "elapsed_seconds": 491.572378700017,
+          "event": "started",
+          "phase": "model_construction"
+        },
+        {
+          "constraint_count": 164949,
+          "elapsed_seconds": 18.694998100050725,
+          "event": "completed",
+          "phase": "model_construction",
+          "variable_count": 110921
+        },
+        {
+          "elapsed_seconds": 510.3064605999971,
+          "event": "started",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 0.24037909996695817,
+          "event": "completed",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 510.57458599994425,
+          "event": "started",
+          "phase": "mature_seed_validation"
+        },
+        {
+          "elapsed_seconds": 8.07810669997707,
+          "event": "completed",
+          "phase": "mature_seed_validation",
+          "validated": true
+        },
+        {
+          "elapsed_seconds": 520.0283811999252,
+          "event": "started",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 0.0322076000738889,
+          "event": "completed",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 520.1044940999709,
+          "event": "started",
+          "iteration": 1,
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 2.669127699919045,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "target_preparation",
+          "selected_student_ids": [
+            9,
+            144,
+            439,
+            514,
+            714,
+            794,
+            799,
+            844
+          ]
+        },
+        {
+          "elapsed_seconds": 525.1073806999484,
+          "event": "started",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 525.1372754999902,
+          "event": "started",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 0.30868320004083216,
+          "event": "completed",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 525.5779055999592,
+          "event": "started",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "constraint_count": 175894,
+          "elapsed_seconds": 2.1250191999133676,
+          "event": "completed",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "elapsed_seconds": 527.8247957000276,
+          "event": "started",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 2.459286900004372,
+          "event": "completed",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 530.3154238000279,
+          "event": "started",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "constraint_count": 200527,
+          "elapsed_seconds": 4.671690899995156,
+          "event": "completed",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "elapsed_seconds": 535.0779697999824,
+          "event": "started",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 7.652620599954389,
+          "event": "completed",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 17.65631700004451,
+          "event": "completed",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 542.8002805999713,
+          "event": "started",
+          "phase": "cp_sat"
+        },
+        {
+          "elapsed_seconds": 5.1878232000162825,
+          "event": "completed",
+          "phase": "cp_sat",
+          "status": "optimal"
+        },
+        {
+          "elapsed_seconds": 548.161116699921,
+          "event": "started",
+          "phase": "candidate_extraction"
+        },
+        {
+          "elapsed_seconds": 560.1168392000254,
+          "event": "completed",
+          "phase": "candidate_extraction"
+        },
+        {
+          "elapsed_seconds": 561.1827844999498,
+          "event": "started",
+          "iteration": 1,
+          "phase": "candidate_validation"
+        },
+        {
+          "elapsed_seconds": 8.775690500042401,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "candidate_validation",
+          "validated": false
+        },
+        {
+          "cumulative_seconds": 570.8121587999631,
+          "elapsed_seconds": 97.41488099994604,
+          "event": "completed",
+          "iteration": 5,
+          "operator": "targeted_utilization_r64_s8",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 588.7911604000255,
+          "event": "started",
+          "iteration": 5,
+          "phase": "candidate_processing"
+        },
+        {
+          "cumulative_seconds": 1.589196999790147,
+          "elapsed_seconds": 0.5524953999556601,
+          "event": "completed",
+          "phase": "candidate_processing"
+        },
+        {
+          "adopted": false,
+          "candidate_assignment_count": 0,
+          "candidate_complete": true,
+          "candidate_components": {},
+          "candidate_found": false,
+          "candidate_objective_vector": [],
+          "candidate_source_decisions": [],
+          "candidate_special_commitment_count": 0,
+          "candidate_substantive_value": null,
+          "candidate_unmet_count": 0,
+          "candidate_validated": false,
+          "elapsed_seconds": 589.3758889000164,
+          "event": "completed",
+          "iteration": 5,
+          "phase": "candidate_processing"
+        },
+        {
+          "elapsed_seconds": 589.4107384999515,
+          "event": "started",
+          "iteration": 6,
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "cumulative_seconds": 1.9630551999434829,
+          "elapsed_seconds": 0.3030275000492111,
+          "event": "completed",
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "elapsed_seconds": 589.7443786999211,
+          "event": "started",
+          "iteration": 6,
+          "phase": "target_preparation"
+        },
+        {
+          "cumulative_seconds": 12.189886800013483,
+          "elapsed_seconds": 2.0664886999875307,
+          "event": "completed",
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 591.8477233999874,
+          "event": "started",
+          "iteration": 6,
+          "phase": "policy_selection"
+        },
+        {
+          "cumulative_seconds": 0.1951988999499008,
+          "elapsed_seconds": 0.038344500004313886,
+          "event": "completed",
+          "iteration": 6,
+          "phase": "policy_selection"
+        },
+        {
+          "elapsed_seconds": 591.9186950000003,
+          "event": "completed",
+          "iteration": 6,
+          "phase": "policy_decision",
+          "reasons": [
+            "fixed_cycle_control"
+          ],
+          "selected_grade": null,
+          "selected_operator": "r2",
+          "selected_role": "local_descent",
+          "selected_student_ids": [],
+          "selection_policy": "fixed_cycle",
+          "signal_values": {
+            "cycle_index": 2,
+            "remaining_seconds": 1213.9875686999876,
+            "selected_role": "local_descent",
+            "selection_tie_break": "configured fixed cycle order"
+          }
+        },
+        {
+          "elapsed_seconds": 591.956811800017,
+          "event": "started",
+          "iteration": 6,
+          "operator": "r2",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 592.1241221999517,
+          "event": "started",
+          "phase": "student_assignment_input"
+        },
+        {
+          "elapsed_seconds": 592.16525979992,
+          "event": "completed",
+          "phase": "student_assignment_input",
+          "request_count": 10760,
+          "section_count": 317
+        },
+        {
+          "elapsed_seconds": 592.3159339999547,
+          "event": "started",
+          "phase": "model_construction"
+        },
+        {
+          "constraint_count": 164949,
+          "elapsed_seconds": 26.04947889992036,
+          "event": "completed",
+          "phase": "model_construction",
+          "variable_count": 110921
+        },
+        {
+          "elapsed_seconds": 618.4463390000165,
+          "event": "started",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 0.24897520011290908,
+          "event": "completed",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 618.7908559999196,
+          "event": "started",
+          "phase": "mature_seed_validation"
+        },
+        {
+          "elapsed_seconds": 9.87202020001132,
+          "event": "completed",
+          "phase": "mature_seed_validation",
+          "validated": true
+        },
+        {
+          "elapsed_seconds": 629.6680019999621,
+          "event": "started",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 0.04087439994327724,
+          "event": "completed",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 629.7597744999221,
+          "event": "started",
+          "iteration": 1,
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 0.0354429999133572,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "target_preparation",
+          "selected_student_ids": []
+        },
+        {
+          "elapsed_seconds": 633.9741829999257,
+          "event": "started",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 634.0105080999201,
+          "event": "started",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 0.3601210000924766,
+          "event": "completed",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 634.4928377999458,
+          "event": "started",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "constraint_count": 175894,
+          "elapsed_seconds": 3.0038459999486804,
+          "event": "completed",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "elapsed_seconds": 637.5309297000058,
+          "event": "started",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 2.765623699990101,
+          "event": "completed",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 640.3403199999593,
+          "event": "started",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "constraint_count": 175900,
+          "elapsed_seconds": 7.149199299979955,
+          "event": "completed",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "elapsed_seconds": 647.5980142999906,
+          "event": "started",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 8.749166700057685,
+          "event": "completed",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 22.54950199997984,
+          "event": "completed",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 656.5843900999753,
+          "event": "started",
+          "phase": "cp_sat"
+        },
+        {
+          "elapsed_seconds": 114.42651040002238,
+          "event": "completed",
+          "phase": "cp_sat",
+          "status": "unknown"
+        },
+        {
+          "elapsed_seconds": 772.3312855999684,
+          "event": "started",
+          "iteration": 1,
+          "phase": "candidate_validation"
+        },
+        {
+          "elapsed_seconds": 0.048601699993014336,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "candidate_validation",
+          "validated": false
+        },
+        {
+          "cumulative_seconds": 772.2685136999935,
+          "elapsed_seconds": 201.45635490003042,
+          "event": "completed",
+          "iteration": 6,
+          "operator": "r2",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 793.4480609999737,
+          "event": "started",
+          "iteration": 6,
+          "phase": "candidate_processing"
+        },
+        {
+          "cumulative_seconds": 2.1875386998290196,
+          "elapsed_seconds": 0.5983417000388727,
+          "event": "completed",
+          "phase": "candidate_processing"
+        },
+        {
+          "adopted": false,
+          "candidate_assignment_count": 0,
+          "candidate_complete": true,
+          "candidate_components": {},
+          "candidate_found": false,
+          "candidate_objective_vector": [],
+          "candidate_source_decisions": [],
+          "candidate_special_commitment_count": 0,
+          "candidate_substantive_value": null,
+          "candidate_unmet_count": 0,
+          "candidate_validated": false,
+          "elapsed_seconds": 794.0813674000092,
+          "event": "completed",
+          "iteration": 6,
+          "phase": "candidate_processing"
+        },
+        {
+          "elapsed_seconds": 794.1213414999656,
+          "event": "started",
+          "iteration": 7,
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "cumulative_seconds": 2.288727599894628,
+          "elapsed_seconds": 0.32567239995114505,
+          "event": "completed",
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "elapsed_seconds": 794.4765068999259,
+          "event": "started",
+          "iteration": 7,
+          "phase": "target_preparation"
+        },
+        {
+          "cumulative_seconds": 14.862490199971944,
+          "elapsed_seconds": 2.6726033999584615,
+          "event": "completed",
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 797.1921716999495,
+          "event": "started",
+          "iteration": 7,
+          "phase": "policy_selection"
+        },
+        {
+          "cumulative_seconds": 0.24573620001319796,
+          "elapsed_seconds": 0.05053730006329715,
+          "event": "completed",
+          "iteration": 7,
+          "phase": "policy_selection"
+        },
+        {
+          "elapsed_seconds": 797.2747157999547,
+          "event": "completed",
+          "iteration": 7,
+          "phase": "policy_decision",
+          "reasons": [
+            "fixed_cycle_control"
+          ],
+          "selected_grade": null,
+          "selected_operator": "targeted_r4_s2",
+          "selected_role": "targeted_repair",
+          "selected_student_ids": [
+            1052,
+            1068
+          ],
+          "selection_policy": "fixed_cycle",
+          "signal_values": {
+            "cycle_index": 0,
+            "remaining_seconds": 1009.2769689999986,
+            "selected_role": "targeted_repair",
+            "selection_tie_break": "configured fixed cycle order"
+          }
+        },
+        {
+          "elapsed_seconds": 797.3148889999138,
+          "event": "started",
+          "iteration": 7,
+          "operator": "targeted_r4_s2",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 797.4729226999916,
+          "event": "started",
+          "phase": "student_assignment_input"
+        },
+        {
+          "elapsed_seconds": 797.5226089999778,
+          "event": "completed",
+          "phase": "student_assignment_input",
+          "request_count": 10760,
+          "section_count": 317
+        },
+        {
+          "elapsed_seconds": 797.7106543999398,
+          "event": "started",
+          "phase": "model_construction"
+        },
+        {
+          "constraint_count": 164949,
+          "elapsed_seconds": 25.401636600028723,
+          "event": "completed",
+          "phase": "model_construction",
+          "variable_count": 110921
+        },
+        {
+          "elapsed_seconds": 823.1574007999152,
+          "event": "started",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 0.43478860007598996,
+          "event": "completed",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 823.6639002999291,
+          "event": "started",
+          "phase": "mature_seed_validation"
+        },
+        {
+          "elapsed_seconds": 10.321765400003642,
+          "event": "completed",
+          "phase": "mature_seed_validation",
+          "validated": true
+        },
+        {
+          "elapsed_seconds": 835.0484536999138,
+          "event": "started",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 0.08864670002367347,
+          "event": "completed",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 835.1834603999741,
+          "event": "started",
+          "iteration": 1,
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 0.9239612000528723,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "target_preparation",
+          "selected_student_ids": [
+            1052,
+            1068
+          ]
+        },
+        {
+          "elapsed_seconds": 841.0395939999726,
+          "event": "started",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 841.1188029999612,
+          "event": "started",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 0.4729243000037968,
+          "event": "completed",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 841.671318299952,
+          "event": "started",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "constraint_count": 175894,
+          "elapsed_seconds": 3.298526500002481,
+          "event": "completed",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "elapsed_seconds": 845.0064005999593,
+          "event": "started",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 3.5438922999892384,
+          "event": "completed",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 848.5905333999544,
+          "event": "started",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "constraint_count": 200575,
+          "elapsed_seconds": 6.243061700020917,
+          "event": "completed",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "elapsed_seconds": 854.8460385999642,
+          "event": "started",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 63.280408999999054,
+          "event": "completed",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 77.12487369996961,
+          "event": "completed",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 918.193050700007,
+          "event": "started",
+          "phase": "cp_sat"
+        },
+        {
+          "elapsed_seconds": 4.97026809991803,
+          "event": "completed",
+          "phase": "cp_sat",
+          "status": "optimal"
+        },
+        {
+          "elapsed_seconds": 923.2193265999667,
+          "event": "started",
+          "phase": "candidate_extraction"
+        },
+        {
+          "elapsed_seconds": 928.0266836999217,
+          "event": "completed",
+          "phase": "candidate_extraction"
+        },
+        {
+          "elapsed_seconds": 928.4291587999323,
+          "event": "started",
+          "iteration": 1,
+          "phase": "candidate_validation"
+        },
+        {
+          "elapsed_seconds": 3.272633900051005,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "candidate_validation",
+          "validated": false
+        },
+        {
+          "cumulative_seconds": 914.6168117000489,
+          "elapsed_seconds": 142.34829800005537,
+          "event": "completed",
+          "iteration": 7,
+          "operator": "targeted_r4_s2",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 939.6803422999801,
+          "event": "started",
+          "iteration": 7,
+          "phase": "candidate_processing"
+        },
+        {
+          "cumulative_seconds": 2.343382499879226,
+          "elapsed_seconds": 0.15584380005020648,
+          "event": "completed",
+          "phase": "candidate_processing"
+        },
+        {
+          "adopted": false,
+          "candidate_assignment_count": 0,
+          "candidate_complete": true,
+          "candidate_components": {},
+          "candidate_found": false,
+          "candidate_objective_vector": [],
+          "candidate_source_decisions": [],
+          "candidate_special_commitment_count": 0,
+          "candidate_substantive_value": null,
+          "candidate_unmet_count": 0,
+          "candidate_validated": false,
+          "elapsed_seconds": 939.8844610999804,
+          "event": "completed",
+          "iteration": 7,
+          "phase": "candidate_processing"
+        },
+        {
+          "elapsed_seconds": 939.9217949999729,
+          "event": "started",
+          "iteration": 8,
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "cumulative_seconds": 2.5553472999017686,
+          "elapsed_seconds": 0.26661970000714064,
+          "event": "completed",
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "elapsed_seconds": 940.2370496999938,
+          "event": "started",
+          "iteration": 8,
+          "phase": "target_preparation"
+        },
+        {
+          "cumulative_seconds": 17.38386389997322,
+          "elapsed_seconds": 2.521373700001277,
+          "event": "completed",
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 942.7954117999179,
+          "event": "started",
+          "iteration": 8,
+          "phase": "policy_selection"
+        },
+        {
+          "cumulative_seconds": 0.26931799994781613,
+          "elapsed_seconds": 0.023581799934618175,
+          "event": "completed",
+          "iteration": 8,
+          "phase": "policy_selection"
+        },
+        {
+          "elapsed_seconds": 942.8454171000049,
+          "event": "completed",
+          "iteration": 8,
+          "phase": "policy_decision",
+          "reasons": [
+            "fixed_cycle_control"
+          ],
+          "selected_grade": null,
+          "selected_operator": "targeted_utilization_r64_s8",
+          "selected_role": "utilization_repair",
+          "selected_student_ids": [
+            417,
+            360,
+            482,
+            25,
+            480,
+            90,
+            175,
+            514
+          ],
+          "selection_policy": "fixed_cycle",
+          "signal_values": {
+            "cycle_index": 1,
+            "remaining_seconds": 863.4765564999543,
+            "selected_role": "utilization_repair",
+            "selection_tie_break": "configured fixed cycle order"
+          }
+        },
+        {
+          "elapsed_seconds": 942.8846801000182,
+          "event": "started",
+          "iteration": 8,
+          "operator": "targeted_utilization_r64_s8",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 943.0839187999954,
+          "event": "started",
+          "phase": "student_assignment_input"
+        },
+        {
+          "elapsed_seconds": 943.1226140999934,
+          "event": "completed",
+          "phase": "student_assignment_input",
+          "request_count": 10760,
+          "section_count": 317
+        },
+        {
+          "elapsed_seconds": 943.2116739000194,
+          "event": "started",
+          "phase": "model_construction"
+        },
+        {
+          "constraint_count": 164949,
+          "elapsed_seconds": 10.149593999958597,
+          "event": "completed",
+          "phase": "model_construction",
+          "variable_count": 110921
+        },
+        {
+          "elapsed_seconds": 953.378896899987,
+          "event": "started",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 0.1646597000071779,
+          "event": "completed",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 953.6074547999306,
+          "event": "started",
+          "phase": "mature_seed_validation"
+        },
+        {
+          "elapsed_seconds": 8.289272799971513,
+          "event": "completed",
+          "phase": "mature_seed_validation",
+          "validated": true
+        },
+        {
+          "elapsed_seconds": 963.2850713999942,
+          "event": "started",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 0.06649580004159361,
+          "event": "completed",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 963.4087486999342,
+          "event": "started",
+          "iteration": 1,
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 3.6584424999309704,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "target_preparation",
+          "selected_student_ids": [
+            9,
+            144,
+            439,
+            514,
+            714,
+            794,
+            799,
+            844
+          ]
+        },
+        {
+          "elapsed_seconds": 971.1816727999831,
+          "event": "started",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 971.2179345999612,
+          "event": "started",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 0.268042300012894,
+          "event": "completed",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 971.5968392000068,
+          "event": "started",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "constraint_count": 175894,
+          "elapsed_seconds": 2.785935299936682,
+          "event": "completed",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "elapsed_seconds": 974.4230247000232,
+          "event": "started",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 3.685150200035423,
+          "event": "completed",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 978.161702399957,
+          "event": "started",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "constraint_count": 200527,
+          "elapsed_seconds": 6.748585800058208,
+          "event": "completed",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "elapsed_seconds": 985.0106814999599,
+          "event": "started",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 9.200147700030357,
+          "event": "completed",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 23.070969499996863,
+          "event": "completed",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 994.2884557999205,
+          "event": "started",
+          "phase": "cp_sat"
+        },
+        {
+          "elapsed_seconds": 6.136077400064096,
+          "event": "completed",
+          "phase": "cp_sat",
+          "status": "optimal"
+        },
+        {
+          "elapsed_seconds": 1000.5795567999594,
+          "event": "started",
+          "phase": "candidate_extraction"
+        },
+        {
+          "elapsed_seconds": 1013.1300830999389,
+          "event": "completed",
+          "phase": "candidate_extraction"
+        },
+        {
+          "elapsed_seconds": 1014.6134629999287,
+          "event": "started",
+          "iteration": 1,
+          "phase": "candidate_validation"
+        },
+        {
+          "elapsed_seconds": 9.557627500034869,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "candidate_validation",
+          "validated": false
+        },
+        {
+          "cumulative_seconds": 1015.4162651001243,
+          "elapsed_seconds": 100.79945340007544,
+          "event": "completed",
+          "iteration": 8,
+          "operator": "targeted_utilization_r64_s8",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 1043.717237200006,
+          "event": "started",
+          "iteration": 8,
+          "phase": "candidate_processing"
+        },
+        {
+          "cumulative_seconds": 2.698172999895178,
+          "elapsed_seconds": 0.3547905000159517,
+          "event": "completed",
+          "phase": "candidate_processing"
+        },
+        {
+          "adopted": false,
+          "candidate_assignment_count": 0,
+          "candidate_complete": true,
+          "candidate_components": {},
+          "candidate_found": false,
+          "candidate_objective_vector": [],
+          "candidate_source_decisions": [],
+          "candidate_special_commitment_count": 0,
+          "candidate_substantive_value": null,
+          "candidate_unmet_count": 0,
+          "candidate_validated": false,
+          "elapsed_seconds": 1044.1080768000102,
+          "event": "completed",
+          "iteration": 8,
+          "phase": "candidate_processing"
+        },
+        {
+          "elapsed_seconds": 1044.1379723999416,
+          "event": "started",
+          "iteration": 9,
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "cumulative_seconds": 2.861811799928546,
+          "elapsed_seconds": 0.3064645000267774,
+          "event": "completed",
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "elapsed_seconds": 1044.478259800002,
+          "event": "started",
+          "iteration": 9,
+          "phase": "target_preparation"
+        },
+        {
+          "cumulative_seconds": 20.211110499920323,
+          "elapsed_seconds": 2.8272465999471024,
+          "event": "completed",
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 1047.3369297999889,
+          "event": "started",
+          "iteration": 9,
+          "phase": "policy_selection"
+        },
+        {
+          "cumulative_seconds": 0.30190780002158135,
+          "elapsed_seconds": 0.03258980007376522,
+          "event": "completed",
+          "iteration": 9,
+          "phase": "policy_selection"
+        },
+        {
+          "elapsed_seconds": 1047.3998956999276,
+          "event": "completed",
+          "iteration": 9,
+          "phase": "policy_decision",
+          "reasons": [
+            "fixed_cycle_control"
+          ],
+          "selected_grade": null,
+          "selected_operator": "r2",
+          "selected_role": "local_descent",
+          "selected_student_ids": [],
+          "selection_policy": "fixed_cycle",
+          "signal_values": {
+            "cycle_index": 2,
+            "remaining_seconds": 759.2603394000325,
+            "selected_role": "local_descent",
+            "selection_tie_break": "configured fixed cycle order"
+          }
+        },
+        {
+          "elapsed_seconds": 1047.4334128999617,
+          "event": "started",
+          "iteration": 9,
+          "operator": "r2",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 1047.5978951000143,
+          "event": "started",
+          "phase": "student_assignment_input"
+        },
+        {
+          "elapsed_seconds": 1047.6327316999668,
+          "event": "completed",
+          "phase": "student_assignment_input",
+          "request_count": 10760,
+          "section_count": 317
+        },
+        {
+          "elapsed_seconds": 1047.7854017999489,
+          "event": "started",
+          "phase": "model_construction"
+        },
+        {
+          "constraint_count": 164949,
+          "elapsed_seconds": 26.36156910005957,
+          "event": "completed",
+          "phase": "model_construction",
+          "variable_count": 110921
+        },
+        {
+          "elapsed_seconds": 1074.1924392000074,
+          "event": "started",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 0.3384890001034364,
+          "event": "completed",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 1074.5784323000116,
+          "event": "started",
+          "phase": "mature_seed_validation"
+        },
+        {
+          "elapsed_seconds": 9.560387199977413,
+          "event": "completed",
+          "phase": "mature_seed_validation",
+          "validated": true
+        },
+        {
+          "elapsed_seconds": 1085.594952299958,
+          "event": "started",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 0.03926510002929717,
+          "event": "completed",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 1085.6696844999678,
+          "event": "started",
+          "iteration": 1,
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 0.029395899968221784,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "target_preparation",
+          "selected_student_ids": []
+        },
+        {
+          "elapsed_seconds": 1089.0143004999263,
+          "event": "started",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 1089.0666144000133,
+          "event": "started",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 0.443185199983418,
+          "event": "completed",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 1089.5516032999149,
+          "event": "started",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "constraint_count": 175894,
+          "elapsed_seconds": 2.8714970999863,
+          "event": "completed",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "elapsed_seconds": 1092.4589112999383,
+          "event": "started",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 2.434509600047022,
+          "event": "completed",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 1094.9268444000045,
+          "event": "started",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "constraint_count": 175900,
+          "elapsed_seconds": 6.839411800028756,
+          "event": "completed",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "elapsed_seconds": 1101.8048270000145,
+          "event": "started",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 8.484279800090007,
+          "event": "completed",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 21.307483099983074,
+          "event": "completed",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 1110.3536502999486,
+          "event": "started",
+          "phase": "cp_sat"
+        },
+        {
+          "elapsed_seconds": 120.39686640002765,
+          "event": "completed",
+          "phase": "cp_sat",
+          "status": "unknown"
+        },
+        {
+          "elapsed_seconds": 1231.4388993999455,
+          "event": "started",
+          "iteration": 1,
+          "phase": "candidate_validation"
+        },
+        {
+          "elapsed_seconds": 0.01423840003553778,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "candidate_validation",
+          "validated": false
+        },
+        {
+          "cumulative_seconds": 1218.8044023000402,
+          "elapsed_seconds": 203.38813719991595,
+          "event": "completed",
+          "iteration": 9,
+          "operator": "r2",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 1250.8732038999442,
+          "event": "started",
+          "iteration": 9,
+          "phase": "candidate_processing"
+        },
+        {
+          "cumulative_seconds": 3.0366618998814374,
+          "elapsed_seconds": 0.33848889998625964,
+          "event": "completed",
+          "phase": "candidate_processing"
+        },
+        {
+          "adopted": false,
+          "candidate_assignment_count": 0,
+          "candidate_complete": true,
+          "candidate_components": {},
+          "candidate_found": false,
+          "candidate_objective_vector": [],
+          "candidate_source_decisions": [],
+          "candidate_special_commitment_count": 0,
+          "candidate_substantive_value": null,
+          "candidate_unmet_count": 0,
+          "candidate_validated": false,
+          "elapsed_seconds": 1251.2484789999435,
+          "event": "completed",
+          "iteration": 9,
+          "phase": "candidate_processing"
+        },
+        {
+          "elapsed_seconds": 1251.3020833999617,
+          "event": "started",
+          "iteration": 10,
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "cumulative_seconds": 3.2462287999223918,
+          "elapsed_seconds": 0.3844169999938458,
+          "event": "completed",
+          "phase": "policy_quality_evaluation"
+        },
+        {
+          "elapsed_seconds": 1251.7397224999731,
+          "event": "started",
+          "iteration": 10,
+          "phase": "target_preparation"
+        },
+        {
+          "cumulative_seconds": 23.637148199952208,
+          "elapsed_seconds": 3.426037700031884,
+          "event": "completed",
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 1255.2012655999279,
+          "event": "started",
+          "iteration": 10,
+          "phase": "policy_selection"
+        },
+        {
+          "cumulative_seconds": 0.346178499981761,
+          "elapsed_seconds": 0.04427069996017963,
+          "event": "completed",
+          "iteration": 10,
+          "phase": "policy_selection"
+        },
+        {
+          "elapsed_seconds": 1255.277670999989,
+          "event": "completed",
+          "iteration": 10,
+          "phase": "policy_decision",
+          "reasons": [
+            "fixed_cycle_control"
+          ],
+          "selected_grade": null,
+          "selected_operator": "targeted_r4_s2",
+          "selected_role": "targeted_repair",
+          "selected_student_ids": [
+            1052,
+            1068
+          ],
+          "selection_policy": "fixed_cycle",
+          "signal_values": {
+            "cycle_index": 0,
+            "remaining_seconds": 552.0962302000262,
+            "selected_role": "targeted_repair",
+            "selection_tie_break": "configured fixed cycle order"
+          }
+        },
+        {
+          "elapsed_seconds": 1255.3129948999267,
+          "event": "started",
+          "iteration": 10,
+          "operator": "targeted_r4_s2",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 1255.5646662999643,
+          "event": "started",
+          "phase": "student_assignment_input"
+        },
+        {
+          "elapsed_seconds": 1255.6232600000221,
+          "event": "completed",
+          "phase": "student_assignment_input",
+          "request_count": 10760,
+          "section_count": 317
+        },
+        {
+          "elapsed_seconds": 1255.8292935999343,
+          "event": "started",
+          "phase": "model_construction"
+        },
+        {
+          "constraint_count": 164949,
+          "elapsed_seconds": 25.600988800055347,
+          "event": "completed",
+          "phase": "model_construction",
+          "variable_count": 110921
+        },
+        {
+          "elapsed_seconds": 1281.4863744999748,
+          "event": "started",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 0.47639189998153597,
+          "event": "completed",
+          "phase": "mature_seed_materialization"
+        },
+        {
+          "elapsed_seconds": 1282.0153322999831,
+          "event": "started",
+          "phase": "mature_seed_validation"
+        },
+        {
+          "elapsed_seconds": 10.058755000005476,
+          "event": "completed",
+          "phase": "mature_seed_validation",
+          "validated": true
+        },
+        {
+          "elapsed_seconds": 1292.9408197000157,
+          "event": "started",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 0.08708389999810606,
+          "event": "completed",
+          "phase": "operator_static_setup"
+        },
+        {
+          "elapsed_seconds": 1293.0543869999237,
+          "event": "started",
+          "iteration": 1,
+          "phase": "target_preparation"
+        },
+        {
+          "elapsed_seconds": 1.6238743000430986,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "target_preparation",
+          "selected_student_ids": [
+            1052,
+            1068
+          ]
+        },
+        {
+          "elapsed_seconds": 1297.8825953999767,
+          "event": "started",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 1297.921456699958,
+          "event": "started",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 0.38647820008918643,
+          "event": "completed",
+          "phase": "probe_model_clone"
+        },
+        {
+          "elapsed_seconds": 1298.3943793999497,
+          "event": "started",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "constraint_count": 175894,
+          "elapsed_seconds": 2.6423837000038475,
+          "event": "completed",
+          "phase": "probe_completion_constraints"
+        },
+        {
+          "elapsed_seconds": 1301.0952094999375,
+          "event": "started",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 3.3215896000619978,
+          "event": "completed",
+          "phase": "probe_neighborhood_constraints"
+        },
+        {
+          "elapsed_seconds": 1304.4641455999808,
+          "event": "started",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "constraint_count": 200575,
+          "elapsed_seconds": 6.471105400007218,
+          "event": "completed",
+          "phase": "probe_objective_bound_constraints"
+        },
+        {
+          "elapsed_seconds": 1311.0139791999245,
+          "event": "started",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 8.864202200085856,
+          "event": "completed",
+          "phase": "probe_hint_application"
+        },
+        {
+          "elapsed_seconds": 22.107088499935344,
+          "event": "completed",
+          "phase": "attempt_preparation"
+        },
+        {
+          "elapsed_seconds": 1320.0965236999327,
+          "event": "started",
+          "phase": "cp_sat"
+        },
+        {
+          "elapsed_seconds": 5.677890000049956,
+          "event": "completed",
+          "phase": "cp_sat",
+          "status": "optimal"
+        },
+        {
+          "elapsed_seconds": 1325.878121900023,
+          "event": "started",
+          "phase": "candidate_extraction"
+        },
+        {
+          "elapsed_seconds": 1337.0083030000096,
+          "event": "completed",
+          "phase": "candidate_extraction"
+        },
+        {
+          "elapsed_seconds": 1338.207348200027,
+          "event": "started",
+          "iteration": 1,
+          "phase": "candidate_validation"
+        },
+        {
+          "elapsed_seconds": 11.369963900069706,
+          "event": "completed",
+          "iteration": 1,
+          "phase": "candidate_validation",
+          "validated": false
+        },
+        {
+          "cumulative_seconds": 1333.301467500045,
+          "elapsed_seconds": 114.49706520000473,
+          "event": "completed",
+          "iteration": 10,
+          "operator": "targeted_r4_s2",
+          "phase": "operator_execution"
+        },
+        {
+          "elapsed_seconds": 1369.833372300025,
+          "event": "started",
+          "iteration": 10,
+          "phase": "candidate_processing"
+        },
+        {
+          "cumulative_seconds": 5.743092999793589,
+          "elapsed_seconds": 2.7064310999121517,
+          "event": "completed",
+          "phase": "candidate_processing"
+        },
+        {
+          "adopted": false,
+          "candidate_assignment_count": 0,
+          "candidate_complete": true,
+          "candidate_components": {},
+          "candidate_found": false,
+          "candidate_objective_vector": [],
+          "candidate_source_decisions": [],
+          "candidate_special_commitment_count": 0,
+          "candidate_substantive_value": null,
+          "candidate_unmet_count": 0,
+          "candidate_validated": false,
+          "elapsed_seconds": 1372.797739099944,
+          "event": "completed",
+          "iteration": 10,
+          "phase": "candidate_processing"
+        },
+        {
+          "elapsed_seconds": 10627.658715599915,
+          "event": "started",
+          "phase": "finalization"
+        }
+      ]
+    },
+    "payload": null,
+    "protocol_error": null,
+    "resource_guard_facts": {},
+    "resource_snapshot": {
+      "available": true,
+      "pids": [
+        21312
+      ],
+      "process_count": 1,
+      "root_pid": 21312,
+      "system_available_memory_bytes": 5693071360,
+      "tree_rss_bytes": 707702784,
+      "tree_uss_bytes": 669065216
+    },
+    "worker_exit_code": null,
+    "worker_pid": 21312
+  },
+  "termination_grace_seconds": 5.0,
+  "timing": {
+    "external_overrun_seconds": 8546.070891099982,
+    "finalization_seconds": 0.0,
+    "operator_execution_seconds": 0.0,
+    "policy_selection_seconds": 0.0,
+    "total_elapsed_seconds": 10646.070891099982
+  },
+  "worker_count": null,
+  "worker_exit_code": null,
+  "worker_pid": 21312
+}

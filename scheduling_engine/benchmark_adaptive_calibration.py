@@ -37,7 +37,6 @@ from .dto import (
     StudentScheduleCommitmentAssignmentDTO,
 )
 from .student_assignment.runtime import semantic_student_assignment_input_fingerprint
-from .student_assignment.search_experiments import source_decision_fingerprint
 from .student_assignment.stage2_benchmark import (
     read_diagnostic_branch_checkpoint,
     read_durable_stage2_benchmark,
@@ -347,7 +346,7 @@ def _write_validated_supervised_branch(
         (tuple(key), tuple(value)) for key, value in decisions
     )
     branch_path = Path(path)
-    write_diagnostic_branch_checkpoint(
+    branch_payload = write_diagnostic_branch_checkpoint(
         branch_path,
         data=data,
         source_decisions=source_decisions,
@@ -377,7 +376,7 @@ def _write_validated_supervised_branch(
     )
     payload["derived_branch"] = {
         "path": str(branch_path),
-        "source_fingerprint": source_decision_fingerprint(source_decisions),
+        "source_fingerprint": branch_payload["source_decision_fingerprint"],
         "parent_source_fingerprint": parent_branch[
             "source_decision_fingerprint"
         ],
@@ -567,17 +566,37 @@ def _run_supervised_worker(args):
         int(item.get("session_attempt_count", 0) or 0) > 0
         for item in payload.get("attempts", ())
     )
+    # The compact calibration record intentionally does not carry the full
+    # semantic source-decision map. Recover it from the branch persisted by
+    # the worker so the supervised protocol can return authoritative lineage
+    # without changing solver behavior or duplicating that large payload.
+    final_branch = branch
+    if immediate_branch is not None:
+        try:
+            final_branch = read_diagnostic_branch_checkpoint(
+                immediate_branch["path"],
+                data=data,
+            )
+        except (OSError, ValueError, TypeError, KeyError):
+            # A diagnostic branch that cannot be rehydrated must not replace
+            # the parent-validated incumbent in the worker result.
+            final_branch = branch
+    # The branch reader exposes materialized IDs for solving, but its stored
+    # fingerprint is over the canonical rank-based representation. Preserve
+    # that canonical lineage in the supervised payload; hashing the
+    # materialized values here would produce a different, non-authoritative
+    # fingerprint for the same semantic branch.
     payload["final_source_decisions"] = [
         [list(key), list(value)]
-        for key, value in trial.source_decisions
+        for key, value in final_branch["source_decisions"]
     ]
-    payload["final_source_decision_fingerprint"] = source_decision_fingerprint(
-        trial.source_decisions
-    )
+    payload["final_source_decision_fingerprint"] = final_branch[
+        "source_decision_fingerprint"
+    ]
     if immediate_branch is not None:
         payload["immediate_worker_branch"] = immediate_branch
     payload["final_objective_vector"] = list(
-        trial.record.final_objective_vector
+        final_branch.get("objective_vector") or ()
     )
     payload["output_protocol_complete"] = True
     payload["phase_timings"] = {
