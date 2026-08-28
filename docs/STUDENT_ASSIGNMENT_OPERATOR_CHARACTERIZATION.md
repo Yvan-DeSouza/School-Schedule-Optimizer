@@ -38,6 +38,76 @@ Matched trials must use:
 5. the same full-model validation boundary;
 6. clean process isolation for expensive trials.
 
+## Solver-variance study protocol
+
+Study `adaptive-policy-variance-v2-20260828` is the separate lineage for
+measuring CP-SAT transition variance. It must not be merged into a policy
+ranking or treated as a production controller. Each trial records the
+Objective Semantics version, input fingerprint, source-incumbent fingerprint,
+operator and target scope, worker count, diagnostic random seed, time limits,
+model size, CP-SAT status, solver time, external operation time, validation
+status, candidate/adoption values, and changed source decisions.
+
+The policy-selection function is deterministic for a given state, history, and
+budget. CP-SAT transition behavior can still vary under parallel search:
+
+```text
+state + operator -> candidate / no candidate / UNKNOWN
+```
+
+When a candidate is adopted, it becomes a new incumbent and changes the next
+policy state. This is trajectory amplification, and must be separated from a
+claim that the policy itself selected a better operator.
+
+The controlled target-scale cases use the immutable v2 input fingerprint
+`c07c77d0aa077a3e72240f27644d86b8a1a4faecb2f72a900aacc3fcb792d28a` and
+baseline source fingerprint
+`d5036a44e71d5a3b2a94eebe51d645bb4034179a0dd29537492ea81feda2e900`.
+The stateless first-divergence case is
+`targeted_utilization_r16_s4` over students `(417, 360, 482, 25)`. With
+seed `101`, three one-worker repeats all adopted `37,590` from `37,596`;
+three eight-worker repeats adopted `37,578`, `37,590`, and `37,590`. Every
+one of those candidates was complete and passed full-model validation. This
+is exact one-worker repeatability and material eight-worker same-seed
+transition variance.
+
+The fixed-cycle first-utilization case is
+`targeted_utilization_r64_s8` over students
+`(417, 360, 482, 25, 480, 90, 175, 514)`. Three one-worker repeats adopted
+`37,590` with the same four students and 18 source decisions. Three clean
+eight-worker trials generated the same-quality `37,590` candidate but full
+validation returned `UNKNOWN`, so they are not adoption evidence. The
+records distinguish candidate generation from validated adoption and do not
+turn validation uncertainty into infeasibility. A separate extended run did
+eventually validate and adopt `37,590`, but full validation took approximately
+`2,957` seconds and the operation approximately `3,083` seconds against a
+nominal `600`-second session envelope. It is retained as an out-of-budget
+validation observation, not clean repeatability evidence.
+
+The present classification is:
+
+**Single-worker control is reproducible; eight-worker parallel variance is a
+primary source of transition and policy-endpoint noise for the selected
+stateless case.**
+
+This is sufficient to block a causal adaptive-versus-static policy ranking
+and hybrid calibration. It is not evidence that one worker is universally
+better, nor is it a global optimality claim. No medium control or seed sweep
+was run because the checkout contains no detached medium target-shaped state
+and the target-scale same-seed result already established the key variance
+gate. A future controlled policy comparison must use explicit predetermined
+replicate seeds, identical source states, identical validation boundaries,
+and clean process isolation.
+
+The variance CLI provides that process boundary through `--supervised`, which
+uses the shared parent-side watchdog for the entire worker operation. This is
+important at target scale because full-model validation can outlive the CP-SAT
+probe even when CP-SAT itself is bounded. The first supervised fixed-cycle
+recheck completed inside its `600`-second wall, generated a `37,590` candidate,
+and correctly withheld adoption when the unchanged validator returned
+`UNKNOWN` within its `60`-second boundary. A terminated worker is never treated
+as an authoritative transition.
+
 The pure-engine `operator_characterization.py` module defines the
 `OperatorCharacterizationRecord` schema and aggregation functions. A record
 contains global and role-specific gains, component deltas, target pressure,

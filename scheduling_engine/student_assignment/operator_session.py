@@ -104,6 +104,8 @@ class ContinuousOperatorSessionConfig:
     collect_resource_telemetry: bool = True
     hard_feasibility_validation_time_limit_seconds: float | None = None
     hard_feasibility_validation_worker_count: int | None = None
+    cp_sat_random_seed: int | None = None
+    cp_sat_max_deterministic_time_seconds: float | None = None
 
     def __post_init__(self):
         if self.operator_family not in OPERATOR_FAMILIES:
@@ -120,6 +122,13 @@ class ContinuousOperatorSessionConfig:
             raise ValueError("worker_count must be positive")
         if self.minimum_next_attempt_seconds < 0:
             raise ValueError("minimum_next_attempt_seconds cannot be negative")
+        if (
+            self.cp_sat_max_deterministic_time_seconds is not None
+            and self.cp_sat_max_deterministic_time_seconds <= 0
+        ):
+            raise ValueError(
+                "cp_sat_max_deterministic_time_seconds must be positive"
+            )
         if self.utilization_cluster_policy not in {
             "top_individual",
             "delivery_group_focused",
@@ -230,6 +239,8 @@ class ContinuousOperatorSessionRecord:
     total_validation_seconds: float
     external_overrun_seconds: float
     stopping_reason: str
+    cp_sat_random_seed: int | None = None
+    cp_sat_max_deterministic_time_seconds: float | None = None
     selected_grade: int | None = None
     attempts: tuple[dict, ...] = ()
     target_history: tuple[tuple, ...] = ()
@@ -298,6 +309,16 @@ def build_continuous_operator_session_record(
         total_validation_seconds=validation,
         external_overrun_seconds=float(local.get("external_overrun_seconds", 0) or 0),
         stopping_reason=local.get("stopping_reason") or "diagnostic_stop",
+        cp_sat_random_seed=(
+            int(local["cp_sat_random_seed"])
+            if local.get("cp_sat_random_seed") is not None
+            else None
+        ),
+        cp_sat_max_deterministic_time_seconds=(
+            float(local["cp_sat_max_deterministic_time_seconds"])
+            if local.get("cp_sat_max_deterministic_time_seconds") is not None
+            else None
+        ),
         selected_grade=local.get("selected_grade"),
         attempts=attempts,
         target_history=tuple(local.get("session_target_history") or ()),

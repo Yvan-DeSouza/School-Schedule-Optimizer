@@ -1,0 +1,202 @@
+{
+  "schema": "student_assignment_adaptive_variance_study_v1",
+  "study_id": "adaptive-policy-variance-v2-20260828",
+  "parent_study": "adaptive-promotion-v2-supervised-20260827",
+  "objective_semantics_version": "v2",
+  "input_fingerprint": "c07c77d0aa077a3e72240f27644d86b8a1a4faecb2f72a900aacc3fcb792d28a",
+  "baseline_source_fingerprint": "d5036a44e71d5a3b2a94eebe51d645bb4034179a0dd29537492ea81feda2e900",
+  "baseline_substantive_value": 37596,
+  "source_counts": {
+    "student_count": 1400,
+    "request_count": 10760,
+    "required_source_decision_group_count": 10945,
+    "assignment_count": 10635,
+    "unmet_required_request_count": 0,
+    "special_commitment_count": 310
+  },
+  "controlled_seed": 101,
+  "selected_cases": [
+    {
+      "case_id": "stateless-first-divergence",
+      "state_substantive_value": 37596,
+      "state_source_fingerprint": "d5036a44e71d5a3b2a94eebe51d645bb4034179a0dd29537492ea81feda2e900",
+      "operator": "targeted_utilization_r16_s4",
+      "target_scope": [417, 360, 482, 25],
+      "controlled_configuration": {
+        "one_worker": {
+          "worker_count": 1,
+          "random_seed": 101,
+          "total_time_limit_seconds": 60,
+          "per_attempt_time_limit_seconds": 30,
+          "validation_time_limit_seconds": 60,
+          "validation_worker_count": 1
+        },
+        "eight_worker": {
+          "worker_count": 8,
+          "random_seed": 101,
+          "total_time_limit_seconds": 60,
+          "per_attempt_time_limit_seconds": 30,
+          "validation_time_limit_seconds": 60,
+          "validation_worker_count": 1
+        }
+      },
+      "first_divergence": "productive historical run adopted a candidate on its second outer attempt while the corrected repeat did not; both started that attempt from the same source state and selected this same fixed operator/scope",
+      "one_worker_same_seed_artifacts": [
+        "stateless-r16-s4-1w-seed101-repeat2-result.json",
+        "stateless-r16-s4-1w-seed101-repeat3-result.json",
+        "stateless-r16-s4-1w-seed101-repeat4-result.json"
+      ],
+      "eight_worker_same_seed_artifacts": [
+        "stateless-r16-s4-8w-seed101-repeat1-result.json",
+        "stateless-r16-s4-8w-seed101-repeat2-result.json",
+        "stateless-r16-s4-8w-seed101-repeat3-result.json"
+      ],
+      "one_worker_summary": {
+        "final_values": [37590, 37590, 37590],
+        "candidate_rate": 1.0,
+        "validation_rate": 1.0,
+        "adoption_rate": 1.0,
+        "changed_students": [1, 1, 1],
+        "changed_source_decisions": [2, 2, 2]
+      },
+      "eight_worker_summary": {
+        "final_values": [37578, 37590, 37590],
+        "candidate_rate": 1.0,
+        "validation_rate": 1.0,
+        "adoption_rate": 1.0,
+        "changed_students": [4, 1, 1],
+        "changed_source_decisions": [8, 2, 2]
+      }
+    },
+    {
+      "case_id": "fixed-cycle-first-utilization-divergence",
+      "state_substantive_value": 37596,
+      "state_source_fingerprint": "d5036a44e71d5a3b2a94eebe51d645bb4034179a0dd29537492ea81feda2e900",
+      "operator": "targeted_utilization_r64_s8",
+      "target_scope": [417, 360, 482, 25, 480, 90, 175, 514],
+      "controlled_configuration": {
+        "one_worker": {
+          "worker_count": 1,
+          "random_seed": 101,
+          "total_time_limit_seconds": 60,
+          "per_attempt_time_limit_seconds": 30,
+          "validation_time_limit_seconds": 60,
+          "validation_worker_count": 1
+        },
+        "eight_worker_clean": {
+          "worker_count": 8,
+          "random_seed": 101,
+          "total_time_limit_seconds": 600,
+          "per_attempt_time_limit_seconds": 30,
+          "validation_time_limit_seconds": 60,
+          "validation_worker_count": 1
+        },
+        "eight_worker_extended_validation": {
+          "worker_count": 8,
+          "random_seed": 101,
+          "total_time_limit_seconds": 600,
+          "per_attempt_time_limit_seconds": 120,
+          "validation_time_limit_seconds": 120,
+          "validation_worker_count": 1
+        }
+      },
+      "first_divergence": "productive historical fixed-cycle run adopted this utilization transition while the corrected repeat did not; the controlled reruns use the same fixed source state, operator, scope, and seed",
+      "one_worker_same_seed_artifacts": [
+        "fixed-utilization-r64-s8-1w-seed101-repeat1-result.json",
+        "fixed-utilization-r64-s8-1w-seed101-repeat2-result.json",
+        "fixed-utilization-r64-s8-1w-seed101-repeat3-result.json"
+      ],
+      "eight_worker_same_seed_pilot_artifacts": [
+        "fixed-utilization-r64-s8-8w-seed101-repeat1-result.json",
+        "fixed-utilization-r64-s8-8w-seed101-repeat2-result.json",
+        "fixed-utilization-r64-s8-8w-seed101-repeat3-result.json"
+      ],
+      "eight_worker_same_seed_clean_artifacts": [
+        "fixed-utilization-r64-s8-8w-seed101-clean1-result.json",
+        "fixed-utilization-r64-s8-8w-seed101-clean2-result.json",
+        "fixed-utilization-r64-s8-8w-seed101-clean3-result.json"
+      ],
+      "one_worker_summary": {
+        "final_values": [37590, 37590, 37590],
+        "candidate_rate": 1.0,
+        "validation_rate": 1.0,
+        "adoption_rate": 1.0,
+        "changed_students": [4, 4, 4],
+        "changed_source_decisions": [18, 18, 18]
+      },
+      "eight_worker_clean_summary": {
+        "candidate_quality_values": [37590, 37590, 37590],
+        "candidate_rate": 1.0,
+        "validation_rate": 0.0,
+        "adoption_rate": 0.0,
+        "validation_outcome": "unknown",
+        "changed_students": [4, 4, 4],
+        "changed_source_decisions": [18, 18, 18],
+        "note": "The candidate improved section utilization, but the unchanged full-model validator did not establish feasibility within the controlled validation boundary; no candidate was adopted."
+      },
+      "eight_worker_extended_validation_artifact": {
+        "artifact": "fixed-utilization-r64-s8-8w-seed101-validated1-result.json",
+        "per_attempt_time_limit_seconds": 120,
+        "candidate_value": 37590,
+        "candidate_validated": true,
+        "candidate_adopted": true,
+        "validation_solver_outcome": "optimal",
+        "full_validation_seconds": 2956.993204700062,
+        "total_operation_seconds": 3083.2651464999653,
+        "classification": "out_of_budget_validation_observation",
+        "note": "The candidate eventually validated, but the unchanged full-model validation exceeded both the nominal session envelope and the intended bounded diagnostic scale. It is not used as clean repeatability evidence."
+      },
+      "eight_worker_supervised_boundary_artifact": {
+        "artifact": "fixed-utilization-r64-s8-8w-seed101-supervised1-result.json",
+        "total_time_limit_seconds": 600,
+        "per_attempt_time_limit_seconds": 30,
+        "validation_time_limit_seconds": 60,
+        "execution_status": "completed",
+        "candidate_quality_value": 37590,
+        "candidate_found": true,
+        "candidate_validated": false,
+        "candidate_adopted": false,
+        "candidate_validation_outcome": "unknown",
+        "parent_wall_seconds": 146.370401400025,
+        "worker_operation_seconds": 141.4895125000039,
+        "supervised_elapsed_seconds": 144.0738840000704,
+        "classification": "bounded_non_adoption_observation",
+        "note": "The corrected parent watchdog covered the worker's benchmark loading, model construction, CP-SAT attempt, and full-model validation. The worker completed inside the 600-second hard wall; the candidate was not authoritative because the unchanged validator returned UNKNOWN within its 60-second boundary. It is not counted as an adopted transition."
+      }
+    }
+  ],
+  "optional_seed_sweep": {
+    "status": "skipped",
+    "reason": "The fixed-seed eight-worker stateless case already showed material transition variance; a seed sweep would not add enough information before the controlled policy gate."
+  },
+  "medium_control": {
+    "status": "skipped",
+    "reason": "No detached medium production-shaped benchmark is present in the current checkout; only the 1,400-student target-shaped durable inputs are available."
+  },
+  "final_classification": "single_worker_control_is_reproducible_eight_worker_parallel_variance_is_primary_policy_endpoint_noise",
+  "causality_finding": {
+    "policy_selection": "deterministic_for_same_state_history_and_budget",
+    "solver_transition": "material_same_seed_variance_observed_under_eight_workers",
+    "trajectory_amplification": "not_separately_quantified_beyond_the_selected_transition_cases",
+    "adaptive_policy_comparison": "blocked_until_transition_variance_is_controlled_or_replicated_distributionally"
+  },
+  "supervision_boundary": {
+    "runner": "run_supervised_variance_trial",
+    "parent_watchdog": "scheduling_engine.student_assignment.calibration_supervisor.supervise_json_worker",
+    "covers": [
+      "benchmark_loading",
+      "branch_validation",
+      "model_construction",
+      "cp_sat",
+      "candidate_extraction",
+      "full_model_validation"
+    ],
+    "target_scale_trial_artifact": "fixed-utilization-r64-s8-8w-seed101-supervised1-result.json",
+    "candidate_authority_on_termination": "retained_incumbent_only"
+  },
+  "policy_comparison": {
+    "status": "blocked",
+    "reason": "The selected stateless transition is not controlled under eight-worker same-seed search, so a three-policy endpoint comparison would conflate operator selection with solver transition variance."
+  },
+  "canonical_state_mutated": false
+}

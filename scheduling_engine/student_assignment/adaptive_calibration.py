@@ -233,6 +233,8 @@ class AdaptiveCalibrationTrialRecord:
     configured_budget_seconds: float
     per_operator_time_limit_seconds: float
     worker_count: int
+    cp_sat_random_seed: int | None
+    cp_sat_max_deterministic_time_seconds: float | None
     initial_substantive_value: float
     final_substantive_value: float
     final_assignment_count: int
@@ -265,6 +267,8 @@ def run_matched_calibration_trial(
     portfolio=DEFAULT_ADAPTIVE_OPERATOR_PORTFOLIO,
     session_overrides=CALIBRATION_SESSION_OVERRIDES,
     collect_resource_telemetry=True,
+    cp_sat_random_seed=None,
+    cp_sat_max_deterministic_time_seconds=None,
     **kwargs,
 ):
     """Run one policy from one complete incumbent under a shared budget."""
@@ -286,6 +290,10 @@ def run_matched_calibration_trial(
         portfolio=portfolio,
         session_overrides=session_overrides,
         collect_resource_telemetry=collect_resource_telemetry,
+        cp_sat_random_seed=cp_sat_random_seed,
+        cp_sat_max_deterministic_time_seconds=(
+            cp_sat_max_deterministic_time_seconds
+        ),
         selection_policy=policy_config["selection_policy"],
         fixed_cycle=policy_config["fixed_cycle"],
         **kwargs,
@@ -355,6 +363,12 @@ def build_calibration_trial_record(
         configured_budget_seconds=float(total_time_limit_seconds),
         per_operator_time_limit_seconds=float(per_operator_time_limit_seconds),
         worker_count=int(worker_count),
+        cp_sat_random_seed=(
+            int(cp_sat_random_seed) if cp_sat_random_seed is not None else None
+        ),
+        cp_sat_max_deterministic_time_seconds=(
+            cp_sat_max_deterministic_time_seconds
+        ),
         initial_substantive_value=_weighted_value(initial_result),
         final_substantive_value=_weighted_value(result.result),
         final_assignment_count=len(result.result.assignments),

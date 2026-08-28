@@ -24,13 +24,32 @@ def outcome_name(status):
     }.get(status, "unknown")
 
 
-def new_solver(time_limit_seconds, *, fix_hints=False, worker_count=1):
-    """Build a bounded CP-SAT configuration for the requested stage."""
+def new_solver(
+    time_limit_seconds,
+    *,
+    fix_hints=False,
+    worker_count=1,
+    random_seed=0,
+    max_deterministic_time=None,
+):
+    """Build a bounded CP-SAT configuration for the requested stage.
+
+    ``random_seed`` and ``max_deterministic_time`` are intentionally low-level
+    diagnostic controls.  The ordinary engine behavior remains unchanged by
+    the defaults: one or caller-selected worker count, wall-clock bounding,
+    and random seed zero.  Diagnostic callers may opt into an explicit seed
+    or deterministic-work bound without introducing a second solver path.
+    """
+
+    if max_deterministic_time is not None and max_deterministic_time <= 0:
+        raise ValueError("max_deterministic_time must be positive when supplied")
 
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = time_limit_seconds
     solver.parameters.num_search_workers = worker_count
-    solver.parameters.random_seed = 0
+    solver.parameters.random_seed = int(random_seed)
+    if max_deterministic_time is not None:
+        solver.parameters.max_deterministic_time = float(max_deterministic_time)
     solver.parameters.fix_variables_to_their_hinted_value = fix_hints
     return solver
 
@@ -195,6 +214,8 @@ def validate_source_decision_candidate(
     time_limit_seconds,
     *,
     worker_count=1,
+    random_seed=0,
+    max_deterministic_time=None,
 ):
     """Validate a semantic source-decision candidate against the full model.
 
@@ -212,6 +233,8 @@ def validate_source_decision_candidate(
         source_variable_values,
         time_limit_seconds,
         worker_count=worker_count,
+        random_seed=random_seed,
+        max_deterministic_time=max_deterministic_time,
     )
     return outcome.solver if outcome.classification == "validated" else None
 
@@ -223,6 +246,8 @@ def validate_source_decision_candidate_with_status(
     time_limit_seconds,
     *,
     worker_count=1,
+    random_seed=0,
+    max_deterministic_time=None,
 ):
     """Validate a candidate and preserve the bounded validator outcome.
 
@@ -251,6 +276,8 @@ def validate_source_decision_candidate_with_status(
         validator = new_solver(
             time_limit_seconds,
             worker_count=worker_count,
+            random_seed=random_seed,
+            max_deterministic_time=max_deterministic_time,
         )
         status = validator.Solve(candidate_model)
     except Exception as error:  # pragma: no cover - defensive infrastructure path

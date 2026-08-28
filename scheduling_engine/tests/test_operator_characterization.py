@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 
+import pytest
 from ortools.sat.python import cp_model
 
 from scheduling_engine.realistic_student_assignment_validation import (
@@ -413,8 +414,12 @@ def test_characterization_runner_uses_existing_diagnostic_session_boundary():
         collect_resource_telemetry=False,
         hard_feasibility_validation_time_limit_seconds=2,
         hard_feasibility_validation_worker_count=1,
+        cp_sat_random_seed=202,
+        cp_sat_max_deterministic_time_seconds=3.5,
     )
     assert record.schema == CHARACTERIZATION_SCHEMA
     assert record.operator == "r2"
     assert record.role == "local_descent"
     assert record.solver_status in {"optimal", "feasible", "infeasible", "unknown"}
+    assert record.cp_sat_random_seed == 202
+    assert record.cp_sat_max_deterministic_time_seconds == pytest.approx(3.5)

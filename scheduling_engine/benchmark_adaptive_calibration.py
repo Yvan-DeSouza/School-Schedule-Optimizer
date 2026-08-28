@@ -555,6 +555,10 @@ def _run_supervised_worker(args):
             30.0, float(data.time_limit_seconds)
         ),
         hard_feasibility_validation_worker_count=1,
+        cp_sat_random_seed=getattr(args, "cp_sat_random_seed", None),
+        cp_sat_max_deterministic_time_seconds=(
+            getattr(args, "cp_sat_max_deterministic_time_seconds", None)
+        ),
         phase_callback=_worker_phase_callback,
     )
     phase_timings["policy_trial_seconds"] = perf_counter() - phase_started
@@ -742,6 +746,8 @@ def run_supervised_calibration_trial(
     min_system_available_memory_bytes=None,
     poll_interval_seconds=0.25,
     validated_branch_output=None,
+    cp_sat_random_seed=None,
+    cp_sat_max_deterministic_time_seconds=None,
 ):
     """Run one detached calibration trial under a true parent-side deadline."""
 
@@ -863,6 +869,13 @@ def run_supervised_calibration_trial(
                 "--workers",
                 str(int(worker_count)),
             ]
+            if cp_sat_random_seed is not None:
+                command.extend(["--cp-sat-random-seed", str(int(cp_sat_random_seed))])
+            if cp_sat_max_deterministic_time_seconds is not None:
+                command.extend([
+                    "--cp-sat-max-deterministic-time-seconds",
+                    str(float(cp_sat_max_deterministic_time_seconds)),
+                ])
             if validated_branch_output:
                 command.extend(
                     [
@@ -1027,6 +1040,8 @@ def run_calibration_trial(
     per_operator_time_limit_seconds=60.0,
     worker_count=2,
     branch_output=None,
+    cp_sat_random_seed=None,
+    cp_sat_max_deterministic_time_seconds=None,
 ):
     """Prepare, branch-validate, and execute one clean-process trial."""
 
@@ -1129,6 +1144,10 @@ def run_calibration_trial(
                 30.0, float(data.time_limit_seconds)
             ),
             hard_feasibility_validation_worker_count=1,
+            cp_sat_random_seed=cp_sat_random_seed,
+            cp_sat_max_deterministic_time_seconds=(
+                cp_sat_max_deterministic_time_seconds
+            ),
         )
 
     payload = trial.to_dict()
@@ -1192,6 +1211,8 @@ def main(argv=None):  # pragma: no cover - clean-process experiment surface
     parser.add_argument("--min-system-available-memory-bytes", type=int)
     parser.add_argument("--poll-interval-seconds", type=float, default=0.25)
     parser.add_argument("--validated-branch-output", type=Path)
+    parser.add_argument("--cp-sat-random-seed", type=int)
+    parser.add_argument("--cp-sat-max-deterministic-time-seconds", type=float)
     args = parser.parse_args(argv)
     if args.worker:
         if not args.worker_output or not args.worker_status:
@@ -1214,6 +1235,10 @@ def main(argv=None):  # pragma: no cover - clean-process experiment surface
             ),
             poll_interval_seconds=args.poll_interval_seconds,
             validated_branch_output=args.validated_branch_output,
+            cp_sat_random_seed=args.cp_sat_random_seed,
+            cp_sat_max_deterministic_time_seconds=(
+                args.cp_sat_max_deterministic_time_seconds
+            ),
         )
     else:
         payload = run_calibration_trial(
@@ -1227,6 +1252,10 @@ def main(argv=None):  # pragma: no cover - clean-process experiment surface
             per_operator_time_limit_seconds=args.per_operator_seconds,
             worker_count=args.workers,
             branch_output=args.branch_output,
+            cp_sat_random_seed=args.cp_sat_random_seed,
+            cp_sat_max_deterministic_time_seconds=(
+                args.cp_sat_max_deterministic_time_seconds
+            ),
         )
     json.dump(payload, sys.stdout, indent=2, sort_keys=True, default=str)
     sys.stdout.write("\n")

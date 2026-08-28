@@ -1274,6 +1274,25 @@ def test_lexicographic_budget_is_shared_across_objective_passes():
     assert all(0 < limit <= 0.2 for limit in captured_limits)
 
 
+def test_new_solver_keeps_default_seed_and_accepts_diagnostic_controls():
+    """Diagnostic controls are explicit without changing ordinary defaults."""
+
+    default_solver = student_assignment_solver.new_solver(1.0)
+    assert default_solver.parameters.num_search_workers == 1
+    assert default_solver.parameters.random_seed == 0
+    assert default_solver.parameters.max_deterministic_time == float("inf")
+
+    diagnostic_solver = student_assignment_solver.new_solver(
+        1.0,
+        worker_count=8,
+        random_seed=202,
+        max_deterministic_time=3.5,
+    )
+    assert diagnostic_solver.parameters.num_search_workers == 8
+    assert diagnostic_solver.parameters.random_seed == 202
+    assert diagnostic_solver.parameters.max_deterministic_time == pytest.approx(3.5)
+
+
 def test_lexicographic_solver_honors_one_shared_monotonic_deadline():
     model = cp_model.CpModel()
     value = model.NewIntVar(0, 1, "value")

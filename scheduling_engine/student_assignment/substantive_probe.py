@@ -91,6 +91,8 @@ class SubstantiveSoftTierProbeResult:
     eligible_targeted_source_decision_count: int = 0
     effective_neighborhood_radius: int | None = None
     selected_grade: int | None = None
+    cp_sat_random_seed: int | None = None
+    cp_sat_max_deterministic_time_seconds: float | None = None
 
 
 def _model_family_variable_counts(model):
@@ -169,6 +171,8 @@ def probe_substantive_soft_tier(
     max_changed_students: int | None = None,
     selected_student_ids=(),
     selected_grade: int | None = None,
+    cp_sat_random_seed: int | None = None,
+    cp_sat_max_deterministic_time_seconds: float | None = None,
     phase_callback=None,
 ) -> SubstantiveSoftTierProbeResult:
     """Ask whether the unchanged full model can beat one soft tier.
@@ -294,6 +298,10 @@ def probe_substantive_soft_tier(
             selected_grade=selected_grade,
             eligible_targeted_source_decision_count=eligible_targeted_source_decision_count,
             effective_neighborhood_radius=effective_neighborhood_radius,
+            cp_sat_random_seed=cp_sat_random_seed,
+            cp_sat_max_deterministic_time_seconds=(
+                cp_sat_max_deterministic_time_seconds
+            ),
         )
 
     target_entries = [
@@ -537,6 +545,10 @@ def probe_substantive_soft_tier(
         solver = new_solver(
             time_limit_seconds,
             worker_count=worker_count,
+            random_seed=(
+                0 if cp_sat_random_seed is None else int(cp_sat_random_seed)
+            ),
+            max_deterministic_time=cp_sat_max_deterministic_time_seconds,
         )
     _emit_phase("cp_sat", "started")
     with timing.measure("cp_solver_solve_external_wall_seconds"):
@@ -719,4 +731,8 @@ def probe_substantive_soft_tier(
         eligible_targeted_source_decision_count=eligible_targeted_source_decision_count,
         effective_neighborhood_radius=effective_neighborhood_radius,
         selected_grade=selected_grade,
+        cp_sat_random_seed=cp_sat_random_seed,
+        cp_sat_max_deterministic_time_seconds=(
+            cp_sat_max_deterministic_time_seconds
+        ),
     )

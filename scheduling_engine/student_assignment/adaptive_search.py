@@ -88,6 +88,8 @@ class AdaptiveOperatorAttempt:
     session_cp_sat_seconds: float | None = None
     session_validation_seconds: float | None = None
     session_external_overrun_seconds: float | None = None
+    cp_sat_random_seed: int | None = None
+    cp_sat_max_deterministic_time_seconds: float | None = None
 
     @property
     def gain_per_minute(self):
@@ -265,6 +267,8 @@ class AdaptiveSessionRecord:
     operator_execution_seconds: float = 0.0
     finalization_seconds: float = 0.0
     external_overrun_seconds: float = 0.0
+    cp_sat_random_seed: int | None = None
+    cp_sat_max_deterministic_time_seconds: float | None = None
     # Optional diagnostic facts.  Keeping this field defaulted preserves
     # compatibility with existing in-memory records and historical JSON while
     # allowing supervised trials to localize setup before CP-SAT is reached.
@@ -685,6 +689,8 @@ def build_operator_session_request(
     remaining_seconds,
     worker_count=8,
     selected_student_ids=None,
+    cp_sat_random_seed=None,
+    cp_sat_max_deterministic_time_seconds=None,
 ):
     """Translate a policy decision into a future session execution request.
 
@@ -712,6 +718,14 @@ def build_operator_session_request(
         "target_policy": spec.target_policy,
         "selected_grade": spec.selected_grade,
         "selected_student_ids": tuple(selected_student_ids),
+        "cp_sat_random_seed": (
+            int(cp_sat_random_seed) if cp_sat_random_seed is not None else None
+        ),
+        "cp_sat_max_deterministic_time_seconds": (
+            float(cp_sat_max_deterministic_time_seconds)
+            if cp_sat_max_deterministic_time_seconds is not None
+            else None
+        ),
     }
 
 

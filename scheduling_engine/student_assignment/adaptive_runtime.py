@@ -113,6 +113,8 @@ def _operator_result(data, spec, *, selected_student_ids, current_source_decisio
                     hard_feasibility_validation_time_limit_seconds=None,
                     hard_feasibility_worker_count=None,
                     hard_feasibility_validation_worker_count=None,
+                    cp_sat_random_seed=None,
+                    cp_sat_max_deterministic_time_seconds=None,
                     phase_callback=None):
     # Every policy family uses the same reusable continuous-session boundary.
     # The policy spec describes the session granularity; the outer caller still
@@ -140,6 +142,10 @@ def _operator_result(data, spec, *, selected_student_ids, current_source_decisio
         remaining_seconds=time_limit_seconds,
         worker_count=worker_count,
         selected_student_ids=selected_student_ids,
+        cp_sat_random_seed=cp_sat_random_seed,
+        cp_sat_max_deterministic_time_seconds=(
+            cp_sat_max_deterministic_time_seconds
+        ),
     )
     return run_student_assignment_operator_session_diagnostic(
         data,
@@ -161,6 +167,10 @@ def _operator_result(data, spec, *, selected_student_ids, current_source_decisio
         ),
         hard_feasibility_validation_worker_count=(
             hard_feasibility_validation_worker_count
+        ),
+        cp_sat_random_seed=cp_sat_random_seed,
+        cp_sat_max_deterministic_time_seconds=(
+            cp_sat_max_deterministic_time_seconds
         ),
         collect_resource_telemetry=collect_resource_telemetry,
         capture_final_source_decisions=True,
@@ -184,6 +194,8 @@ def run_adaptive_local_search_diagnostic(
     hard_feasibility_validation_time_limit_seconds=None,
     hard_feasibility_worker_count=None,
     hard_feasibility_validation_worker_count=None,
+    cp_sat_random_seed=None,
+    cp_sat_max_deterministic_time_seconds=None,
     session_id=None,
     selection_policy="adaptive",
     fixed_cycle=(),
@@ -366,6 +378,10 @@ def run_adaptive_local_search_diagnostic(
             remaining_seconds=operation_limit,
             worker_count=worker_count,
             selected_student_ids=selected,
+            cp_sat_random_seed=cp_sat_random_seed,
+            cp_sat_max_deterministic_time_seconds=(
+                cp_sat_max_deterministic_time_seconds
+            ),
         )
         # Preserve the factual policy explanation in the live phase stream as
         # well as in the eventual result payload. A supervised worker can be
@@ -410,6 +426,10 @@ def run_adaptive_local_search_diagnostic(
                 hard_feasibility_worker_count=hard_feasibility_worker_count,
                 hard_feasibility_validation_worker_count=(
                     hard_feasibility_validation_worker_count
+                ),
+                cp_sat_random_seed=cp_sat_random_seed,
+                cp_sat_max_deterministic_time_seconds=(
+                    cp_sat_max_deterministic_time_seconds
                 ),
                 phase_callback=phase_callback,
             )
@@ -552,6 +572,10 @@ def run_adaptive_local_search_diagnostic(
                 session_external_overrun_seconds=local.get(
                     "external_overrun_seconds"
                 ),
+                cp_sat_random_seed=local.get("cp_sat_random_seed"),
+                cp_sat_max_deterministic_time_seconds=(
+                    local.get("cp_sat_max_deterministic_time_seconds")
+                ),
             )
         )
         if monotonic() - started >= configured_budget:
@@ -611,6 +635,12 @@ def run_adaptive_local_search_diagnostic(
         external_overrun_seconds=max(
             0.0,
             elapsed_seconds - configured_budget,
+        ),
+        cp_sat_random_seed=(
+            int(cp_sat_random_seed) if cp_sat_random_seed is not None else None
+        ),
+        cp_sat_max_deterministic_time_seconds=(
+            cp_sat_max_deterministic_time_seconds
         ),
         phase_timings=dict(phase_timings),
     )

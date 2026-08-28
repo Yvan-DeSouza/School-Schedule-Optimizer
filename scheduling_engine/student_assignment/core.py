@@ -1140,6 +1140,8 @@ def run_student_assignment_operator_session_diagnostic(
     minimum_next_attempt_seconds=1.0,
     hard_feasibility_validation_time_limit_seconds=None,
     hard_feasibility_validation_worker_count=None,
+    cp_sat_random_seed=None,
+    cp_sat_max_deterministic_time_seconds=None,
     collect_resource_telemetry=True,
     capture_final_source_decisions=True,
     timeline_max_events=128,
@@ -1174,6 +1176,12 @@ def run_student_assignment_operator_session_diagnostic(
         hard_feasibility_validation_worker_count=(
             hard_feasibility_validation_worker_count
         ),
+        cp_sat_random_seed=(
+            int(cp_sat_random_seed) if cp_sat_random_seed is not None else None
+        ),
+        cp_sat_max_deterministic_time_seconds=(
+            cp_sat_max_deterministic_time_seconds
+        ),
     )
     if not initial_source_decisions and initial_source_variable_values is None:
         raise ValueError("initial_source_decisions is required")
@@ -1199,6 +1207,10 @@ def run_student_assignment_operator_session_diagnostic(
             "selected_grade": config.selected_grade,
             "utilization_cluster_policy": config.utilization_cluster_policy,
             "minimum_next_attempt_seconds": config.minimum_next_attempt_seconds,
+            "cp_sat_random_seed": config.cp_sat_random_seed,
+            "cp_sat_max_deterministic_time_seconds": (
+                config.cp_sat_max_deterministic_time_seconds
+            ),
             "source_seed_fingerprint": (
                 sha256(
                     repr(tuple(sorted(initial_source_decisions, key=repr))).encode()
@@ -1223,6 +1235,10 @@ def run_student_assignment_operator_session_diagnostic(
         capture_final_source_decisions=capture_final_source_decisions,
         collect_resource_telemetry=config.collect_resource_telemetry,
         phase_callback=phase_callback,
+        diagnostic_cp_sat_random_seed=config.cp_sat_random_seed,
+        diagnostic_cp_sat_max_deterministic_time_seconds=(
+            config.cp_sat_max_deterministic_time_seconds
+        ),
     )
 
 
@@ -1247,6 +1263,8 @@ def run_student_assignment_variable_neighborhood_diagnostic(
     capture_final_source_decisions=False,
     collect_resource_telemetry=False,
     phase_callback=None,
+    diagnostic_cp_sat_random_seed=None,
+    diagnostic_cp_sat_max_deterministic_time_seconds=None,
 ):
     """Run bounded R2/R4/R8 CP-SAT local descent for diagnostics only.
 
@@ -1274,6 +1292,10 @@ def run_student_assignment_variable_neighborhood_diagnostic(
             "worker_count": worker_count,
             "target_importance_level": _soft_tier_importance_level(data),
             "max_changed_students": max_changed_students,
+            "cp_sat_random_seed": diagnostic_cp_sat_random_seed,
+            "cp_sat_max_deterministic_time_seconds": (
+                diagnostic_cp_sat_max_deterministic_time_seconds
+            ),
         },
         stage_2_total_time_limit_seconds=total_time_limit_seconds,
         retain_incumbent_on_non_improvement=True,
@@ -1298,6 +1320,10 @@ def run_student_assignment_variable_neighborhood_diagnostic(
         capture_final_source_decisions=capture_final_source_decisions,
         collect_resource_telemetry=collect_resource_telemetry,
         phase_callback=phase_callback,
+        diagnostic_cp_sat_random_seed=diagnostic_cp_sat_random_seed,
+        diagnostic_cp_sat_max_deterministic_time_seconds=(
+            diagnostic_cp_sat_max_deterministic_time_seconds
+        ),
     )
 
 
@@ -1476,6 +1502,8 @@ def _solve_student_assignment(
     capture_final_source_decisions=False,
     collect_resource_telemetry=False,
     phase_callback=None,
+    diagnostic_cp_sat_random_seed=None,
+    diagnostic_cp_sat_max_deterministic_time_seconds=None,
 ):
     # This monitor covers the complete diagnostic/engine operation, including
     # input validation, model construction, Stage 1, Stage 2, extraction, and
@@ -3414,6 +3442,14 @@ def _solve_student_assignment(
                     if hard_feasibility_validation_worker_count is not None
                     else STUDENT_ASSIGNMENT_HARD_FEASIBILITY_VALIDATION_WORKER_COUNT
                 ),
+                random_seed=(
+                    0
+                    if diagnostic_cp_sat_random_seed is None
+                    else int(diagnostic_cp_sat_random_seed)
+                ),
+                max_deterministic_time=(
+                    diagnostic_cp_sat_max_deterministic_time_seconds
+                ),
             )
             alternate_seed_validation_elapsed = (
                 monotonic() - alternate_validation_started
@@ -3800,6 +3836,16 @@ def _solve_student_assignment(
                         if hard_feasibility_validation_worker_count is not None
                         else STUDENT_ASSIGNMENT_HARD_FEASIBILITY_VALIDATION_WORKER_COUNT
                     ),
+                    random_seed=(
+                        0
+                        if local_config.get("cp_sat_random_seed") is None
+                        else int(local_config["cp_sat_random_seed"])
+                    ),
+                    max_deterministic_time=(
+                        local_config.get(
+                            "cp_sat_max_deterministic_time_seconds"
+                        )
+                    ),
                 )
                 return (
                     validation_outcome.solver,
@@ -3997,6 +4043,12 @@ def _solve_student_assignment(
                         selected_grade=(int(selected_grade) if grade_bounded else None),
                         time_limit_seconds=probe_limit,
                         worker_count=int(local_config.get("worker_count", 8)),
+                        cp_sat_random_seed=local_config.get("cp_sat_random_seed"),
+                        cp_sat_max_deterministic_time_seconds=(
+                            local_config.get(
+                                "cp_sat_max_deterministic_time_seconds"
+                            )
+                        ),
                         phase_callback=phase_callback,
                     )
                     last_result = local_result
@@ -4089,6 +4141,12 @@ def _solve_student_assignment(
                         "section_load_deltas": dict(local_result.section_load_deltas),
                         "target_guidance": dict(target_guidance),
                         "selected_grade": int(selected_grade) if grade_bounded else None,
+                        "cp_sat_random_seed": local_config.get("cp_sat_random_seed"),
+                        "cp_sat_max_deterministic_time_seconds": (
+                            local_config.get(
+                                "cp_sat_max_deterministic_time_seconds"
+                            )
+                        ),
                         "best_bound": local_result.best_bound,
                         "attempt_number_for_radius": radius_attempts[current_radius],
                         "cumulative_session_elapsed_seconds": (
@@ -4165,6 +4223,10 @@ def _solve_student_assignment(
                     "adaptive": True,
                     "operator_session": operator_session,
                     "operator_family": local_config.get("operator_family"),
+                    "cp_sat_random_seed": local_config.get("cp_sat_random_seed"),
+                    "cp_sat_max_deterministic_time_seconds": (
+                        local_config.get("cp_sat_max_deterministic_time_seconds")
+                    ),
                     "source_seed_fingerprint": local_config.get(
                         "source_seed_fingerprint"
                     ),

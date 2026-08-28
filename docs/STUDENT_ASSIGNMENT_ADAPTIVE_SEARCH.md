@@ -868,3 +868,90 @@ were changed. The next valid research step is a separately bounded
 repeatability study that controls or explicitly models this parallel CP-SAT
 variance, followed only then by an operator-versus-role diagnosis. The
 current v2 policy study remains `inconclusive_bounded_study`.
+
+## Objective Semantics v2 solver-variance study (2026-08-28)
+
+Study `adaptive-policy-variance-v2-20260828` was opened as a separate
+diagnostic lineage. It uses the detached mixed-grade v2 input fingerprint
+`c07c77d0aa077a3e72240f27644d86b8a1a4faecb2f72a900aacc3fcb792d28a`, the
+complete baseline source fingerprint
+`d5036a44e71d5a3b2a94eebe51d645bb4034179a0dd29537492ea81feda2e900`, and
+the `37,596` incumbent. The input remains 1,400 students, 10,760 requests,
+10,945 required source groups, 10,635 assignments, zero unmet required
+requests, and 310 special commitments. No canonical benchmark or schedule
+branch was mutated.
+
+The pure engine already made the ordinary solver configuration explicit:
+`num_search_workers`, `max_time_in_seconds`, and `random_seed` are set at the
+shared solver boundary, with the established defaults preserved. The
+diagnostic path now accepts an optional `cp_sat_random_seed` and optional
+`max_deterministic_time`; those controls are recorded in trial metadata and
+are not used by ordinary production scheduling. The installed OR-Tools
+version is `9.15.6755`. The study used seed `101`, wall-clock probe slices,
+and unchanged full-model validation.
+
+The first stateless divergence identified from the existing structured
+records was the same baseline state, operator
+`targeted_utilization_r16_s4`, and fixed target scope `(417, 360, 482, 25)`.
+The earlier productive trajectory adopted a candidate on its second outer
+attempt; the corrected repeat did not. This is a solver-outcome divergence
+after policy selection, not evidence that the policy selected different
+operators.
+
+Three fresh one-worker same-seed trials of that transition all produced the
+same complete, full-model-validated and adopted result: `37,596 -> 37,590`,
+one changed student, and two changed source decisions. Three matched
+eight-worker same-seed trials all produced complete validated candidates, but
+their results differed: `37,578` once (four students/eight decisions) and
+`37,590` twice (one student/two decisions). CP-SAT reported `optimal` in all
+six trials, while full validation also reported `optimal`. The one-worker
+CP-SAT times were approximately 2.20-2.31 seconds and the eight-worker times
+approximately 2.10-2.46 seconds; total operation times were approximately
+50.8-53.7 seconds. Peak working sets were approximately 0.84-0.85 GB.
+
+The fixed-cycle comparison state selected
+`targeted_utilization_r64_s8` with fixed scope
+`(417, 360, 482, 25, 480, 90, 175, 514)`. Three one-worker same-seed trials
+repeatedly produced and adopted `37,590` from `37,596`, with four changed
+students and 18 changed source decisions. Three eight-worker clean trials
+also produced a `37,590` candidate, but the unchanged full-model validator
+returned `UNKNOWN` inside the per-attempt validation boundary, so none was
+adopted. The candidate is therefore recorded as an unvalidated observation,
+not as a valid transition. Earlier eight-worker pilot trials with a shorter
+total session budget had the same validation-boundary limitation and are not
+used as adoption evidence. One separate extended-validation observation did
+eventually validate and adopt the same `37,590` candidate, but full validation
+took approximately `2,957` seconds and the operation approximately `3,083`
+seconds despite a nominal `600`-second session envelope. That observation is
+classified as out-of-budget validation evidence, not clean repeatability or
+policy-performance evidence.
+
+The variance runner now also exposes a `--supervised` mode backed by the shared
+parent-side calibration watchdog. The first supervised fixed-cycle recheck
+completed in approximately `146.4` seconds inside a `600`-second hard wall. It
+generated the same `37,590` candidate, but the unchanged full validator returned
+`UNKNOWN` within its `60`-second validation boundary, so the candidate was not
+adopted. A worker terminated by the hard wall is reported as a retained-baseline
+observation and cannot publish an authoritative candidate. This boundary covers
+benchmark loading, model construction, CP-SAT, candidate extraction, and full
+validation together; it is now required for any future target-scale variance
+trial.
+
+These results satisfy the primary variance gate for the stateless transition:
+one-worker same-seed search was exact-repeatable, while eight-worker search
+showed material same-seed candidate variation. The policy mapping itself is
+still deterministic from state, history, and budget; the observed variation
+is in the solver transition from state and operator. An adopted candidate
+changes the next incumbent and can therefore amplify a small early solver
+difference into a different later policy trajectory.
+
+No medium detached production-shaped benchmark exists in the current
+checkout, so the planned medium control was not fabricated. A seed sweep was
+also skipped because the fixed-seed eight-worker result already established
+the relevant variance and a seed sweep would not remove the confounding
+without a controlled validation boundary. The paired adaptive/stateless/
+fixed policy comparison and any hybrid-controller work remain blocked until
+operator transition variance is controlled or explicitly modeled. No new
+operator, adaptive scoring rule, objective, hard constraint, production
+policy, placement, staffing, fulfillment, approval, or persistence behavior
+was introduced by this study.

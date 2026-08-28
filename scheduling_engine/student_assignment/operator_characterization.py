@@ -302,6 +302,8 @@ class OperatorCharacterizationRecord:
     model_constraint_count: int | None
     branches: int | None
     conflicts: int | None
+    cp_sat_random_seed: int | None = None
+    cp_sat_max_deterministic_time_seconds: float | None = None
     validation_classification: str = "not_attempted"
     validation_solver_outcome: str | None = None
     validation_error: str | None = None
@@ -410,6 +412,16 @@ def build_operator_characterization_record(
         ),
         branches=_last_observed_attempt_fact(local, attempts, "branches"),
         conflicts=_last_observed_attempt_fact(local, attempts, "conflicts"),
+        cp_sat_random_seed=(
+            int(local["cp_sat_random_seed"])
+            if local.get("cp_sat_random_seed") is not None
+            else None
+        ),
+        cp_sat_max_deterministic_time_seconds=(
+            float(local["cp_sat_max_deterministic_time_seconds"])
+            if local.get("cp_sat_max_deterministic_time_seconds") is not None
+            else None
+        ),
         validation_classification=str(
             final_attempt.get("validation_classification")
             or local.get("validation_classification")
@@ -452,6 +464,8 @@ def run_operator_characterization_trial(
     collect_resource_telemetry=False,
     hard_feasibility_validation_time_limit_seconds=None,
     hard_feasibility_validation_worker_count=None,
+    cp_sat_random_seed=None,
+    cp_sat_max_deterministic_time_seconds=None,
     downstream=None,
 ):
     """Run one existing diagnostic operator and build its evidence record.
@@ -493,6 +507,10 @@ def run_operator_characterization_trial(
         ),
         hard_feasibility_validation_worker_count=(
             hard_feasibility_validation_worker_count
+        ),
+        cp_sat_random_seed=cp_sat_random_seed,
+        cp_sat_max_deterministic_time_seconds=(
+            cp_sat_max_deterministic_time_seconds
         ),
     )
     final_quality = evaluate_student_assignment_quality(
