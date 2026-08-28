@@ -16,6 +16,7 @@ import os
 from pathlib import Path
 import signal
 import subprocess
+import threading
 import time
 
 
@@ -349,7 +350,33 @@ def supervise_json_worker(
     execution_status = None
     cleanup = {}
     observed_pids = {worker_pid}
+    deadline_triggered = threading.Event()
+    deadline_stop = threading.Event()
+    deadline_cleanup = {}
+
+    def _enforce_hard_deadline():
+        if deadline_stop.wait(profile.hard_wall_seconds):
+            return
+        if process.poll() is None:
+            deadline_cleanup.update(
+                terminate_process_tree(
+                    worker_pid,
+                    grace_seconds=profile.termination_grace_seconds,
+                )
+            )
+            deadline_triggered.set()
+
+    deadline_thread = threading.Thread(
+        target=_enforce_hard_deadline,
+        name="calibration-hard-deadline",
+        daemon=True,
+    )
+    deadline_thread.start()
     while True:
+        if deadline_triggered.is_set():
+            execution_status = EXECUTION_HARD_DEADLINE_TERMINATED
+            cleanup = dict(deadline_cleanup)
+            break
         elapsed = time.monotonic() - started
         return_code = process.poll()
         if return_code is not None:
@@ -421,6 +448,11 @@ def supervise_json_worker(
             min(profile.poll_interval_seconds,
                 max(0.001, profile.hard_wall_seconds - elapsed))
         )
+
+    deadline_stop.set()
+    deadline_thread.join(
+        timeout=max(1.0, float(profile.termination_grace_seconds) + 1.0)
+    )
 
     elapsed = time.monotonic() - started
     last_phase = _read_worker_phase(status_path)

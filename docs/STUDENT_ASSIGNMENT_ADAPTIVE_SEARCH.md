@@ -814,13 +814,57 @@ substantive quality result. The current study status is
 `inconclusive_bounded_study`. Canonical benchmark inputs and prior lineages
 remain read-only.
 
-The next research boundary is Objective Semantics v2 design work, separately
-authorized from this search study: principled input/metric-aware normalization,
-one canonical counselor importance value from 0 through 10 with simple labels
-as presets, and then selective revalidation of retained search operators.
-Future adaptive policy must remain separate from the question of what schedule
-is better: normalized counselor-weighted objectives define quality, while
-operator selection only chooses where CP-SAT searches. Grade-scoped global
-escape and full-school unrestricted escape remain later diagnostic work. No
+The next research boundary is deterministic policy calibration over the
+already-implemented Objective Semantics v2 contract: distinguish operator
+failure from role exhaustion, then test whether a state-aware hybrid can
+retain simple-policy gains across incumbent states. Future adaptive policy
+must remain separate from the question of what schedule is better:
+normalized counselor-weighted objectives define quality, while operator
+selection only chooses where CP-SAT searches. Grade-scoped global escape and
+full-school unrestricted escape remain later diagnostic work. No
 normalization, reweighting, adaptive tuning, or production promotion is part
 of this closeout.
+
+### Target-scale repeatability gate and supervision correction (2026-08-28)
+
+The planned repeatability gate was started from the same v2 baseline source
+fingerprint `d5036a44e71d5a3b2a94eebe51d645bb4034179a0dd29537492ea81feda2e900`
+and substantive value `37,596`. The first stateless repetition was not policy
+evidence: the parent supervisor reported `hard_deadline_terminated` only
+after `7,206.024` seconds, never reached CP-SAT, and retained the validated
+incumbent. Its last recorded worker phase was target preparation. This
+exposed that a blocking process-tree telemetry call could prevent the polling
+loop from enforcing its configured hard wall.
+
+The pure-engine calibration supervisor now has a separate parent-side
+watchdog that terminates the worker tree independently of telemetry sampling.
+The hard wall remains an experiment safety boundary, not a scheduling rule or
+solver objective. A focused regression test stalls telemetry sampling and
+verifies prompt worker termination; the smoke trial terminated at `10.134`
+seconds for a `10`-second wall and left no descendants.
+
+After that correction, one clean repetition of each baseline control completed
+under the matched `1,800`-second policy / `2,100`-second parent profile:
+
+| Policy | Earlier single run | Clean repeat | Attempts | Adopted repeat improvements | Repeat total |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| stateless role | `37,248` | `37,596` | 11 | 0 | `1,861.877` s |
+| fixed cycle | `37,386` | `37,596` | 12 | 0 | `1,840.967` s |
+
+Both clean repeats were complete, full-model validated, retained `10,635`
+assignments, zero unmet required requests, and all `310` special commitments.
+The earlier single runs had been complete and validated as well. Thus the
+same source state and same policy can produce materially different quality
+outcomes under the current eight-worker CP-SAT configuration. This is not
+strong exact or directional policy repeatability; it is an unresolved,
+inconsistent result dominated by solver/search variance. It is not enough to
+attribute the earlier stateless/fixed difference to role allocation or to
+justify a new state-aware hybrid policy.
+
+The gate therefore stops before derived-state repetitions, target-scale hybrid
+implementation, or production wiring. No adaptive coefficients, operator
+portfolio, objective semantics, constraints, or ordinary scheduling behavior
+were changed. The next valid research step is a separately bounded
+repeatability study that controls or explicitly models this parallel CP-SAT
+variance, followed only then by an operator-versus-role diagnosis. The
+current v2 policy study remains `inconclusive_bounded_study`.

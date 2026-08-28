@@ -1141,16 +1141,14 @@ The next research order is explicitly staged. Objective Semantics v2 and the
 first student-targeted diagnostic operators are implemented, but no adaptive
 production policy has been selected:
 
-1. Establish and document the post-v2 target-scale baseline.
-2. Revalidate only the retained v1 search operators that are relevant under
-   v2, without assuming their v1 ranking carries over.
-3. Characterize the implemented targeted S1/S2 diagnostics across repeated
-   medium and target-scale trials, including time-to-first-improvement,
-   changed students, validation cost, and repeatability. Initial target-scale
-   capability results are recorded in the search-strategy document and are not
-   a promotion decision.
-4. Investigate adaptive allocation across targeted repair, R2, R4/S1, R4/S2,
-   R8/S1, R8/S2, and unrestricted variants where evidence justifies them.
+1. Complete matched repeatability and state-dependence characterization of
+   the existing diagnostic policies.
+2. Diagnose operator failure separately from role exhaustion, without changing
+   Objective Semantics v2 or the existing operators.
+3. If the evidence supports it, evaluate one deterministic state-aware hybrid
+   policy that uses role-level and operator-level history separately.
+4. Revalidate any retained diagnostic policy under the existing v2 contract;
+   no policy becomes production behavior by diagnostic success alone.
 5. Investigate grade-bounded unrestricted escape only after targeted/adaptive
    studies. A selected grade changes source decisions only for students in
    that grade; the full model still applies, including frozen students,
@@ -1167,8 +1165,8 @@ the same counselor importance, their practical influence should be
 approximately comparable rather than being dominated by raw metric magnitude.
 The current v1 observed raw contribution shares were approximately `10%`
 section utilization, `0.3%` semester balance, `55%` difficulty, and `34%`
-category diversity. These values are evidence for the future design problem,
-not normalization constants. The future adaptive-search policy must also keep
+category diversity. These values are evidence about historical raw units, not
+normalization constants. The adaptive-search policy must also keep
 the distinction between **what** is better (the normalized counselor-weighted
 objective) and **how** to search (operator selection); heuristics may choose a
 student, pair, neighborhood, or grade to explore, but never authorize a
@@ -1467,25 +1465,50 @@ had already been retained.
 
 The frozen roadmap is:
 
-1. Close the current R2/R4/R8 and matched-policy characterization as
-   historical evidence.
-2. Design principled, input- and metric-aware soft-objective normalization.
-3. Introduce one canonical counselor importance value from 0 through 10;
-   simple labels should be presets over it, not a second weighting system.
-4. Establish an Objective Semantics v2 normalized baseline.
-5. Revalidate only the retained search operators as needed under that
-   baseline.
-6. Study student-targeted repair, adaptive operator allocation, and then
-   grade-bounded global escape in later, separately scoped experiments.
-7. Consider full-school unrestricted escape only after those prerequisites and
-   only as a bounded local-minimum escape mechanism.
+1. Characterize the existing v2 search policies across repeated matched
+   baseline and derived-state trials.
+2. Diagnose operator-level failure versus role-level exhaustion.
+3. If justified by that evidence, calibrate one deterministic state-aware
+   hybrid policy over the existing operators.
+4. Revalidate any retained diagnostic policy under the existing v2 contract.
+5. Study grade-bounded global escape only in a later, separately scoped
+   experiment and only as a bounded local-minimum escape mechanism.
+6. Consider full-school unrestricted escape only after those prerequisites.
 
-The future normalization invariant is that equal counselor importance should
+The implemented v2 normalization invariant is that equal counselor importance should
 give soft preferences approximately comparable practical influence rather
 than allowing raw metric units to dominate. The current study does not
-normalize, rescale, or reweight the existing objective. Future search policy
+normalize, rescale, or reweight the existing objective. Search policy
 must also preserve the separation between what makes a schedule better
 (`normalized counselor-weighted quality`) and how CP-SAT searches efficiently
 (`operator selection`). Heuristics may select a student, group, neighborhood,
 or grade to search, but CP-SAT and unchanged full validation remain the only
 authorities allowed to accept a schedule.
+
+### Target-scale policy repeatability gate (2026-08-28)
+
+The first additional stateless-role repetition was invalid as policy evidence:
+the supervised process reported `hard_deadline_terminated` after `7,206.024`
+seconds without reaching CP-SAT because the parent deadline loop could be
+blocked by telemetry sampling. The pure-engine supervisor was hardened with
+an independent parent watchdog; a focused smoke regression terminated a
+stalled worker at `10.134` seconds for a `10`-second wall and left no
+descendants.
+
+The corrected clean repeats were:
+
+| Policy | Earlier clean run | Corrected repeat | Attempts | Repeat total |
+| --- | ---: | ---: | ---: | ---: |
+| stateless role | `37,248` | `37,596` | 11 | `1,861.877` s |
+| fixed cycle | `37,386` | `37,596` | 12 | `1,840.967` s |
+
+Each result was complete and full-model validated with `10,635` assignments,
+zero unmet required requests, and `310` fulfilled special commitments. The
+same baseline source fingerprint and v2 profile were used in every comparison.
+The difference between the earlier productive runs and the corrected repeats
+shows substantial eight-worker CP-SAT search variance. It does not support a
+causal claim that role history caused the earlier policy difference, so the
+state-aware hybrid gate is stopped. No hybrid policy, adaptive coefficient,
+objective definition, constraint, or production scheduling path was changed.
+Derived-state repetitions and target-scale hybrid evaluation are deferred
+until a separately scoped study controls or models this solver variance.

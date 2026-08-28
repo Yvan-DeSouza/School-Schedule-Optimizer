@@ -142,6 +142,38 @@ def test_supervisor_hard_deadline_terminates_worker_and_descendant(tmp_path):
         assert not psutil.pid_exists(int(child_pid.read_text(encoding="utf-8")))
 
 
+def test_supervisor_watchdog_enforces_deadline_during_slow_snapshot(
+    tmp_path, monkeypatch
+):
+    output = tmp_path / "result.json"
+
+    def slow_snapshot(_pid):
+        import time
+
+        time.sleep(2)
+        return {}
+
+    monkeypatch.setattr(
+        "scheduling_engine.student_assignment.calibration_supervisor.process_tree_snapshot",
+        slow_snapshot,
+    )
+    result = supervise_json_worker(
+        _python_worker("import time; time.sleep(30)"),
+        output_path=output,
+        execution_profile=CalibrationExecutionProfile(
+            hard_wall_seconds=0.25,
+            termination_grace_seconds=0.2,
+            poll_interval_seconds=0.02,
+        ),
+    )
+
+    assert result.execution_status == EXECUTION_HARD_DEADLINE_TERMINATED
+    assert result.payload is None
+    assert result.hard_deadline_elapsed_seconds is not None
+    assert result.elapsed_seconds < 3.0
+    assert result.cleanup["descendants_clean"] is True
+
+
 def test_supervisor_resource_guard_terminates_without_candidate(tmp_path):
     output = tmp_path / "result.json"
     command = _python_worker(

@@ -802,6 +802,50 @@
       "worker_exit_code": 0,
       "adopted_improvements": 0,
       "note": "Selective ordinary R2 follow-on from the strongest current derived branch; 23 probes returned unresolved UNKNOWN without a validated improvement, and the complete incumbent was retained."
+    },
+    {
+      "cell_id": "fresh-stateless-baseline-repeat-1",
+      "policy": "stateless_role",
+      "profile": "balanced",
+      "hard_wall_seconds": 2100,
+      "policy_budget_seconds": 1800,
+      "execution_status": "completed",
+      "solver_reached": true,
+      "candidate_complete": true,
+      "initial_substantive_value": 37596,
+      "final_substantive_value": 37596,
+      "initial_source_fingerprint": "d5036a44e71d5a3b2a94eebe51d645bb4034179a0dd29537492ea81feda2e900",
+      "candidate_source_fingerprint": "d5036a44e71d5a3b2a94eebe51d645bb4034179a0dd29537492ea81feda2e900",
+      "result_artifact": "repeat-baseline-stateless-1-result.json",
+      "assignment_count": 10635,
+      "unmet_required": 0,
+      "special_commitments": 310,
+      "full_model_validation": true,
+      "worker_exit_code": 0,
+      "adopted_improvements": 0,
+      "note": "Valid clean repetition after the supervisor watchdog hardening; the complete validated baseline was retained after 11 attempts."
+    },
+    {
+      "cell_id": "fresh-fixed-cycle-baseline-repeat-1",
+      "policy": "fixed_cycle",
+      "profile": "balanced",
+      "hard_wall_seconds": 2100,
+      "policy_budget_seconds": 1800,
+      "execution_status": "completed",
+      "solver_reached": true,
+      "candidate_complete": true,
+      "initial_substantive_value": 37596,
+      "final_substantive_value": 37596,
+      "initial_source_fingerprint": "d5036a44e71d5a3b2a94eebe51d645bb4034179a0dd29537492ea81feda2e900",
+      "candidate_source_fingerprint": "d5036a44e71d5a3b2a94eebe51d645bb4034179a0dd29537492ea81feda2e900",
+      "result_artifact": "repeat-baseline-fixed-1-result.json",
+      "assignment_count": 10635,
+      "unmet_required": 0,
+      "special_commitments": 310,
+      "full_model_validation": true,
+      "worker_exit_code": 0,
+      "adopted_improvements": 0,
+      "note": "Valid clean repetition after the supervisor watchdog hardening; the complete validated baseline was retained after 12 attempts."
     }
   ],
   "artifacts": [
@@ -848,7 +892,9 @@
     "derived-37128-stateless-current-result.json",
     "derived-37128-fixed-current-result.json",
     "derived-37128-fixed-current.json.gz",
-    "derived-37128-fixed-r2-current-result.json"
+    "derived-37128-fixed-r2-current-result.json",
+    "repeat-baseline-stateless-1-result.json",
+    "repeat-baseline-fixed-1-result.json"
   ],
   "notes": [
     "All new evidence is v2-only and diagnostic-only.",
