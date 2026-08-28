@@ -980,14 +980,19 @@ def run_supervised_calibration_trial(
                     # promoted.  The normal termination payload remains the
                     # authoritative result.
                     pass
-            _write_validated_supervised_branch(
-                validated_branch_output,
-                data=data,
-                parent_branch=branch,
-                payload=payload,
-                policy=policy,
-                profile=profile,
-            )
+            if not payload.get("derived_branch"):
+                # When the worker-written branch has already been revalidated
+                # above, retain that parent-authority metadata. Rewriting the
+                # same branch here would preserve the file but erase the
+                # proof that the parent performed the current-model check.
+                _write_validated_supervised_branch(
+                    validated_branch_output,
+                    data=data,
+                    parent_branch=branch,
+                    payload=payload,
+                    policy=policy,
+                    profile=profile,
+                )
     finally:
         if branch_directory is not None:
             branch_directory.cleanup()

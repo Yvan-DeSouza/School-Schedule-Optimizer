@@ -722,3 +722,105 @@ MiB` minimum available-system-memory guard, and `250 ms` polling. These are
 execution-safety settings for offline experiments, not solver constraints or
 schedule-quality semantics; callers may choose a stricter bounded profile for
 screening.
+
+### Supervised Objective Semantics v2 matched-policy closeout (2026-08-28)
+
+The final matched-policy portion of study
+`adaptive-promotion-v2-supervised-20260827` used the immutable detached
+`mixed_grade_v2_production_shape` input with fingerprint
+`c07c77d0aa077a3e72240f27644d86b8a1a4faecb2f72a900aacc3fcb792d28a`. The
+population was 1,400 students, 10,760 requests, 10,945 required source
+groups, 10,635 assignments, zero unmet required requests, and 310 special
+commitments. The common source seed fingerprint was
+`d5036a44e71d5a3b2a94eebe51d645bb4034179a0dd29537492ea81feda2e900`, with
+substantive value `37,596`. All current trials used the balanced v2 profile,
+eight workers, an 1,800-second policy budget, a 2,100-second parent wall,
+immediate diagnostic branch persistence, and the study's 3.5 GiB process-tree
+RSS guard with a 1 GiB available-memory floor. These are detached research
+settings, not ordinary production scheduling policy.
+
+The clean matched baseline scorecard was:
+
+| Policy | Start | Final | Adopted | Attempts | Policy time |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| adaptive | 37,596 | 37,584 | 2 | 9 | 1,858.27 s |
+| stateless role | 37,596 | 37,248 | 10 | 11 | 1,817.28 s |
+| fixed cycle | 37,596 | 37,386 | 2 | 11 | 1,859.56 s |
+
+Each retained result was complete, full-model validated, had 10,635
+assignments, zero unmet required requests, and 310 fulfilled special
+commitments. The clean fixed-cycle run is the current post-protocol fixed
+baseline. The older `37,302` fixed-cycle result remains historical solver
+evidence only because it predates the canonical-fingerprint protocol fix.
+
+The fresh adaptive trajectory was `37,596 -> 37,590 -> 37,584`. Its first
+two utilization attempts (`targeted_utilization_r16_s4` and
+`targeted_utilization_r16_s2`) returned no adopted improvement, followed by
+Grade 12 attempts, two validated Grade 12 adoptions of six points each, and
+R2 attempts that returned unresolved `UNKNOWN`. The fresh stateless trajectory
+was `37,596 -> 37,584 -> 37,554 -> 37,536 -> 37,500 -> 37,458 -> 37,398 ->
+37,356 -> 37,308 -> 37,272 -> 37,248`; it repeatedly selected
+`targeted_utilization_r16_s4`. The fixed-cycle trajectory was
+`37,596 -> 37,506 -> 37,386`, with a 90-point utilization-targeted adoption
+and a later 120-point targeted R4/S2 adoption. The available telemetry shows
+that adaptive changed roles after unsuccessful/unknown utilization and escape
+attempts while stateless continued the same utilization family. It does not
+provide a counterfactual proof that any particular history signal caused the
+difference, so no adaptive coefficient or switching rule is changed on this
+evidence.
+
+The exact common derived branch was `37,128`, fingerprint
+`f2e945f268314542f37667775a15be46d3db2a6aaa75f47142ac7ca5d27b7631`, with
+10,635 assignments, zero unmet required requests, and 310 special
+commitments. From that identical state, adaptive retained `37,128` after
+nine attempts and stateless role retained `37,128` after sixteen attempts.
+The fixed-cycle policy produced the strongest current detached branch:
+
+    37,128 -> 36,990 -> 36,942 -> 36,912
+
+It adopted three complete, full-model-validated improvements in 13 attempts
+and took 1,827.22 seconds of policy time. Its final branch fingerprint is
+`6722e64568fe30e19e9920cbeeb8389055f4a1c1584a2f545f96920f62392960`, and its
+detached artifact is `derived-37128-fixed-current.json.gz`. A matched 3,600-
+second ordinary R2 follow-on from that branch ran 23 probes, all unresolved
+`UNKNOWN`, adopted no candidate, and retained `36,912`. `UNKNOWN` is recorded
+as unresolved bounded search evidence; it is not a proof of an R2 local
+optimum.
+
+The common-branch component changes were utilization-driven. The fixed-cycle
+branch ended at raw components utilization `6,359`, semester balance `175`,
+difficulty `35,853`, and category diversity `22,050`. The other two common-
+branch policies retained utilization `6,421`, semester `175`, difficulty
+`35,973`, and category diversity `22,150`. The fresh stateless result also
+demonstrates that repeated utilization search can be productive from the
+original baseline, but these trials do not establish that one policy is a
+universal winner from every incumbent state.
+
+The stateless/common-state comparison therefore supplies clear state-
+dependence evidence: stateless role selection was strongest from the fresh
+baseline, while fixed cycle was strongest from the `37,128` derived state;
+adaptive was not superior in either matched current result. The defensible
+v2 closeout classification is **evidence remains inconclusive for policy
+promotion, with state dependence observed**. Adaptive, stateless, and fixed
+cycle remain diagnostic operators. No operator is production-wired by this
+study, and no v1 endpoint is being reopened.
+
+The study artifacts and manifest are the authoritative record for per-attempt
+solver status, validation time, candidate counts, branch/conflict telemetry
+where available, and process-resource samples. One stateless derived trial
+ended with a final attempted-candidate validation error after retaining its
+complete starting branch; that is an operational/protocol observation, not a
+substantive quality result. The current study status is
+`inconclusive_bounded_study`. Canonical benchmark inputs and prior lineages
+remain read-only.
+
+The next research boundary is Objective Semantics v2 design work, separately
+authorized from this search study: principled input/metric-aware normalization,
+one canonical counselor importance value from 0 through 10 with simple labels
+as presets, and then selective revalidation of retained search operators.
+Future adaptive policy must remain separate from the question of what schedule
+is better: normalized counselor-weighted objectives define quality, while
+operator selection only chooses where CP-SAT searches. Grade-scoped global
+escape and full-school unrestricted escape remain later diagnostic work. No
+normalization, reweighting, adaptive tuning, or production promotion is part
+of this closeout.

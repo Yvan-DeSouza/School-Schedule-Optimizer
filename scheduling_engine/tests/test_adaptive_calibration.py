@@ -517,3 +517,97 @@ def test_supervised_worker_serializes_trial_record_with_branch_lineage(
     assert written["final_source_decisions"] == [[["course", 1], [2, 3]]]
     assert written["final_source_decision_fingerprint"] == "canonical-fingerprint"
     assert written["final_objective_vector"] == [-1, 2]
+
+
+def test_parent_revalidation_metadata_is_not_overwritten_by_branch_write(
+    monkeypatch, tmp_path
+):
+    """A parent-validated worker branch keeps its authority proof."""
+
+    data = _v2_data()
+    result = SimpleNamespace(
+        status="complete",
+        solver_outcome="feasible",
+        assignments=(),
+        unmet_requests=(),
+        commitment_assignments=(),
+        objective_components={},
+        optimization_facts={},
+    )
+    branch = {
+        "source_decision_fingerprint": "parent-fingerprint",
+        "source_decisions": (),
+    }
+    worker_branch_path = tmp_path / "worker-branch.json.gz"
+    branch_write_calls = []
+
+    monkeypatch.setattr(
+        benchmark_calibration,
+        "read_durable_stage2_benchmark",
+        lambda _path: {"data": data, "manifest": {}},
+    )
+    monkeypatch.setattr(
+        benchmark_calibration,
+        "apply_calibration_profile",
+        lambda value, _profile: value,
+    )
+    monkeypatch.setattr(
+        benchmark_calibration,
+        "read_diagnostic_branch_checkpoint",
+        lambda *args, **kwargs: branch,
+    )
+    monkeypatch.setattr(
+        benchmark_calibration,
+        "validate_diagnostic_branch_checkpoint",
+        lambda *args, **kwargs: {
+            "result": result,
+            "validation": {
+                "full_model_validation": True,
+                "complete": True,
+                "unmet_request_count": 0,
+                "elapsed_seconds": 0.01,
+            },
+        },
+    )
+
+    class FakeSupervision:
+        execution_status = benchmark_calibration.EXECUTION_COMPLETED
+        payload = {"timing": {}, "phase_timings": {}, "attempts": []}
+        worker_pid = 123
+        worker_exit_code = 0
+        elapsed_seconds = 0.25
+        cleanup = {}
+
+        def to_dict(self):
+            return {"elapsed_seconds": self.elapsed_seconds}
+
+    def fake_supervise(*args, **kwargs):
+        worker_branch_path.touch()
+        return FakeSupervision()
+
+    monkeypatch.setattr(
+        benchmark_calibration,
+        "supervise_json_worker",
+        fake_supervise,
+    )
+    monkeypatch.setattr(
+        benchmark_calibration,
+        "_write_validated_supervised_branch",
+        lambda *args, **kwargs: branch_write_calls.append((args, kwargs)),
+    )
+
+    payload = benchmark_calibration.run_supervised_calibration_trial(
+        policy="adaptive",
+        profile="balanced",
+        benchmark_directory=tmp_path / "benchmark",
+        branch_input=tmp_path / "parent.json.gz",
+        total_time_limit_seconds=1,
+        per_operator_time_limit_seconds=1,
+        worker_count=1,
+        hard_wall_seconds=1,
+        validated_branch_output=worker_branch_path,
+    )
+
+    assert payload["derived_branch"]["parent_revalidated_after_worker"] is True
+    assert payload["derived_branch"]["full_model_validated"] is True
+    assert branch_write_calls == []

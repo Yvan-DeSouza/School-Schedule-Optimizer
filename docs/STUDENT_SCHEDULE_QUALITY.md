@@ -1391,3 +1391,101 @@ An independent `student_repair_r8_only` control also ran the live
 observed neighborhood probes were `infeasible`, but the outer policy was
 terminated before returning its complete payload; this is bounded local
 evidence, not a global infeasibility result.
+
+### Objective Semantics / Search Evidence v1 closeout under v2 metrics (2026-08-28)
+
+The current v1 search-mechanics evidence is now frozen as historical diagnostic
+evidence. It must not be mixed with future Objective Semantics v2 redesign
+results. The matched study used the immutable detached v2 input fingerprint
+`c07c77d0aa077a3e72240f27644d86b8a1a4faecb2f72a900aacc3fcb792d28a` and the
+baseline source fingerprint
+`d5036a44e71d5a3b2a94eebe51d645bb4034179a0dd29537492ea81feda2e900`.
+The scale was 1,400 students, 10,760 requests, 10,945 required source
+groups, 10,635 assignments, zero unmet required requests, and 310 special
+commitments. The source baseline was `37,596`.
+
+The clean matched policy results were:
+
+| Policy | Start | Final | Adopted improvements | Attempts | Policy time |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| adaptive | 37,596 | 37,584 | 2 | 9 | 1,858.27 s |
+| stateless role | 37,596 | 37,248 | 10 | 11 | 1,817.28 s |
+| fixed cycle | 37,596 | 37,386 | 2 | 11 | 1,859.56 s |
+
+All three completed with full-model-valid schedules and preserved 10,635
+assignments, zero unmet required requests, and all 310 special commitments.
+The previous fixed-cycle `37,302` result is retained as legacy solver
+evidence, but is excluded from clean matched ranking because it predates the
+canonical source-fingerprint protocol correction.
+
+For the fresh baseline, the adaptive trajectory was
+`37,596 -> 37,590 -> 37,584`; the stateless trajectory was
+`37,596 -> 37,584 -> 37,554 -> 37,536 -> 37,500 -> 37,458 -> 37,398 ->
+37,356 -> 37,308 -> 37,272 -> 37,248`; and the fixed-cycle trajectory was
+`37,596 -> 37,506 -> 37,386`. The stateless role repeatedly selected
+`targeted_utilization_r16_s4` and continued finding validated strict
+improvements. Adaptive selected utilization, then Grade 12 escape, then R2;
+it adopted two six-point Grade 12 improvements but did not match the stateless
+utilization descent. This records a real difference in observed decisions,
+not a proof of a causal counterfactual: the current telemetry cannot say that
+one history signal alone caused adaptive to switch roles.
+
+The exact common derived branch began at `37,128` with source fingerprint
+`f2e945f268314542f37667775a15be46d3db2a6aaa75f47142ac7ca5d27b7631`.
+Adaptive retained `37,128` after nine attempts, and stateless role retained
+`37,128` after sixteen attempts. Fixed cycle produced the strongest current
+detached branch:
+
+    37,128 -> 36,990 -> 36,942 -> 36,912
+
+The branch was complete and full-model validated, retained 10,635 assignments,
+zero unmet requests, and all 310 special commitments. Its source fingerprint
+is `6722e64568fe30e19e9920cbeeb8389055f4a1c1584a2f545f96920f62392960` and
+its artifact is `adaptive-promotion-v2-supervised-20260827/derived-37128-fixed-current.json.gz`.
+The matched R2 follow-on from that branch ran 23 bounded probes over
+3,600 seconds, found no adopted candidate, and retained `36,912`; every probe
+was unresolved `UNKNOWN`, so this is not an R2 local-optimum proof.
+
+The strongest fixed-cycle derived branch had raw components utilization
+`6,359`, semester balance `175`, difficulty `35,853`, and category diversity
+`22,050`. Adaptive and stateless role from the same common branch retained
+utilization `6,421`, semester `175`, difficulty `35,973`, and category
+diversity `22,150`. The observed improvements were therefore utilization-led;
+the study did not demonstrate a new difficulty, semester, or category
+improvement. Component values are reported as raw v2 quality facts and should
+not be interpreted as normalized counselor influence.
+
+The current defensible classification is **evidence remains inconclusive for
+policy promotion, with state dependence observed**. Stateless role selection
+was strongest from the fresh baseline; fixed cycle was strongest from the
+common derived state; adaptive was not best in either current matched result.
+This is enough to freeze the search-mechanics evidence, but not enough to
+production-wire a universal controller. Resource/protocol anomalies are kept
+separate from quality evidence in the study manifest, including one derived
+stateless validation-error termination after its complete starting incumbent
+had already been retained.
+
+The frozen roadmap is:
+
+1. Close the current R2/R4/R8 and matched-policy characterization as
+   historical evidence.
+2. Design principled, input- and metric-aware soft-objective normalization.
+3. Introduce one canonical counselor importance value from 0 through 10;
+   simple labels should be presets over it, not a second weighting system.
+4. Establish an Objective Semantics v2 normalized baseline.
+5. Revalidate only the retained search operators as needed under that
+   baseline.
+6. Study student-targeted repair, adaptive operator allocation, and then
+   grade-bounded global escape in later, separately scoped experiments.
+7. Consider full-school unrestricted escape only after those prerequisites and
+   only as a bounded local-minimum escape mechanism.
+
+The future normalization invariant is that equal counselor importance should
+give soft preferences approximately comparable practical influence rather
+than allowing raw metric units to dominate. The current study does not
+normalize, rescale, or reweight the existing objective. Future search policy
+must also preserve the separation between what makes a schedule better
+(`normalized counselor-weighted quality`) and how CP-SAT searches efficiently
+(`operator selection`). Heuristics may select a student, group, neighborhood,
+or grade to search, but CP-SAT and unchanged full validation remain the only
+authorities allowed to accept a schedule.
