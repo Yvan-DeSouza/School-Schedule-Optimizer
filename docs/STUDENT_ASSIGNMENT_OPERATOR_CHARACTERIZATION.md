@@ -926,3 +926,38 @@ values when no external branch output is requested. This makes the new
 artifacts suitable for lineage analysis. The cohort is still descriptive only:
 three seeds and one source state do not prove state-independent superiority,
 and no policy is wired into ordinary scheduling.
+
+### State-dependent crossover gate from the durable 37,128 state (2026-08-29)
+
+The deep-state cohort was followed by a four-cell seed-101 crossover study.
+The adaptive terminal branch at `37,044` (source fingerprint
+`5d0fc50b3d6d71751b7794a6d37fc0ded51bd21cb383d0f8c30d6b01f7655494`) and the
+fixed-cycle terminal branch at `36,978` (source fingerprint
+`ed266ad5264017de1f8115341a4e288d69a90f0e6dcdfc54d3bcf10ca909bf1b`) were
+materialized using the transparent diagnostic checkpoint format and passed
+current full-model validation before the comparison. Both branches retained
+`10,635` assignments, zero unmet required requests, and `310` special
+commitments.
+
+| Source | Continuation | Start -> final | Adopted | Policy seconds | Supervised seconds |
+| --- | --- | ---: | ---: | ---: | ---: |
+| adaptive terminal | adaptive | 37,044 -> 37,044 | 0 | 650.624 | 659.731 |
+| adaptive terminal | fixed cycle | 37,044 -> 37,044 | 0 | 625.757 | 640.098 |
+| fixed terminal | fixed cycle | 36,978 -> 36,978 | 0 | 661.379 | 674.245 |
+| fixed terminal | adaptive | 36,978 -> 36,978 | 0 | 652.504 | 661.967 |
+
+The same-policy controls and both cross-policy switches therefore found no
+strict substantive improvement. The policies selected different operator
+sequences, but the observed sequence difference did not produce a validated
+state transition. The preregistered seed-202 replication gate was consequently
+closed. The result is classified as **NO SWITCHING ADVANTAGE; CONTINUE WITH
+SIMPLE POLICIES** for this bounded crossover, not as proof of global policy
+equivalence or an R2 local optimum. The hybrid gate remains closed, and no
+adaptive controller or production wiring is authorized.
+
+The result manifest is
+`adaptive-policy-controlled-derived37128-v2-20260829/crossover-study-manifest.json`.
+The canonical benchmark and the durable 37,128 source lineage were not
+modified. The payload records outer policy trajectories and terminal facts;
+it does not claim complete inner-probe candidate comparison evidence where the
+current artifact schema does not preserve it.

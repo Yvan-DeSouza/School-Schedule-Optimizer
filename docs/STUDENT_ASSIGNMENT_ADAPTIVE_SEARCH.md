@@ -1266,7 +1266,61 @@ branch was persisted and the canonical benchmark state was not mutated.
 
 This closes the current v2 controlled-policy characterization, but it does
 not establish state-independent policy superiority or authorize production
-wiring. The next work remains objective-semantics research: define and
-validate principled metric normalization, introduce one canonical counselor
-importance scale, establish a v2 objective baseline, and only then study
-targeted repair and adaptive operator allocation under that revised objective.
+wiring. Objective Semantics v2 is already implemented, including input-derived
+metric normalization, one canonical counselor importance scale, and the
+balanced v2 benchmark. The next research boundary is state-dependent
+search-policy allocation under that unchanged quality definition; this study
+does not authorize objective redesign or production policy wiring.
+
+### State-dependent crossover gate from the durable 37,128 state (2026-08-29)
+
+The completed deep-state cohort was followed by a preregistered seed-101
+crossover study. The study used the same detached input fingerprint
+`c07c77d0aa077a3e72240f27644d86b8a1a4faecb2f72a900aacc3fcb792d28a`, the
+same one-worker/`600`-second policy configuration, and the existing full-model
+validation boundary. Two authoritative terminal branches were materialized
+through the transparent diagnostic-branch format and revalidated before
+reuse:
+
+| Source branch | Value | Source fingerprint |
+| --- | ---: | --- |
+| adaptive seed 101 | 37,044 | `5d0fc50b3d6d71751b7794a6d37fc0ded51bd21cb383d0f8c30d6b01f7655494` |
+| fixed cycle seed 101 | 36,978 | `ed266ad5264017de1f8115341a4e288d69a90f0e6dcdfc54d3bcf10ca909bf1b` |
+
+Each source retained `10,635` assignments, zero unmet required requests, and
+`310` special commitments. The four matched continuations were:
+
+| Cell | Start | Policy | Final | Adopted | Policy seconds | Supervised seconds |
+| --- | ---: | --- | ---: | ---: | ---: | ---: |
+| A adaptive -> adaptive | 37,044 | adaptive | 37,044 | 0 | 650.624 | 659.731 |
+| A adaptive -> fixed | 37,044 | fixed cycle | 37,044 | 0 | 625.757 | 640.098 |
+| B fixed -> fixed | 36,978 | fixed cycle | 36,978 | 0 | 661.379 | 674.245 |
+| B fixed -> adaptive | 36,978 | adaptive | 36,978 | 0 | 652.504 | 661.967 |
+
+All four cells completed cleanly and retained complete, full-model-valid
+states. The source branches were revalidated in `46.511`--`63.471` seconds
+by the parent before the policy continuation. The policy trajectories differed
+(`adaptive` selected `targeted_utilization_r16_s4`/`r16_s2` and grade-bounded
+operators, while `fixed_cycle` selected its `r4_s2`, `r64_s8`, and `r2`
+cycle), but neither policy found a strict substantive improvement from either
+terminal state. Consequently, the preregistered seed-202 replication gate was
+not met: there was no observed switching advantage to replicate.
+
+This is evidence of **no switching advantage in this seed-101 crossover**, not
+proof that the policies are globally equivalent or that no better schedule
+exists. It does not justify a hybrid controller or production policy wiring.
+The current classification is **NO SWITCHING ADVANTAGE; CONTINUE WITH SIMPLE
+POLICIES** for this gate, with the hybrid gate closed. The study artifact and
+the four result payloads are retained under
+`adaptive-policy-controlled-derived37128-v2-20260829/`; the canonical
+benchmark and the durable 37,128 lineage were not mutated.
+
+The existing deep-state evidence remains descriptive: adaptive and stateless
+role improved directionally from 37,128 in all three seeds, while fixed cycle
+had the strongest single endpoint but retained 37,128 in seed 303. The
+crossover does not overturn that observation; it shows only that, after those
+terminal states were reached, a one-session policy switch did not produce an
+additional validated gain under the matched budget. The current artifact
+schema preserves outer policy attempts but not every inner candidate's full
+source-decision delta, so causal claims about individual rejected inner probes
+remain intentionally limited.

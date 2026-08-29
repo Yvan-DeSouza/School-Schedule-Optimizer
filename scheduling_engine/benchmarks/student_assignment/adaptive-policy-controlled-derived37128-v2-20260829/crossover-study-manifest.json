@@ -1,0 +1,49 @@
+{
+  "schema": "student_assignment_state_dependent_crossover_study_v1",
+  "study_id": "adaptive-policy-controlled-derived37128-v2-20260829-crossover",
+  "parent_study": "adaptive-policy-controlled-derived37128-v2-20260829",
+  "input_fingerprint": "c07c77d0aa077a3e72240f27644d86b8a1a4faecb2f72a900aacc3fcb792d28a",
+  "parent_source_fingerprint": "f2e945f268314542f37667775a15be46d3db2a6aaa75f47142ac7ca5d27b7631",
+  "frozen_comparison_source_fingerprint": "d5036a44e71d5a3b2a94eebe51d645bb4034179a0dd29537492ea81feda2e900",
+  "protocol": {
+    "profile": "balanced",
+    "workers": 1,
+    "total_seconds": 600,
+    "per_operator_seconds": 60,
+    "hard_wall_seconds": 720,
+    "validation_seconds": 60,
+    "termination_grace_seconds": 5,
+    "strict_substantive_improvement": true,
+    "canonical_benchmark_mutated": false,
+    "stage1_restarted": false
+  },
+  "seed_101_cells": [
+    {"cell": "A_adaptive_to_adaptive", "source": "crossover-seed101-adaptive.json.gz", "policy": "adaptive", "seed": 101},
+    {"cell": "A_adaptive_to_fixed", "source": "crossover-seed101-adaptive.json.gz", "policy": "fixed_cycle", "seed": 101},
+    {"cell": "B_fixed_to_fixed", "source": "crossover-seed101-fixed-cycle.json.gz", "policy": "fixed_cycle", "seed": 101},
+    {"cell": "B_fixed_to_adaptive", "source": "crossover-seed101-fixed-cycle.json.gz", "policy": "adaptive", "seed": 101}
+  ],
+  "seed_202_replication_gate": "run only if seed-101 crossover is informative",
+  "seed_101_results": [
+    {"cell": "A_adaptive_to_adaptive", "artifact": "crossover-A-adaptive-to-adaptive.json", "source_value": 37044, "final_value": 37044, "adoptions": 0, "policy_seconds": 650.6241567, "supervised_seconds": 659.7308632, "branch_validation_seconds": 52.0664910, "execution_status": "completed", "artifact_sha256": "d63031deca610adde3f6fbca00a5a982fdca9af6ddad6e76142f499280872d70"},
+    {"cell": "A_adaptive_to_fixed", "artifact": "crossover-A-adaptive-to-fixed.json", "source_value": 37044, "final_value": 37044, "adoptions": 0, "policy_seconds": 625.7566111, "supervised_seconds": 640.0976904, "branch_validation_seconds": 46.5106155, "execution_status": "completed", "artifact_sha256": "cea588476abcff7c7927c05f05786f051901cbf7b6dfbf488de2867db880ce45"},
+    {"cell": "B_fixed_to_fixed", "artifact": "crossover-B-fixed-to-fixed.json", "source_value": 36978, "final_value": 36978, "adoptions": 0, "policy_seconds": 661.3787887, "supervised_seconds": 674.2449833, "branch_validation_seconds": 63.4706682, "execution_status": "completed", "artifact_sha256": "3881c315488e77becc3a229654aae0c4063bcdc2b7d9773a68cb6346b83d76cf"},
+    {"cell": "B_fixed_to_adaptive", "artifact": "crossover-B-fixed-to-adaptive.json", "source_value": 36978, "final_value": 36978, "adoptions": 0, "policy_seconds": 652.5039747, "supervised_seconds": 661.9672320, "branch_validation_seconds": 56.1837685, "execution_status": "completed", "artifact_sha256": "2743dde91a2bb9aed774a917e2636b158049fef9ab7a02e9e40ffd84fdcf71b9"}
+  ],
+  "seed_202_replication": {
+    "run": false,
+    "reason": "Seed-101 matched crossover cells produced no adopted improvements and no switching advantage; preregistered informativeness gate was not met."
+  },
+  "classification": "no_switching_advantage_continue_with_simple_policies",
+  "hybrid_gate": "closed",
+  "status": "complete_seed101_gate_closed",
+  "production_policy_changed": false,
+  "objective_changed": false,
+  "hard_constraints_changed": false,
+  "notes": [
+    "This is detached diagnostic evidence only.",
+    "Each source branch is revalidated by the existing current-model boundary before reuse.",
+    "No source branch is written to the canonical benchmark or durable R2 lineage.",
+    "Outer policy artifacts do not substitute for preserved inner candidate-level telemetry."
+  ]
+}
