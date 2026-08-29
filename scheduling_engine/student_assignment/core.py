@@ -123,6 +123,7 @@ from .runtime import (
     ProcessResourceMonitor,
     semantic_student_assignment_input_fingerprint,
 )
+from .search_experiments import source_decision_fingerprint as _source_decision_fingerprint_hash
 from .objective_semantics import (
     CANONICAL_IMPORTANCE_MAX,
     IMPORTANCE_LABEL_TO_SCORE,
@@ -4124,6 +4125,13 @@ def _solve_student_assignment(
                         ),
                         "changed_source_decision_count": local_result.changed_source_decision_count,
                         "changed_student_count": local_result.changed_student_count,
+                        "candidate_source_decision_fingerprint": (
+                            _source_decision_fingerprint_hash(
+                                local_result.candidate_source_decisions
+                            )
+                            if local_result.candidate_source_decisions
+                            else None
+                        ),
                         "component_values": dict(local_result.candidate_component_values),
                         "component_deltas": dict(local_result.component_deltas),
                         # These are compact, bounded evaluator facts: no raw

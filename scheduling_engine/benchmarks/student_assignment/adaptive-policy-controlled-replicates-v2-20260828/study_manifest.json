@@ -1,0 +1,98 @@
+{
+  "schema": "student_assignment_controlled_policy_research_v2",
+  "study_id": "adaptive-policy-controlled-replicates-v2-20260828",
+  "parent_study": "adaptive-policy-variance-v2-20260828",
+  "objective_semantics_version": "v2",
+  "input_fingerprint": "c07c77d0aa077a3e72240f27644d86b8a1a4faecb2f72a900aacc3fcb792d28a",
+  "source_seed_fingerprint": "d5036a44e71d5a3b2a94eebe51d645bb4034179a0dd29537492ea81feda2e900",
+  "source_counts": {
+    "student_count": 1400,
+    "request_count": 10760,
+    "required_source_decision_group_count": 10945,
+    "assignment_count": 10635,
+    "unmet_required_request_count": 0,
+    "special_commitment_count": 310
+  },
+  "predetermined_policy_seeds": [101, 202, 303],
+  "validation_replay": {
+    "candidate_semantic_fingerprint": "e96af0a2ffe17dd5b13b5f59ce50489610a44f2fa64e2bc96abb872f86157d94",
+    "candidate_source_fingerprint": "31d732bdb3d44b52520ecca38fed703d7c5458350528e13a59cc636e7ee8dcd5",
+    "worker_count": 1,
+    "time_limit_seconds": 60,
+    "repetitions": [
+      {"status": "complete", "solver_outcome": "feasible", "elapsed_seconds": 22.66},
+      {"status": "complete", "solver_outcome": "feasible", "elapsed_seconds": 22.90},
+      {"status": "complete", "solver_outcome": "feasible", "elapsed_seconds": 24.61}
+    ],
+    "interpretation": "Three clean source-decision replays validated the same complete candidate; no sleep-contaminated timing is included."
+  },
+  "candidate_identity": {
+    "operator": "targeted_utilization_r64_s8",
+    "target_scope": [417, 360, 482, 25, 480, 90, 175, 514],
+    "random_seed": 101,
+    "candidate_source_decision_fingerprint": "e96af0a2ffe17dd5b13b5f59ce50489610a44f2fa64e2bc96abb872f86157d94",
+    "one_worker_trial_count": 3,
+    "eight_worker_trial_count": 3,
+    "candidate_value": 37590,
+    "identity_classification": "same_semantic_candidate_across_clean_one_and_eight_worker_trials",
+    "validation_classification": "five_adopted_and_one_bounded_validation_unknown_across_identity_trials"
+  },
+  "worker_frontier": {
+    "configuration": {
+      "random_seed": 101,
+      "total_time_limit_seconds": 60,
+      "per_attempt_time_limit_seconds": 30,
+      "validation_time_limit_seconds": 60,
+      "validation_worker_count": 1,
+      "supervised_hard_wall_seconds": 180
+    },
+    "targeted_utilization_r16_s4": {
+      "target_scope": [417, 360, 482, 25],
+      "one_worker": {"artifacts": "parent variance study", "results": [37590, 37590, 37590], "validated": 3, "adopted": 3},
+      "two_workers": {"artifacts": ["r16-s4-2w-seed101-rep1.json", "r16-s4-2w-seed101-rep2.json", "r16-s4-2w-seed101-rep3.json"], "results": [37578, 37596, 37596], "validated": 1, "validation_unknown": 2, "adopted": 1},
+      "four_workers": {"artifacts": ["r16-s4-4w-seed101-rep1.json", "r16-s4-4w-seed101-rep2.json", "r16-s4-4w-seed101-rep3.json"], "results": [37590, 37596, 37596], "validated": 1, "validation_unknown": 2, "adopted": 1},
+      "eight_workers": {"artifacts": "parent variance study", "results": [37578, 37590, 37590], "validated": 3, "adopted": 3}
+    },
+    "targeted_utilization_r64_s8": {
+      "target_scope": [417, 360, 482, 25, 480, 90, 175, 514],
+      "one_worker": {"results": [37590, 37596, 37590], "validated": 2, "validation_unknown": 1, "adopted": 2},
+      "two_workers": {"artifacts": ["r64-s8-2w-seed101-rep1.json"], "results": [37590], "validated": 1, "adopted": 1},
+      "four_workers": {"artifacts": ["r64-s8-4w-seed101-clean-rep1.json"], "results": [37596], "validated": 0, "validation_unknown": 1, "adopted": 0},
+      "eight_workers": {"results": [37590, 37590, 37590], "validated": 3, "adopted": 3}
+    },
+    "sleep_contaminated_excluded": ["r64-s8-4w-seed101-rep1.json"]
+  },
+  "controlled_policy_comparison": {
+    "status": "completed_bounded_comparison",
+    "planned_policies": ["adaptive", "stateless_role", "fixed_cycle"],
+    "worker_count": 1,
+    "profile": "balanced",
+    "total_time_limit_seconds": 600,
+    "per_operator_time_limit_seconds": 60,
+    "hard_wall_seconds": 720,
+    "seeds": [101, 202, 303],
+    "artifact_results": [
+      {"artifact": "adaptive-seed101-fixed.json", "policy": "adaptive", "seed": 101, "status": "completed", "initial_substantive": 37596, "final_substantive": 37596, "complete": true, "assignments": 10635, "unmet": 0, "special_commitments": 310, "operator_seconds": 599.55, "total_seconds": 618.49},
+      {"artifact": "adaptive-seed202.json", "policy": "adaptive", "seed": 202, "status": "completed", "initial_substantive": 37596, "final_substantive": 37596, "complete": true, "assignments": 10635, "unmet": 0, "special_commitments": 310, "operator_seconds": 631.16, "total_seconds": 653.31},
+      {"artifact": "adaptive-seed303.json", "policy": "adaptive", "seed": 303, "status": "completed", "initial_substantive": 37596, "final_substantive": 37596, "complete": true, "assignments": 10635, "unmet": 0, "special_commitments": 310, "operator_seconds": 623.37, "total_seconds": 645.96},
+      {"artifact": "stateless-role-seed101.json", "policy": "stateless_role", "seed": 101, "status": "completed", "initial_substantive": 37596, "final_substantive": 37596, "complete": true, "assignments": 10635, "unmet": 0, "special_commitments": 310, "operator_seconds": 591.77, "total_seconds": 614.98},
+      {"artifact": "stateless-role-seed202.json", "policy": "stateless_role", "seed": 202, "status": "completed", "initial_substantive": 37596, "final_substantive": 37596, "complete": true, "assignments": 10635, "unmet": 0, "special_commitments": 310, "operator_seconds": 631.10, "total_seconds": 654.72},
+      {"artifact": "stateless-role-seed303.json", "policy": "stateless_role", "seed": 303, "status": "completed", "initial_substantive": 37596, "final_substantive": 37596, "complete": true, "assignments": 10635, "unmet": 0, "special_commitments": 310, "operator_seconds": 626.20, "total_seconds": 649.36},
+      {"artifact": "fixed-cycle-seed101.json", "policy": "fixed_cycle", "seed": 101, "status": "completed", "initial_substantive": 37596, "final_substantive": 37596, "complete": true, "assignments": 10635, "unmet": 0, "special_commitments": 310, "operator_seconds": 578.77, "total_seconds": 600.62},
+      {"artifact": "fixed-cycle-seed202.json", "policy": "fixed_cycle", "seed": 202, "status": "completed", "initial_substantive": 37596, "final_substantive": 37596, "complete": true, "assignments": 10635, "unmet": 0, "special_commitments": 310, "operator_seconds": 650.53, "total_seconds": 677.13},
+      {"artifact": "fixed-cycle-seed303.json", "policy": "fixed_cycle", "seed": 303, "status": "completed", "initial_substantive": 37596, "final_substantive": 37596, "complete": true, "assignments": 10635, "unmet": 0, "special_commitments": 310, "operator_seconds": 607.34, "total_seconds": 631.62}
+    ],
+    "outcome": "All nine bounded cells completed with clean worker exit and retained the same complete baseline. No policy showed a quality advantage or a different adopted trajectory in this sample.",
+    "classification": "bounded_tie_inconclusive_for_promotion",
+    "harness_defect": "The first adaptive seed-101 invocation exited before producing a result because record construction referenced missing solver-configuration parameters. The defect was fixed, regression-tested, and the cell was rerun as adaptive-seed101-fixed.json; the failed invocation is retained as harness evidence and is excluded from policy statistics.",
+    "recommended_control_worker_count": 1
+  },
+  "authority": {
+    "canonical_benchmark_mutated": false,
+    "production_policy_changed": false,
+    "objective_changed": false,
+    "hard_constraints_changed": false,
+    "sleep_contaminated_timings_in_runtime_statistics": false
+  },
+  "scientific_classification": "evidence_remains_inconclusive"
+}

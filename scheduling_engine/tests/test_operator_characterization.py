@@ -22,6 +22,9 @@ from scheduling_engine.student_assignment.operator_characterization import (
     run_operator_characterization_trial,
     summarize_stagnation,
 )
+from scheduling_engine.student_assignment.search_experiments import (
+    source_decision_fingerprint,
+)
 from scheduling_engine.student_assignment.operator_session import OPERATOR_FAMILIES
 from scheduling_engine.student_assignment.runtime import (
     semantic_student_assignment_input_fingerprint,
@@ -83,6 +86,7 @@ def _result():
     return SimpleNamespace(
         solver_outcome="optimal",
         optimization_facts={
+            "stage_2": {},
             "stage_2_local_bootstrap": {
                 "candidate_found": True,
                 "candidate_validated": True,
@@ -95,6 +99,7 @@ def _result():
                 "model_constraint_count": 12,
                 "iterations": ({
                     "adopted": True,
+                    "candidate_source_decision_fingerprint": "candidate-fingerprint",
                     "cumulative_session_elapsed_seconds": 3.0,
                 },),
             }
@@ -259,7 +264,45 @@ def test_characterization_record_preserves_role_specific_and_global_facts():
     assert record.role_specific_gain > 0
     assert record.first_improvement_seconds == 3.0
     assert record.candidate_validated is True
+    assert record.candidate_source_decision_fingerprint == "candidate-fingerprint"
     assert record.to_json()
+
+
+def test_characterization_can_capture_raw_candidate_source_decisions_on_request():
+    data = build_mixed_grade_v2_fixture(student_count=80)
+    initial = _quality(utilization=10, semester=3, difficulty=20, category=30, pressure=8)
+    result = _result()
+    result.optimization_facts["stage_2"]["final_source_decisions"] = (
+        (("course", 1), (7, 11, None, None, None, None)),
+    )
+    record = build_operator_characterization_record(
+        data=data,
+        initial_quality=initial,
+        final_quality=initial,
+        result=result,
+        benchmark_name="mixed_grade_v2_test",
+        operator="targeted_r8_s1",
+        input_fingerprint="input",
+        capture_candidate_source_decisions=True,
+    )
+    assert record.candidate_source_decisions == (
+        (("course", 1), (7, 11, None, None, None, None)),
+    )
+
+
+def test_source_decision_fingerprint_is_order_independent_and_semantic():
+    first = (
+        (("course", 1), (7, 11, None, None, None, None)),
+        (("commitment", 2), (4, "A+B")),
+    )
+    reordered = tuple(reversed(first))
+    changed = (
+        (("course", 1), (7, 12, None, None, None, None)),
+        (("commitment", 2), (4, "A+B")),
+    )
+
+    assert source_decision_fingerprint(first) == source_decision_fingerprint(reordered)
+    assert source_decision_fingerprint(first) != source_decision_fingerprint(changed)
 
 
 def test_characterization_aggregation_and_readiness_matrix_are_descriptive():

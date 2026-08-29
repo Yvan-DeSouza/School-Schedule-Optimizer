@@ -911,27 +911,26 @@ approximately 2.10-2.46 seconds; total operation times were approximately
 
 The fixed-cycle comparison state selected
 `targeted_utilization_r64_s8` with fixed scope
-`(417, 360, 482, 25, 480, 90, 175, 514)`. Three one-worker same-seed trials
-repeatedly produced and adopted `37,590` from `37,596`, with four changed
-students and 18 changed source decisions. Three eight-worker clean trials
-also produced a `37,590` candidate, but the unchanged full-model validator
-returned `UNKNOWN` inside the per-attempt validation boundary, so none was
-adopted. The candidate is therefore recorded as an unvalidated observation,
-not as a valid transition. Earlier eight-worker pilot trials with a shorter
-total session budget had the same validation-boundary limitation and are not
-used as adoption evidence. One separate extended-validation observation did
-eventually validate and adopt the same `37,590` candidate, but full validation
-took approximately `2,957` seconds and the operation approximately `3,083`
-seconds despite a nominal `600`-second session envelope. That observation is
-classified as out-of-budget validation evidence, not clean repeatability or
-policy-performance evidence.
+`(417, 360, 482, 25, 480, 90, 175, 514)`. The current post-metadata repeats
+all generated the same semantic candidate source-decision fingerprint
+`e96af0a2ffe17dd5b13b5f59ce50489610a44f2fa64e2bc96abb872f86157d94` and
+quality value `37,590`. Three current one-worker trials and three current
+eight-worker trials generated that same candidate; five completed full
+validation and adopted it, while one one-worker validation returned `UNKNOWN`
+inside the bounded validation boundary. Candidate identity is therefore
+strongly repeatable in this controlled sample, while validation completion is
+a separate bounded-execution observation. The earlier extended-validation
+observation eventually validated the same candidate, but the host slept during
+that run. Its approximately `2,957`-second validation and `3,083`-second
+operation timings are classified as `host_sleep_contaminated` and excluded
+from performance, repeatability, and policy-comparison analysis. The candidate
+facts remain historical provenance only.
 
 The variance runner now also exposes a `--supervised` mode backed by the shared
-parent-side calibration watchdog. The first supervised fixed-cycle recheck
-completed in approximately `146.4` seconds inside a `600`-second hard wall. It
-generated the same `37,590` candidate, but the unchanged full validator returned
-`UNKNOWN` within its `60`-second validation boundary, so the candidate was not
-adopted. A worker terminated by the hard wall is reported as a retained-baseline
+parent-side calibration watchdog. The current supervised fixed-cycle recheck
+completed inside its `600`-second hard wall, generated and adopted the same
+`37,590` candidate, and recorded its semantic source-decision fingerprint. A
+worker terminated by the hard wall is reported as a retained-baseline
 observation and cannot publish an authoritative candidate. This boundary covers
 benchmark loading, model construction, CP-SAT, candidate extraction, and full
 validation together; it is now required for any future target-scale variance
@@ -955,3 +954,88 @@ operator transition variance is controlled or explicitly modeled. No new
 operator, adaptive scoring rule, objective, hard constraint, production
 policy, placement, staffing, fulfillment, approval, or persistence behavior
 was introduced by this study.
+
+The final R64/S8 identity check found the same semantic candidate source
+decisions across three one-worker and three eight-worker supervised trials.
+The matched R2 follow-on from that temporary, fully validated `37,590` branch
+was run once with the existing eight-worker R2 operator, 600-second probe
+limits, no ordinary Stage 2 between iterations, and a 3,600-second hard wall.
+The first attempt was stopped by the configured 1.5 GiB available-memory
+floor; a diagnostic retry with that floor disabled reached the hard wall after
+21 observed probes and retained `37,590` without an adopted improvement. This
+is an unresolved bounded result, not proof of an R2 local optimum. The old
+approximately `2,957`-second validation observation remains explicitly
+`host_sleep_contaminated` and is excluded from all timing conclusions.
+
+Accordingly, the current v1 study closes the R64/S8 identity question but does
+not establish that R8/S2 unlocks a better downstream R2 basin than R4/S2.
+The existing R4/S2-to-R2 endpoint remains the stronger measured path evidence.
+Further open-ended v1 endpoint shaving is deferred; the next study is the
+Objective Semantics v2 redesign, beginning with principled normalization.
+
+## Objective Semantics v2 controlled-policy boundary
+
+The child study `adaptive-policy-controlled-replicates-v2-20260828` records a
+clean validation and worker-count boundary for the current diagnostic operators.
+It uses the unchanged mixed-grade v2 input fingerprint
+`c07c77d0aa077a3e72240f27644d86b8a1a4faecb2f72a900aacc3fcb792d28a`, the
+complete `37,596` source state, and predetermined future policy seeds
+`101`, `202`, and `303`. The canonical benchmark and production scheduling
+remain untouched.
+
+The semantic R64/S8 candidate fingerprint
+`e96af0a2ffe17dd5b13b5f59ce50489610a44f2fa64e2bc96abb872f86157d94` was the
+same in three one-worker and three eight-worker clean identity trials. A
+separate source-decision validation replay of that candidate completed three
+times in approximately `22.66`, `22.90`, and `24.61` seconds, with the same
+complete `10,635`-assignment, zero-unmet, `310`-commitment result. The earlier
+approximately `2,957`-second validation remains host-sleep-contaminated and is
+excluded from every timing, reproducibility, and policy conclusion.
+
+The expanded worker frontier showed why worker count must be treated as an
+experimental factor. On R16/S4, one worker adopted gain `6` in all three
+existing trials; two workers produced gains `18`, unresolved, unresolved; and
+four workers produced gain `6`, unresolved, unresolved. Eight workers produced
+gains `18`, `6`, `6` in the existing three-trial sample. R64/S8 produced a
+validated gain `6` at two workers and an unresolved validation at four workers;
+the four-worker earlier run was sleep-contaminated and excluded. These results
+are not evidence that a higher worker count is universally worse, but they do
+show that parallel transition and validation outcomes are not interchangeable
+with a deterministic policy effect.
+
+For the next causal policy study, one worker is the recommended controlled
+boundary because it has the clearest clean repeatability evidence and avoids
+conflating policy choice with parallel transition variance. This does not
+change any production default. At the time of this worker-frontier record,
+the adaptive/stateless-role/fixed-cycle policy comparison was still blocked
+pending its predetermined-seed cells under that explicitly controlled
+boundary. No hybrid, role persistence, search stickiness, new operator,
+objective, constraint, or production wiring was introduced by that study.
+
+### Controlled policy replicates (2026-08-28)
+
+The bounded policy comparison was completed as a diagnostic study using the
+unchanged mixed-grade v2 input and the complete `37,596` baseline. Adaptive,
+stateless-role, and fixed-cycle policies were each run with predetermined
+seeds `101`, `202`, and `303`, one CP-SAT worker, a `600`-second policy budget,
+`60` seconds per operator, and a `720`-second supervised hard wall. All nine
+cells completed with clean worker exit and retained the complete baseline:
+`10,635` assignments, zero unmet required requests, and `310` fulfilled
+special commitments. No cell produced an adopted substantive improvement;
+all final substantive values were `37,596`.
+
+Policy execution times were approximately `578.77`-`650.53` seconds and
+total supervised times were approximately `600.62`-`677.13` seconds. The
+number of attempts varied from four to seven, but this did not produce a
+quality difference in the controlled sample. The first adaptive seed-101
+invocation exposed a calibration-record construction defect: it completed its
+solver work but referenced missing solver-configuration parameters while
+building the result record. That harness defect was fixed and regression-
+tested; the cell was rerun successfully as `adaptive-seed101-fixed.json`. The
+failed invocation is excluded from policy statistics.
+
+This is bounded tie evidence, not a production-policy promotion result. It
+shows that the three policies were operationally comparable under the
+controlled one-worker boundary for these seeds, but it does not establish a
+quality winner, nor does it justify wiring any policy into ordinary student
+assignment. The earlier host-sleep-contaminated timing remains excluded.

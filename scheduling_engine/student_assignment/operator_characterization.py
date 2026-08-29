@@ -304,6 +304,8 @@ class OperatorCharacterizationRecord:
     conflicts: int | None
     cp_sat_random_seed: int | None = None
     cp_sat_max_deterministic_time_seconds: float | None = None
+    candidate_source_decision_fingerprint: str | None = None
+    candidate_source_decisions: tuple = ()
     validation_classification: str = "not_attempted"
     validation_solver_outcome: str | None = None
     validation_error: str | None = None
@@ -335,6 +337,7 @@ def build_operator_characterization_record(
     selected_student_ids=(),
     selected_grade=None,
     external_elapsed_seconds=None,
+    capture_candidate_source_decisions=False,
     downstream=None,
 ):
     """Build one characterization row from existing result/quality facts."""
@@ -359,6 +362,21 @@ def build_operator_characterization_record(
     starting_role_facts = _role_facts(data, initial_quality, role)
     final_role_facts = _role_facts(data, final_quality, role)
     final_attempt = attempts[-1] if attempts else {}
+    candidate_source_decision_fingerprint = (
+        final_attempt.get("candidate_source_decision_fingerprint")
+        if final_attempt
+        else None
+    )
+    candidate_source_decisions = ()
+    if capture_candidate_source_decisions and local.get("improvement_adopted"):
+        candidate_source_decisions = tuple(
+            (tuple(item[0]), tuple(item[1]))
+            for item in (
+                (result.optimization_facts or {})
+                .get("stage_2", {})
+                .get("final_source_decisions", ())
+            )
+        )
     start_value = _weighted_substantive_value(initial_quality)
     final_value = _weighted_substantive_value(final_quality)
     return OperatorCharacterizationRecord(
@@ -422,6 +440,12 @@ def build_operator_characterization_record(
             if local.get("cp_sat_max_deterministic_time_seconds") is not None
             else None
         ),
+        candidate_source_decision_fingerprint=(
+            str(candidate_source_decision_fingerprint)
+            if candidate_source_decision_fingerprint
+            else None
+        ),
+        candidate_source_decisions=candidate_source_decisions,
         validation_classification=str(
             final_attempt.get("validation_classification")
             or local.get("validation_classification")
@@ -466,6 +490,7 @@ def run_operator_characterization_trial(
     hard_feasibility_validation_worker_count=None,
     cp_sat_random_seed=None,
     cp_sat_max_deterministic_time_seconds=None,
+    capture_candidate_source_decisions=False,
     downstream=None,
 ):
     """Run one existing diagnostic operator and build its evidence record.
@@ -512,6 +537,7 @@ def run_operator_characterization_trial(
         cp_sat_max_deterministic_time_seconds=(
             cp_sat_max_deterministic_time_seconds
         ),
+        capture_final_source_decisions=True,
     )
     final_quality = evaluate_student_assignment_quality(
         data,
@@ -535,6 +561,7 @@ def run_operator_characterization_trial(
         selected_student_ids=selected_student_ids,
         selected_grade=selected_grade,
         external_elapsed_seconds=monotonic() - started,
+        capture_candidate_source_decisions=capture_candidate_source_decisions,
         downstream=downstream,
     )
 

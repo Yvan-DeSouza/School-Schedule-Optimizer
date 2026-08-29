@@ -21,6 +21,7 @@ from scheduling_engine.student_assignment.adaptive_calibration import (
     CALIBRATION_PROFILES,
     CALIBRATION_SESSION_OVERRIDES,
     apply_calibration_profile,
+    build_calibration_trial_record,
     build_calibration_policy,
     profile_fingerprint,
 )
@@ -67,6 +68,50 @@ def test_calibration_profiles_are_explicit_and_fingerprinted():
     assert profile_fingerprint("balanced") != profile_fingerprint("utilization_heavy")
     with pytest.raises(ValueError, match="Unknown calibration profile"):
         profile_fingerprint("not-a-profile")
+
+
+def test_calibration_trial_record_preserves_solver_configuration_metadata():
+    data = _v2_data()
+    initial_result = SimpleNamespace(
+        status="complete",
+        objective_components={},
+        assignments=(),
+        unmet_requests=(),
+        commitment_assignments=(),
+    )
+    record = SimpleNamespace(
+        attempts=(),
+        decisions=(),
+        policy_selection_seconds=0.0,
+        operator_execution_seconds=0.0,
+        finalization_seconds=0.0,
+        external_overrun_seconds=0.0,
+        elapsed_seconds=0.0,
+        phase_timings={},
+        final_components={},
+        resource={},
+    )
+    result = SimpleNamespace(
+        record=record,
+        result=initial_result,
+    )
+
+    trial = build_calibration_trial_record(
+        data,
+        initial_result=initial_result,
+        initial_source_decisions=(),
+        policy="adaptive",
+        profile="balanced",
+        result=result,
+        total_time_limit_seconds=60,
+        per_operator_time_limit_seconds=30,
+        worker_count=1,
+        cp_sat_random_seed=101,
+        cp_sat_max_deterministic_time_seconds=12.5,
+    )
+
+    assert trial.cp_sat_random_seed == 101
+    assert trial.cp_sat_max_deterministic_time_seconds == 12.5
 
 
 def test_calibration_controls_use_named_existing_operator_families():

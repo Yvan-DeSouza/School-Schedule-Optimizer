@@ -308,6 +308,10 @@ def run_matched_calibration_trial(
         total_time_limit_seconds=total_time_limit_seconds,
         per_operator_time_limit_seconds=per_operator_time_limit_seconds,
         worker_count=worker_count,
+        cp_sat_random_seed=cp_sat_random_seed,
+        cp_sat_max_deterministic_time_seconds=(
+            cp_sat_max_deterministic_time_seconds
+        ),
     )
 
 
@@ -340,6 +344,8 @@ def build_calibration_trial_record(
     total_time_limit_seconds,
     per_operator_time_limit_seconds,
     worker_count,
+    cp_sat_random_seed=None,
+    cp_sat_max_deterministic_time_seconds=None,
 ):
     """Translate a runtime result into a bounded calibration record."""
 

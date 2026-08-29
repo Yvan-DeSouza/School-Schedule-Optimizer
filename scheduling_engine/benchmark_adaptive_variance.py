@@ -110,6 +110,7 @@ def run_variance_trial(
     validation_worker_count=1,
     collect_resource_telemetry=True,
     worker_status_path=None,
+    capture_candidate_source_decisions=False,
 ):
     """Run one fixed-state, fixed-operator diagnostic transition."""
 
@@ -193,6 +194,7 @@ def run_variance_trial(
             cp_sat_max_deterministic_time_seconds=(
                 cp_sat_max_deterministic_time_seconds
             ),
+            capture_candidate_source_decisions=capture_candidate_source_decisions,
         )
 
     payload = trial.to_dict()
@@ -327,6 +329,7 @@ def run_supervised_variance_trial(
     max_process_tree_rss_bytes=None,
     min_system_available_memory_bytes=None,
     poll_interval_seconds=0.25,
+    capture_candidate_source_decisions=False,
 ):
     """Run one variance trial under the repository's hard watchdog.
 
@@ -400,6 +403,8 @@ def run_supervised_variance_trial(
             command.extend(["--validation-seconds", str(float(validation_time_limit_seconds))])
         if not collect_resource_telemetry:
             command.append("--no-resource-telemetry")
+        if capture_candidate_source_decisions:
+            command.append("--capture-candidate-source-decisions")
         supervision = supervise_json_worker(
             command,
             output_path=output_path,
@@ -462,6 +467,11 @@ def main(argv=None):  # pragma: no cover - offline experiment entry point
     parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--worker-output", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--worker-status", type=Path, help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--capture-candidate-source-decisions",
+        action="store_true",
+        help="include raw source decisions for one diagnostic branch replay",
+    )
     parser.add_argument("--output", type=Path)
     args = parser.parse_args(argv)
     trial_kwargs = dict(
@@ -479,6 +489,7 @@ def main(argv=None):  # pragma: no cover - offline experiment entry point
         validation_worker_count=args.validation_workers,
         collect_resource_telemetry=not args.no_resource_telemetry,
         worker_status_path=args.worker_status if args.worker else None,
+        capture_candidate_source_decisions=args.capture_candidate_source_decisions,
     )
     if args.worker:
         if not args.worker_output or not args.worker_status:
@@ -516,6 +527,7 @@ def main(argv=None):  # pragma: no cover - offline experiment entry point
                 args.min_system_available_memory_bytes
             ),
             poll_interval_seconds=args.poll_interval_seconds,
+            capture_candidate_source_decisions=args.capture_candidate_source_decisions,
         )
     else:
         payload = run_variance_trial(**trial_kwargs)

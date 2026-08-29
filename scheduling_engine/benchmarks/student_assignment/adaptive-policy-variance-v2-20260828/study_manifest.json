@@ -143,8 +143,9 @@
         "validation_solver_outcome": "optimal",
         "full_validation_seconds": 2956.993204700062,
         "total_operation_seconds": 3083.2651464999653,
-        "classification": "out_of_budget_validation_observation",
-        "note": "The candidate eventually validated, but the unchanged full-model validation exceeded both the nominal session envelope and the intended bounded diagnostic scale. It is not used as clean repeatability evidence."
+        "classification": "host_sleep_contaminated",
+        "timing_included_in_analysis": false,
+        "note": "The candidate eventually validated, but the host slept or suspended during the run. The recorded elapsed validation and operation times are contaminated and excluded from all performance, repeatability, and policy-comparison analysis. The candidate facts remain historical provenance only."
       },
       "eight_worker_supervised_boundary_artifact": {
         "artifact": "fixed-utilization-r64-s8-8w-seed101-supervised1-result.json",
@@ -165,6 +166,61 @@
       }
     }
   ],
+  "candidate_identity_control": {
+    "operator": "targeted_utilization_r64_s8",
+    "target_scope": [417, 360, 482, 25, 480, 90, 175, 514],
+    "random_seed": 101,
+    "candidate_source_decision_fingerprint": "e96af0a2ffe17dd5b13b5f59ce50489610a44f2fa64e2bc96abb872f86157d94",
+    "one_worker_artifacts": [
+      "fixed-utilization-r64-s8-1w-seed101-identity1-result.json",
+      "fixed-utilization-r64-s8-1w-seed101-identity2-result.json",
+      "fixed-utilization-r64-s8-1w-seed101-identity3-result.json"
+    ],
+    "eight_worker_artifacts": [
+      "fixed-utilization-r64-s8-8w-seed101-identity1-result.json",
+      "fixed-utilization-r64-s8-8w-seed101-identity2-result.json",
+      "fixed-utilization-r64-s8-8w-seed101-identity3-result.json"
+    ],
+    "candidate_quality_values": [37590, 37590, 37590, 37590, 37590, 37590],
+    "validation_classifications": [
+      "validated", "validation_unknown", "validated",
+      "validated", "validated", "validated"
+    ],
+    "interpretation": "The same semantic candidate was generated in all six clean supervised trials; five validations adopted it and one bounded one-worker validation returned UNKNOWN. Candidate identity is strong in this sample; validation completion is a separate bounded-execution variable."
+  },
+  "r8s2_r2_follow_on": {
+    "temporary_branch": "r8s2-seed101-temporary-branch.json.gz",
+    "branch_source_fingerprint": "31d732bdb3d44b52520ecca38fed703d7c5458350528e13a59cc636e7ee8dcd5",
+    "starting_substantive_value": 37590,
+    "configuration": {
+      "operator": "r2",
+      "workers": 8,
+      "per_probe_seconds": 600,
+      "total_seconds": 3600,
+      "full_validation_after_each_candidate": true,
+      "ordinary_stage_2_between_iterations": false,
+      "diagnostic_min_available_memory_override_bytes": 0
+    },
+    "resource_guard_retry": {
+      "execution_status": "resource_guard_terminated",
+      "elapsed_seconds": 141.98736210004427,
+      "tree_rss_bytes": 2934202368,
+      "available_memory_bytes": 1553387520,
+      "reason": "configured 1.5 GiB available-memory floor"
+    },
+    "matched_retry": {
+      "execution_status": "hard_deadline_terminated",
+      "elapsed_seconds": 3600.1547089000233,
+      "observed_probe_count": 21,
+      "adopted_improvement_count": 0,
+      "final_retained_substantive_value": 37590,
+      "final_assignment_count": 10635,
+      "final_unmet_count": 0,
+      "last_phase": "probe_hint_application",
+      "artifact": "r8s2-seed101-r2-follow-on-result.json",
+      "interpretation": "The R2 follow-on was unresolved at the hard wall; no authoritative worker payload or adopted improvement was returned. This is not proof of an R2 local optimum."
+    }
+  },
   "optional_seed_sweep": {
     "status": "skipped",
     "reason": "The fixed-seed eight-worker stateless case already showed material transition variance; a seed sweep would not add enough information before the controlled policy gate."
@@ -173,7 +229,7 @@
     "status": "skipped",
     "reason": "No detached medium production-shaped benchmark is present in the current checkout; only the 1,400-student target-shaped durable inputs are available."
   },
-  "final_classification": "single_worker_control_is_reproducible_eight_worker_parallel_variance_is_primary_policy_endpoint_noise",
+  "final_classification": "same_semantic_r64_s8_candidate_repeated_cleanly_r2_follow_on_unresolved_at_hard_wall",
   "causality_finding": {
     "policy_selection": "deterministic_for_same_state_history_and_budget",
     "solver_transition": "material_same_seed_variance_observed_under_eight_workers",

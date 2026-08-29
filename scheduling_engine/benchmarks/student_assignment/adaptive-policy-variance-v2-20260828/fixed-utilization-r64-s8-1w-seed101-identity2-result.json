@@ -1,0 +1,5262 @@
+{
+  "attempts": [
+    {
+      "adopted": false,
+      "affected_section_ids": [
+        129,
+        136,
+        141,
+        143,
+        145,
+        151,
+        161,
+        162,
+        163,
+        168,
+        170,
+        174,
+        178,
+        179,
+        180,
+        185,
+        187,
+        262,
+        264
+      ],
+      "affected_student_ids": [
+        90,
+        360,
+        480,
+        514
+      ],
+      "attempt_number_for_radius": 1,
+      "best_bound": null,
+      "branches": 1295,
+      "candidate_quality_summary": {
+        "course_category_diversity": {
+          "distribution": {
+            "count": 1340,
+            "maximum": 200.0,
+            "mean": 16.529851,
+            "median": 0.0,
+            "minimum": 0.0,
+            "p75": 0.0,
+            "p90": 100.0,
+            "p95": 100.0
+          },
+          "reconstructed_penalty": 22150,
+          "reconstruction_delta": 0.0,
+          "solver_aligned_penalty": 22150.0
+        },
+        "course_sequence_preferences": {
+          "applicable_student_count": 0,
+          "eligible_opportunity_count": 0,
+          "reconstructed_penalty": 0,
+          "reconstruction_delta": -0.0,
+          "satisfaction_rate": null,
+          "satisfied_opportunity_count": 0,
+          "solver_aligned_penalty": -0.0,
+          "solver_aligned_satisfied": 0,
+          "students_with_satisfied_opportunity_count": 0,
+          "unsatisfied_opportunity_count": 0
+        },
+        "difficulty_balance": {
+          "distribution": {
+            "count": 1340,
+            "maximum": 136.0,
+            "mean": 26.845522,
+            "median": 20.0,
+            "minimum": 0.0,
+            "p75": 40.0,
+            "p90": 42.0,
+            "p95": 56.0
+          },
+          "perfectly_balanced_count": 184,
+          "reconstructed_penalty": 35973,
+          "reconstruction_delta": 0.0,
+          "solver_aligned_penalty": 35973.0
+        },
+        "objective_semantics": {
+          "components": {
+            "course_category_diversity": {
+              "denominator": 56200,
+              "importance_score": 6,
+              "normalized_penalty": 3941.0,
+              "raw_penalty": 22150.0,
+              "weighted_normalized_contribution": 23646.0
+            },
+            "course_sequence_preferences": {
+              "denominator": 0,
+              "importance_score": 6,
+              "normalized_penalty": 0.0,
+              "raw_penalty": -0.0,
+              "weighted_normalized_contribution": 0.0
+            },
+            "difficulty_balance": {
+              "denominator": 670174,
+              "importance_score": 6,
+              "normalized_penalty": 536.0,
+              "raw_penalty": 35973.0,
+              "weighted_normalized_contribution": 3216.0
+            },
+            "section_utilization_balance": {
+              "denominator": 39280,
+              "importance_score": 6,
+              "normalized_penalty": 1711.0,
+              "raw_penalty": 6721.0,
+              "weighted_normalized_contribution": 10266.0
+            },
+            "student_semester_load_balance": {
+              "denominator": 22549,
+              "importance_score": 6,
+              "normalized_penalty": 77.0,
+              "raw_penalty": 175.0,
+              "weighted_normalized_contribution": 462.0
+            }
+          },
+          "importance_scores": {
+            "course_category_diversity": 6,
+            "course_sequence_preferences": 6,
+            "difficulty_balance": 6,
+            "section_utilization_balance": 6,
+            "student_semester_balance": 6
+          },
+          "normalized_scale": 10000,
+          "version": "v2"
+        },
+        "request_fulfillment": {
+          "eligible_counts": {
+            "approved_backup": 0,
+            "mandatory": 10760,
+            "primary": 0,
+            "priority_primary": 0
+          },
+          "solver_aligned_counts": {
+            "approved_backup": 0,
+            "mandatory": 10760,
+            "primary": 0,
+            "priority_primary": 0
+          },
+          "special_commitments": {
+            "fulfilled_count": 310,
+            "requested_count": 310,
+            "unmet_count": 0
+          },
+          "unmet_counts": {
+            "approved_backup": 0,
+            "mandatory": 0,
+            "primary": 0,
+            "priority_primary": 0
+          }
+        },
+        "schedule_preservation": {
+          "affected_student_count": 0,
+          "applicable": false,
+          "movable_enrollment_count": 0,
+          "moved_enrollment_count": 0,
+          "moves_per_affected_student": {
+            "count": 0,
+            "maximum": null,
+            "mean": null,
+            "median": null,
+            "minimum": null,
+            "p75": null,
+            "p90": null,
+            "p95": null
+          },
+          "preservation_rate": null,
+          "preserved_enrollment_count": 0,
+          "reconstructed_penalty": 0,
+          "reconstruction_delta": 0.0,
+          "solver_aligned_penalty": 0.0
+        },
+        "section_utilization_balance": {
+          "average_section_deviation_distribution": {
+            "count": 55,
+            "maximum": 8.09375,
+            "mean": 3.598875,
+            "median": 4.285714,
+            "minimum": 0.0,
+            "p75": 5.265306,
+            "p90": 6.375,
+            "p95": 6.5
+          },
+          "delivery_group_count": 55,
+          "delivery_group_imbalance_distribution": {
+            "count": 55,
+            "maximum": 22.0,
+            "mean": 11.6,
+            "median": 14.0,
+            "minimum": 0.0,
+            "p75": 17.0,
+            "p90": 20.0,
+            "p95": 21.0
+          },
+          "pairwise_imbalance_distribution": {
+            "count": 55,
+            "maximum": 273.0,
+            "mean": 122.2,
+            "median": 144.0,
+            "minimum": 0.0,
+            "p75": 176.0,
+            "p90": 235.0,
+            "p95": 246.0
+          },
+          "perfectly_balanced_group_count": 13,
+          "reconstructed_penalty": 6721,
+          "reconstruction_delta": 0.0,
+          "solver_aligned_penalty": 6721.0,
+          "within_one_enrollment_group_count": 13,
+          "within_one_enrollment_group_percentage": 0.236364
+        },
+        "student_semester_load_balance": {
+          "distribution": {
+            "count": 1340,
+            "maximum": 2.0,
+            "mean": 0.130597,
+            "median": 0.0,
+            "minimum": 0.0,
+            "p75": 0.0,
+            "p90": 0.0,
+            "p95": 1.0
+          },
+          "perfectly_balanced_count": 1230,
+          "reconstructed_penalty": 175,
+          "reconstruction_delta": 0.0,
+          "solver_aligned_penalty": 175.0
+        },
+        "version": "student_schedule_quality_v4"
+      },
+      "candidate_source_decision_fingerprint": "e96af0a2ffe17dd5b13b5f59ce50489610a44f2fa64e2bc96abb872f86157d94",
+      "candidate_validated": false,
+      "candidate_value": 37590.0,
+      "changed_source_decision_count": 18,
+      "changed_student_count": 4,
+      "component_deltas": {
+        "course_category_diversity_penalty": 0.0,
+        "difficulty_balance_penalty": 0.0,
+        "schedule_preservation_move_penalty": 0.0,
+        "section_utilization_balance_penalty": -6.0,
+        "soft_sequence_preferences_satisfied": 0.0,
+        "student_semester_balance_penalty": 0.0
+      },
+      "component_values": {
+        "course_category_diversity_penalty": 22150.0,
+        "difficulty_balance_penalty": 35973.0,
+        "normalization": {
+          "course_category_diversity_penalty": {
+            "denominator": 56200,
+            "importance_score": 6,
+            "normalized_scale": 10000
+          },
+          "course_sequence_preferences_penalty": {
+            "denominator": 0,
+            "importance_score": 6,
+            "normalized_scale": 10000
+          },
+          "difficulty_balance_penalty": {
+            "denominator": 670174,
+            "importance_score": 6,
+            "normalized_scale": 10000
+          },
+          "section_utilization_balance_penalty": {
+            "denominator": 39280,
+            "importance_score": 6,
+            "normalized_scale": 10000
+          },
+          "student_semester_balance_penalty": {
+            "denominator": 22549,
+            "importance_score": 6,
+            "normalized_scale": 10000
+          }
+        },
+        "normalized_components": {
+          "course_category_diversity_penalty": 3941.0,
+          "course_sequence_preferences_penalty": 0.0,
+          "difficulty_balance_penalty": 536.0,
+          "section_utilization_balance_penalty": 1711.0,
+          "student_semester_balance_penalty": 77.0
+        },
+        "objective_semantics_version": "v2",
+        "schedule_preservation_move_penalty": 0.0,
+        "section_utilization_balance_penalty": 6721.0,
+        "soft_sequence_preferences_satisfied": 0.0,
+        "student_semester_balance_penalty": 175.0,
+        "weighted_normalized_contributions": {
+          "course_category_diversity_penalty": 23646.0,
+          "course_sequence_preferences_penalty": 0.0,
+          "difficulty_balance_penalty": 3216.0,
+          "section_utilization_balance_penalty": 10266.0,
+          "student_semester_balance_penalty": 462.0
+        }
+      },
+      "conflicts": 1,
+      "cp_sat_max_deterministic_time_seconds": null,
+      "cp_sat_random_seed": 101,
+      "cumulative_session_elapsed_seconds": 50.31235840008594,
+      "deterministic_time_seconds": null,
+      "effective_neighborhood_radius": 64,
+      "elapsed_seconds": 4.868289400008507,
+      "eligible_targeted_source_decision_count": 64,
+      "incumbent_before": 37596,
+      "iteration": 1,
+      "iteration_elapsed_seconds": 49.89340949989855,
+      "iteration_remaining_seconds": 0.0,
+      "iteration_requested_time_limit_seconds": 30.0,
+      "memory": {
+        "available": true,
+        "child_process_count": 0,
+        "child_uss_bytes": 0,
+        "child_working_set_bytes": 0,
+        "cpu_system_seconds": 16.109375,
+        "cpu_user_seconds": 89.171875,
+        "logical_cpu_count": 8,
+        "pagefile_bytes": 950861824,
+        "peak_pagefile_bytes": 950861824,
+        "peak_working_set_bytes": 727728128,
+        "pid": 16488,
+        "process_cpu_percent": 0.0,
+        "sampled_at_monotonic": 662005.23622,
+        "source": "psutil",
+        "system_available_memory_bytes": 3178369024,
+        "system_memory_percent": 81.4,
+        "system_total_memory_bytes": 17052241920,
+        "thread_count": 13,
+        "tree_uss_bytes": 691732480,
+        "tree_working_set_bytes": 727728128,
+        "uss_bytes": 691732480,
+        "vms_bytes": 950861824,
+        "working_set_bytes": 727728128
+      },
+      "model_constraint_count": 200527,
+      "model_variable_count": 112322,
+      "probe_timings": {
+        "candidate_quality_evaluation_seconds": 0.5302763000363484,
+        "completion_constraints_seconds": 1.4570568000199273,
+        "cp_solver_solve_external_wall_seconds": 4.868296499946155,
+        "hint_application_seconds": 3.992659699986689,
+        "model_clone_seconds": 0.2771017999621108,
+        "neighborhood_constraints_seconds": 2.1738579999655485,
+        "objective_and_bound_constraints_seconds": 2.963446000008844,
+        "operation_total_seconds": 31.999476399971172,
+        "semantic_source_decision_extraction_seconds": 12.83306239999365,
+        "solver_creation_seconds": 2.5000073947012424e-05,
+        "solver_reported_wall_time_seconds": 4.7869322
+      },
+      "quality_comparison": {
+        "course_category_diversity": {
+          "change": {
+            "mean_delta": 0.0,
+            "mean_improvement": null,
+            "mean_worsening": null,
+            "percentage_change": 0.0,
+            "sum_delta": 0
+          },
+          "improved": 0,
+          "unchanged": 1340,
+          "worsened": 0
+        },
+        "course_sequence_preferences": {
+          "change": {
+            "mean_delta": null,
+            "mean_improvement": null,
+            "mean_worsening": null,
+            "percentage_change": null,
+            "sum_delta": 0
+          },
+          "improved": 0,
+          "unchanged": 0,
+          "worsened": 0
+        },
+        "difficulty_balance": {
+          "change": {
+            "mean_delta": 0.0,
+            "mean_improvement": null,
+            "mean_worsening": null,
+            "percentage_change": 0.0,
+            "sum_delta": 0
+          },
+          "improved": 0,
+          "unchanged": 1340,
+          "worsened": 0
+        },
+        "request_fulfillment": {
+          "change": {
+            "mean_delta": 0.0,
+            "mean_improvement": null,
+            "mean_worsening": null,
+            "percentage_change": 0.0,
+            "sum_delta": 0
+          },
+          "improved": 0,
+          "unchanged": 10760,
+          "worsened": 0
+        },
+        "schedule_preservation": {
+          "change": {
+            "mean_delta": null,
+            "mean_improvement": null,
+            "mean_worsening": null,
+            "percentage_change": null,
+            "sum_delta": 0
+          },
+          "improved": 0,
+          "unchanged": 0,
+          "worsened": 0
+        },
+        "section_utilization_balance": {
+          "change": {
+            "mean_delta": -0.10909090909090909,
+            "mean_improvement": 6.0,
+            "mean_worsening": null,
+            "percentage_change": -0.0008919280511372082,
+            "sum_delta": -6
+          },
+          "improved": 1,
+          "range_comparison": {
+            "change": {
+              "mean_delta": -0.01818181818181818,
+              "mean_improvement": 1.0,
+              "mean_worsening": null,
+              "percentage_change": -0.001564945226917058,
+              "sum_delta": -1
+            },
+            "improved": 1,
+            "unchanged": 54,
+            "worsened": 0
+          },
+          "unchanged": 54,
+          "worsened": 0
+        },
+        "student_semester_load_balance": {
+          "change": {
+            "mean_delta": 0.0,
+            "mean_improvement": null,
+            "mean_worsening": null,
+            "percentage_change": 0.0,
+            "sum_delta": 0
+          },
+          "improved": 0,
+          "unchanged": 1340,
+          "worsened": 0
+        }
+      },
+      "radius": 64,
+      "section_load_deltas": {
+        "262": -1,
+        "264": 1
+      },
+      "selected_grade": null,
+      "solver_wall_time_seconds": 4.7869322,
+      "status": "optimal",
+      "target_guidance": {
+        "delivery_group_count": 42,
+        "guidance_only": true,
+        "objective_attribution": false,
+        "policy": "interaction_aware",
+        "selected_leverage": [
+          {
+            "alternate_section_opportunity_count": 52,
+            "delivery_group_ids": [
+              17,
+              18,
+              19,
+              20,
+              21,
+              22,
+              23,
+              24
+            ],
+            "move_facts": [
+              {
+                "current_penalty": 168,
+                "delivery_group_id": 20,
+                "from_section_id": 155,
+                "hypothetical_penalty": 154,
+                "positive_leverage": 14,
+                "request_id": 195,
+                "to_section_id": 160
+              },
+              {
+                "current_penalty": 157,
+                "delivery_group_id": 18,
+                "from_section_id": 143,
+                "hypothetical_penalty": 143,
+                "positive_leverage": 14,
+                "request_id": 193,
+                "to_section_id": 140
+              },
+              {
+                "current_penalty": 229,
+                "delivery_group_id": 19,
+                "from_section_id": 151,
+                "hypothetical_penalty": 217,
+                "positive_leverage": 12,
+                "request_id": 194,
+                "to_section_id": 152
+              },
+              {
+                "current_penalty": 168,
+                "delivery_group_id": 20,
+                "from_section_id": 155,
+                "hypothetical_penalty": 156,
+                "positive_leverage": 12,
+                "request_id": 195,
+                "to_section_id": 157
+              },
+              {
+                "current_penalty": 140,
+                "delivery_group_id": 24,
+                "from_section_id": 187,
+                "hypothetical_penalty": 128,
+                "positive_leverage": 12,
+                "request_id": 198,
+                "to_section_id": 188
+              },
+              {
+                "current_penalty": 229,
+                "delivery_group_id": 19,
+                "from_section_id": 151,
+                "hypothetical_penalty": 219,
+                "positive_leverage": 10,
+                "request_id": 194,
+                "to_section_id": 150
+              },
+              {
+                "current_penalty": 168,
+                "delivery_group_id": 20,
+                "from_section_id": 155,
+                "hypothetical_penalty": 158,
+                "positive_leverage": 10,
+                "request_id": 195,
+                "to_section_id": 158
+              },
+              {
+                "current_penalty": 140,
+                "delivery_group_id": 24,
+                "from_section_id": 187,
+                "hypothetical_penalty": 130,
+                "positive_leverage": 10,
+                "request_id": 198,
+                "to_section_id": 183
+              },
+              {
+                "current_penalty": 229,
+                "delivery_group_id": 19,
+                "from_section_id": 151,
+                "hypothetical_penalty": 221,
+                "positive_leverage": 8,
+                "request_id": 194,
+                "to_section_id": 147
+              },
+              {
+                "current_penalty": 184,
+                "delivery_group_id": 21,
+                "from_section_id": 162,
+                "hypothetical_penalty": 176,
+                "positive_leverage": 8,
+                "request_id": 199,
+                "to_section_id": 165
+              }
+            ],
+            "relevant_group_count": 8,
+            "strongest_single_move": 14,
+            "student_id": 25,
+            "total_positive_leverage": 216
+          },
+          {
+            "alternate_section_opportunity_count": 52,
+            "delivery_group_ids": [
+              17,
+              18,
+              19,
+              20,
+              21,
+              22,
+              23,
+              24
+            ],
+            "move_facts": [
+              {
+                "current_penalty": 168,
+                "delivery_group_id": 20,
+                "from_section_id": 155,
+                "hypothetical_penalty": 154,
+                "positive_leverage": 14,
+                "request_id": 714,
+                "to_section_id": 160
+              },
+              {
+                "current_penalty": 229,
+                "delivery_group_id": 19,
+                "from_section_id": 145,
+                "hypothetical_penalty": 217,
+                "positive_leverage": 12,
+                "request_id": 713,
+                "to_section_id": 152
+              },
+              {
+                "current_penalty": 168,
+                "delivery_group_id": 20,
+                "from_section_id": 155,
+                "hypothetical_penalty": 156,
+                "positive_leverage": 12,
+                "request_id": 714,
+                "to_section_id": 157
+              },
+              {
+                "current_penalty": 250,
+                "delivery_group_id": 17,
+                "from_section_id": 136,
+                "hypothetical_penalty": 240,
+                "positive_leverage": 10,
+                "request_id": 715,
+                "to_section_id": 134
+              },
+              {
+                "current_penalty": 229,
+                "delivery_group_id": 19,
+                "from_section_id": 145,
+                "hypothetical_penalty": 219,
+                "positive_leverage": 10,
+                "request_id": 713,
+                "to_section_id": 150
+              },
+              {
+                "current_penalty": 180,
+                "delivery_group_id": 23,
+                "from_section_id": 180,
+                "hypothetical_penalty": 170,
+                "positive_leverage": 10,
+                "request_id": 720,
+                "to_section_id": 175
+              },
+              {
+                "current_penalty": 168,
+                "delivery_group_id": 20,
+                "from_section_id": 155,
+                "hypothetical_penalty": 158,
+                "positive_leverage": 10,
+                "request_id": 714,
+                "to_section_id": 158
+              },
+              {
+                "current_penalty": 157,
+                "delivery_group_id": 18,
+                "from_section_id": 141,
+                "hypothetical_penalty": 147,
+                "positive_leverage": 10,
+                "request_id": 716,
+                "to_section_id": 140
+              },
+              {
+                "current_penalty": 250,
+                "delivery_group_id": 17,
+                "from_section_id": 136,
+                "hypothetical_penalty": 242,
+                "positive_leverage": 8,
+                "request_id": 715,
+                "to_section_id": 131
+              },
+              {
+                "current_penalty": 229,
+                "delivery_group_id": 19,
+                "from_section_id": 145,
+                "hypothetical_penalty": 221,
+                "positive_leverage": 8,
+                "request_id": 713,
+                "to_section_id": 147
+              }
+            ],
+            "relevant_group_count": 8,
+            "strongest_single_move": 14,
+            "student_id": 90,
+            "total_positive_leverage": 212
+          },
+          {
+            "alternate_section_opportunity_count": 52,
+            "delivery_group_ids": [
+              17,
+              18,
+              19,
+              20,
+              21,
+              22,
+              23,
+              24
+            ],
+            "move_facts": [
+              {
+                "current_penalty": 168,
+                "delivery_group_id": 20,
+                "from_section_id": 155,
+                "hypothetical_penalty": 154,
+                "positive_leverage": 14,
+                "request_id": 1393,
+                "to_section_id": 160
+              },
+              {
+                "current_penalty": 229,
+                "delivery_group_id": 19,
+                "from_section_id": 151,
+                "hypothetical_penalty": 217,
+                "positive_leverage": 12,
+                "request_id": 1396,
+                "to_section_id": 152
+              },
+              {
+                "current_penalty": 168,
+                "delivery_group_id": 20,
+                "from_section_id": 155,
+                "hypothetical_penalty": 156,
+                "positive_leverage": 12,
+                "request_id": 1393,
+                "to_section_id": 157
+              },
+              {
+                "current_penalty": 250,
+                "delivery_group_id": 17,
+                "from_section_id": 136,
+                "hypothetical_penalty": 240,
+                "positive_leverage": 10,
+                "request_id": 1394,
+                "to_section_id": 134
+              },
+              {
+                "current_penalty": 229,
+                "delivery_group_id": 19,
+                "from_section_id": 151,
+                "hypothetical_penalty": 219,
+                "positive_leverage": 10,
+                "request_id": 1396,
+                "to_section_id": 150
+              },
+              {
+                "current_penalty": 180,
+                "delivery_group_id": 23,
+                "from_section_id": 180,
+                "hypothetical_penalty": 170,
+                "positive_leverage": 10,
+                "request_id": 1399,
+                "to_section_id": 175
+              },
+              {
+                "current_penalty": 168,
+                "delivery_group_id": 20,
+                "from_section_id": 155,
+                "hypothetical_penalty": 158,
+                "positive_leverage": 10,
+                "request_id": 1393,
+                "to_section_id": 158
+              },
+              {
+                "current_penalty": 146,
+                "delivery_group_id": 22,
+                "from_section_id": 173,
+                "hypothetical_penalty": 136,
+                "positive_leverage": 10,
+                "request_id": 1398,
+                "to_section_id": 170
+              },
+              {
+                "current_penalty": 140,
+                "delivery_group_id": 24,
+                "from_section_id": 186,
+                "hypothetical_penalty": 130,
+                "positive_leverage": 10,
+                "request_id": 1400,
+                "to_section_id": 188
+              },
+              {
+                "current_penalty": 250,
+                "delivery_group_id": 17,
+                "from_section_id": 136,
+                "hypothetical_penalty": 242,
+                "positive_leverage": 8,
+                "request_id": 1394,
+                "to_section_id": 131
+              }
+            ],
+            "relevant_group_count": 8,
+            "strongest_single_move": 14,
+            "student_id": 175,
+            "total_positive_leverage": 210
+          },
+          {
+            "alternate_section_opportunity_count": 52,
+            "delivery_group_ids": [
+              17,
+              18,
+              19,
+              20,
+              21,
+              22,
+              23,
+              24
+            ],
+            "move_facts": [
+              {
+                "current_penalty": 168,
+                "delivery_group_id": 20,
+                "from_section_id": 155,
+                "hypothetical_penalty": 154,
+                "positive_leverage": 14,
+                "request_id": 2876,
+                "to_section_id": 160
+              },
+              {
+                "current_penalty": 157,
+                "delivery_group_id": 18,
+                "from_section_id": 143,
+                "hypothetical_penalty": 143,
+                "positive_leverage": 14,
+                "request_id": 2874,
+                "to_section_id": 140
+              },
+              {
+                "current_penalty": 229,
+                "delivery_group_id": 19,
+                "from_section_id": 151,
+                "hypothetical_penalty": 217,
+                "positive_leverage": 12,
+                "request_id": 2875,
+                "to_section_id": 152
+              },
+              {
+                "current_penalty": 168,
+                "delivery_group_id": 20,
+                "from_section_id": 155,
+                "hypothetical_penalty": 156,
+                "positive_leverage": 12,
+                "request_id": 2876,
+                "to_section_id": 157
+              },
+              {
+                "current_penalty": 229,
+                "delivery_group_id": 19,
+                "from_section_id": 151,
+                "hypothetical_penalty": 219,
+                "positive_leverage": 10,
+                "request_id": 2875,
+                "to_section_id": 150
+              },
+              {
+                "current_penalty": 168,
+                "delivery_group_id": 20,
+                "from_section_id": 155,
+                "hypothetical_penalty": 158,
+                "positive_leverage": 10,
+                "request_id": 2876,
+                "to_section_id": 158
+              },
+              {
+                "current_penalty": 146,
+                "delivery_group_id": 22,
+                "from_section_id": 174,
+                "hypothetical_penalty": 136,
+                "positive_leverage": 10,
+                "request_id": 2877,
+                "to_section_id": 170
+              },
+              {
+                "current_penalty": 229,
+                "delivery_group_id": 19,
+                "from_section_id": 151,
+                "hypothetical_penalty": 221,
+                "positive_leverage": 8,
+                "request_id": 2875,
+                "to_section_id": 147
+              },
+              {
+                "current_penalty": 168,
+                "delivery_group_id": 20,
+                "from_section_id": 155,
+                "hypothetical_penalty": 160,
+                "positive_leverage": 8,
+                "request_id": 2876,
+                "to_section_id": 156
+              },
+              {
+                "current_penalty": 157,
+                "delivery_group_id": 18,
+                "from_section_id": 143,
+                "hypothetical_penalty": 149,
+                "positive_leverage": 8,
+                "request_id": 2874,
+                "to_section_id": 137
+              }
+            ],
+            "relevant_group_count": 8,
+            "strongest_single_move": 14,
+            "student_id": 360,
+            "total_positive_leverage": 218
+          },
+          {
+            "alternate_section_opportunity_count": 52,
+            "delivery_group_ids": [
+              1,
+              2,
+              3,
+              4,
+              37,
+              38,
+              39,
+              40
+            ],
+            "move_facts": [
+              {
+                "current_penalty": 176,
+                "delivery_group_id": 3,
+                "from_section_id": 20,
+                "hypothetical_penalty": 162,
+                "positive_leverage": 14,
+                "request_id": 3330,
+                "to_section_id": 17
+              },
+              {
+                "current_penalty": 237,
+                "delivery_group_id": 2,
+                "from_section_id": 10,
+                "hypothetical_penalty": 225,
+                "positive_leverage": 12,
+                "request_id": 3329,
+                "to_section_id": 13
+              },
+              {
+                "current_penalty": 144,
+                "delivery_group_id": 38,
+                "from_section_id": 283,
+                "hypothetical_penalty": 132,
+                "positive_leverage": 12,
+                "request_id": 3336,
+                "to_section_id": 280
+              },
+              {
+                "current_penalty": 237,
+                "delivery_group_id": 2,
+                "from_section_id": 10,
+                "hypothetical_penalty": 227,
+                "positive_leverage": 10,
+                "request_id": 3329,
+                "to_section_id": 11
+              },
+              {
+                "current_penalty": 176,
+                "delivery_group_id": 3,
+                "from_section_id": 20,
+                "hypothetical_penalty": 166,
+                "positive_leverage": 10,
+                "request_id": 3330,
+                "to_section_id": 19
+              },
+              {
+                "current_penalty": 176,
+                "delivery_group_id": 3,
+                "from_section_id": 20,
+                "hypothetical_penalty": 166,
+                "positive_leverage": 10,
+                "request_id": 3330,
+                "to_section_id": 24
+              },
+              {
+                "current_penalty": 144,
+                "delivery_group_id": 37,
+                "from_section_id": 279,
+                "hypothetical_penalty": 134,
+                "positive_leverage": 10,
+                "request_id": 3335,
+                "to_section_id": 275
+              },
+              {
+                "current_penalty": 144,
+                "delivery_group_id": 38,
+                "from_section_id": 283,
+                "hypothetical_penalty": 134,
+                "positive_leverage": 10,
+                "request_id": 3336,
+                "to_section_id": 285
+              },
+              {
+                "current_penalty": 237,
+                "delivery_group_id": 2,
+                "from_section_id": 10,
+                "hypothetical_penalty": 229,
+                "positive_leverage": 8,
+                "request_id": 3329,
+                "to_section_id": 9
+              },
+              {
+                "current_penalty": 176,
+                "delivery_group_id": 3,
+                "from_section_id": 20,
+                "hypothetical_penalty": 168,
+                "positive_leverage": 8,
+                "request_id": 3330,
+                "to_section_id": 22
+              }
+            ],
+            "relevant_group_count": 8,
+            "strongest_single_move": 14,
+            "student_id": 417,
+            "total_positive_leverage": 232
+          },
+          {
+            "alternate_section_opportunity_count": 52,
+            "delivery_group_ids": [
+              17,
+              18,
+              19,
+              20,
+              21,
+              22,
+              23,
+              24
+            ],
+            "move_facts": [
+              {
+                "current_penalty": 168,
+                "delivery_group_id": 20,
+                "from_section_id": 155,
+                "hypothetical_penalty": 154,
+                "positive_leverage": 14,
+                "request_id": 3836,
+                "to_section_id": 160
+              },
+              {
+                "current_penalty": 229,
+                "delivery_group_id": 19,
+                "from_section_id": 145,
+                "hypothetical_penalty": 217,
+                "positive_leverage": 12,
+                "request_id": 3835,
+                "to_section_id": 152
+              },
+              {
+                "current_penalty": 168,
+                "delivery_group_id": 20,
+                "from_section_id": 155,
+                "hypothetical_penalty": 156,
+                "positive_leverage": 12,
+                "request_id": 3836,
+                "to_section_id": 157
+              },
+              {
+                "current_penalty": 140,
+                "delivery_group_id": 24,
+                "from_section_id": 187,
+                "hypothetical_penalty": 128,
+                "positive_leverage": 12,
+                "request_id": 3839,
+                "to_section_id": 188
+              },
+              {
+                "current_penalty": 250,
+                "delivery_group_id": 17,
+                "from_section_id": 136,
+                "hypothetical_penalty": 240,
+                "positive_leverage": 10,
+                "request_id": 3833,
+                "to_section_id": 134
+              },
+              {
+                "current_penalty": 229,
+                "delivery_group_id": 19,
+                "from_section_id": 145,
+                "hypothetical_penalty": 219,
+                "positive_leverage": 10,
+                "request_id": 3835,
+                "to_section_id": 150
+              },
+              {
+                "current_penalty": 168,
+                "delivery_group_id": 20,
+                "from_section_id": 155,
+                "hypothetical_penalty": 158,
+                "positive_leverage": 10,
+                "request_id": 3836,
+                "to_section_id": 158
+              },
+              {
+                "current_penalty": 157,
+                "delivery_group_id": 18,
+                "from_section_id": 141,
+                "hypothetical_penalty": 147,
+                "positive_leverage": 10,
+                "request_id": 3834,
+                "to_section_id": 140
+              },
+              {
+                "current_penalty": 140,
+                "delivery_group_id": 24,
+                "from_section_id": 187,
+                "hypothetical_penalty": 130,
+                "positive_leverage": 10,
+                "request_id": 3839,
+                "to_section_id": 183
+              },
+              {
+                "current_penalty": 250,
+                "delivery_group_id": 17,
+                "from_section_id": 136,
+                "hypothetical_penalty": 242,
+                "positive_leverage": 8,
+                "request_id": 3833,
+                "to_section_id": 131
+              }
+            ],
+            "relevant_group_count": 8,
+            "strongest_single_move": 14,
+            "student_id": 480,
+            "total_positive_leverage": 214
+          },
+          {
+            "alternate_section_opportunity_count": 52,
+            "delivery_group_ids": [
+              1,
+              2,
+              3,
+              4,
+              37,
+              38,
+              39,
+              40
+            ],
+            "move_facts": [
+              {
+                "current_penalty": 237,
+                "delivery_group_id": 2,
+                "from_section_id": 10,
+                "hypothetical_penalty": 225,
+                "positive_leverage": 12,
+                "request_id": 3852,
+                "to_section_id": 13
+              },
+              {
+                "current_penalty": 144,
+                "delivery_group_id": 38,
+                "from_section_id": 283,
+                "hypothetical_penalty": 132,
+                "positive_leverage": 12,
+                "request_id": 3855,
+                "to_section_id": 280
+              },
+              {
+                "current_penalty": 237,
+                "delivery_group_id": 2,
+                "from_section_id": 10,
+                "hypothetical_penalty": 227,
+                "positive_leverage": 10,
+                "request_id": 3852,
+                "to_section_id": 11
+              },
+              {
+                "current_penalty": 176,
+                "delivery_group_id": 3,
+                "from_section_id": 21,
+                "hypothetical_penalty": 166,
+                "positive_leverage": 10,
+                "request_id": 3849,
+                "to_section_id": 17
+              },
+              {
+                "current_penalty": 156,
+                "delivery_group_id": 39,
+                "from_section_id": 287,
+                "hypothetical_penalty": 146,
+                "positive_leverage": 10,
+                "request_id": 3856,
+                "to_section_id": 288
+              },
+              {
+                "current_penalty": 144,
+                "delivery_group_id": 37,
+                "from_section_id": 279,
+                "hypothetical_penalty": 134,
+                "positive_leverage": 10,
+                "request_id": 3854,
+                "to_section_id": 275
+              },
+              {
+                "current_penalty": 144,
+                "delivery_group_id": 38,
+                "from_section_id": 283,
+                "hypothetical_penalty": 134,
+                "positive_leverage": 10,
+                "request_id": 3855,
+                "to_section_id": 285
+              },
+              {
+                "current_penalty": 109,
+                "delivery_group_id": 1,
+                "from_section_id": 1,
+                "hypothetical_penalty": 99,
+                "positive_leverage": 10,
+                "request_id": 3851,
+                "to_section_id": 2
+              },
+              {
+                "current_penalty": 109,
+                "delivery_group_id": 1,
+                "from_section_id": 1,
+                "hypothetical_penalty": 99,
+                "positive_leverage": 10,
+                "request_id": 3851,
+                "to_section_id": 3
+              },
+              {
+                "current_penalty": 109,
+                "delivery_group_id": 1,
+                "from_section_id": 1,
+                "hypothetical_penalty": 99,
+                "positive_leverage": 10,
+                "request_id": 3851,
+                "to_section_id": 4
+              }
+            ],
+            "relevant_group_count": 8,
+            "strongest_single_move": 12,
+            "student_id": 482,
+            "total_positive_leverage": 218
+          },
+          {
+            "alternate_section_opportunity_count": 52,
+            "delivery_group_ids": [
+              5,
+              6,
+              7,
+              8,
+              33,
+              34,
+              35,
+              36
+            ],
+            "move_facts": [
+              {
+                "current_penalty": 127,
+                "delivery_group_id": 8,
+                "from_section_id": 58,
+                "hypothetical_penalty": 113,
+                "positive_leverage": 14,
+                "request_id": 4106,
+                "to_section_id": 64
+              },
+              {
+                "current_penalty": 176,
+                "delivery_group_id": 6,
+                "from_section_id": 43,
+                "hypothetical_penalty": 164,
+                "positive_leverage": 12,
+                "request_id": 4108,
+                "to_section_id": 47
+              },
+              {
+                "current_penalty": 176,
+                "delivery_group_id": 6,
+                "from_section_id": 43,
+                "hypothetical_penalty": 166,
+                "positive_leverage": 10,
+                "request_id": 4108,
+                "to_section_id": 45
+              },
+              {
+                "current_penalty": 144,
+                "delivery_group_id": 36,
+                "from_section_id": 268,
+                "hypothetical_penalty": 134,
+                "positive_leverage": 10,
+                "request_id": 4109,
+                "to_section_id": 272
+              },
+              {
+                "current_penalty": 127,
+                "delivery_group_id": 8,
+                "from_section_id": 58,
+                "hypothetical_penalty": 117,
+                "positive_leverage": 10,
+                "request_id": 4106,
+                "to_section_id": 61
+              },
+              {
+                "current_penalty": 127,
+                "delivery_group_id": 8,
+                "from_section_id": 58,
+                "hypothetical_penalty": 117,
+                "positive_leverage": 10,
+                "request_id": 4106,
+                "to_section_id": 62
+              },
+              {
+                "current_penalty": 108,
+                "delivery_group_id": 34,
+                "from_section_id": 257,
+                "hypothetical_penalty": 98,
+                "positive_leverage": 10,
+                "request_id": 4111,
+                "to_section_id": 254
+              },
+              {
+                "current_penalty": 273,
+                "delivery_group_id": 7,
+                "from_section_id": 56,
+                "hypothetical_penalty": 265,
+                "positive_leverage": 8,
+                "request_id": 4105,
+                "to_section_id": 49
+              },
+              {
+                "current_penalty": 273,
+                "delivery_group_id": 7,
+                "from_section_id": 56,
+                "hypothetical_penalty": 265,
+                "positive_leverage": 8,
+                "request_id": 4105,
+                "to_section_id": 54
+              },
+              {
+                "current_penalty": 144,
+                "delivery_group_id": 36,
+                "from_section_id": 268,
+                "hypothetical_penalty": 136,
+                "positive_leverage": 8,
+                "request_id": 4109,
+                "to_section_id": 271
+              }
+            ],
+            "relevant_group_count": 8,
+            "strongest_single_move": 14,
+            "student_id": 514,
+            "total_positive_leverage": 210
+          }
+        ],
+        "selected_student_ids": [
+          25,
+          90,
+          175,
+          360,
+          417,
+          480,
+          482,
+          514
+        ],
+        "selection_reason": "fixed_scope",
+        "target_scope_size": 8,
+        "top_delivery_groups": [
+          {
+            "delivery_group_id": 7,
+            "movable_student_count": 265,
+            "overfull_section_ids": [
+              50,
+              52,
+              56
+            ],
+            "pairwise_penalty": 273,
+            "relevant_student_count": 265,
+            "relevant_student_ids": [
+              4,
+              9,
+              14,
+              19,
+              24,
+              29,
+              34,
+              39,
+              44,
+              49,
+              54,
+              59,
+              64,
+              69,
+              74,
+              79,
+              84,
+              89,
+              94,
+              99
+            ],
+            "section_capacities": [
+              [
+                49,
+                40
+              ],
+              [
+                50,
+                40
+              ],
+              [
+                51,
+                40
+              ],
+              [
+                52,
+                40
+              ],
+              [
+                53,
+                40
+              ],
+              [
+                54,
+                40
+              ],
+              [
+                55,
+                40
+              ],
+              [
+                56,
+                40
+              ]
+            ],
+            "section_counts": [
+              [
+                49,
+                21
+              ],
+              [
+                50,
+                40
+              ],
+              [
+                51,
+                39
+              ],
+              [
+                52,
+                40
+              ],
+              [
+                53,
+                39
+              ],
+              [
+                54,
+                21
+              ],
+              [
+                55,
+                25
+              ],
+              [
+                56,
+                40
+              ]
+            ],
+            "total_penalty_share": 0.04058272632674298,
+            "underfull_section_ids": [
+              49,
+              54
+            ]
+          },
+          {
+            "delivery_group_id": 17,
+            "movable_student_count": 266,
+            "overfull_section_ids": [
+              132,
+              133,
+              136
+            ],
+            "pairwise_penalty": 250,
+            "relevant_student_count": 266,
+            "relevant_student_ids": [
+              5,
+              10,
+              15,
+              20,
+              25,
+              30,
+              35,
+              40,
+              45,
+              50,
+              55,
+              60,
+              65,
+              70,
+              75,
+              80,
+              85,
+              90,
+              95,
+              100
+            ],
+            "section_capacities": [
+              [
+                129,
+                40
+              ],
+              [
+                130,
+                40
+              ],
+              [
+                131,
+                40
+              ],
+              [
+                132,
+                40
+              ],
+              [
+                133,
+                40
+              ],
+              [
+                134,
+                40
+              ],
+              [
+                135,
+                40
+              ],
+              [
+                136,
+                40
+              ]
+            ],
+            "section_counts": [
+              [
+                129,
+                30
+              ],
+              [
+                130,
+                36
+              ],
+              [
+                131,
+                24
+              ],
+              [
+                132,
+                40
+              ],
+              [
+                133,
+                40
+              ],
+              [
+                134,
+                20
+              ],
+              [
+                135,
+                36
+              ],
+              [
+                136,
+                40
+              ]
+            ],
+            "total_penalty_share": 0.03716366879738368,
+            "underfull_section_ids": [
+              134
+            ]
+          },
+          {
+            "delivery_group_id": 4,
+            "movable_student_count": 264,
+            "overfull_section_ids": [
+              28,
+              29,
+              30,
+              31
+            ],
+            "pairwise_penalty": 246,
+            "relevant_student_count": 264,
+            "relevant_student_ids": [
+              2,
+              7,
+              12,
+              17,
+              22,
+              27,
+              32,
+              37,
+              42,
+              47,
+              52,
+              57,
+              62,
+              67,
+              72,
+              77,
+              82,
+              87,
+              92,
+              97
+            ],
+            "section_capacities": [
+              [
+                25,
+                40
+              ],
+              [
+                26,
+                40
+              ],
+              [
+                27,
+                40
+              ],
+              [
+                28,
+                40
+              ],
+              [
+                29,
+                40
+              ],
+              [
+                30,
+                40
+              ],
+              [
+                31,
+                40
+              ],
+              [
+                32,
+                40
+              ]
+            ],
+            "section_counts": [
+              [
+                25,
+                21
+              ],
+              [
+                26,
+                28
+              ],
+              [
+                27,
+                28
+              ],
+              [
+                28,
+                40
+              ],
+              [
+                29,
+                40
+              ],
+              [
+                30,
+                40
+              ],
+              [
+                31,
+                40
+              ],
+              [
+                32,
+                27
+              ]
+            ],
+            "total_penalty_share": 0.03656905009662554,
+            "underfull_section_ids": [
+              25
+            ]
+          },
+          {
+            "delivery_group_id": 2,
+            "movable_student_count": 265,
+            "overfull_section_ids": [
+              10,
+              14
+            ],
+            "pairwise_penalty": 237,
+            "relevant_student_count": 265,
+            "relevant_student_ids": [
+              2,
+              7,
+              12,
+              17,
+              22,
+              27,
+              32,
+              37,
+              42,
+              47,
+              52,
+              57,
+              62,
+              67,
+              72,
+              77,
+              82,
+              87,
+              92,
+              97
+            ],
+            "section_capacities": [
+              [
+                9,
+                40
+              ],
+              [
+                10,
+                40
+              ],
+              [
+                11,
+                40
+              ],
+              [
+                12,
+                40
+              ],
+              [
+                13,
+                40
+              ],
+              [
+                14,
+                40
+              ],
+              [
+                15,
+                40
+              ],
+              [
+                16,
+                40
+              ]
+            ],
+            "section_counts": [
+              [
+                9,
+                33
+              ],
+              [
+                10,
+                40
+              ],
+              [
+                11,
+                26
+              ],
+              [
+                12,
+                36
+              ],
+              [
+                13,
+                18
+              ],
+              [
+                14,
+                40
+              ],
+              [
+                15,
+                37
+              ],
+              [
+                16,
+                35
+              ]
+            ],
+            "total_penalty_share": 0.035231158019919724,
+            "underfull_section_ids": [
+              13
+            ]
+          },
+          {
+            "delivery_group_id": 15,
+            "movable_student_count": 266,
+            "overfull_section_ids": [
+              113,
+              115,
+              118
+            ],
+            "pairwise_penalty": 236,
+            "relevant_student_count": 266,
+            "relevant_student_ids": [
+              3,
+              8,
+              13,
+              18,
+              23,
+              28,
+              33,
+              38,
+              43,
+              48,
+              53,
+              58,
+              63,
+              68,
+              73,
+              78,
+              83,
+              88,
+              93,
+              98
+            ],
+            "section_capacities": [
+              [
+                113,
+                40
+              ],
+              [
+                114,
+                40
+              ],
+              [
+                115,
+                40
+              ],
+              [
+                116,
+                40
+              ],
+              [
+                117,
+                40
+              ],
+              [
+                118,
+                40
+              ],
+              [
+                119,
+                40
+              ],
+              [
+                120,
+                40
+              ]
+            ],
+            "section_counts": [
+              [
+                113,
+                40
+              ],
+              [
+                114,
+                39
+              ],
+              [
+                115,
+                40
+              ],
+              [
+                116,
+                26
+              ],
+              [
+                117,
+                31
+              ],
+              [
+                118,
+                40
+              ],
+              [
+                119,
+                27
+              ],
+              [
+                120,
+                23
+              ]
+            ],
+            "total_penalty_share": 0.03508250334473019,
+            "underfull_section_ids": [
+              120
+            ]
+          },
+          {
+            "delivery_group_id": 13,
+            "movable_student_count": 265,
+            "overfull_section_ids": [
+              98,
+              102
+            ],
+            "pairwise_penalty": 235,
+            "relevant_student_count": 265,
+            "relevant_student_ids": [
+              3,
+              8,
+              13,
+              18,
+              23,
+              28,
+              33,
+              38,
+              43,
+              48,
+              53,
+              58,
+              63,
+              68,
+              73,
+              78,
+              83,
+              88,
+              93,
+              98
+            ],
+            "section_capacities": [
+              [
+                97,
+                40
+              ],
+              [
+                98,
+                40
+              ],
+              [
+                99,
+                40
+              ],
+              [
+                100,
+                40
+              ],
+              [
+                101,
+                40
+              ],
+              [
+                102,
+                40
+              ],
+              [
+                103,
+                40
+              ],
+              [
+                104,
+                40
+              ]
+            ],
+            "section_counts": [
+              [
+                97,
+                28
+              ],
+              [
+                98,
+                40
+              ],
+              [
+                99,
+                18
+              ],
+              [
+                100,
+                35
+              ],
+              [
+                101,
+                31
+              ],
+              [
+                102,
+                40
+              ],
+              [
+                103,
+                35
+              ],
+              [
+                104,
+                38
+              ]
+            ],
+            "total_penalty_share": 0.034933848669540656,
+            "underfull_section_ids": [
+              99
+            ]
+          },
+          {
+            "delivery_group_id": 11,
+            "movable_student_count": 265,
+            "overfull_section_ids": [
+              84,
+              85
+            ],
+            "pairwise_penalty": 233,
+            "relevant_student_count": 265,
+            "relevant_student_ids": [
+              1,
+              6,
+              11,
+              16,
+              21,
+              26,
+              31,
+              36,
+              41,
+              46,
+              51,
+              56,
+              61,
+              66,
+              71,
+              76,
+              81,
+              86,
+              91,
+              96
+            ],
+            "section_capacities": [
+              [
+                81,
+                40
+              ],
+              [
+                82,
+                40
+              ],
+              [
+                83,
+                40
+              ],
+              [
+                84,
+                40
+              ],
+              [
+                85,
+                40
+              ],
+              [
+                86,
+                40
+              ],
+              [
+                87,
+                40
+              ],
+              [
+                88,
+                40
+              ]
+            ],
+            "section_counts": [
+              [
+                81,
+                29
+              ],
+              [
+                82,
+                23
+              ],
+              [
+                83,
+                30
+              ],
+              [
+                84,
+                40
+              ],
+              [
+                85,
+                40
+              ],
+              [
+                86,
+                39
+              ],
+              [
+                87,
+                39
+              ],
+              [
+                88,
+                25
+              ]
+            ],
+            "total_penalty_share": 0.03463653931916159,
+            "underfull_section_ids": [
+              82
+            ]
+          },
+          {
+            "delivery_group_id": 19,
+            "movable_student_count": 265,
+            "overfull_section_ids": [
+              145,
+              151
+            ],
+            "pairwise_penalty": 229,
+            "relevant_student_count": 265,
+            "relevant_student_ids": [
+              5,
+              10,
+              15,
+              20,
+              25,
+              30,
+              35,
+              40,
+              45,
+              50,
+              55,
+              60,
+              65,
+              70,
+              75,
+              80,
+              85,
+              90,
+              95,
+              100
+            ],
+            "section_capacities": [
+              [
+                145,
+                40
+              ],
+              [
+                146,
+                40
+              ],
+              [
+                147,
+                40
+              ],
+              [
+                148,
+                40
+              ],
+              [
+                149,
+                40
+              ],
+              [
+                150,
+                40
+              ],
+              [
+                151,
+                40
+              ],
+              [
+                152,
+                40
+              ]
+            ],
+            "section_counts": [
+              [
+                145,
+                40
+              ],
+              [
+                146,
+                37
+              ],
+              [
+                147,
+                29
+              ],
+              [
+                148,
+                38
+              ],
+              [
+                149,
+                33
+              ],
+              [
+                150,
+                27
+              ],
+              [
+                151,
+                40
+              ],
+              [
+                152,
+                21
+              ]
+            ],
+            "total_penalty_share": 0.03404192061840345,
+            "underfull_section_ids": [
+              152
+            ]
+          },
+          {
+            "delivery_group_id": 5,
+            "movable_student_count": 266,
+            "overfull_section_ids": [
+              37,
+              39
+            ],
+            "pairwise_penalty": 208,
+            "relevant_student_count": 266,
+            "relevant_student_ids": [
+              4,
+              9,
+              14,
+              19,
+              24,
+              29,
+              34,
+              39,
+              44,
+              49,
+              54,
+              59,
+              64,
+              69,
+              74,
+              79,
+              84,
+              89,
+              94,
+              99
+            ],
+            "section_capacities": [
+              [
+                33,
+                40
+              ],
+              [
+                34,
+                40
+              ],
+              [
+                35,
+                40
+              ],
+              [
+                36,
+                40
+              ],
+              [
+                37,
+                40
+              ],
+              [
+                38,
+                40
+              ],
+              [
+                39,
+                40
+              ],
+              [
+                40,
+                40
+              ]
+            ],
+            "section_counts": [
+              [
+                33,
+                39
+              ],
+              [
+                34,
+                28
+              ],
+              [
+                35,
+                24
+              ],
+              [
+                36,
+                32
+              ],
+              [
+                37,
+                40
+              ],
+              [
+                38,
+                28
+              ],
+              [
+                39,
+                40
+              ],
+              [
+                40,
+                35
+              ]
+            ],
+            "total_penalty_share": 0.03092017243942322,
+            "underfull_section_ids": [
+              35
+            ]
+          },
+          {
+            "delivery_group_id": 12,
+            "movable_student_count": 264,
+            "overfull_section_ids": [
+              90
+            ],
+            "pairwise_penalty": 192,
+            "relevant_student_count": 264,
+            "relevant_student_ids": [
+              1,
+              6,
+              11,
+              16,
+              21,
+              26,
+              31,
+              36,
+              41,
+              46,
+              51,
+              56,
+              61,
+              66,
+              71,
+              76,
+              81,
+              86,
+              91,
+              96
+            ],
+            "section_capacities": [
+              [
+                89,
+                40
+              ],
+              [
+                90,
+                40
+              ],
+              [
+                91,
+                40
+              ],
+              [
+                92,
+                40
+              ],
+              [
+                93,
+                40
+              ],
+              [
+                94,
+                40
+              ],
+              [
+                95,
+                40
+              ],
+              [
+                96,
+                40
+              ]
+            ],
+            "section_counts": [
+              [
+                89,
+                37
+              ],
+              [
+                90,
+                40
+              ],
+              [
+                91,
+                36
+              ],
+              [
+                92,
+                25
+              ],
+              [
+                93,
+                34
+              ],
+              [
+                94,
+                24
+              ],
+              [
+                95,
+                37
+              ],
+              [
+                96,
+                31
+              ]
+            ],
+            "total_penalty_share": 0.028541697636390664,
+            "underfull_section_ids": [
+              94
+            ]
+          }
+        ],
+        "total_pairwise_utilization_penalty": 6727
+      },
+      "time_limit_seconds": 29.99999830010347,
+      "transition_reason": "no_improvement_expand",
+      "validation_classification": "validation_unknown",
+      "validation_elapsed_seconds": 15.443283399916254,
+      "validation_error": null,
+      "validation_solver_outcome": "unknown"
+    }
+  ],
+  "benchmark_manifest_fingerprint": "c07c77d0aa077a3e72240f27644d86b8a1a4faecb2f72a900aacc3fcb792d28a",
+  "benchmark_name": "adaptive-policy-variance-v2-20260828",
+  "branches": 1295,
+  "candidate_adopted": false,
+  "candidate_found": false,
+  "candidate_source_decision_fingerprint": "e96af0a2ffe17dd5b13b5f59ce50489610a44f2fa64e2bc96abb872f86157d94",
+  "candidate_validated": false,
+  "component_deltas": {
+    "course_category_diversity_penalty": 0,
+    "course_sequence_preferences_penalty": 0,
+    "difficulty_balance_penalty": 0,
+    "section_utilization_balance_penalty": 0,
+    "student_semester_balance_penalty": 0
+  },
+  "conflicts": 1,
+  "counselor_profile": {
+    "course_category_diversity": 6,
+    "course_sequence_preferences": 6,
+    "difficulty_balance": 6,
+    "section_utilization_balance": 6,
+    "student_semester_balance": 6
+  },
+  "cp_sat_max_deterministic_time_seconds": null,
+  "cp_sat_random_seed": 101,
+  "cp_sat_wall_time_seconds": 4.7869322,
+  "downstream": {},
+  "execution_status": "completed",
+  "final_components": {
+    "course_category_diversity_penalty": 22150,
+    "course_sequence_preferences_penalty": 0,
+    "difficulty_balance_penalty": 35973,
+    "section_utilization_balance_penalty": 6727,
+    "student_semester_balance_penalty": 175
+  },
+  "final_pressure": {
+    "meaningful_opportunity_student_count": 1156,
+    "nonzero_pressure_student_count": 46,
+    "ranked_student_ids": [
+      1052,
+      1068,
+      1072,
+      1042,
+      1043,
+      1044,
+      1046,
+      1047,
+      1049,
+      1051
+    ],
+    "top_10_share": 0.2653061224489796,
+    "top_1_share": 0.04081632653061224,
+    "top_2_share": 0.08163265306122448,
+    "top_5_share": 0.16326530612244897,
+    "total_weighted_pressure": 294
+  },
+  "final_role_facts": {
+    "section_utilization": {
+      "normalized_penalty": 1712,
+      "raw_penalty": 6727,
+      "weighted_normalized_contribution": 10272
+    }
+  },
+  "final_role_value": 6727,
+  "final_value": 37596.0,
+  "first_improvement_seconds": null,
+  "full_validation_seconds": 15.443283399916254,
+  "hard_wall_seconds": 600.0,
+  "input_fingerprint": "c07c77d0aa077a3e72240f27644d86b8a1a4faecb2f72a900aacc3fcb792d28a",
+  "max_changed_students": 8,
+  "model_constraint_count": 200527,
+  "model_variable_count": 112322,
+  "objective_semantics_version": "v2",
+  "operator": "targeted_utilization_r64_s8",
+  "output_protocol_complete": true,
+  "parent_elapsed_seconds": 163.0339162000455,
+  "per_attempt_time_limit_seconds": 30.0,
+  "preparation_seconds": 35.05435899994336,
+  "radius": 64,
+  "ranking_policy": "v2_counselor_weighted_pressure",
+  "resource": {
+    "available": true,
+    "elapsed_seconds": 50.54899959999602,
+    "ending_cpu_system_seconds": 16.140625,
+    "ending_cpu_user_seconds": 89.171875,
+    "ending_pagefile_bytes": 950804480,
+    "ending_uss_bytes": 691703808,
+    "ending_working_set_bytes": 727703552,
+    "logical_cpu_count": 8,
+    "peak_child_process_count": 0,
+    "peak_pagefile_bytes": 1049272320,
+    "peak_thread_count": 16,
+    "peak_tree_uss_bytes": 785211392,
+    "peak_tree_working_set_bytes": 821207040,
+    "peak_uss_bytes": 785211392,
+    "peak_working_set_bytes": 821207040,
+    "peak_working_set_timestamp_monotonic": 662004.0658134,
+    "pid": 16488,
+    "representative_process_cpu_percent": 0.0,
+    "representative_working_set_bytes": 821207040,
+    "sample_count": 138,
+    "source": "psutil",
+    "starting_cpu_system_seconds": 4.15625,
+    "starting_cpu_user_seconds": 57.234375,
+    "starting_pagefile_bytes": 669614080,
+    "starting_uss_bytes": 421154816,
+    "starting_working_set_bytes": 456962048,
+    "system_available_memory_bytes": 3179126784,
+    "system_memory_percent": 81.4,
+    "system_total_memory_bytes": 17052241920
+  },
+  "role": "section_utilization_repair",
+  "role_specific_gain": 0,
+  "schema": "student_assignment_adaptive_variance_trial_v1",
+  "seed_validation": {
+    "assignment_count": 10635,
+    "complete": true,
+    "elapsed_seconds": 34.61499510006979,
+    "full_model_validation": true,
+    "solver_outcome": "feasible",
+    "source_fingerprint_matches": true,
+    "special_commitment_count": 310,
+    "unmet_request_count": 0
+  },
+  "selected_grade": null,
+  "selected_student_ids": [
+    417,
+    360,
+    482,
+    25,
+    480,
+    90,
+    175,
+    514
+  ],
+  "solver_status": "optimal",
+  "source_seed_fingerprint": "d5036a44e71d5a3b2a94eebe51d645bb4034179a0dd29537492ea81feda2e900",
+  "stagnation": {
+    "adopted_count": 0,
+    "attempt_count": 1,
+    "classification": "stagnant_or_unresolved",
+    "longest_no_gain_streak": 1,
+    "mathematical_optimality_claim": false,
+    "unknown_count": 0
+  },
+  "starting_components": {
+    "course_category_diversity_penalty": 22150,
+    "course_sequence_preferences_penalty": 0,
+    "difficulty_balance_penalty": 35973,
+    "section_utilization_balance_penalty": 6727,
+    "student_semester_balance_penalty": 175
+  },
+  "starting_pressure": {
+    "meaningful_opportunity_student_count": 1156,
+    "nonzero_pressure_student_count": 46,
+    "ranked_student_ids": [
+      1052,
+      1068,
+      1072,
+      1042,
+      1043,
+      1044,
+      1046,
+      1047,
+      1049,
+      1051
+    ],
+    "top_10_share": 0.2653061224489796,
+    "top_1_share": 0.04081632653061224,
+    "top_2_share": 0.08163265306122448,
+    "top_5_share": 0.16326530612244897,
+    "total_weighted_pressure": 294
+  },
+  "starting_role_facts": {
+    "section_utilization": {
+      "normalized_penalty": 1712,
+      "raw_penalty": 6727,
+      "weighted_normalized_contribution": 10272
+    }
+  },
+  "starting_role_value": 6727,
+  "starting_value": 37596.0,
+  "study_id": "adaptive-policy-variance-v2-20260828",
+  "supervision": {
+    "cleanup": {
+      "cleanup_elapsed_seconds": 6.630003917962313e-05,
+      "descendants_clean": true,
+      "initial_process_count": 0,
+      "remaining_process_count": 0,
+      "requested_pid": 16488
+    },
+    "elapsed_seconds": 162.01027780002914,
+    "execution_status": "completed",
+    "hard_deadline_elapsed_seconds": null,
+    "last_worker_phase": {
+      "elapsed_seconds": 159.95824140007608,
+      "event": "completed",
+      "phase": "serialization",
+      "phase_history": [
+        {
+          "elapsed_seconds": 0.00012610002886503935,
+          "event": "started",
+          "phase": "variance_trial"
+        },
+        {
+          "candidate_adopted": false,
+          "candidate_found": false,
+          "candidate_validated": false,
+          "elapsed_seconds": 159.90369129995815,
+          "event": "completed",
+          "phase": "variance_trial"
+        },
+        {
+          "elapsed_seconds": 159.95823790004943,
+          "event": "completed",
+          "phase": "serialization"
+        }
+      ]
+    },
+    "payload": {
+      "attempts": [
+        {
+          "adopted": false,
+          "affected_section_ids": [
+            129,
+            136,
+            141,
+            143,
+            145,
+            151,
+            161,
+            162,
+            163,
+            168,
+            170,
+            174,
+            178,
+            179,
+            180,
+            185,
+            187,
+            262,
+            264
+          ],
+          "affected_student_ids": [
+            90,
+            360,
+            480,
+            514
+          ],
+          "attempt_number_for_radius": 1,
+          "best_bound": null,
+          "branches": 1295,
+          "candidate_quality_summary": {
+            "course_category_diversity": {
+              "distribution": {
+                "count": 1340,
+                "maximum": 200.0,
+                "mean": 16.529851,
+                "median": 0.0,
+                "minimum": 0.0,
+                "p75": 0.0,
+                "p90": 100.0,
+                "p95": 100.0
+              },
+              "reconstructed_penalty": 22150,
+              "reconstruction_delta": 0.0,
+              "solver_aligned_penalty": 22150.0
+            },
+            "course_sequence_preferences": {
+              "applicable_student_count": 0,
+              "eligible_opportunity_count": 0,
+              "reconstructed_penalty": 0,
+              "reconstruction_delta": -0.0,
+              "satisfaction_rate": null,
+              "satisfied_opportunity_count": 0,
+              "solver_aligned_penalty": -0.0,
+              "solver_aligned_satisfied": 0,
+              "students_with_satisfied_opportunity_count": 0,
+              "unsatisfied_opportunity_count": 0
+            },
+            "difficulty_balance": {
+              "distribution": {
+                "count": 1340,
+                "maximum": 136.0,
+                "mean": 26.845522,
+                "median": 20.0,
+                "minimum": 0.0,
+                "p75": 40.0,
+                "p90": 42.0,
+                "p95": 56.0
+              },
+              "perfectly_balanced_count": 184,
+              "reconstructed_penalty": 35973,
+              "reconstruction_delta": 0.0,
+              "solver_aligned_penalty": 35973.0
+            },
+            "objective_semantics": {
+              "components": {
+                "course_category_diversity": {
+                  "denominator": 56200,
+                  "importance_score": 6,
+                  "normalized_penalty": 3941.0,
+                  "raw_penalty": 22150.0,
+                  "weighted_normalized_contribution": 23646.0
+                },
+                "course_sequence_preferences": {
+                  "denominator": 0,
+                  "importance_score": 6,
+                  "normalized_penalty": 0.0,
+                  "raw_penalty": -0.0,
+                  "weighted_normalized_contribution": 0.0
+                },
+                "difficulty_balance": {
+                  "denominator": 670174,
+                  "importance_score": 6,
+                  "normalized_penalty": 536.0,
+                  "raw_penalty": 35973.0,
+                  "weighted_normalized_contribution": 3216.0
+                },
+                "section_utilization_balance": {
+                  "denominator": 39280,
+                  "importance_score": 6,
+                  "normalized_penalty": 1711.0,
+                  "raw_penalty": 6721.0,
+                  "weighted_normalized_contribution": 10266.0
+                },
+                "student_semester_load_balance": {
+                  "denominator": 22549,
+                  "importance_score": 6,
+                  "normalized_penalty": 77.0,
+                  "raw_penalty": 175.0,
+                  "weighted_normalized_contribution": 462.0
+                }
+              },
+              "importance_scores": {
+                "course_category_diversity": 6,
+                "course_sequence_preferences": 6,
+                "difficulty_balance": 6,
+                "section_utilization_balance": 6,
+                "student_semester_balance": 6
+              },
+              "normalized_scale": 10000,
+              "version": "v2"
+            },
+            "request_fulfillment": {
+              "eligible_counts": {
+                "approved_backup": 0,
+                "mandatory": 10760,
+                "primary": 0,
+                "priority_primary": 0
+              },
+              "solver_aligned_counts": {
+                "approved_backup": 0,
+                "mandatory": 10760,
+                "primary": 0,
+                "priority_primary": 0
+              },
+              "special_commitments": {
+                "fulfilled_count": 310,
+                "requested_count": 310,
+                "unmet_count": 0
+              },
+              "unmet_counts": {
+                "approved_backup": 0,
+                "mandatory": 0,
+                "primary": 0,
+                "priority_primary": 0
+              }
+            },
+            "schedule_preservation": {
+              "affected_student_count": 0,
+              "applicable": false,
+              "movable_enrollment_count": 0,
+              "moved_enrollment_count": 0,
+              "moves_per_affected_student": {
+                "count": 0,
+                "maximum": null,
+                "mean": null,
+                "median": null,
+                "minimum": null,
+                "p75": null,
+                "p90": null,
+                "p95": null
+              },
+              "preservation_rate": null,
+              "preserved_enrollment_count": 0,
+              "reconstructed_penalty": 0,
+              "reconstruction_delta": 0.0,
+              "solver_aligned_penalty": 0.0
+            },
+            "section_utilization_balance": {
+              "average_section_deviation_distribution": {
+                "count": 55,
+                "maximum": 8.09375,
+                "mean": 3.598875,
+                "median": 4.285714,
+                "minimum": 0.0,
+                "p75": 5.265306,
+                "p90": 6.375,
+                "p95": 6.5
+              },
+              "delivery_group_count": 55,
+              "delivery_group_imbalance_distribution": {
+                "count": 55,
+                "maximum": 22.0,
+                "mean": 11.6,
+                "median": 14.0,
+                "minimum": 0.0,
+                "p75": 17.0,
+                "p90": 20.0,
+                "p95": 21.0
+              },
+              "pairwise_imbalance_distribution": {
+                "count": 55,
+                "maximum": 273.0,
+                "mean": 122.2,
+                "median": 144.0,
+                "minimum": 0.0,
+                "p75": 176.0,
+                "p90": 235.0,
+                "p95": 246.0
+              },
+              "perfectly_balanced_group_count": 13,
+              "reconstructed_penalty": 6721,
+              "reconstruction_delta": 0.0,
+              "solver_aligned_penalty": 6721.0,
+              "within_one_enrollment_group_count": 13,
+              "within_one_enrollment_group_percentage": 0.236364
+            },
+            "student_semester_load_balance": {
+              "distribution": {
+                "count": 1340,
+                "maximum": 2.0,
+                "mean": 0.130597,
+                "median": 0.0,
+                "minimum": 0.0,
+                "p75": 0.0,
+                "p90": 0.0,
+                "p95": 1.0
+              },
+              "perfectly_balanced_count": 1230,
+              "reconstructed_penalty": 175,
+              "reconstruction_delta": 0.0,
+              "solver_aligned_penalty": 175.0
+            },
+            "version": "student_schedule_quality_v4"
+          },
+          "candidate_source_decision_fingerprint": "e96af0a2ffe17dd5b13b5f59ce50489610a44f2fa64e2bc96abb872f86157d94",
+          "candidate_validated": false,
+          "candidate_value": 37590.0,
+          "changed_source_decision_count": 18,
+          "changed_student_count": 4,
+          "component_deltas": {
+            "course_category_diversity_penalty": 0.0,
+            "difficulty_balance_penalty": 0.0,
+            "schedule_preservation_move_penalty": 0.0,
+            "section_utilization_balance_penalty": -6.0,
+            "soft_sequence_preferences_satisfied": 0.0,
+            "student_semester_balance_penalty": 0.0
+          },
+          "component_values": {
+            "course_category_diversity_penalty": 22150.0,
+            "difficulty_balance_penalty": 35973.0,
+            "normalization": {
+              "course_category_diversity_penalty": {
+                "denominator": 56200,
+                "importance_score": 6,
+                "normalized_scale": 10000
+              },
+              "course_sequence_preferences_penalty": {
+                "denominator": 0,
+                "importance_score": 6,
+                "normalized_scale": 10000
+              },
+              "difficulty_balance_penalty": {
+                "denominator": 670174,
+                "importance_score": 6,
+                "normalized_scale": 10000
+              },
+              "section_utilization_balance_penalty": {
+                "denominator": 39280,
+                "importance_score": 6,
+                "normalized_scale": 10000
+              },
+              "student_semester_balance_penalty": {
+                "denominator": 22549,
+                "importance_score": 6,
+                "normalized_scale": 10000
+              }
+            },
+            "normalized_components": {
+              "course_category_diversity_penalty": 3941.0,
+              "course_sequence_preferences_penalty": 0.0,
+              "difficulty_balance_penalty": 536.0,
+              "section_utilization_balance_penalty": 1711.0,
+              "student_semester_balance_penalty": 77.0
+            },
+            "objective_semantics_version": "v2",
+            "schedule_preservation_move_penalty": 0.0,
+            "section_utilization_balance_penalty": 6721.0,
+            "soft_sequence_preferences_satisfied": 0.0,
+            "student_semester_balance_penalty": 175.0,
+            "weighted_normalized_contributions": {
+              "course_category_diversity_penalty": 23646.0,
+              "course_sequence_preferences_penalty": 0.0,
+              "difficulty_balance_penalty": 3216.0,
+              "section_utilization_balance_penalty": 10266.0,
+              "student_semester_balance_penalty": 462.0
+            }
+          },
+          "conflicts": 1,
+          "cp_sat_max_deterministic_time_seconds": null,
+          "cp_sat_random_seed": 101,
+          "cumulative_session_elapsed_seconds": 50.31235840008594,
+          "deterministic_time_seconds": null,
+          "effective_neighborhood_radius": 64,
+          "elapsed_seconds": 4.868289400008507,
+          "eligible_targeted_source_decision_count": 64,
+          "incumbent_before": 37596,
+          "iteration": 1,
+          "iteration_elapsed_seconds": 49.89340949989855,
+          "iteration_remaining_seconds": 0.0,
+          "iteration_requested_time_limit_seconds": 30.0,
+          "memory": {
+            "available": true,
+            "child_process_count": 0,
+            "child_uss_bytes": 0,
+            "child_working_set_bytes": 0,
+            "cpu_system_seconds": 16.109375,
+            "cpu_user_seconds": 89.171875,
+            "logical_cpu_count": 8,
+            "pagefile_bytes": 950861824,
+            "peak_pagefile_bytes": 950861824,
+            "peak_working_set_bytes": 727728128,
+            "pid": 16488,
+            "process_cpu_percent": 0.0,
+            "sampled_at_monotonic": 662005.23622,
+            "source": "psutil",
+            "system_available_memory_bytes": 3178369024,
+            "system_memory_percent": 81.4,
+            "system_total_memory_bytes": 17052241920,
+            "thread_count": 13,
+            "tree_uss_bytes": 691732480,
+            "tree_working_set_bytes": 727728128,
+            "uss_bytes": 691732480,
+            "vms_bytes": 950861824,
+            "working_set_bytes": 727728128
+          },
+          "model_constraint_count": 200527,
+          "model_variable_count": 112322,
+          "probe_timings": {
+            "candidate_quality_evaluation_seconds": 0.5302763000363484,
+            "completion_constraints_seconds": 1.4570568000199273,
+            "cp_solver_solve_external_wall_seconds": 4.868296499946155,
+            "hint_application_seconds": 3.992659699986689,
+            "model_clone_seconds": 0.2771017999621108,
+            "neighborhood_constraints_seconds": 2.1738579999655485,
+            "objective_and_bound_constraints_seconds": 2.963446000008844,
+            "operation_total_seconds": 31.999476399971172,
+            "semantic_source_decision_extraction_seconds": 12.83306239999365,
+            "solver_creation_seconds": 2.5000073947012424e-05,
+            "solver_reported_wall_time_seconds": 4.7869322
+          },
+          "quality_comparison": {
+            "course_category_diversity": {
+              "change": {
+                "mean_delta": 0.0,
+                "mean_improvement": null,
+                "mean_worsening": null,
+                "percentage_change": 0.0,
+                "sum_delta": 0
+              },
+              "improved": 0,
+              "unchanged": 1340,
+              "worsened": 0
+            },
+            "course_sequence_preferences": {
+              "change": {
+                "mean_delta": null,
+                "mean_improvement": null,
+                "mean_worsening": null,
+                "percentage_change": null,
+                "sum_delta": 0
+              },
+              "improved": 0,
+              "unchanged": 0,
+              "worsened": 0
+            },
+            "difficulty_balance": {
+              "change": {
+                "mean_delta": 0.0,
+                "mean_improvement": null,
+                "mean_worsening": null,
+                "percentage_change": 0.0,
+                "sum_delta": 0
+              },
+              "improved": 0,
+              "unchanged": 1340,
+              "worsened": 0
+            },
+            "request_fulfillment": {
+              "change": {
+                "mean_delta": 0.0,
+                "mean_improvement": null,
+                "mean_worsening": null,
+                "percentage_change": 0.0,
+                "sum_delta": 0
+              },
+              "improved": 0,
+              "unchanged": 10760,
+              "worsened": 0
+            },
+            "schedule_preservation": {
+              "change": {
+                "mean_delta": null,
+                "mean_improvement": null,
+                "mean_worsening": null,
+                "percentage_change": null,
+                "sum_delta": 0
+              },
+              "improved": 0,
+              "unchanged": 0,
+              "worsened": 0
+            },
+            "section_utilization_balance": {
+              "change": {
+                "mean_delta": -0.10909090909090909,
+                "mean_improvement": 6.0,
+                "mean_worsening": null,
+                "percentage_change": -0.0008919280511372082,
+                "sum_delta": -6
+              },
+              "improved": 1,
+              "range_comparison": {
+                "change": {
+                  "mean_delta": -0.01818181818181818,
+                  "mean_improvement": 1.0,
+                  "mean_worsening": null,
+                  "percentage_change": -0.001564945226917058,
+                  "sum_delta": -1
+                },
+                "improved": 1,
+                "unchanged": 54,
+                "worsened": 0
+              },
+              "unchanged": 54,
+              "worsened": 0
+            },
+            "student_semester_load_balance": {
+              "change": {
+                "mean_delta": 0.0,
+                "mean_improvement": null,
+                "mean_worsening": null,
+                "percentage_change": 0.0,
+                "sum_delta": 0
+              },
+              "improved": 0,
+              "unchanged": 1340,
+              "worsened": 0
+            }
+          },
+          "radius": 64,
+          "section_load_deltas": {
+            "262": -1,
+            "264": 1
+          },
+          "selected_grade": null,
+          "solver_wall_time_seconds": 4.7869322,
+          "status": "optimal",
+          "target_guidance": {
+            "delivery_group_count": 42,
+            "guidance_only": true,
+            "objective_attribution": false,
+            "policy": "interaction_aware",
+            "selected_leverage": [
+              {
+                "alternate_section_opportunity_count": 52,
+                "delivery_group_ids": [
+                  17,
+                  18,
+                  19,
+                  20,
+                  21,
+                  22,
+                  23,
+                  24
+                ],
+                "move_facts": [
+                  {
+                    "current_penalty": 168,
+                    "delivery_group_id": 20,
+                    "from_section_id": 155,
+                    "hypothetical_penalty": 154,
+                    "positive_leverage": 14,
+                    "request_id": 195,
+                    "to_section_id": 160
+                  },
+                  {
+                    "current_penalty": 157,
+                    "delivery_group_id": 18,
+                    "from_section_id": 143,
+                    "hypothetical_penalty": 143,
+                    "positive_leverage": 14,
+                    "request_id": 193,
+                    "to_section_id": 140
+                  },
+                  {
+                    "current_penalty": 229,
+                    "delivery_group_id": 19,
+                    "from_section_id": 151,
+                    "hypothetical_penalty": 217,
+                    "positive_leverage": 12,
+                    "request_id": 194,
+                    "to_section_id": 152
+                  },
+                  {
+                    "current_penalty": 168,
+                    "delivery_group_id": 20,
+                    "from_section_id": 155,
+                    "hypothetical_penalty": 156,
+                    "positive_leverage": 12,
+                    "request_id": 195,
+                    "to_section_id": 157
+                  },
+                  {
+                    "current_penalty": 140,
+                    "delivery_group_id": 24,
+                    "from_section_id": 187,
+                    "hypothetical_penalty": 128,
+                    "positive_leverage": 12,
+                    "request_id": 198,
+                    "to_section_id": 188
+                  },
+                  {
+                    "current_penalty": 229,
+                    "delivery_group_id": 19,
+                    "from_section_id": 151,
+                    "hypothetical_penalty": 219,
+                    "positive_leverage": 10,
+                    "request_id": 194,
+                    "to_section_id": 150
+                  },
+                  {
+                    "current_penalty": 168,
+                    "delivery_group_id": 20,
+                    "from_section_id": 155,
+                    "hypothetical_penalty": 158,
+                    "positive_leverage": 10,
+                    "request_id": 195,
+                    "to_section_id": 158
+                  },
+                  {
+                    "current_penalty": 140,
+                    "delivery_group_id": 24,
+                    "from_section_id": 187,
+                    "hypothetical_penalty": 130,
+                    "positive_leverage": 10,
+                    "request_id": 198,
+                    "to_section_id": 183
+                  },
+                  {
+                    "current_penalty": 229,
+                    "delivery_group_id": 19,
+                    "from_section_id": 151,
+                    "hypothetical_penalty": 221,
+                    "positive_leverage": 8,
+                    "request_id": 194,
+                    "to_section_id": 147
+                  },
+                  {
+                    "current_penalty": 184,
+                    "delivery_group_id": 21,
+                    "from_section_id": 162,
+                    "hypothetical_penalty": 176,
+                    "positive_leverage": 8,
+                    "request_id": 199,
+                    "to_section_id": 165
+                  }
+                ],
+                "relevant_group_count": 8,
+                "strongest_single_move": 14,
+                "student_id": 25,
+                "total_positive_leverage": 216
+              },
+              {
+                "alternate_section_opportunity_count": 52,
+                "delivery_group_ids": [
+                  17,
+                  18,
+                  19,
+                  20,
+                  21,
+                  22,
+                  23,
+                  24
+                ],
+                "move_facts": [
+                  {
+                    "current_penalty": 168,
+                    "delivery_group_id": 20,
+                    "from_section_id": 155,
+                    "hypothetical_penalty": 154,
+                    "positive_leverage": 14,
+                    "request_id": 714,
+                    "to_section_id": 160
+                  },
+                  {
+                    "current_penalty": 229,
+                    "delivery_group_id": 19,
+                    "from_section_id": 145,
+                    "hypothetical_penalty": 217,
+                    "positive_leverage": 12,
+                    "request_id": 713,
+                    "to_section_id": 152
+                  },
+                  {
+                    "current_penalty": 168,
+                    "delivery_group_id": 20,
+                    "from_section_id": 155,
+                    "hypothetical_penalty": 156,
+                    "positive_leverage": 12,
+                    "request_id": 714,
+                    "to_section_id": 157
+                  },
+                  {
+                    "current_penalty": 250,
+                    "delivery_group_id": 17,
+                    "from_section_id": 136,
+                    "hypothetical_penalty": 240,
+                    "positive_leverage": 10,
+                    "request_id": 715,
+                    "to_section_id": 134
+                  },
+                  {
+                    "current_penalty": 229,
+                    "delivery_group_id": 19,
+                    "from_section_id": 145,
+                    "hypothetical_penalty": 219,
+                    "positive_leverage": 10,
+                    "request_id": 713,
+                    "to_section_id": 150
+                  },
+                  {
+                    "current_penalty": 180,
+                    "delivery_group_id": 23,
+                    "from_section_id": 180,
+                    "hypothetical_penalty": 170,
+                    "positive_leverage": 10,
+                    "request_id": 720,
+                    "to_section_id": 175
+                  },
+                  {
+                    "current_penalty": 168,
+                    "delivery_group_id": 20,
+                    "from_section_id": 155,
+                    "hypothetical_penalty": 158,
+                    "positive_leverage": 10,
+                    "request_id": 714,
+                    "to_section_id": 158
+                  },
+                  {
+                    "current_penalty": 157,
+                    "delivery_group_id": 18,
+                    "from_section_id": 141,
+                    "hypothetical_penalty": 147,
+                    "positive_leverage": 10,
+                    "request_id": 716,
+                    "to_section_id": 140
+                  },
+                  {
+                    "current_penalty": 250,
+                    "delivery_group_id": 17,
+                    "from_section_id": 136,
+                    "hypothetical_penalty": 242,
+                    "positive_leverage": 8,
+                    "request_id": 715,
+                    "to_section_id": 131
+                  },
+                  {
+                    "current_penalty": 229,
+                    "delivery_group_id": 19,
+                    "from_section_id": 145,
+                    "hypothetical_penalty": 221,
+                    "positive_leverage": 8,
+                    "request_id": 713,
+                    "to_section_id": 147
+                  }
+                ],
+                "relevant_group_count": 8,
+                "strongest_single_move": 14,
+                "student_id": 90,
+                "total_positive_leverage": 212
+              },
+              {
+                "alternate_section_opportunity_count": 52,
+                "delivery_group_ids": [
+                  17,
+                  18,
+                  19,
+                  20,
+                  21,
+                  22,
+                  23,
+                  24
+                ],
+                "move_facts": [
+                  {
+                    "current_penalty": 168,
+                    "delivery_group_id": 20,
+                    "from_section_id": 155,
+                    "hypothetical_penalty": 154,
+                    "positive_leverage": 14,
+                    "request_id": 1393,
+                    "to_section_id": 160
+                  },
+                  {
+                    "current_penalty": 229,
+                    "delivery_group_id": 19,
+                    "from_section_id": 151,
+                    "hypothetical_penalty": 217,
+                    "positive_leverage": 12,
+                    "request_id": 1396,
+                    "to_section_id": 152
+                  },
+                  {
+                    "current_penalty": 168,
+                    "delivery_group_id": 20,
+                    "from_section_id": 155,
+                    "hypothetical_penalty": 156,
+                    "positive_leverage": 12,
+                    "request_id": 1393,
+                    "to_section_id": 157
+                  },
+                  {
+                    "current_penalty": 250,
+                    "delivery_group_id": 17,
+                    "from_section_id": 136,
+                    "hypothetical_penalty": 240,
+                    "positive_leverage": 10,
+                    "request_id": 1394,
+                    "to_section_id": 134
+                  },
+                  {
+                    "current_penalty": 229,
+                    "delivery_group_id": 19,
+                    "from_section_id": 151,
+                    "hypothetical_penalty": 219,
+                    "positive_leverage": 10,
+                    "request_id": 1396,
+                    "to_section_id": 150
+                  },
+                  {
+                    "current_penalty": 180,
+                    "delivery_group_id": 23,
+                    "from_section_id": 180,
+                    "hypothetical_penalty": 170,
+                    "positive_leverage": 10,
+                    "request_id": 1399,
+                    "to_section_id": 175
+                  },
+                  {
+                    "current_penalty": 168,
+                    "delivery_group_id": 20,
+                    "from_section_id": 155,
+                    "hypothetical_penalty": 158,
+                    "positive_leverage": 10,
+                    "request_id": 1393,
+                    "to_section_id": 158
+                  },
+                  {
+                    "current_penalty": 146,
+                    "delivery_group_id": 22,
+                    "from_section_id": 173,
+                    "hypothetical_penalty": 136,
+                    "positive_leverage": 10,
+                    "request_id": 1398,
+                    "to_section_id": 170
+                  },
+                  {
+                    "current_penalty": 140,
+                    "delivery_group_id": 24,
+                    "from_section_id": 186,
+                    "hypothetical_penalty": 130,
+                    "positive_leverage": 10,
+                    "request_id": 1400,
+                    "to_section_id": 188
+                  },
+                  {
+                    "current_penalty": 250,
+                    "delivery_group_id": 17,
+                    "from_section_id": 136,
+                    "hypothetical_penalty": 242,
+                    "positive_leverage": 8,
+                    "request_id": 1394,
+                    "to_section_id": 131
+                  }
+                ],
+                "relevant_group_count": 8,
+                "strongest_single_move": 14,
+                "student_id": 175,
+                "total_positive_leverage": 210
+              },
+              {
+                "alternate_section_opportunity_count": 52,
+                "delivery_group_ids": [
+                  17,
+                  18,
+                  19,
+                  20,
+                  21,
+                  22,
+                  23,
+                  24
+                ],
+                "move_facts": [
+                  {
+                    "current_penalty": 168,
+                    "delivery_group_id": 20,
+                    "from_section_id": 155,
+                    "hypothetical_penalty": 154,
+                    "positive_leverage": 14,
+                    "request_id": 2876,
+                    "to_section_id": 160
+                  },
+                  {
+                    "current_penalty": 157,
+                    "delivery_group_id": 18,
+                    "from_section_id": 143,
+                    "hypothetical_penalty": 143,
+                    "positive_leverage": 14,
+                    "request_id": 2874,
+                    "to_section_id": 140
+                  },
+                  {
+                    "current_penalty": 229,
+                    "delivery_group_id": 19,
+                    "from_section_id": 151,
+                    "hypothetical_penalty": 217,
+                    "positive_leverage": 12,
+                    "request_id": 2875,
+                    "to_section_id": 152
+                  },
+                  {
+                    "current_penalty": 168,
+                    "delivery_group_id": 20,
+                    "from_section_id": 155,
+                    "hypothetical_penalty": 156,
+                    "positive_leverage": 12,
+                    "request_id": 2876,
+                    "to_section_id": 157
+                  },
+                  {
+                    "current_penalty": 229,
+                    "delivery_group_id": 19,
+                    "from_section_id": 151,
+                    "hypothetical_penalty": 219,
+                    "positive_leverage": 10,
+                    "request_id": 2875,
+                    "to_section_id": 150
+                  },
+                  {
+                    "current_penalty": 168,
+                    "delivery_group_id": 20,
+                    "from_section_id": 155,
+                    "hypothetical_penalty": 158,
+                    "positive_leverage": 10,
+                    "request_id": 2876,
+                    "to_section_id": 158
+                  },
+                  {
+                    "current_penalty": 146,
+                    "delivery_group_id": 22,
+                    "from_section_id": 174,
+                    "hypothetical_penalty": 136,
+                    "positive_leverage": 10,
+                    "request_id": 2877,
+                    "to_section_id": 170
+                  },
+                  {
+                    "current_penalty": 229,
+                    "delivery_group_id": 19,
+                    "from_section_id": 151,
+                    "hypothetical_penalty": 221,
+                    "positive_leverage": 8,
+                    "request_id": 2875,
+                    "to_section_id": 147
+                  },
+                  {
+                    "current_penalty": 168,
+                    "delivery_group_id": 20,
+                    "from_section_id": 155,
+                    "hypothetical_penalty": 160,
+                    "positive_leverage": 8,
+                    "request_id": 2876,
+                    "to_section_id": 156
+                  },
+                  {
+                    "current_penalty": 157,
+                    "delivery_group_id": 18,
+                    "from_section_id": 143,
+                    "hypothetical_penalty": 149,
+                    "positive_leverage": 8,
+                    "request_id": 2874,
+                    "to_section_id": 137
+                  }
+                ],
+                "relevant_group_count": 8,
+                "strongest_single_move": 14,
+                "student_id": 360,
+                "total_positive_leverage": 218
+              },
+              {
+                "alternate_section_opportunity_count": 52,
+                "delivery_group_ids": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  37,
+                  38,
+                  39,
+                  40
+                ],
+                "move_facts": [
+                  {
+                    "current_penalty": 176,
+                    "delivery_group_id": 3,
+                    "from_section_id": 20,
+                    "hypothetical_penalty": 162,
+                    "positive_leverage": 14,
+                    "request_id": 3330,
+                    "to_section_id": 17
+                  },
+                  {
+                    "current_penalty": 237,
+                    "delivery_group_id": 2,
+                    "from_section_id": 10,
+                    "hypothetical_penalty": 225,
+                    "positive_leverage": 12,
+                    "request_id": 3329,
+                    "to_section_id": 13
+                  },
+                  {
+                    "current_penalty": 144,
+                    "delivery_group_id": 38,
+                    "from_section_id": 283,
+                    "hypothetical_penalty": 132,
+                    "positive_leverage": 12,
+                    "request_id": 3336,
+                    "to_section_id": 280
+                  },
+                  {
+                    "current_penalty": 237,
+                    "delivery_group_id": 2,
+                    "from_section_id": 10,
+                    "hypothetical_penalty": 227,
+                    "positive_leverage": 10,
+                    "request_id": 3329,
+                    "to_section_id": 11
+                  },
+                  {
+                    "current_penalty": 176,
+                    "delivery_group_id": 3,
+                    "from_section_id": 20,
+                    "hypothetical_penalty": 166,
+                    "positive_leverage": 10,
+                    "request_id": 3330,
+                    "to_section_id": 19
+                  },
+                  {
+                    "current_penalty": 176,
+                    "delivery_group_id": 3,
+                    "from_section_id": 20,
+                    "hypothetical_penalty": 166,
+                    "positive_leverage": 10,
+                    "request_id": 3330,
+                    "to_section_id": 24
+                  },
+                  {
+                    "current_penalty": 144,
+                    "delivery_group_id": 37,
+                    "from_section_id": 279,
+                    "hypothetical_penalty": 134,
+                    "positive_leverage": 10,
+                    "request_id": 3335,
+                    "to_section_id": 275
+                  },
+                  {
+                    "current_penalty": 144,
+                    "delivery_group_id": 38,
+                    "from_section_id": 283,
+                    "hypothetical_penalty": 134,
+                    "positive_leverage": 10,
+                    "request_id": 3336,
+                    "to_section_id": 285
+                  },
+                  {
+                    "current_penalty": 237,
+                    "delivery_group_id": 2,
+                    "from_section_id": 10,
+                    "hypothetical_penalty": 229,
+                    "positive_leverage": 8,
+                    "request_id": 3329,
+                    "to_section_id": 9
+                  },
+                  {
+                    "current_penalty": 176,
+                    "delivery_group_id": 3,
+                    "from_section_id": 20,
+                    "hypothetical_penalty": 168,
+                    "positive_leverage": 8,
+                    "request_id": 3330,
+                    "to_section_id": 22
+                  }
+                ],
+                "relevant_group_count": 8,
+                "strongest_single_move": 14,
+                "student_id": 417,
+                "total_positive_leverage": 232
+              },
+              {
+                "alternate_section_opportunity_count": 52,
+                "delivery_group_ids": [
+                  17,
+                  18,
+                  19,
+                  20,
+                  21,
+                  22,
+                  23,
+                  24
+                ],
+                "move_facts": [
+                  {
+                    "current_penalty": 168,
+                    "delivery_group_id": 20,
+                    "from_section_id": 155,
+                    "hypothetical_penalty": 154,
+                    "positive_leverage": 14,
+                    "request_id": 3836,
+                    "to_section_id": 160
+                  },
+                  {
+                    "current_penalty": 229,
+                    "delivery_group_id": 19,
+                    "from_section_id": 145,
+                    "hypothetical_penalty": 217,
+                    "positive_leverage": 12,
+                    "request_id": 3835,
+                    "to_section_id": 152
+                  },
+                  {
+                    "current_penalty": 168,
+                    "delivery_group_id": 20,
+                    "from_section_id": 155,
+                    "hypothetical_penalty": 156,
+                    "positive_leverage": 12,
+                    "request_id": 3836,
+                    "to_section_id": 157
+                  },
+                  {
+                    "current_penalty": 140,
+                    "delivery_group_id": 24,
+                    "from_section_id": 187,
+                    "hypothetical_penalty": 128,
+                    "positive_leverage": 12,
+                    "request_id": 3839,
+                    "to_section_id": 188
+                  },
+                  {
+                    "current_penalty": 250,
+                    "delivery_group_id": 17,
+                    "from_section_id": 136,
+                    "hypothetical_penalty": 240,
+                    "positive_leverage": 10,
+                    "request_id": 3833,
+                    "to_section_id": 134
+                  },
+                  {
+                    "current_penalty": 229,
+                    "delivery_group_id": 19,
+                    "from_section_id": 145,
+                    "hypothetical_penalty": 219,
+                    "positive_leverage": 10,
+                    "request_id": 3835,
+                    "to_section_id": 150
+                  },
+                  {
+                    "current_penalty": 168,
+                    "delivery_group_id": 20,
+                    "from_section_id": 155,
+                    "hypothetical_penalty": 158,
+                    "positive_leverage": 10,
+                    "request_id": 3836,
+                    "to_section_id": 158
+                  },
+                  {
+                    "current_penalty": 157,
+                    "delivery_group_id": 18,
+                    "from_section_id": 141,
+                    "hypothetical_penalty": 147,
+                    "positive_leverage": 10,
+                    "request_id": 3834,
+                    "to_section_id": 140
+                  },
+                  {
+                    "current_penalty": 140,
+                    "delivery_group_id": 24,
+                    "from_section_id": 187,
+                    "hypothetical_penalty": 130,
+                    "positive_leverage": 10,
+                    "request_id": 3839,
+                    "to_section_id": 183
+                  },
+                  {
+                    "current_penalty": 250,
+                    "delivery_group_id": 17,
+                    "from_section_id": 136,
+                    "hypothetical_penalty": 242,
+                    "positive_leverage": 8,
+                    "request_id": 3833,
+                    "to_section_id": 131
+                  }
+                ],
+                "relevant_group_count": 8,
+                "strongest_single_move": 14,
+                "student_id": 480,
+                "total_positive_leverage": 214
+              },
+              {
+                "alternate_section_opportunity_count": 52,
+                "delivery_group_ids": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  37,
+                  38,
+                  39,
+                  40
+                ],
+                "move_facts": [
+                  {
+                    "current_penalty": 237,
+                    "delivery_group_id": 2,
+                    "from_section_id": 10,
+                    "hypothetical_penalty": 225,
+                    "positive_leverage": 12,
+                    "request_id": 3852,
+                    "to_section_id": 13
+                  },
+                  {
+                    "current_penalty": 144,
+                    "delivery_group_id": 38,
+                    "from_section_id": 283,
+                    "hypothetical_penalty": 132,
+                    "positive_leverage": 12,
+                    "request_id": 3855,
+                    "to_section_id": 280
+                  },
+                  {
+                    "current_penalty": 237,
+                    "delivery_group_id": 2,
+                    "from_section_id": 10,
+                    "hypothetical_penalty": 227,
+                    "positive_leverage": 10,
+                    "request_id": 3852,
+                    "to_section_id": 11
+                  },
+                  {
+                    "current_penalty": 176,
+                    "delivery_group_id": 3,
+                    "from_section_id": 21,
+                    "hypothetical_penalty": 166,
+                    "positive_leverage": 10,
+                    "request_id": 3849,
+                    "to_section_id": 17
+                  },
+                  {
+                    "current_penalty": 156,
+                    "delivery_group_id": 39,
+                    "from_section_id": 287,
+                    "hypothetical_penalty": 146,
+                    "positive_leverage": 10,
+                    "request_id": 3856,
+                    "to_section_id": 288
+                  },
+                  {
+                    "current_penalty": 144,
+                    "delivery_group_id": 37,
+                    "from_section_id": 279,
+                    "hypothetical_penalty": 134,
+                    "positive_leverage": 10,
+                    "request_id": 3854,
+                    "to_section_id": 275
+                  },
+                  {
+                    "current_penalty": 144,
+                    "delivery_group_id": 38,
+                    "from_section_id": 283,
+                    "hypothetical_penalty": 134,
+                    "positive_leverage": 10,
+                    "request_id": 3855,
+                    "to_section_id": 285
+                  },
+                  {
+                    "current_penalty": 109,
+                    "delivery_group_id": 1,
+                    "from_section_id": 1,
+                    "hypothetical_penalty": 99,
+                    "positive_leverage": 10,
+                    "request_id": 3851,
+                    "to_section_id": 2
+                  },
+                  {
+                    "current_penalty": 109,
+                    "delivery_group_id": 1,
+                    "from_section_id": 1,
+                    "hypothetical_penalty": 99,
+                    "positive_leverage": 10,
+                    "request_id": 3851,
+                    "to_section_id": 3
+                  },
+                  {
+                    "current_penalty": 109,
+                    "delivery_group_id": 1,
+                    "from_section_id": 1,
+                    "hypothetical_penalty": 99,
+                    "positive_leverage": 10,
+                    "request_id": 3851,
+                    "to_section_id": 4
+                  }
+                ],
+                "relevant_group_count": 8,
+                "strongest_single_move": 12,
+                "student_id": 482,
+                "total_positive_leverage": 218
+              },
+              {
+                "alternate_section_opportunity_count": 52,
+                "delivery_group_ids": [
+                  5,
+                  6,
+                  7,
+                  8,
+                  33,
+                  34,
+                  35,
+                  36
+                ],
+                "move_facts": [
+                  {
+                    "current_penalty": 127,
+                    "delivery_group_id": 8,
+                    "from_section_id": 58,
+                    "hypothetical_penalty": 113,
+                    "positive_leverage": 14,
+                    "request_id": 4106,
+                    "to_section_id": 64
+                  },
+                  {
+                    "current_penalty": 176,
+                    "delivery_group_id": 6,
+                    "from_section_id": 43,
+                    "hypothetical_penalty": 164,
+                    "positive_leverage": 12,
+                    "request_id": 4108,
+                    "to_section_id": 47
+                  },
+                  {
+                    "current_penalty": 176,
+                    "delivery_group_id": 6,
+                    "from_section_id": 43,
+                    "hypothetical_penalty": 166,
+                    "positive_leverage": 10,
+                    "request_id": 4108,
+                    "to_section_id": 45
+                  },
+                  {
+                    "current_penalty": 144,
+                    "delivery_group_id": 36,
+                    "from_section_id": 268,
+                    "hypothetical_penalty": 134,
+                    "positive_leverage": 10,
+                    "request_id": 4109,
+                    "to_section_id": 272
+                  },
+                  {
+                    "current_penalty": 127,
+                    "delivery_group_id": 8,
+                    "from_section_id": 58,
+                    "hypothetical_penalty": 117,
+                    "positive_leverage": 10,
+                    "request_id": 4106,
+                    "to_section_id": 61
+                  },
+                  {
+                    "current_penalty": 127,
+                    "delivery_group_id": 8,
+                    "from_section_id": 58,
+                    "hypothetical_penalty": 117,
+                    "positive_leverage": 10,
+                    "request_id": 4106,
+                    "to_section_id": 62
+                  },
+                  {
+                    "current_penalty": 108,
+                    "delivery_group_id": 34,
+                    "from_section_id": 257,
+                    "hypothetical_penalty": 98,
+                    "positive_leverage": 10,
+                    "request_id": 4111,
+                    "to_section_id": 254
+                  },
+                  {
+                    "current_penalty": 273,
+                    "delivery_group_id": 7,
+                    "from_section_id": 56,
+                    "hypothetical_penalty": 265,
+                    "positive_leverage": 8,
+                    "request_id": 4105,
+                    "to_section_id": 49
+                  },
+                  {
+                    "current_penalty": 273,
+                    "delivery_group_id": 7,
+                    "from_section_id": 56,
+                    "hypothetical_penalty": 265,
+                    "positive_leverage": 8,
+                    "request_id": 4105,
+                    "to_section_id": 54
+                  },
+                  {
+                    "current_penalty": 144,
+                    "delivery_group_id": 36,
+                    "from_section_id": 268,
+                    "hypothetical_penalty": 136,
+                    "positive_leverage": 8,
+                    "request_id": 4109,
+                    "to_section_id": 271
+                  }
+                ],
+                "relevant_group_count": 8,
+                "strongest_single_move": 14,
+                "student_id": 514,
+                "total_positive_leverage": 210
+              }
+            ],
+            "selected_student_ids": [
+              25,
+              90,
+              175,
+              360,
+              417,
+              480,
+              482,
+              514
+            ],
+            "selection_reason": "fixed_scope",
+            "target_scope_size": 8,
+            "top_delivery_groups": [
+              {
+                "delivery_group_id": 7,
+                "movable_student_count": 265,
+                "overfull_section_ids": [
+                  50,
+                  52,
+                  56
+                ],
+                "pairwise_penalty": 273,
+                "relevant_student_count": 265,
+                "relevant_student_ids": [
+                  4,
+                  9,
+                  14,
+                  19,
+                  24,
+                  29,
+                  34,
+                  39,
+                  44,
+                  49,
+                  54,
+                  59,
+                  64,
+                  69,
+                  74,
+                  79,
+                  84,
+                  89,
+                  94,
+                  99
+                ],
+                "section_capacities": [
+                  [
+                    49,
+                    40
+                  ],
+                  [
+                    50,
+                    40
+                  ],
+                  [
+                    51,
+                    40
+                  ],
+                  [
+                    52,
+                    40
+                  ],
+                  [
+                    53,
+                    40
+                  ],
+                  [
+                    54,
+                    40
+                  ],
+                  [
+                    55,
+                    40
+                  ],
+                  [
+                    56,
+                    40
+                  ]
+                ],
+                "section_counts": [
+                  [
+                    49,
+                    21
+                  ],
+                  [
+                    50,
+                    40
+                  ],
+                  [
+                    51,
+                    39
+                  ],
+                  [
+                    52,
+                    40
+                  ],
+                  [
+                    53,
+                    39
+                  ],
+                  [
+                    54,
+                    21
+                  ],
+                  [
+                    55,
+                    25
+                  ],
+                  [
+                    56,
+                    40
+                  ]
+                ],
+                "total_penalty_share": 0.04058272632674298,
+                "underfull_section_ids": [
+                  49,
+                  54
+                ]
+              },
+              {
+                "delivery_group_id": 17,
+                "movable_student_count": 266,
+                "overfull_section_ids": [
+                  132,
+                  133,
+                  136
+                ],
+                "pairwise_penalty": 250,
+                "relevant_student_count": 266,
+                "relevant_student_ids": [
+                  5,
+                  10,
+                  15,
+                  20,
+                  25,
+                  30,
+                  35,
+                  40,
+                  45,
+                  50,
+                  55,
+                  60,
+                  65,
+                  70,
+                  75,
+                  80,
+                  85,
+                  90,
+                  95,
+                  100
+                ],
+                "section_capacities": [
+                  [
+                    129,
+                    40
+                  ],
+                  [
+                    130,
+                    40
+                  ],
+                  [
+                    131,
+                    40
+                  ],
+                  [
+                    132,
+                    40
+                  ],
+                  [
+                    133,
+                    40
+                  ],
+                  [
+                    134,
+                    40
+                  ],
+                  [
+                    135,
+                    40
+                  ],
+                  [
+                    136,
+                    40
+                  ]
+                ],
+                "section_counts": [
+                  [
+                    129,
+                    30
+                  ],
+                  [
+                    130,
+                    36
+                  ],
+                  [
+                    131,
+                    24
+                  ],
+                  [
+                    132,
+                    40
+                  ],
+                  [
+                    133,
+                    40
+                  ],
+                  [
+                    134,
+                    20
+                  ],
+                  [
+                    135,
+                    36
+                  ],
+                  [
+                    136,
+                    40
+                  ]
+                ],
+                "total_penalty_share": 0.03716366879738368,
+                "underfull_section_ids": [
+                  134
+                ]
+              },
+              {
+                "delivery_group_id": 4,
+                "movable_student_count": 264,
+                "overfull_section_ids": [
+                  28,
+                  29,
+                  30,
+                  31
+                ],
+                "pairwise_penalty": 246,
+                "relevant_student_count": 264,
+                "relevant_student_ids": [
+                  2,
+                  7,
+                  12,
+                  17,
+                  22,
+                  27,
+                  32,
+                  37,
+                  42,
+                  47,
+                  52,
+                  57,
+                  62,
+                  67,
+                  72,
+                  77,
+                  82,
+                  87,
+                  92,
+                  97
+                ],
+                "section_capacities": [
+                  [
+                    25,
+                    40
+                  ],
+                  [
+                    26,
+                    40
+                  ],
+                  [
+                    27,
+                    40
+                  ],
+                  [
+                    28,
+                    40
+                  ],
+                  [
+                    29,
+                    40
+                  ],
+                  [
+                    30,
+                    40
+                  ],
+                  [
+                    31,
+                    40
+                  ],
+                  [
+                    32,
+                    40
+                  ]
+                ],
+                "section_counts": [
+                  [
+                    25,
+                    21
+                  ],
+                  [
+                    26,
+                    28
+                  ],
+                  [
+                    27,
+                    28
+                  ],
+                  [
+                    28,
+                    40
+                  ],
+                  [
+                    29,
+                    40
+                  ],
+                  [
+                    30,
+                    40
+                  ],
+                  [
+                    31,
+                    40
+                  ],
+                  [
+                    32,
+                    27
+                  ]
+                ],
+                "total_penalty_share": 0.03656905009662554,
+                "underfull_section_ids": [
+                  25
+                ]
+              },
+              {
+                "delivery_group_id": 2,
+                "movable_student_count": 265,
+                "overfull_section_ids": [
+                  10,
+                  14
+                ],
+                "pairwise_penalty": 237,
+                "relevant_student_count": 265,
+                "relevant_student_ids": [
+                  2,
+                  7,
+                  12,
+                  17,
+                  22,
+                  27,
+                  32,
+                  37,
+                  42,
+                  47,
+                  52,
+                  57,
+                  62,
+                  67,
+                  72,
+                  77,
+                  82,
+                  87,
+                  92,
+                  97
+                ],
+                "section_capacities": [
+                  [
+                    9,
+                    40
+                  ],
+                  [
+                    10,
+                    40
+                  ],
+                  [
+                    11,
+                    40
+                  ],
+                  [
+                    12,
+                    40
+                  ],
+                  [
+                    13,
+                    40
+                  ],
+                  [
+                    14,
+                    40
+                  ],
+                  [
+                    15,
+                    40
+                  ],
+                  [
+                    16,
+                    40
+                  ]
+                ],
+                "section_counts": [
+                  [
+                    9,
+                    33
+                  ],
+                  [
+                    10,
+                    40
+                  ],
+                  [
+                    11,
+                    26
+                  ],
+                  [
+                    12,
+                    36
+                  ],
+                  [
+                    13,
+                    18
+                  ],
+                  [
+                    14,
+                    40
+                  ],
+                  [
+                    15,
+                    37
+                  ],
+                  [
+                    16,
+                    35
+                  ]
+                ],
+                "total_penalty_share": 0.035231158019919724,
+                "underfull_section_ids": [
+                  13
+                ]
+              },
+              {
+                "delivery_group_id": 15,
+                "movable_student_count": 266,
+                "overfull_section_ids": [
+                  113,
+                  115,
+                  118
+                ],
+                "pairwise_penalty": 236,
+                "relevant_student_count": 266,
+                "relevant_student_ids": [
+                  3,
+                  8,
+                  13,
+                  18,
+                  23,
+                  28,
+                  33,
+                  38,
+                  43,
+                  48,
+                  53,
+                  58,
+                  63,
+                  68,
+                  73,
+                  78,
+                  83,
+                  88,
+                  93,
+                  98
+                ],
+                "section_capacities": [
+                  [
+                    113,
+                    40
+                  ],
+                  [
+                    114,
+                    40
+                  ],
+                  [
+                    115,
+                    40
+                  ],
+                  [
+                    116,
+                    40
+                  ],
+                  [
+                    117,
+                    40
+                  ],
+                  [
+                    118,
+                    40
+                  ],
+                  [
+                    119,
+                    40
+                  ],
+                  [
+                    120,
+                    40
+                  ]
+                ],
+                "section_counts": [
+                  [
+                    113,
+                    40
+                  ],
+                  [
+                    114,
+                    39
+                  ],
+                  [
+                    115,
+                    40
+                  ],
+                  [
+                    116,
+                    26
+                  ],
+                  [
+                    117,
+                    31
+                  ],
+                  [
+                    118,
+                    40
+                  ],
+                  [
+                    119,
+                    27
+                  ],
+                  [
+                    120,
+                    23
+                  ]
+                ],
+                "total_penalty_share": 0.03508250334473019,
+                "underfull_section_ids": [
+                  120
+                ]
+              },
+              {
+                "delivery_group_id": 13,
+                "movable_student_count": 265,
+                "overfull_section_ids": [
+                  98,
+                  102
+                ],
+                "pairwise_penalty": 235,
+                "relevant_student_count": 265,
+                "relevant_student_ids": [
+                  3,
+                  8,
+                  13,
+                  18,
+                  23,
+                  28,
+                  33,
+                  38,
+                  43,
+                  48,
+                  53,
+                  58,
+                  63,
+                  68,
+                  73,
+                  78,
+                  83,
+                  88,
+                  93,
+                  98
+                ],
+                "section_capacities": [
+                  [
+                    97,
+                    40
+                  ],
+                  [
+                    98,
+                    40
+                  ],
+                  [
+                    99,
+                    40
+                  ],
+                  [
+                    100,
+                    40
+                  ],
+                  [
+                    101,
+                    40
+                  ],
+                  [
+                    102,
+                    40
+                  ],
+                  [
+                    103,
+                    40
+                  ],
+                  [
+                    104,
+                    40
+                  ]
+                ],
+                "section_counts": [
+                  [
+                    97,
+                    28
+                  ],
+                  [
+                    98,
+                    40
+                  ],
+                  [
+                    99,
+                    18
+                  ],
+                  [
+                    100,
+                    35
+                  ],
+                  [
+                    101,
+                    31
+                  ],
+                  [
+                    102,
+                    40
+                  ],
+                  [
+                    103,
+                    35
+                  ],
+                  [
+                    104,
+                    38
+                  ]
+                ],
+                "total_penalty_share": 0.034933848669540656,
+                "underfull_section_ids": [
+                  99
+                ]
+              },
+              {
+                "delivery_group_id": 11,
+                "movable_student_count": 265,
+                "overfull_section_ids": [
+                  84,
+                  85
+                ],
+                "pairwise_penalty": 233,
+                "relevant_student_count": 265,
+                "relevant_student_ids": [
+                  1,
+                  6,
+                  11,
+                  16,
+                  21,
+                  26,
+                  31,
+                  36,
+                  41,
+                  46,
+                  51,
+                  56,
+                  61,
+                  66,
+                  71,
+                  76,
+                  81,
+                  86,
+                  91,
+                  96
+                ],
+                "section_capacities": [
+                  [
+                    81,
+                    40
+                  ],
+                  [
+                    82,
+                    40
+                  ],
+                  [
+                    83,
+                    40
+                  ],
+                  [
+                    84,
+                    40
+                  ],
+                  [
+                    85,
+                    40
+                  ],
+                  [
+                    86,
+                    40
+                  ],
+                  [
+                    87,
+                    40
+                  ],
+                  [
+                    88,
+                    40
+                  ]
+                ],
+                "section_counts": [
+                  [
+                    81,
+                    29
+                  ],
+                  [
+                    82,
+                    23
+                  ],
+                  [
+                    83,
+                    30
+                  ],
+                  [
+                    84,
+                    40
+                  ],
+                  [
+                    85,
+                    40
+                  ],
+                  [
+                    86,
+                    39
+                  ],
+                  [
+                    87,
+                    39
+                  ],
+                  [
+                    88,
+                    25
+                  ]
+                ],
+                "total_penalty_share": 0.03463653931916159,
+                "underfull_section_ids": [
+                  82
+                ]
+              },
+              {
+                "delivery_group_id": 19,
+                "movable_student_count": 265,
+                "overfull_section_ids": [
+                  145,
+                  151
+                ],
+                "pairwise_penalty": 229,
+                "relevant_student_count": 265,
+                "relevant_student_ids": [
+                  5,
+                  10,
+                  15,
+                  20,
+                  25,
+                  30,
+                  35,
+                  40,
+                  45,
+                  50,
+                  55,
+                  60,
+                  65,
+                  70,
+                  75,
+                  80,
+                  85,
+                  90,
+                  95,
+                  100
+                ],
+                "section_capacities": [
+                  [
+                    145,
+                    40
+                  ],
+                  [
+                    146,
+                    40
+                  ],
+                  [
+                    147,
+                    40
+                  ],
+                  [
+                    148,
+                    40
+                  ],
+                  [
+                    149,
+                    40
+                  ],
+                  [
+                    150,
+                    40
+                  ],
+                  [
+                    151,
+                    40
+                  ],
+                  [
+                    152,
+                    40
+                  ]
+                ],
+                "section_counts": [
+                  [
+                    145,
+                    40
+                  ],
+                  [
+                    146,
+                    37
+                  ],
+                  [
+                    147,
+                    29
+                  ],
+                  [
+                    148,
+                    38
+                  ],
+                  [
+                    149,
+                    33
+                  ],
+                  [
+                    150,
+                    27
+                  ],
+                  [
+                    151,
+                    40
+                  ],
+                  [
+                    152,
+                    21
+                  ]
+                ],
+                "total_penalty_share": 0.03404192061840345,
+                "underfull_section_ids": [
+                  152
+                ]
+              },
+              {
+                "delivery_group_id": 5,
+                "movable_student_count": 266,
+                "overfull_section_ids": [
+                  37,
+                  39
+                ],
+                "pairwise_penalty": 208,
+                "relevant_student_count": 266,
+                "relevant_student_ids": [
+                  4,
+                  9,
+                  14,
+                  19,
+                  24,
+                  29,
+                  34,
+                  39,
+                  44,
+                  49,
+                  54,
+                  59,
+                  64,
+                  69,
+                  74,
+                  79,
+                  84,
+                  89,
+                  94,
+                  99
+                ],
+                "section_capacities": [
+                  [
+                    33,
+                    40
+                  ],
+                  [
+                    34,
+                    40
+                  ],
+                  [
+                    35,
+                    40
+                  ],
+                  [
+                    36,
+                    40
+                  ],
+                  [
+                    37,
+                    40
+                  ],
+                  [
+                    38,
+                    40
+                  ],
+                  [
+                    39,
+                    40
+                  ],
+                  [
+                    40,
+                    40
+                  ]
+                ],
+                "section_counts": [
+                  [
+                    33,
+                    39
+                  ],
+                  [
+                    34,
+                    28
+                  ],
+                  [
+                    35,
+                    24
+                  ],
+                  [
+                    36,
+                    32
+                  ],
+                  [
+                    37,
+                    40
+                  ],
+                  [
+                    38,
+                    28
+                  ],
+                  [
+                    39,
+                    40
+                  ],
+                  [
+                    40,
+                    35
+                  ]
+                ],
+                "total_penalty_share": 0.03092017243942322,
+                "underfull_section_ids": [
+                  35
+                ]
+              },
+              {
+                "delivery_group_id": 12,
+                "movable_student_count": 264,
+                "overfull_section_ids": [
+                  90
+                ],
+                "pairwise_penalty": 192,
+                "relevant_student_count": 264,
+                "relevant_student_ids": [
+                  1,
+                  6,
+                  11,
+                  16,
+                  21,
+                  26,
+                  31,
+                  36,
+                  41,
+                  46,
+                  51,
+                  56,
+                  61,
+                  66,
+                  71,
+                  76,
+                  81,
+                  86,
+                  91,
+                  96
+                ],
+                "section_capacities": [
+                  [
+                    89,
+                    40
+                  ],
+                  [
+                    90,
+                    40
+                  ],
+                  [
+                    91,
+                    40
+                  ],
+                  [
+                    92,
+                    40
+                  ],
+                  [
+                    93,
+                    40
+                  ],
+                  [
+                    94,
+                    40
+                  ],
+                  [
+                    95,
+                    40
+                  ],
+                  [
+                    96,
+                    40
+                  ]
+                ],
+                "section_counts": [
+                  [
+                    89,
+                    37
+                  ],
+                  [
+                    90,
+                    40
+                  ],
+                  [
+                    91,
+                    36
+                  ],
+                  [
+                    92,
+                    25
+                  ],
+                  [
+                    93,
+                    34
+                  ],
+                  [
+                    94,
+                    24
+                  ],
+                  [
+                    95,
+                    37
+                  ],
+                  [
+                    96,
+                    31
+                  ]
+                ],
+                "total_penalty_share": 0.028541697636390664,
+                "underfull_section_ids": [
+                  94
+                ]
+              }
+            ],
+            "total_pairwise_utilization_penalty": 6727
+          },
+          "time_limit_seconds": 29.99999830010347,
+          "transition_reason": "no_improvement_expand",
+          "validation_classification": "validation_unknown",
+          "validation_elapsed_seconds": 15.443283399916254,
+          "validation_error": null,
+          "validation_solver_outcome": "unknown"
+        }
+      ],
+      "benchmark_manifest_fingerprint": "c07c77d0aa077a3e72240f27644d86b8a1a4faecb2f72a900aacc3fcb792d28a",
+      "benchmark_name": "adaptive-policy-variance-v2-20260828",
+      "branches": 1295,
+      "candidate_adopted": false,
+      "candidate_found": false,
+      "candidate_source_decision_fingerprint": "e96af0a2ffe17dd5b13b5f59ce50489610a44f2fa64e2bc96abb872f86157d94",
+      "candidate_validated": false,
+      "component_deltas": {
+        "course_category_diversity_penalty": 0,
+        "course_sequence_preferences_penalty": 0,
+        "difficulty_balance_penalty": 0,
+        "section_utilization_balance_penalty": 0,
+        "student_semester_balance_penalty": 0
+      },
+      "conflicts": 1,
+      "counselor_profile": {
+        "course_category_diversity": 6,
+        "course_sequence_preferences": 6,
+        "difficulty_balance": 6,
+        "section_utilization_balance": 6,
+        "student_semester_balance": 6
+      },
+      "cp_sat_max_deterministic_time_seconds": null,
+      "cp_sat_random_seed": 101,
+      "cp_sat_wall_time_seconds": 4.7869322,
+      "downstream": {},
+      "final_components": {
+        "course_category_diversity_penalty": 22150,
+        "course_sequence_preferences_penalty": 0,
+        "difficulty_balance_penalty": 35973,
+        "section_utilization_balance_penalty": 6727,
+        "student_semester_balance_penalty": 175
+      },
+      "final_pressure": {
+        "meaningful_opportunity_student_count": 1156,
+        "nonzero_pressure_student_count": 46,
+        "ranked_student_ids": [
+          1052,
+          1068,
+          1072,
+          1042,
+          1043,
+          1044,
+          1046,
+          1047,
+          1049,
+          1051
+        ],
+        "top_10_share": 0.2653061224489796,
+        "top_1_share": 0.04081632653061224,
+        "top_2_share": 0.08163265306122448,
+        "top_5_share": 0.16326530612244897,
+        "total_weighted_pressure": 294
+      },
+      "final_role_facts": {
+        "section_utilization": {
+          "normalized_penalty": 1712,
+          "raw_penalty": 6727,
+          "weighted_normalized_contribution": 10272
+        }
+      },
+      "final_role_value": 6727,
+      "final_value": 37596.0,
+      "first_improvement_seconds": null,
+      "full_validation_seconds": 15.443283399916254,
+      "input_fingerprint": "c07c77d0aa077a3e72240f27644d86b8a1a4faecb2f72a900aacc3fcb792d28a",
+      "max_changed_students": 8,
+      "model_constraint_count": 200527,
+      "model_variable_count": 112322,
+      "objective_semantics_version": "v2",
+      "operator": "targeted_utilization_r64_s8",
+      "output_protocol_complete": true,
+      "per_attempt_time_limit_seconds": 30.0,
+      "preparation_seconds": 35.05435899994336,
+      "radius": 64,
+      "ranking_policy": "v2_counselor_weighted_pressure",
+      "resource": {
+        "available": true,
+        "elapsed_seconds": 50.54899959999602,
+        "ending_cpu_system_seconds": 16.140625,
+        "ending_cpu_user_seconds": 89.171875,
+        "ending_pagefile_bytes": 950804480,
+        "ending_uss_bytes": 691703808,
+        "ending_working_set_bytes": 727703552,
+        "logical_cpu_count": 8,
+        "peak_child_process_count": 0,
+        "peak_pagefile_bytes": 1049272320,
+        "peak_thread_count": 16,
+        "peak_tree_uss_bytes": 785211392,
+        "peak_tree_working_set_bytes": 821207040,
+        "peak_uss_bytes": 785211392,
+        "peak_working_set_bytes": 821207040,
+        "peak_working_set_timestamp_monotonic": 662004.0658134,
+        "pid": 16488,
+        "representative_process_cpu_percent": 0.0,
+        "representative_working_set_bytes": 821207040,
+        "sample_count": 138,
+        "source": "psutil",
+        "starting_cpu_system_seconds": 4.15625,
+        "starting_cpu_user_seconds": 57.234375,
+        "starting_pagefile_bytes": 669614080,
+        "starting_uss_bytes": 421154816,
+        "starting_working_set_bytes": 456962048,
+        "system_available_memory_bytes": 3179126784,
+        "system_memory_percent": 81.4,
+        "system_total_memory_bytes": 17052241920
+      },
+      "role": "section_utilization_repair",
+      "role_specific_gain": 0,
+      "schema": "student_assignment_adaptive_variance_trial_v1",
+      "seed_validation": {
+        "assignment_count": 10635,
+        "complete": true,
+        "elapsed_seconds": 34.61499510006979,
+        "full_model_validation": true,
+        "solver_outcome": "feasible",
+        "source_fingerprint_matches": true,
+        "special_commitment_count": 310,
+        "unmet_request_count": 0
+      },
+      "selected_grade": null,
+      "selected_student_ids": [
+        417,
+        360,
+        482,
+        25,
+        480,
+        90,
+        175,
+        514
+      ],
+      "solver_status": "optimal",
+      "source_seed_fingerprint": "d5036a44e71d5a3b2a94eebe51d645bb4034179a0dd29537492ea81feda2e900",
+      "stagnation": {
+        "adopted_count": 0,
+        "attempt_count": 1,
+        "classification": "stagnant_or_unresolved",
+        "longest_no_gain_streak": 1,
+        "mathematical_optimality_claim": false,
+        "unknown_count": 0
+      },
+      "starting_components": {
+        "course_category_diversity_penalty": 22150,
+        "course_sequence_preferences_penalty": 0,
+        "difficulty_balance_penalty": 35973,
+        "section_utilization_balance_penalty": 6727,
+        "student_semester_balance_penalty": 175
+      },
+      "starting_pressure": {
+        "meaningful_opportunity_student_count": 1156,
+        "nonzero_pressure_student_count": 46,
+        "ranked_student_ids": [
+          1052,
+          1068,
+          1072,
+          1042,
+          1043,
+          1044,
+          1046,
+          1047,
+          1049,
+          1051
+        ],
+        "top_10_share": 0.2653061224489796,
+        "top_1_share": 0.04081632653061224,
+        "top_2_share": 0.08163265306122448,
+        "top_5_share": 0.16326530612244897,
+        "total_weighted_pressure": 294
+      },
+      "starting_role_facts": {
+        "section_utilization": {
+          "normalized_penalty": 1712,
+          "raw_penalty": 6727,
+          "weighted_normalized_contribution": 10272
+        }
+      },
+      "starting_role_value": 6727,
+      "starting_value": 37596.0,
+      "study_id": "adaptive-policy-variance-v2-20260828",
+      "target_history": [
+        [
+          25,
+          90,
+          175,
+          360,
+          417,
+          480,
+          482,
+          514
+        ]
+      ],
+      "target_policy": "fixed",
+      "total_gain": 0.0,
+      "total_operation_seconds": 122.64835230004974,
+      "total_process_operation_seconds": 159.7539976000553,
+      "total_time_limit_seconds": 600.0,
+      "utilization_cluster_policy": "interaction_aware",
+      "validation_classification": "validation_unknown",
+      "validation_error": null,
+      "validation_solver_outcome": "unknown",
+      "validation_time_limit_seconds": 60.0,
+      "validation_worker_count": 1,
+      "worker_count": 1
+    },
+    "protocol_error": null,
+    "resource_guard_facts": {},
+    "resource_snapshot": {
+      "available": true,
+      "pids": [
+        16488
+      ],
+      "process_count": 1,
+      "root_pid": 16488,
+      "system_available_memory_bytes": 3940900864,
+      "tree_rss_bytes": 134324224,
+      "tree_uss_bytes": 95854592
+    },
+    "worker_exit_code": 0,
+    "worker_pid": 16488
+  },
+  "target_history": [
+    [
+      25,
+      90,
+      175,
+      360,
+      417,
+      480,
+      482,
+      514
+    ]
+  ],
+  "target_policy": "fixed",
+  "termination_grace_seconds": 5.0,
+  "total_gain": 0.0,
+  "total_operation_seconds": 122.64835230004974,
+  "total_process_operation_seconds": 159.7539976000553,
+  "total_time_limit_seconds": 600.0,
+  "utilization_cluster_policy": "interaction_aware",
+  "validation_classification": "validation_unknown",
+  "validation_error": null,
+  "validation_solver_outcome": "unknown",
+  "validation_time_limit_seconds": 60.0,
+  "validation_worker_count": 1,
+  "worker_count": 1
+}
