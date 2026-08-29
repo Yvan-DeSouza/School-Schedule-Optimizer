@@ -805,3 +805,66 @@ A corrected three-policy replicate cohort was started afterward with one
 worker and seeds `101`, `202`, and `303`. Only its three adaptive cells
 completed, all at `37,488`; the partial cohort is explicitly marked
 non-promotional and does not establish a policy ranking.
+
+### Corrected nine-cell policy cohort closeout (2026-08-29)
+
+The partial cohort was completed as the new matched corrected baseline in
+`adaptive-policy-controlled-corrected-v2-20260828/`. The study used the exact
+`mixed_grade_v2_production_shape` input fingerprint
+`c07c77d0aa077a3e72240f27644d86b8a1a4faecb2f72a900aacc3fcb792d28a` and the
+common `37,596` source-decision fingerprint
+`d5036a44e71d5a3b2a94eebe51d645bb4034179a0dd29537492ea81feda2e900`. It ran
+adaptive, stateless role, and fixed cycle for seeds `101`, `202`, and `303`,
+one cell at a time. All cells used one CP-SAT worker, a `600`-second policy
+budget, a `60`-second operator/session slice, a `60`-second minimum
+full-model validation boundary, and a `720`-second supervised hard wall.
+
+All nine retained states were complete, full-model-valid under the existing
+authority boundary, and preserved `10,635` assignments, zero unmet required
+requests, and `310` special commitments. Their weighted v2 substantive values
+were:
+
+| Policy | 101 | 202 | 303 | Median | Adopted improvements |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| adaptive | 37,488 | 37,488 | 37,488 | 37,488 | 7 / 7 / 7 |
+| stateless role | 37,596 | 37,596 | 37,596 | 37,596 | 0 / 0 / 0 |
+| fixed cycle | 37,596 | 37,596 | 37,596 | 37,596 | 0 / 0 / 0 |
+
+Median total worker execution was `615.14` seconds for adaptive, `627.45`
+seconds for stateless role, and `646.58` seconds for fixed cycle. Adaptive's
+final weighted components were utilization `10,164`, semester balance `462`,
+difficulty `3,216`, category diversity `23,646`, and sequence preference `0`.
+Stateless and fixed cycle both retained utilization `10,272` with the same
+other weighted components, producing `37,596`. The corresponding raw
+utilization penalties were `6,657` and `6,727`; raw semester, difficulty, and
+category penalties remained `175`, `35,973`, and `22,150` for all policies.
+
+The corrected validation boundary was applied consistently to all nine cells,
+but bounded validation uncertainty still occurred. Across attempt records,
+adaptive had `17` `validation_unknown`, one `validated`, and five
+`not_attempted` classifications; stateless role had `19`
+`validation_unknown`, one `validation_error`, and no adoption; fixed cycle had
+four `validation_unknown` and thirteen `not_attempted` classifications. These
+records are reported as operational evidence, not converted into success or
+infeasibility. Every policy's final retained schedule remained complete and
+valid. The stateless seed-101 matched result is `37,596`, so it must not be
+conflated with the separate supporting `37,476` stateless observation whose
+final lineage was insufficient for cohort substitution.
+
+Adaptive is exactly repeatable at the final substantive value and final
+component vector across the three seeds in this source state. Stateless role
+and fixed cycle are also exactly repeatable at their retained baseline value
+and component vector, although neither produced a validated adopted
+improvement in this bounded cohort. Adaptive therefore has the strongest
+descriptive result in this corrected comparison, but the evidence is still a
+three-seed, one-source-state policy study. It is not a production promotion,
+does not establish state-independent superiority, and does not authorize
+hybrid logic or policy changes in ordinary scheduling.
+
+The historical nine-cell tie used a mismatched shorter nested validation
+boundary and remains preserved as historical provenance only; this corrected
+cohort supersedes it for causal policy ranking. The manifest records each
+artifact hash, configuration, completion facts, and contamination status. It
+also preserves policy-selected scopes separately from actual executed scopes
+and retains semantic candidate fingerprints. No placement witness, hidden
+teacher identity, or production scheduling state is exposed by this study.

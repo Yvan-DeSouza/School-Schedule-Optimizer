@@ -1109,3 +1109,83 @@ The corrected runner preserves CP-SAT and full-validation authority rules and
 changes no production scheduling behavior. The next clean policy comparison
 must rerun predetermined policy/seed cells with the corrected boundary before
 making an adaptive-versus-static claim.
+
+### Corrected nine-cell policy cohort closeout (2026-08-29)
+
+The corrected cohort is now complete in
+`adaptive-policy-controlled-corrected-v2-20260828/study_manifest.json`. It
+used only the immutable `mixed_grade_v2_production_shape` input
+(`c07c77d0aa077a3e72240f27644d86b8a1a4faecb2f72a900aacc3fcb792d28a`) and the
+same `37,596` source seed
+(`d5036a44e71d5a3b2a94eebe51d645bb4034179a0dd29537492ea81feda2e900`). Each
+of the three policies ran once for each predetermined seed `101`, `202`, and
+`303`, sequentially and in a supervised clean process. Every cell used one
+CP-SAT worker, a `600`-second policy budget, a `60`-second operator/session
+slice, a `60`-second minimum full-model validation boundary, and a
+`720`-second parent hard wall. The canonical benchmark and production policy
+were not changed.
+
+All nine cells completed with a complete retained schedule: `10,635`
+assignments, zero unmet required requests, and `310` fulfilled special
+commitments. The descriptive scorecard is:
+
+| Policy | Seed 101 | Seed 202 | Seed 303 | Median | Best | Worst |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| adaptive | 37,488 | 37,488 | 37,488 | 37,488 | 37,488 | 37,488 |
+| stateless role | 37,596 | 37,596 | 37,596 | 37,596 | 37,596 | 37,596 |
+| fixed cycle | 37,596 | 37,596 | 37,596 | 37,596 | 37,596 | 37,596 |
+
+Adaptive adopted `7`, `7`, and `7` improvements respectively, beginning at
+`37,596` and ending at `37,488` in every seed. Stateless role adopted no
+improvements in any seed and fixed cycle adopted none in any seed. Median
+total worker execution was approximately `615.14` seconds for adaptive,
+`627.45` seconds for stateless role, and `646.58` seconds for fixed cycle;
+these are experiment timings, not production scheduling guarantees.
+
+The final weighted v2 component distributions were identical within each
+policy. Adaptive ended at utilization `10,164`, semester balance `462`,
+difficulty `3,216`, category diversity `23,646`, and sequence preference `0`,
+for `37,488`. Stateless role and fixed cycle both ended at utilization
+`10,272`, semester `462`, difficulty `3,216`, category diversity `23,646`,
+and sequence preference `0`, for `37,596`. In raw metric terms, adaptive's
+utilization penalty was `6,657`; the two non-adopting policies retained
+`6,727`. The other raw components were unchanged: semester `175`, difficulty
+`35,973`, and category diversity `22,150`.
+
+Attempt-level records preserve the corrected validation behavior rather than
+collapsing it into the final score. The configured boundary was `60` seconds
+for every cell. Adaptive records contain `17` `validation_unknown` outcomes,
+one `validated` outcome, and five not-attempted outcomes; stateless records
+contain `19` `validation_unknown` outcomes, one `validation_error`, and no
+adopted candidate; fixed-cycle records contain four `validation_unknown` and
+thirteen not-attempted outcomes. `UNKNOWN` remains unresolved evidence and is
+not treated as proof of infeasibility. The fixed-cycle cells did not produce a
+validated candidate for adoption in this bounded cohort. The completed
+adaptive artifacts' retained results remain complete and authoritative under
+the existing full-model validation boundary.
+
+The adaptive trajectory was utilization-focused in all three seeds and used
+the same substantive endpoint and component vector. Stateless role repeatedly
+selected the dynamic `targeted_utilization_r16_s4` family but did not obtain a
+validated improvement in the matched cohort. Fixed cycle exercised its
+configured `targeted_r4_s2`, `targeted_utilization_r64_s8`, and `r2` sequence
+where budget permitted, without adopting a candidate. The artifacts retain
+both policy-selected and actual executed target scopes, plus semantic
+candidate fingerprints; these are diagnostic lineage facts and do not expose
+anonymous staffing identities.
+
+The separate corrected stateless observation that reached `37,476` remains
+useful supporting evidence, but it is not substituted into this cohort because
+it was not a complete matched cell with promotion-quality final lineage. The
+matched stateless cohort therefore does not reproduce that observation.
+
+With three seeds, this is descriptive evidence only. The corrected cohort
+shows a repeatable adaptive improvement relative to the two static controls
+under this source state, but it does not promote adaptive search into ordinary
+student assignment, establish universal superiority across incumbent states,
+or justify hybrid/state-aware policy work. The historical nine-cell tie that
+used the shorter nested validation boundary remains provenance and is
+superseded for causal policy ranking by this corrected cohort. The next
+research gate is a corrected comparison from the durable `37,128` state (or a
+policy-specific diagnostic justified by this evidence); deep-state comparison,
+hybrid logic, and production wiring remain outside this study.

@@ -1,5 +1,5 @@
 {
-  "schema": "student_assignment_controlled_policy_research_v2_partial",
+  "schema": "student_assignment_controlled_policy_research_v2",
   "study_id": "adaptive-policy-controlled-corrected-v2-20260828",
   "parent_study": "adaptive-policy-parity-v2-20260828",
   "objective_semantics_version": "v2",
@@ -16,20 +16,20 @@
     "validation_worker_count": 1
   },
   "completed_cells": [
-    {"artifact": "adaptive-seed101.json", "policy": "adaptive", "seed": 101, "final_substantive_value": 37488, "complete": true, "assignments": 10635, "unmet": 0, "special_commitments": 310},
-    {"artifact": "adaptive-seed202.json", "policy": "adaptive", "seed": 202, "final_substantive_value": 37488, "complete": true, "assignments": 10635, "unmet": 0, "special_commitments": 310},
-    {"artifact": "adaptive-seed303.json", "policy": "adaptive", "seed": 303, "final_substantive_value": 37488, "complete": true, "assignments": 10635, "unmet": 0, "special_commitments": 310}
+    {"artifact": "adaptive-seed101.json", "policy": "adaptive", "seed": 101, "final_substantive_value": 37488, "complete": true, "assignments": 10635, "unmet": 0, "special_commitments": 310, "execution_status": "completed", "worker_count": 1, "validation_time_limit_seconds": 60, "adoptions": 7, "attempts": 7, "artifact_sha256": "a32f5ab6d6e49217272ca9bf9dbaeb21469ca166326517c535316faef8b68212"},
+    {"artifact": "adaptive-seed202.json", "policy": "adaptive", "seed": 202, "final_substantive_value": 37488, "complete": true, "assignments": 10635, "unmet": 0, "special_commitments": 310, "execution_status": "completed", "worker_count": 1, "validation_time_limit_seconds": 60, "adoptions": 7, "attempts": 8, "artifact_sha256": "7d56431e64e8401fa4fd5c20fb4a6c8203aea09b21f8dc5bd48a98998108c15f"},
+    {"artifact": "adaptive-seed303.json", "policy": "adaptive", "seed": 303, "final_substantive_value": 37488, "complete": true, "assignments": 10635, "unmet": 0, "special_commitments": 310, "execution_status": "completed", "worker_count": 1, "validation_time_limit_seconds": 60, "adoptions": 7, "attempts": 8, "artifact_sha256": "938c5aed6e4667a1194c33570b1a48c5a180b3cda1ccb38db550432c376b8469"},
+    {"artifact": "stateless-seed101.json", "policy": "stateless_role", "seed": 101, "final_substantive_value": 37596, "complete": true, "assignments": 10635, "unmet": 0, "special_commitments": 310, "execution_status": "completed", "worker_count": 1, "validation_time_limit_seconds": 60, "adoptions": 0, "attempts": 6, "artifact_sha256": "0096190b6fb4b5aa08d7677dc9d17cbc83a3237bcf846bc386164bb314e7d3fd"},
+    {"artifact": "stateless-seed202.json", "policy": "stateless_role", "seed": 202, "final_substantive_value": 37596, "complete": true, "assignments": 10635, "unmet": 0, "special_commitments": 310, "execution_status": "completed", "worker_count": 1, "validation_time_limit_seconds": 60, "adoptions": 0, "attempts": 7, "validation_unknown": 6, "validation_error": 1, "artifact_sha256": "18fcdb1ee200eb60037ef0214864a49fc4e35f4370e9f67d9ef43ff6a7e83256"},
+    {"artifact": "stateless-seed303.json", "policy": "stateless_role", "seed": 303, "final_substantive_value": 37596, "complete": true, "assignments": 10635, "unmet": 0, "special_commitments": 310, "execution_status": "completed", "worker_count": 1, "validation_time_limit_seconds": 60, "adoptions": 0, "attempts": 7, "validation_unknown": 7, "artifact_sha256": "ba9c77e920c17fa910e5f8958be6dc612f851cf688330bbf7ef0e2ccbf3bbb03"},
+    {"artifact": "fixed-cycle-seed101.json", "policy": "fixed_cycle", "seed": 101, "final_substantive_value": 37596, "complete": true, "assignments": 10635, "unmet": 0, "special_commitments": 310, "execution_status": "completed", "worker_count": 1, "validation_time_limit_seconds": 60, "adoptions": 0, "attempts": 6, "validation_unknown": 4, "artifact_sha256": "17efaef34894b412e97aeca7f38149bbaa75fbafa983dc960c7a77aacf29b473"},
+    {"artifact": "fixed-cycle-seed202.json", "policy": "fixed_cycle", "seed": 202, "final_substantive_value": 37596, "complete": true, "assignments": 10635, "unmet": 0, "special_commitments": 310, "execution_status": "completed", "worker_count": 1, "validation_time_limit_seconds": 60, "adoptions": 0, "attempts": 5, "validation_not_attempted": 5, "artifact_sha256": "d7e418715155e0b1b94f6b02cbfa5f9e65094a70bd61c5dd5e9d6aa3f54e347a"},
+    {"artifact": "fixed-cycle-seed303.json", "policy": "fixed_cycle", "seed": 303, "final_substantive_value": 37596, "complete": true, "assignments": 10635, "unmet": 0, "special_commitments": 310, "execution_status": "completed", "worker_count": 1, "validation_time_limit_seconds": 60, "adoptions": 0, "attempts": 6, "validation_not_attempted": 6, "artifact_sha256": "e1561b6756693a0fb5480960cfae0f2f9d5c3defc9db551bc066bf87b18f2edd"}
   ],
-  "incomplete_cells": [
-    {"policy": "stateless_role", "seed": 101, "reason": "interrupted_before_complete_output"},
-    {"policy": "stateless_role", "seed": 202, "reason": "not_started"},
-    {"policy": "stateless_role", "seed": 303, "reason": "not_started"},
-    {"policy": "fixed_cycle", "seed": 101, "reason": "not_started"},
-    {"policy": "fixed_cycle", "seed": 202, "reason": "not_started"},
-    {"policy": "fixed_cycle", "seed": 303, "reason": "not_started"}
-  ],
-  "classification": "incomplete_non_promotional",
-  "stop_reason": "The corrected policy cohort was intentionally stopped before a partial run could be mistaken for a complete three-policy comparison.",
+  "planned_cells": [],
+  "incomplete_cells": [],
+  "classification": "complete_corrected_cohort_descriptive_only",
+  "stop_reason": "All nine corrected policy cells completed under the preregistered configuration; descriptive evidence only, no production promotion.",
   "canonical_benchmark_mutated": false,
   "production_policy_changed": false,
   "objective_changed": false,
