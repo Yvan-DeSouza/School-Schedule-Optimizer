@@ -247,6 +247,11 @@ class AdaptiveCalibrationTrialRecord:
     timing: dict
     final_components: dict
     resource: dict
+    # Preserve the actual terminal semantic state in the trial payload.  The
+    # supervised wrapper may not be given a durable branch-output path, so it
+    # cannot safely reconstruct the final state from the parent checkpoint.
+    final_objective_vector: tuple = ()
+    final_source_decisions: tuple = ()
 
     def to_dict(self):
         return asdict(self)
@@ -393,6 +398,10 @@ def build_calibration_trial_record(
             if getattr(result, "source_decisions", ())
             else None
         ),
+        final_objective_vector=tuple(
+            getattr(record, "final_objective_vector", ()) or ()
+        ),
+        final_source_decisions=tuple(result.source_decisions or ()),
         attempts=tuple(record.attempts),
         decisions=tuple(record.decisions),
         timing={

@@ -9,6 +9,7 @@ import pytest
 
 from scheduling_engine.dto import TimeSlotDTO
 import scheduling_engine.benchmark_adaptive_calibration as benchmark_calibration
+import scheduling_engine.student_assignment.stage2_benchmark as stage2_benchmark
 from scheduling_engine.benchmark_adaptive_calibration import (
     _write_validated_supervised_branch,
 )
@@ -129,6 +130,59 @@ def test_calibration_trial_record_preserves_solver_configuration_metadata():
     assert trial.cp_sat_random_seed == 101
     assert trial.cp_sat_max_deterministic_time_seconds == 12.5
     assert trial.final_source_decision_fingerprint is None
+
+
+def test_calibration_trial_record_carries_terminal_source_state(monkeypatch):
+    """The supervised payload can preserve an adopted terminal incumbent."""
+
+    data = _v2_data()
+    source_decisions = ((("course", 1), (2, 3)),)
+    initial_result = SimpleNamespace(
+        status="complete",
+        objective_components={},
+        assignments=(),
+        unmet_requests=(),
+        commitment_assignments=(),
+    )
+    record = SimpleNamespace(
+        attempts=(),
+        decisions=(),
+        policy_selection_seconds=0.0,
+        operator_execution_seconds=0.0,
+        finalization_seconds=0.0,
+        external_overrun_seconds=0.0,
+        elapsed_seconds=0.0,
+        phase_timings={},
+        final_components={},
+        final_objective_vector=(-9, 8),
+        resource={},
+    )
+    result = SimpleNamespace(
+        record=record,
+        result=initial_result,
+        source_decisions=source_decisions,
+    )
+    monkeypatch.setattr(
+        stage2_benchmark,
+        "semantic_stage1_seed_source_fingerprint",
+        lambda *args, **kwargs: "terminal-fingerprint",
+    )
+
+    trial = build_calibration_trial_record(
+        data,
+        initial_result=initial_result,
+        initial_source_decisions=source_decisions,
+        policy="adaptive",
+        profile="balanced",
+        result=result,
+        total_time_limit_seconds=60,
+        per_operator_time_limit_seconds=30,
+        worker_count=1,
+    )
+
+    assert trial.final_source_decisions == source_decisions
+    assert trial.final_source_decision_fingerprint == "terminal-fingerprint"
+    assert trial.final_objective_vector == (-9, 8)
 
 
 def test_calibration_controls_use_named_existing_operator_families():
@@ -579,6 +633,102 @@ def test_supervised_worker_serializes_trial_record_with_branch_lineage(
     assert written["final_source_decisions"] == [[["course", 1], [2, 3]]]
     assert written["final_source_decision_fingerprint"] == "canonical-fingerprint"
     assert written["final_objective_vector"] == [-1, 2]
+
+
+def test_supervised_worker_preserves_terminal_trial_state_without_branch_path(
+    monkeypatch, tmp_path
+):
+    """An adopted terminal state is not replaced by the parent checkpoint."""
+
+    data = _v2_data()
+    source_decisions = ((("course", 1), (2, 3)),)
+    branch = {
+        "source_decision_fingerprint": "parent-fingerprint",
+        "source_decisions": ((("course", 9), (8, 7)),),
+        "objective_vector": (-1, 2),
+    }
+    result = SimpleNamespace(
+        status="complete",
+        solver_outcome="feasible",
+        assignments=(),
+        unmet_requests=(),
+        commitment_assignments=(),
+        objective_components={},
+        optimization_facts={},
+    )
+    written = {}
+
+    monkeypatch.setattr(
+        benchmark_calibration,
+        "read_durable_stage2_benchmark",
+        lambda _path: {"data": data, "manifest": {}},
+    )
+    monkeypatch.setattr(
+        benchmark_calibration,
+        "apply_calibration_profile",
+        lambda value, _profile: value,
+    )
+    monkeypatch.setattr(
+        benchmark_calibration,
+        "read_diagnostic_branch_checkpoint",
+        lambda *args, **kwargs: branch,
+    )
+    monkeypatch.setattr(
+        benchmark_calibration,
+        "validate_diagnostic_branch_checkpoint",
+        lambda *args, **kwargs: {
+            "result": result,
+            "validation": {"full_model_validation": True, "complete": True},
+        },
+    )
+    monkeypatch.setattr(
+        benchmark_calibration,
+        "semantic_stage1_seed_source_fingerprint",
+        lambda *args, **kwargs: "trial-fingerprint",
+    )
+    monkeypatch.setattr(
+        benchmark_calibration,
+        "_write_worker_phase",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        benchmark_calibration,
+        "_write_worker_output",
+        lambda path, payload: written.update(payload),
+    )
+    monkeypatch.setattr(
+        benchmark_calibration,
+        "run_matched_calibration_trial",
+        lambda *args, **kwargs: SimpleNamespace(
+            to_dict=lambda: {
+                "attempts": [],
+                "timing": {},
+                "phase_timings": {},
+                "final_source_decisions": source_decisions,
+                "final_source_decision_fingerprint": "stale-trial-fingerprint",
+                "final_objective_vector": (-9, 8),
+            },
+        ),
+    )
+
+    args = SimpleNamespace(
+        benchmark_directory=tmp_path / "benchmark",
+        branch_input=tmp_path / "branch.json.gz",
+        prepared_incumbent=None,
+        worker_status=tmp_path / "status.json",
+        worker_output=tmp_path / "result.json",
+        policy="fixed_cycle",
+        profile="balanced",
+        total_seconds=1,
+        per_operator_seconds=1,
+        workers=1,
+        validated_branch_output=None,
+    )
+
+    assert benchmark_calibration._run_supervised_worker(args) == 0
+    assert written["final_source_decisions"] == [[['course', 1], [2, 3]]]
+    assert written["final_source_decision_fingerprint"] == "trial-fingerprint"
+    assert written["final_objective_vector"] == [-9, 8]
 
 
 def test_parent_revalidation_metadata_is_not_overwritten_by_branch_write(

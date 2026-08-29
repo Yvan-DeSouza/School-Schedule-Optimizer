@@ -1189,3 +1189,84 @@ superseded for causal policy ranking by this corrected cohort. The next
 research gate is a corrected comparison from the durable `37,128` state (or a
 policy-specific diagnostic justified by this evidence); deep-state comparison,
 hybrid logic, and production wiring remain outside this study.
+
+#### Forensic payload correction gate (2026-08-29)
+
+After this closeout, a forensic audit found that supervised trials which did
+not request an external validated-branch output could report an improved
+terminal score while serializing the parent branch's source decisions and
+objective vector. The attempt-level candidate facts and quality values remain
+historical observations, but the affected artifact-level terminal lineage is
+not authoritative for state-transition or branch-reuse analysis. The offline
+runner now carries the actual terminal semantic state in its trial payload and
+recomputes its canonical fingerprint at the worker boundary. The deep-state
+cohort is therefore blocked until it is rerun with the corrected payload
+path; no new policy ranking evidence is claimed from that cohort here.
+
+#### Corrected deep-state policy cohort from the durable 37,128 branch (2026-08-29)
+
+The forensic gate was closed by a new child study in
+`adaptive-policy-controlled-derived37128-v2-20260829/`. The study used the
+unchanged `mixed_grade_v2_production_shape` input fingerprint
+`c07c77d0aa077a3e72240f27644d86b8a1a4faecb2f72a900aacc3fcb792d28a` and the
+durable source fingerprint
+`f2e945f268314542f37667775a15be46d3db2a6aaa75f47142ac7ca5d27b7631`, whose
+validated source substantive value was `37,128`. It ran the three policies
+`adaptive`, `stateless_role`, and `fixed_cycle` for seeds `101`, `202`, and
+`303`, one worker at a time, with the preregistered balanced profile, a
+`600`-second policy budget, `60`-second operator slices, `60`-second
+full-model validation, and a `720`-second supervised wall.
+
+All nine cells completed with a complete retained result, full-model
+validation, `10,635` assignments, zero unmet required requests, and `310`
+fulfilled special commitments. The terminal results were:
+
+| Policy | Seed 101 | Seed 202 | Seed 303 | Median | Best | Worst |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| adaptive | 37,044 | 37,068 | 37,062 | 37,062 | 37,044 | 37,068 |
+| stateless role | 37,044 | 37,068 | 37,068 | 37,068 | 37,044 | 37,068 |
+| fixed cycle | 36,978 | 37,008 | 37,128 | 37,008 | 36,978 | 37,128 |
+
+Relative to the common `37,128` source, median gains were `66` for adaptive,
+`60` for stateless role, and `120` for fixed cycle. Fixed cycle's best result
+was the strongest single endpoint, but it also had one seed with no adopted
+improvement; it therefore does not have the repeatability needed for policy
+promotion. Adaptive and stateless role improved directionally in all three
+seeds, but their endpoints still varied by seed and this remains a
+three-seed, one-source-state descriptive study.
+
+Median total policy times were approximately `617.53` seconds for adaptive,
+`604.32` seconds for stateless role, and `623.99` seconds for fixed cycle.
+The fixed-cycle seed-303 cell retained the source unchanged and reached
+`675.21` seconds of policy time; its process-level resource snapshot did not
+capture a peak working-set value, so memory comparison for that cell is
+incomplete. The other cells reported peak tree working sets of roughly
+`856`-`900` MiB. These timings and resource facts are diagnostic observations,
+not production scheduling guarantees.
+
+The final component changes remained concentrated in the utilization family.
+For example, adaptive seed-101 ended with weighted components utilization
+`9,720`, semester `462`, difficulty `3,216`, category diversity `23,646`, and
+sequence `0`; adaptive seed-202 and seed-303 retained the same non-utilization
+components and ended at `9,744` and `9,738` utilization respectively. Fixed
+cycle seed-101 reached the lowest observed endpoint with utilization `9,774`
+and unchanged other components; fixed-cycle seed-202 ended at utilization
+`9,804`, while seed-303 retained the source vector. The corresponding raw
+difficulty and category values stayed `35,853`/`35,973` and `22,050`,
+respectively, depending on the retained state; no claim is made that the
+policies improved those components.
+
+The corrected payload path now preserves the actual terminal semantic source
+decisions and recomputed fingerprints. The deep artifacts therefore support
+state-transition and lineage analysis, unlike the superseded artifact-level
+observations covered by the forensic gate above. Attempt-level
+`validation_unknown` and `not_attempted` classifications remain explicit;
+`UNKNOWN` is not treated as proof of infeasibility. No external validated
+branch was persisted and the canonical benchmark state was not mutated.
+
+This closes the current v2 controlled-policy characterization, but it does
+not establish state-independent policy superiority or authorize production
+wiring. The next work remains objective-semantics research: define and
+validate principled metric normalization, introduce one canonical counselor
+importance scale, establish a v2 objective baseline, and only then study
+targeted repair and adaptive operator allocation under that revised objective.

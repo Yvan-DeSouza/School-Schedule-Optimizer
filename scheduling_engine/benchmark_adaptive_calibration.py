@@ -583,11 +583,11 @@ def _run_supervised_worker(args):
         int(item.get("session_attempt_count", 0) or 0) > 0
         for item in payload.get("attempts", ())
     )
-    # The compact calibration record intentionally does not carry the full
-    # semantic source-decision map. Recover it from the branch persisted by
-    # the worker so the supervised protocol can return authoritative lineage
-    # without changing solver behavior or duplicating that large payload.
-    final_branch = branch
+    # Prefer a worker-persisted branch when the caller requested one.  The
+    # trial record also carries the actual terminal semantic state so a
+    # supervised run without a durable branch-output path does not report the
+    # parent checkpoint as its final result after adopting an improvement.
+    final_branch = None
     if immediate_branch is not None:
         try:
             final_branch = read_diagnostic_branch_checkpoint(
@@ -597,24 +597,55 @@ def _run_supervised_worker(args):
         except (OSError, ValueError, TypeError, KeyError):
             # A diagnostic branch that cannot be rehydrated must not replace
             # the parent-validated incumbent in the worker result.
-            final_branch = branch
-    # The branch reader exposes materialized IDs for solving, but its stored
-    # fingerprint is over the canonical rank-based representation. Preserve
-    # that canonical lineage in the supervised payload; hashing the
-    # materialized values here would produce a different, non-authoritative
-    # fingerprint for the same semantic branch.
-    payload["final_source_decisions"] = [
-        [list(key), list(value)]
-        for key, value in final_branch["source_decisions"]
-    ]
-    payload["final_source_decision_fingerprint"] = final_branch[
-        "source_decision_fingerprint"
-    ]
+            final_branch = None
+    if final_branch is not None:
+        # The branch reader exposes materialized IDs for solving, but its
+        # stored fingerprint is over the canonical rank-based representation.
+        # Preserve that canonical lineage in the supervised payload.
+        payload["final_source_decisions"] = [
+            [list(key), list(value)]
+            for key, value in final_branch["source_decisions"]
+        ]
+        payload["final_source_decision_fingerprint"] = final_branch[
+            "source_decision_fingerprint"
+        ]
+        payload["final_objective_vector"] = list(
+            final_branch.get("objective_vector") or ()
+        )
+    elif payload.get("final_source_decisions"):
+        # No branch path was supplied.  The calibration record's source state
+        # came directly from the actual terminal AdaptiveSessionResult, so
+        # retain it and recompute the canonical fingerprint through the same
+        # current-input boundary used by branch checkpoints.
+        trial_source = tuple(
+            (_tuple_tree(item[0]), _tuple_tree(item[1]))
+            for item in payload["final_source_decisions"]
+        )
+        payload["final_source_decisions"] = [
+            [list(key), list(value)] for key, value in trial_source
+        ]
+        payload["final_source_decision_fingerprint"] = (
+            semantic_stage1_seed_source_fingerprint(data, trial_source)
+        )
+        payload["final_objective_vector"] = list(
+            payload.get("final_objective_vector") or ()
+        )
+    else:
+        # Preserve the historical fallback for mocked/legacy trial records
+        # that contain no terminal source state.
+        final_branch = branch
+        payload["final_source_decisions"] = [
+            [list(key), list(value)]
+            for key, value in final_branch["source_decisions"]
+        ]
+        payload["final_source_decision_fingerprint"] = final_branch[
+            "source_decision_fingerprint"
+        ]
+        payload["final_objective_vector"] = list(
+            final_branch.get("objective_vector") or ()
+        )
     if immediate_branch is not None:
         payload["immediate_worker_branch"] = immediate_branch
-    payload["final_objective_vector"] = list(
-        final_branch.get("objective_vector") or ()
-    )
     payload["output_protocol_complete"] = True
     payload["phase_timings"] = {
         "worker": {

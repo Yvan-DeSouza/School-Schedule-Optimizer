@@ -868,3 +868,61 @@ artifact hash, configuration, completion facts, and contamination status. It
 also preserves policy-selected scopes separately from actual executed scopes
 and retains semantic candidate fingerprints. No placement witness, hidden
 teacher identity, or production scheduling state is exposed by this study.
+
+#### Forensic payload correction gate (2026-08-29)
+
+After this closeout, a forensic audit found that supervised trials which did
+not request an external validated-branch output could report an improved
+terminal score while serializing the parent branch's source decisions and
+objective vector. The attempt-level candidate facts and quality values remain
+historical observations, but the affected artifact-level terminal lineage is
+not authoritative for state-transition or branch-reuse analysis. The offline
+runner now carries the actual terminal semantic state in its trial payload and
+recomputes its canonical fingerprint at the worker boundary. The deep-state
+cohort is therefore blocked until it is rerun with the corrected payload
+path; no new policy ranking evidence is claimed from that cohort here.
+
+### Corrected deep-state cohort from 37,128 (2026-08-29)
+
+The corrected child study `adaptive-policy-controlled-derived37128-v2-20260829/`
+replayed the three policy families from the durable `37,128` source state.
+It used input fingerprint
+`c07c77d0aa077a3e72240f27644d86b8a1a4faecb2f72a900aacc3fcb792d28a`, source
+fingerprint `f2e945f268314542f37667775a15be46d3db2a6aaa75f47142ac7ca5d27b7631`,
+seeds `101/202/303`, one worker, a `600`-second policy budget, `60`-second
+operator and validation slices, and a `720`-second supervised wall. This was
+a new child lineage; neither the canonical benchmark nor the corrected
+37,596 baseline was mutated.
+
+All nine cells retained complete full-model-valid schedules with `10,635`
+assignments, zero unmet required requests, and `310` special commitments:
+
+| Policy | 101 | 202 | 303 | Median | Best | Median gain |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| adaptive | 37,044 | 37,068 | 37,062 | 37,062 | 37,044 | 66 |
+| stateless role | 37,044 | 37,068 | 37,068 | 37,068 | 37,044 | 60 |
+| fixed cycle | 36,978 | 37,008 | 37,128 | 37,008 | 36,978 | 120 |
+
+Adaptive and stateless role improved in every seed, which is directional
+repeatability from this one deep source state. Fixed cycle produced the best
+single endpoint but also retained the source unchanged in seed 303, so its
+result is inconsistent rather than a repeatable promotion signal. Median
+policy times were approximately `617.53`, `604.32`, and `623.99` seconds for
+adaptive, stateless role, and fixed cycle. The fixed-cycle seed-303 artifact
+did not retain a peak process working-set sample, so its memory comparison is
+incomplete; the other cells were approximately `856`-`900` MiB peak tree
+working set.
+
+The observed gains were utilization-driven. Semester balance, difficulty,
+category diversity, and sequence components did not show a reliable policy
+improvement in this cohort. The artifacts preserve the policy-selected and
+actually executed scopes, terminal semantic source fingerprints, and explicit
+validation classifications. A bounded `UNKNOWN` validation remains
+unresolved evidence, not infeasibility.
+
+The forensic payload defect that blocked this cohort is now closed: the
+supervised worker carries actual terminal source decisions and objective
+values when no external branch output is requested. This makes the new
+artifacts suitable for lineage analysis. The cohort is still descriptive only:
+three seeds and one source state do not prove state-independent superiority,
+and no policy is wired into ordinary scheduling.
