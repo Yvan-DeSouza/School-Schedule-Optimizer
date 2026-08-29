@@ -4,6 +4,7 @@ from collections import Counter, defaultdict
 
 from scheduling_engine.realistic_student_assignment_validation import (
     build_production_shaped_medium_fixture,
+    build_mixed_grade_v2_fixture,
     build_realistic_scale_fixture,
     build_realistic_scoped_rerun_fixture,
     build_realistic_quality_tradeoff_fixture,
@@ -12,6 +13,15 @@ from scheduling_engine.realistic_student_assignment_validation import (
     summarize_production_shaped_medium_fixture,
 )
 from scheduling_engine.student_assignment import solve_student_assignment
+from scheduling_engine.student_assignment.policy_generalization import (
+    DEFAULT_POLICY_GENERALIZATION_SCENARIOS,
+    POLICY_GENERALIZATION_POLICIES,
+    POLICY_GENERALIZATION_PROFILE,
+    POLICY_GENERALIZATION_RANDOM_SEED,
+    POLICY_GENERALIZATION_WORKER_COUNT,
+    build_policy_generalization_suite,
+    summarize_policy_generalization_scenario,
+)
 
 
 def test_realistic_fixture_preserves_hard_rules_and_explains_legitimate_gaps():
@@ -121,6 +131,60 @@ def test_production_shaped_medium_fixture_preserves_mixed_search_structure():
         request.commitment_type
         for request in data.schedule_commitment_requests
     } >= {"study", "focus"}
+
+
+def test_policy_generalization_suite_is_deterministic_and_semantically_distinct():
+    suite = build_policy_generalization_suite()
+    summaries = [
+        summarize_policy_generalization_scenario(scenario, data)
+        for scenario, data in suite
+    ]
+
+    assert [scenario.scenario_id for scenario, _data in suite] == [
+        scenario.scenario_id for scenario in DEFAULT_POLICY_GENERALIZATION_SCENARIOS
+    ]
+    assert len({summary["input_fingerprint"] for summary in summaries}) == 3
+    assert {scenario.scenario_version for scenario, _data in suite} == {"v1"}
+    assert {scenario.generation_seed for scenario, _data in suite} == {None}
+    assert [summary["mixed_grade_summary"]["student_count"] for summary in summaries] == [
+        240, 320, 240
+    ]
+    assert summaries[0]["production_shaped_summary"]["special_lock_count"] < summaries[2][
+        "production_shaped_summary"
+    ]["special_lock_count"]
+
+    repeated = [
+        summarize_policy_generalization_scenario(
+            scenario,
+            build_mixed_grade_v2_fixture(
+                student_count=scenario.student_count,
+                special_profile_cycle=scenario.special_profile_cycle,
+            ),
+        )["input_fingerprint"]
+        for scenario in DEFAULT_POLICY_GENERALIZATION_SCENARIOS
+    ]
+    assert repeated == [summary["input_fingerprint"] for summary in summaries]
+
+
+def test_policy_generalization_fixture_rejects_a_cycle_that_omits_profiles():
+    import pytest
+
+    with pytest.raises(ValueError, match="include every defined profile"):
+        build_production_shaped_medium_fixture(
+            student_count=120,
+            special_profile_cycle=12,
+        )
+
+
+def test_policy_generalization_protocol_is_explicit_and_fixed():
+    assert POLICY_GENERALIZATION_POLICIES == (
+        "adaptive",
+        "stateless_role",
+        "fixed_cycle",
+    )
+    assert POLICY_GENERALIZATION_PROFILE == "balanced"
+    assert POLICY_GENERALIZATION_RANDOM_SEED == 101
+    assert POLICY_GENERALIZATION_WORKER_COUNT == 1
 
 
 def test_production_shaped_medium_fixture_is_hard_feasible_with_diagnostic_limits(monkeypatch):

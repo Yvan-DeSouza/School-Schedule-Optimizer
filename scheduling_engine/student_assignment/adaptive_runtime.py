@@ -106,6 +106,68 @@ def _source_decisions_from_result(result):
     )
 
 
+def _compact_inner_probe_summary(
+    iteration, *, operator, target_scope, actual_target_scope, selected_grade,
+    candidate_complete=False,
+):
+    """Keep bounded inner-probe facts in the durable policy record.
+
+    The local bootstrap already records these facts on the engine result, but
+    the calibration boundary previously retained only outer operator counts.
+    Preserve the fields needed to compare policy productivity without copying
+    candidate schedules or quality ledgers into every attempt.
+    """
+
+    candidate_value = iteration.get("candidate_value")
+    incumbent_before = iteration.get("incumbent_before")
+    return {
+        "operator": operator,
+        "iteration": iteration.get("iteration"),
+        "attempt_number_for_radius": iteration.get("attempt_number_for_radius"),
+        "radius": iteration.get("radius"),
+        "effective_radius": iteration.get("effective_radius"),
+        "target_scope": tuple(target_scope or ()),
+        "actual_target_scope": tuple(
+            iteration.get("selected_student_ids") or actual_target_scope or ()
+        ),
+        "selected_grade": iteration.get("selected_grade", selected_grade),
+        "status": iteration.get("status"),
+        "candidate_found": bool(iteration.get("candidate_found", candidate_value is not None)),
+        "candidate_complete": bool(
+            iteration.get("candidate_complete", candidate_complete)
+        ),
+        "candidate_validated": bool(iteration.get("candidate_validated", False)),
+        "adopted": bool(iteration.get("adopted", False)),
+        "validation_classification": iteration.get("validation_classification"),
+        "candidate_substantive_value": candidate_value,
+        "starting_incumbent_value": incumbent_before,
+        "substantive_gain": (
+            float(incumbent_before) - float(candidate_value)
+            if incumbent_before is not None and candidate_value is not None
+            else 0.0
+        ),
+        "candidate_source_decision_fingerprint": iteration.get(
+            "candidate_source_decision_fingerprint"
+        ),
+        "elapsed_seconds": iteration.get("elapsed_seconds"),
+        "solver_wall_time_seconds": iteration.get("solver_wall_time_seconds"),
+        "validation_elapsed_seconds": iteration.get("validation_elapsed_seconds"),
+        "branches": iteration.get("branches"),
+        "conflicts": iteration.get("conflicts"),
+        "best_bound": iteration.get("best_bound"),
+        "model_variable_count": iteration.get("model_variable_count"),
+        "model_constraint_count": iteration.get("model_constraint_count"),
+        "changed_source_decision_count": iteration.get(
+            "changed_source_decision_count", 0
+        ),
+        "changed_student_count": iteration.get("changed_student_count", 0),
+        "component_deltas": dict(iteration.get("component_deltas") or {}),
+        "affected_student_ids": tuple(iteration.get("affected_student_ids") or ()),
+        "affected_section_ids": tuple(iteration.get("affected_section_ids") or ()),
+        "stopping_reason": iteration.get("stopping_reason"),
+    }
+
+
 def _operator_result(data, spec, *, selected_student_ids, current_source_decisions,
                     time_limit_seconds, worker_count, collect_resource_telemetry,
                     session_overrides=None,
@@ -583,6 +645,19 @@ def run_adaptive_local_search_diagnostic(
                 cp_sat_random_seed=local.get("cp_sat_random_seed"),
                 cp_sat_max_deterministic_time_seconds=(
                     local.get("cp_sat_max_deterministic_time_seconds")
+                ),
+                inner_probe_summaries=tuple(
+                    _compact_inner_probe_summary(
+                        item,
+                        operator=decision.operator.name,
+                        target_scope=selected,
+                        actual_target_scope=tuple(
+                            local.get("selected_student_ids") or selected
+                        ),
+                        selected_grade=decision.operator.selected_grade,
+                        candidate_complete=hard_complete,
+                    )
+                    for item in tuple(local.get("iterations", ()) or ())
                 ),
             )
         )

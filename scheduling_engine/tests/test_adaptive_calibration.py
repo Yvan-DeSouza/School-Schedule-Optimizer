@@ -132,6 +132,53 @@ def test_calibration_trial_record_preserves_solver_configuration_metadata():
     assert trial.final_source_decision_fingerprint is None
 
 
+def test_calibration_trial_record_preserves_inner_probe_summaries():
+    data = _v2_data()
+    initial_result = SimpleNamespace(
+        status="complete",
+        objective_components={},
+        assignments=(),
+        unmet_requests=(),
+        commitment_assignments=(),
+    )
+    record = SimpleNamespace(
+        attempts=({
+            "operator": "targeted_r4_s2",
+            "inner_probe_summaries": ({
+                "status": "unknown",
+                "candidate_validated": True,
+                "starting_incumbent_value": 100,
+                "candidate_substantive_value": 94,
+            },),
+        },),
+        decisions=(),
+        policy_selection_seconds=0.0,
+        operator_execution_seconds=0.0,
+        finalization_seconds=0.0,
+        external_overrun_seconds=0.0,
+        elapsed_seconds=0.0,
+        phase_timings={},
+        final_objective_vector=(),
+        final_components={},
+        resource={},
+    )
+    result = SimpleNamespace(record=record, result=initial_result, source_decisions=())
+
+    trial = build_calibration_trial_record(
+        data,
+        initial_result=initial_result,
+        initial_source_decisions=(),
+        policy="adaptive",
+        profile="balanced",
+        result=result,
+        total_time_limit_seconds=60,
+        per_operator_time_limit_seconds=30,
+        worker_count=1,
+    )
+
+    assert trial.attempts[0]["inner_probe_summaries"][0]["candidate_validated"] is True
+
+
 def test_calibration_trial_record_carries_terminal_source_state(monkeypatch):
     """The supervised payload can preserve an adopted terminal incumbent."""
 

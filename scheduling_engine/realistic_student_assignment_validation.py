@@ -253,7 +253,9 @@ def build_realistic_scale_fixture(*, student_count=1400) -> StudentAssignmentInp
     )
 
 
-def build_production_shaped_medium_fixture(*, student_count=240) -> StudentAssignmentInputDTO:
+def build_production_shaped_medium_fixture(
+    *, student_count=240, special_profile_cycle=100
+) -> StudentAssignmentInputDTO:
     """Build a practical mixed fixture shaped from the school-scale input.
 
     This is intentionally a DTO-level diagnostic fixture rather than a second
@@ -264,13 +266,17 @@ def build_production_shaped_medium_fixture(*, student_count=240) -> StudentAssig
     Co-op remain legitimate commitments instead of creating an intentionally
     contradictory fixture.
 
-    The fixture is used for comparative Stage 2 experiments only.  It does
-    not change the production-scale Django fixture or ordinary scheduling
-    defaults.
+    ``special_profile_cycle`` is a diagnostic-only control for changing the
+    density of the same defined special cohorts.  It does not add new
+    commitment types or alter their construction.  The fixture is used for
+    comparative Stage 2 experiments only.  It does not change the
+    production-scale Django fixture or ordinary scheduling defaults.
     """
 
     if student_count < 80:
         raise ValueError("The production-shaped medium fixture needs at least 80 students.")
+    if special_profile_cycle < 13:
+        raise ValueError("The special profile cycle must include every defined profile.")
 
     base = build_realistic_scale_fixture(student_count=student_count)
     requests_by_student = {}
@@ -342,7 +348,7 @@ def build_production_shaped_medium_fixture(*, student_count=240) -> StudentAssig
 
     for student_id in range(1, student_count + 1):
         base_rows = requests_by_student[student_id]
-        profile = student_id % 100
+        profile = student_id % special_profile_cycle
         # Most students preserve the full uneven seven-request pattern from
         # the existing realistic scale fixture.  The special cohorts retain
         # enough ordinary demand to create real collisions without making a
@@ -547,7 +553,9 @@ def build_production_shaped_medium_fixture(*, student_count=240) -> StudentAssig
     )
 
 
-def build_mixed_grade_v2_fixture(*, student_count=240) -> StudentAssignmentInputDTO:
+def build_mixed_grade_v2_fixture(
+    *, student_count=240, special_profile_cycle=100
+) -> StudentAssignmentInputDTO:
     """Return a current, deterministic mixed-grade v2 study fixture.
 
     The existing production-shaped medium fixture deliberately exercises the
@@ -558,7 +566,10 @@ def build_mixed_grade_v2_fixture(*, student_count=240) -> StudentAssignmentInput
     production-scale Django fixture or the durable v1 artifact.
     """
 
-    base = build_production_shaped_medium_fixture(student_count=student_count)
+    base = build_production_shaped_medium_fixture(
+        student_count=student_count,
+        special_profile_cycle=special_profile_cycle,
+    )
     return apply_mixed_grade_v2_profile(base)
 
 

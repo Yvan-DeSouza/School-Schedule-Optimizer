@@ -1,0 +1,127 @@
+{
+  "schema": "student_assignment_policy_generalization_study_v1",
+  "study_id": "objective_semantics_v2_policy_generalization_20260829",
+  "purpose": "Offline comparison of adaptive, stateless-role, and fixed-cycle search policies across synthetic v2 scheduling scenarios.",
+  "objective_semantics_version": "v2",
+  "fixture_version": "mixed_grade_v2_fixture_v1",
+  "synthetic_only": true,
+  "production_wiring": false,
+  "policies": ["adaptive", "stateless_role", "fixed_cycle"],
+  "seeds": [101],
+  "medium_protocol": {
+    "profile": "balanced",
+    "worker_count": 1,
+    "cp_sat_random_seed": 101,
+    "total_time_limit_seconds": 120.0,
+    "per_operator_time_limit_seconds": 30.0,
+    "full_model_validation": true
+  },
+  "scenarios": [
+    {
+      "scenario_id": "reference_medium",
+      "scenario_version": "v1",
+      "description": "Reference mixed-grade medium condition.",
+      "student_count": 240,
+      "special_profile_cycle": 100,
+      "generation_seed": null,
+      "request_count": 1529,
+      "required_source_decision_group_count": 1549,
+      "section_count": 308,
+      "special_commitment_count": 29,
+      "input_fingerprint": "9c9ffe0924a8d36b8673c14a7706b239a1d22cae31e06196ea850589b0556956",
+      "stage1_seed_fingerprint": "bb81698614f3c88730d5a628ceab2683624384b96e1991e7db068a89f261a531",
+      "stage1_complete_validated": true
+    },
+    {
+      "scenario_id": "population_pressure_medium",
+      "scenario_version": "v1",
+      "description": "Higher student and ordinary-demand pressure.",
+      "student_count": 320,
+      "special_profile_cycle": 100,
+      "generation_seed": null,
+      "request_count": 2037,
+      "required_source_decision_group_count": 2064,
+      "section_count": 308,
+      "special_commitment_count": 39,
+      "input_fingerprint": "5352e4d45ce4d3396030a275ba25a3166783a7bab3267a0a26b8501610c61bed",
+      "stage1_seed_fingerprint": "609c841cf8707670da27e537bb9fe9a8af7ea50acf799f3f0ac0b2f9abd16262",
+      "stage1_complete_validated": true
+    },
+    {
+      "scenario_id": "special_commitment_pressure_medium",
+      "scenario_version": "v1",
+      "description": "Denser recurrence of the existing special cohorts.",
+      "student_count": 240,
+      "special_profile_cycle": 50,
+      "generation_seed": null,
+      "request_count": 1425,
+      "required_source_decision_group_count": 1459,
+      "section_count": 308,
+      "special_commitment_count": 49,
+      "input_fingerprint": "ee72844523d917b293e6d0b1b309805754ed6f1b2973cab42a3b3316612bc079",
+      "stage1_seed_fingerprint": "c40e0a30b7fbd512c6feb0c60729fc753747339c72617e4d0db4a4b3486823cb",
+      "stage1_complete_validated": true
+    }
+  ],
+  "medium_results": {
+    "reference_medium": {
+      "adaptive": {"start": 42552, "final": 42528, "gain": 24, "complete": true, "unmet": 0},
+      "stateless_role": {"start": 42552, "final": 42528, "gain": 24, "complete": true, "unmet": 0},
+      "fixed_cycle": {"start": 42552, "final": 42402, "gain": 150, "complete": true, "unmet": 0}
+    },
+    "population_pressure_medium": {
+      "adaptive": {"start": 42690, "final": 42654, "gain": 36, "complete": true, "unmet": 0},
+      "stateless_role": {"start": 42690, "final": 42648, "gain": 42, "complete": true, "unmet": 0},
+      "fixed_cycle": {"start": 42690, "final": 42600, "gain": 90, "complete": true, "unmet": 0}
+    },
+    "special_commitment_pressure_medium": {
+      "adaptive": {"start": 45900, "final": 45840, "gain": 60, "complete": true, "unmet": 0},
+      "stateless_role": {"start": 45900, "final": 45852, "gain": 48, "complete": true, "unmet": 0},
+      "fixed_cycle": {"start": 45900, "final": 45030, "gain": 870, "complete": true, "unmet": 0}
+    }
+  },
+  "target_promotion": {
+    "source_benchmark": "mixed_grade_v2_production_shape",
+    "input_fingerprint": "c07c77d0aa077a3e72240f27644d86b8a1a4faecb2f72a900aacc3fcb792d28a",
+    "promoted_policy": "fixed_cycle",
+    "reason": "Strongest medium gain in all three scenarios.",
+    "protocol": "one worker, seed 101, 120 seconds total, 30 seconds per operator, full validation",
+    "start": 37596,
+    "final": 37596,
+    "gain": 0,
+    "complete": true,
+    "unmet": 0,
+    "attempts": 2,
+    "stopping_observation": "Both operator attempts returned UNKNOWN without a strict improvement; target optimality is unresolved."
+  },
+  "completed_cells": 10,
+  "skipped_cells": [
+    {"cell": "target_adaptive", "reason": "Not promoted after fixed-cycle was the only strongest medium candidate selected for target screening."},
+    {"cell": "target_stateless_role", "reason": "Not promoted after fixed-cycle was the only strongest medium candidate selected for target screening."},
+    {"cell": "medium_seed_202_303_replication", "reason": "Initial matched seed-101 screen was sufficient to identify discriminative conditions; replication remains the next phase."}
+  ],
+  "classification": "POLICY PRODUCTIVITY IS GENUINELY SCENARIO-DEPENDENT",
+  "hybrid_gate": "CLOSED",
+  "production_promotion": "NO-GO",
+  "artifact_sha256": {
+    "reference_medium/input.json.gz": "6df3dfe4c6d404a12c6b582baef1a6826a807709bb9098825f03e7d9353eb5ed",
+    "reference_medium/stage1_seed.json.gz": "a1f7bd0e3faad82c943d92ec91d8b7ffd803c8b385a6c77ac67aca49ae2bdc91",
+    "reference_medium/manifest.json": "f1797ccd52491812029a6d7de1407b9a06eea1128589935382a87b9eaba85454",
+    "reference_medium_adaptive.json": "bcdab0c94b4ca6cd3b33ddabbf2904c0b9fa27d3b1cf8111e7c4d2984aeb69b0",
+    "reference_medium_stateless_role.json": "f7db5c10dc6bb02a26cd5f1187ec205f84ac69125129dd0b5433d4abe20b35bb",
+    "reference_medium_fixed_cycle.json": "67952b9f3b3a1133bd00cff8bd34bab71ecf6a360523675cdba6526ba494767d",
+    "population_pressure_medium/input.json.gz": "059a5132166579a9fbc2bf55e4d6288b826b5fa4ae0a344aa313de6f2ee3978b",
+    "population_pressure_medium/stage1_seed.json.gz": "58510b2c2b8df05846c2e658df43abde81fb7e273fbb596317029cb81a7a280b",
+    "population_pressure_medium/manifest.json": "7a51801b5fa441ad0a2f7c833034fbb6465c0a049a428a48484094e200925a88",
+    "population_pressure_medium_adaptive.json": "e76b448dcff3082639c29f534fa1b4f81f994508dcc68c02942bd15b87f5b0ad",
+    "population_pressure_medium_stateless_role.json": "282a09452405028032388cfcf42b605f53d63b46cf6fb6d7891a9905ebcc8904",
+    "population_pressure_medium_fixed_cycle.json": "2b58c91c3fa980d1be1b7ea804c03fb3f59415bcc07d14e13c2ae82bc4ac517d",
+    "special_commitment_pressure_medium/input.json.gz": "05c2dac057bf35b029bdc97a07854efbd87cebd2d318cec54b78199da52c7635",
+    "special_commitment_pressure_medium/stage1_seed.json.gz": "073df47febbc15600855cfaba6addc86940b5a45aaa18a01e6c7bf1018de7ae4",
+    "special_commitment_pressure_medium/manifest.json": "3f0c69c26c9e73b161e258c9b1d42f08d162e7b9c05d75635cea34ac8ecc4db9",
+    "special_commitment_pressure_medium_adaptive.json": "f0da6518a71294e59b1f6629408eed15d3a71a1b4794a5a9fe13ff1065742e5d",
+    "special_commitment_pressure_medium_stateless_role.json": "15411bf3682b6d019330a6c2800902e3251f12a4c9ee5413cf30b1b57f029c2e",
+    "special_commitment_pressure_medium_fixed_cycle.json": "fcba824b1b2de5eac752b8a03e358ccc373b34dfef29e3de7272538f94ce8931",
+    "target_fixed_cycle.json": "e76fd850f591116acc37c2658ef8815dcdb9de32e5994b4dc67f410831d8793c"
+  }
+}

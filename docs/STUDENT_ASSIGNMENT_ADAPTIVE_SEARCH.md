@@ -1321,6 +1321,62 @@ had the strongest single endpoint but retained 37,128 in seed 303. The
 crossover does not overturn that observation; it shows only that, after those
 terminal states were reached, a one-session policy switch did not produce an
 additional validated gain under the matched budget. The current artifact
-schema preserves outer policy attempts but not every inner candidate's full
-source-decision delta, so causal claims about individual rejected inner probes
-remain intentionally limited.
+schema now preserves bounded inner-probe summaries on each outer attempt.  The
+summaries include operator and actual scopes, status, candidate/validation
+facts, solver and validation time, bounds, branches/conflicts, model size,
+changed source/student counts, affected IDs, and component deltas.  Candidate
+schedules and full source-decision payloads remain outside this compact
+telemetry boundary.  These facts are diagnostic only and do not affect policy
+selection, candidate adoption, full-model validation, or schedule authority.
+
+### Policy generalization boundary (2026-08-29)
+
+The next offline research boundary audited whether v2 policy observations
+generalize beyond one medium fixture.  The suite reuses the existing
+`build_mixed_grade_v2_fixture` DTO builder; it does not introduce a second
+scheduler or change hard constraints, objective semantics, or production
+wiring.  Its scenario identity is defined in
+`scheduling_engine/student_assignment/policy_generalization.py`, and each
+detached input is fingerprinted before policy execution.
+
+The preregistered medium protocol used the `balanced` v2 profile, one CP-SAT
+worker, random seed `101`, a `120`-second shared policy budget, and
+`30`-second operator slices.  The three conditions were:
+
+| Scenario | Students | Requests | Required groups | Special commitments | Input fingerprint |
+| --- | ---: | ---: | ---: | ---: | --- |
+| reference_medium | 240 | 1,529 | 1,549 | 29 | `9c9ffe0924a8d36b8673c14a7706b239a1d22cae31e06196ea850589b0556956` |
+| population_pressure_medium | 320 | 2,037 | 2,064 | 39 | `5352e4d45ce4d3396030a275ba25a3166783a7bab3267a0a26b8501610c61bed` |
+| special_commitment_pressure_medium | 240 | 1,425 | 1,459 | 49 | `ee72844523d917b293e6d0b1b309805754ed6f1b2973cab42a3b3316612bc079` |
+
+All nine matched trials returned complete, unmet-free, validated results.  The
+starting and final substantive values were:
+
+| Scenario | Adaptive | Stateless role | Fixed cycle |
+| --- | ---: | ---: | ---: |
+| reference_medium | 42,552 -> 42,528 (24 gain) | 42,552 -> 42,528 (24 gain) | 42,552 -> 42,402 (150 gain) |
+| population_pressure_medium | 42,690 -> 42,654 (36 gain) | 42,690 -> 42,648 (42 gain) | 42,690 -> 42,600 (90 gain) |
+| special_commitment_pressure_medium | 45,900 -> 45,840 (60 gain) | 45,900 -> 45,852 (48 gain) | 45,900 -> 45,030 (870 gain) |
+
+Fixed cycle produced the strongest measured gain in all three conditions.
+Its gains remained concentrated in the utilization-repair family; this is a
+policy-productivity observation, not evidence that the quality definition
+should change.  Adaptive and stateless-role also produced validated gains, so
+the medium result does not prove fixed cycle is globally superior.
+
+Only the strongest medium candidate was promoted to the existing target-shaped
+detached benchmark.  The fixed-cycle target trial used the same one-worker,
+`120`-second/`30`-second protocol and completed with a complete validated
+result, but found no strict improvement (`37,596 -> 37,596`) before both
+operator attempts returned `UNKNOWN`.  This is evidence that the medium
+special-pressure result does not automatically generalize to target scale
+under this bounded protocol; it is not evidence of target-scale optimality.
+
+The resulting principal classification for this boundary is:
+
+**POLICY PRODUCTIVITY IS GENUINELY SCENARIO-DEPENDENT**
+
+The medium suite is discriminative, but the target promotion did not establish
+production policy superiority.  Adaptive/stateless/fixed remain offline
+diagnostic controls; no policy router, hybrid, persistence, role stickiness,
+objective change, or production scheduling wiring is authorized by this study.

@@ -13,6 +13,7 @@ from scheduling_engine.dto import (
     TimeSlotDTO,
 )
 from scheduling_engine.student_assignment.adaptive_runtime import (
+    _compact_inner_probe_summary,
     run_adaptive_local_search_diagnostic,
 )
 from scheduling_engine.student_assignment.search_experiments import (
@@ -997,6 +998,46 @@ def test_session_record_is_json_safe_from_engine_facts():
     assert record.cumulative_gain == 10
     assert record.source_seed_fingerprint == "seed-fingerprint"
     assert '"operator_family":"r2"' in record.to_json()
+
+
+def test_inner_probe_summary_preserves_bounded_causal_facts():
+    summary = _compact_inner_probe_summary(
+        {
+            "iteration": 2,
+            "radius": 4,
+            "effective_radius": 4,
+            "status": "feasible",
+            "candidate_found": True,
+            "candidate_complete": True,
+            "candidate_validated": True,
+            "adopted": True,
+            "incumbent_before": 100,
+            "candidate_value": 94,
+            "candidate_source_decision_fingerprint": "candidate-fp",
+            "elapsed_seconds": 12.0,
+            "solver_wall_time_seconds": 10.0,
+            "validation_elapsed_seconds": 1.5,
+            "branches": 20,
+            "conflicts": 3,
+            "best_bound": 90,
+            "changed_source_decision_count": 4,
+            "changed_student_count": 2,
+            "component_deltas": {"section_utilization": -6},
+            "affected_student_ids": (7, 8),
+            "affected_section_ids": (11,),
+        },
+        operator="targeted_r4_s2",
+        target_scope=(7, 8),
+        actual_target_scope=(7, 8),
+        selected_grade=None,
+    )
+
+    assert summary["operator"] == "targeted_r4_s2"
+    assert summary["candidate_validated"] is True
+    assert summary["substantive_gain"] == 6.0
+    assert summary["actual_target_scope"] == (7, 8)
+    assert summary["component_deltas"] == {"section_utilization": -6}
+    assert summary["affected_student_ids"] == (7, 8)
 
 
 def test_continuous_r2_session_reuses_one_engine_context_and_returns_complete_result():

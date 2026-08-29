@@ -98,6 +98,10 @@ class AdaptiveOperatorAttempt:
     session_external_overrun_seconds: float | None = None
     cp_sat_random_seed: int | None = None
     cp_sat_max_deterministic_time_seconds: float | None = None
+    # Compact facts from the inner CP-SAT probes run by a reusable operator
+    # session.  This is diagnostic telemetry only; the outer attempt remains
+    # the policy-level record and candidate authority is unchanged.
+    inner_probe_summaries: tuple[dict, ...] = ()
 
     @property
     def gain_per_minute(self):
