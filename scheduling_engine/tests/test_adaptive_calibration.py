@@ -56,6 +56,21 @@ def _v2_data():
     )
 
 
+def test_target_scale_calibration_uses_shared_validation_boundary():
+    assert (
+        benchmark_calibration._calibration_validation_time_limit(
+            SimpleNamespace(time_limit_seconds=20.0)
+        )
+        == 60.0
+    )
+    assert (
+        benchmark_calibration._calibration_validation_time_limit(
+            SimpleNamespace(time_limit_seconds=90.0)
+        )
+        == 90.0
+    )
+
+
 def test_calibration_profiles_are_explicit_and_fingerprinted():
     assert set(CALIBRATION_PROFILES) == {
         "balanced",
@@ -94,6 +109,7 @@ def test_calibration_trial_record_preserves_solver_configuration_metadata():
     result = SimpleNamespace(
         record=record,
         result=initial_result,
+        source_decisions=(),
     )
 
     trial = build_calibration_trial_record(
@@ -112,6 +128,7 @@ def test_calibration_trial_record_preserves_solver_configuration_metadata():
 
     assert trial.cp_sat_random_seed == 101
     assert trial.cp_sat_max_deterministic_time_seconds == 12.5
+    assert trial.final_source_decision_fingerprint is None
 
 
 def test_calibration_controls_use_named_existing_operator_families():

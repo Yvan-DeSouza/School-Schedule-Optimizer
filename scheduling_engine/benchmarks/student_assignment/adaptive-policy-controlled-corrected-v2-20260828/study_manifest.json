@@ -1,0 +1,38 @@
+{
+  "schema": "student_assignment_controlled_policy_research_v2_partial",
+  "study_id": "adaptive-policy-controlled-corrected-v2-20260828",
+  "parent_study": "adaptive-policy-parity-v2-20260828",
+  "objective_semantics_version": "v2",
+  "input_fingerprint": "c07c77d0aa077a3e72240f27644d86b8a1a4faecb2f72a900aacc3fcb792d28a",
+  "source_seed_fingerprint": "d5036a44e71d5a3b2a94eebe51d645bb4034179a0dd29537492ea81feda2e900",
+  "configuration": {
+    "profile": "balanced",
+    "worker_count": 1,
+    "seeds": [101, 202, 303],
+    "total_time_limit_seconds": 600,
+    "per_operator_time_limit_seconds": 60,
+    "supervised_hard_wall_seconds": 720,
+    "validation_time_limit_seconds": 60,
+    "validation_worker_count": 1
+  },
+  "completed_cells": [
+    {"artifact": "adaptive-seed101.json", "policy": "adaptive", "seed": 101, "final_substantive_value": 37488, "complete": true, "assignments": 10635, "unmet": 0, "special_commitments": 310},
+    {"artifact": "adaptive-seed202.json", "policy": "adaptive", "seed": 202, "final_substantive_value": 37488, "complete": true, "assignments": 10635, "unmet": 0, "special_commitments": 310},
+    {"artifact": "adaptive-seed303.json", "policy": "adaptive", "seed": 303, "final_substantive_value": 37488, "complete": true, "assignments": 10635, "unmet": 0, "special_commitments": 310}
+  ],
+  "incomplete_cells": [
+    {"policy": "stateless_role", "seed": 101, "reason": "interrupted_before_complete_output"},
+    {"policy": "stateless_role", "seed": 202, "reason": "not_started"},
+    {"policy": "stateless_role", "seed": 303, "reason": "not_started"},
+    {"policy": "fixed_cycle", "seed": 101, "reason": "not_started"},
+    {"policy": "fixed_cycle", "seed": 202, "reason": "not_started"},
+    {"policy": "fixed_cycle", "seed": 303, "reason": "not_started"}
+  ],
+  "classification": "incomplete_non_promotional",
+  "stop_reason": "The corrected policy cohort was intentionally stopped before a partial run could be mistaken for a complete three-policy comparison.",
+  "canonical_benchmark_mutated": false,
+  "production_policy_changed": false,
+  "objective_changed": false,
+  "hard_constraints_changed": false,
+  "host_sleep_contaminated_timings_included": false
+}

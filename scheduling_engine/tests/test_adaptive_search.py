@@ -15,6 +15,9 @@ from scheduling_engine.dto import (
 from scheduling_engine.student_assignment.adaptive_runtime import (
     run_adaptive_local_search_diagnostic,
 )
+from scheduling_engine.student_assignment.search_experiments import (
+    source_decision_fingerprint,
+)
 from scheduling_engine.student_assignment.adaptive_search import (
     AdaptiveOperatorAttempt,
     AdaptiveOperatorSpec,
@@ -646,6 +649,7 @@ def test_adaptive_runner_adopts_only_validated_strict_improvement(monkeypatch):
                 "candidate_validated": True,
                 "changed_student_count": 1,
                 "changed_source_decision_count": 1,
+                "selected_student_ids": (9,),
             },
             "stage_2": {"objective_values": (-2,), "final_source_decisions": (("a", 2),)},
         },
@@ -677,6 +681,10 @@ def test_adaptive_runner_adopts_only_validated_strict_improvement(monkeypatch):
     assert result.record.phase_timings["policy_selection"] >= 0
     assert result.record.phase_timings["operator_execution"] >= 0
     assert result.record.phase_timings["candidate_processing"] >= 0
+    assert result.record.attempts[0]["actual_target_scope"] == (9,)
+    assert result.record.attempts[0]["candidate_source_decision_fingerprint"] == (
+        source_decision_fingerprint((("a", 2),))
+    )
     assert result.record.phase_timings["finalization"] >= 0
     assert result.record.phase_timings["total"] >= 0
     decisions = [facts for phase, facts in events if phase == "policy_decision"]

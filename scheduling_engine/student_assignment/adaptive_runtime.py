@@ -553,6 +553,14 @@ def run_adaptive_local_search_diagnostic(
                 validation_solver_outcome=local.get("validation_solver_outcome"),
                 validation_error=local.get("validation_error"),
                 target_scope=selected,
+                actual_target_scope=tuple(
+                    local.get("selected_student_ids") or selected
+                ),
+                candidate_source_decision_fingerprint=(
+                    source_decision_fingerprint(candidate_source)
+                    if candidate_source
+                    else None
+                ),
                 selected_grade=decision.operator.selected_grade,
                 utilization_cluster=tuple(
                     local.get("utilization_cluster", ()) or ()

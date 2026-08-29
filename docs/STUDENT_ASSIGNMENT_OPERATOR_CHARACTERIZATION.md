@@ -728,6 +728,12 @@ not promoted from this partial frontier at that time. Predetermined seeds
 objective, hard rule, operator family, production policy, or authority
 boundary changed.
 
+Policy-session attempt records also retain the canonical semantic fingerprint
+of a returned candidate and separately retain the policy-selected scope and
+the actual dynamic scope passed to the operator. These are diagnostic lineage
+facts only; they do not authorize a candidate or expose auxiliary solver
+identities.
+
 ### Controlled v2 policy replicate closeout (2026-08-28)
 
 The planned adaptive/stateless-role/fixed-cycle comparison was completed on
@@ -752,3 +758,50 @@ provides no evidence that adaptive, stateless-role, or fixed-cycle produces
 better v2 substantive quality on these seeds. No policy is wired into ordinary
 scheduling, and the host-sleep-contaminated validation remains excluded from
 all performance conclusions.
+
+### Policy-session parity correction (2026-08-28)
+
+The earlier controlled policy replicate runner had a validation-boundary
+mismatch: its production-shaped input default was clamped to a 30-second
+nested full-model validation limit, while matched standalone operator trials
+used 60 seconds. A valid candidate that exceeded the shorter boundary could
+therefore be reported as `validation_unknown` and rejected by the policy
+wrapper. This was diagnostic-harness behavior, not a change in CP-SAT
+constraints, objective semantics, or candidate authority.
+
+The detached calibration runner now centralizes a 60-second minimum validation
+boundary, matching the standalone characterization boundary. Existing policy
+artifacts remain historical provenance and their no-adoption results should not
+be used as a clean causal policy ranking until rerun under that corrected
+configuration.
+
+The parity child study
+`adaptive-policy-parity-v2-20260828` records fixed-scope replays from the
+unchanged `37,596` source fingerprint. The policy-selected scope
+`(417, 360, 482, 25)` reproduced `37,590` in three one-worker standalone
+replays. The dynamically prepared scope observed in the policy phase was
+`(9, 514, 714, 799)`; a fixed-scope standalone replay of that set reached
+`37,584` with complete full-model validation. A direct policy-path replay with
+the corrected 60-second boundary accepted a complete candidate and reached
+`37,566` after three inner attempts. The prior policy-path attempt with the
+shorter boundary rejected its candidate as `validation_unknown`.
+
+These results identify validation configuration as the reproduced parity gap.
+They do not establish a policy winner, and they do not authorize any policy in
+ordinary scheduling. Future policy studies must record both the outer
+policy-selected scope and the inner operator-prepared scope, plus the exact
+validation boundary actually passed to the operator session.
+
+The subsequent student-pressure `targeted_r8_s2` frontier used target scope
+`(1052, 1072)` and three sequential trials at each worker count. One worker
+reproduced `37,590` in all three trials, two workers reproduced `37,584`, and
+four and eight workers reproduced `37,590`. All twelve candidates were
+complete, fully validated, and adopted; each worker cell produced one
+semantic candidate fingerprint. Median total operation time was approximately
+`37.37` seconds at one worker, `37.56` at two, `37.36` at four, and `44.99`
+at eight. This is a diagnostic worker-count result, not a production default.
+
+A corrected three-policy replicate cohort was started afterward with one
+worker and seeds `101`, `202`, and `303`. Only its three adaptive cells
+completed, all at `37,488`; the partial cohort is explicitly marked
+non-promotional and does not establish a policy ranking.

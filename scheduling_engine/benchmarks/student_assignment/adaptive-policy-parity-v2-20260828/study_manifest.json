@@ -1,0 +1,141 @@
+{
+  "schema": "student_assignment_adaptive_policy_parity_v2",
+  "study_id": "adaptive-policy-parity-v2-20260828",
+  "parent_study": "adaptive-policy-controlled-replicates-v2-20260828",
+  "objective_semantics_version": "v2",
+  "input_fingerprint": "c07c77d0aa077a3e72240f27644d86b8a1a4faecb2f72a900aacc3fcb792d28a",
+  "source_seed_fingerprint": "d5036a44e71d5a3b2a94eebe51d645bb4034179a0dd29537492ea81feda2e900",
+  "baseline": {
+    "substantive_value": 37596,
+    "assignment_count": 10635,
+    "unmet_required_request_count": 0,
+    "special_commitment_count": 310,
+    "canonical_checkpoint_mutated": false
+  },
+  "policy_decision": {
+    "policy": "stateless_role",
+    "seed": 101,
+    "operator": "targeted_utilization_r16_s4",
+    "recorded_scope": [417, 360, 482, 25],
+    "target_policy": "dynamic",
+    "observed_inner_scope": [9, 514, 714, 799]
+  },
+  "standalone_replays": [
+    {
+      "artifact": "policy-scope-standalone-replay1.json",
+      "scope": [417, 360, 482, 25],
+      "worker_count": 1,
+      "validation_time_limit_seconds": 60,
+      "candidate_substantive_value": 37590,
+      "gain": 6,
+      "candidate_source_fingerprint": "c093a321e21e184968ced0a8919b2f28a9287094a6cf3c1fb3c1bbc876a7424d",
+      "candidate_validated": true,
+      "candidate_adopted": true,
+      "solver_status": "optimal"
+    },
+    {
+      "artifact": "policy-scope-standalone-replay2.json",
+      "scope": [417, 360, 482, 25],
+      "worker_count": 1,
+      "validation_time_limit_seconds": 60,
+      "candidate_substantive_value": 37590,
+      "gain": 6,
+      "candidate_source_fingerprint": "c093a321e21e184968ced0a8919b2f28a9287094a6cf3c1fb3c1bbc876a7424d",
+      "candidate_validated": true,
+      "candidate_adopted": true,
+      "solver_status": "optimal"
+    },
+    {
+      "artifact": "policy-scope-standalone-replay3.json",
+      "scope": [417, 360, 482, 25],
+      "worker_count": 1,
+      "validation_time_limit_seconds": 60,
+      "candidate_substantive_value": 37590,
+      "gain": 6,
+      "candidate_source_fingerprint": "c093a321e21e184968ced0a8919b2f28a9287094a6cf3c1fb3c1bbc876a7424d",
+      "candidate_validated": true,
+      "candidate_adopted": true,
+      "solver_status": "optimal"
+    },
+    {
+      "artifact": "actual-policy-target-replay1.json",
+      "scope": [9, 514, 714, 799],
+      "worker_count": 1,
+      "validation_time_limit_seconds": 60,
+      "candidate_substantive_value": 37584,
+      "gain": 12,
+      "candidate_source_fingerprint": "6f462f0e7bf526f4fe96128141f8055b37ea5aa1dbb2d069fda7f034bbab6750",
+      "candidate_validated": true,
+      "candidate_adopted": true,
+      "solver_status": "optimal"
+    }
+  ],
+  "aligned_policy_path_replay": {
+    "policy": "stateless_role",
+    "seed": 101,
+    "outer_iterations": 1,
+    "recorded_scope": [417, 360, 482, 25],
+    "operator_target_policy": "dynamic",
+    "validation_time_limit_seconds": 60,
+    "inner_attempts": 3,
+    "final_substantive_value": 37566,
+    "gain": 30,
+    "assignment_count": 10635,
+    "unmet_required_request_count": 0,
+    "special_commitment_count": 310,
+    "candidate_validated": true,
+    "validation_solver_outcome": "optimal",
+    "operator_execution_seconds": 67.27389299997594,
+    "cp_sat_wall_time_seconds": 6.4611241,
+    "full_validation_seconds": 10.052434599841945,
+    "total_elapsed_seconds": 68.55534169997554,
+    "external_overrun_seconds": 8.555341699975543
+  },
+  "prior_policy_path_observation": {
+    "policy": "stateless_role",
+    "seed": 101,
+    "validation_time_limit_seconds": 30,
+    "inner_target_observed": [9, 514, 714, 799],
+    "candidate_validation_classification": "validation_unknown",
+    "candidate_adopted": false,
+    "interpretation": "Historical policy run was bounded by a shorter nested validation limit; it is retained as harness evidence, not a clean operator-quality comparison."
+  },
+  "corrected_boundary_replays": {
+    "aligned_policy_path": {
+      "policy": "stateless_role",
+      "seed": 101,
+      "recorded_scope": [417, 360, 482, 25],
+      "actual_dynamic_scope": [9, 514, 714, 799],
+      "validation_time_limit_seconds": 60,
+      "inner_attempts": 3,
+      "final_substantive_value": 37566,
+      "gain": 30,
+      "candidate_complete": true,
+      "candidate_validated": true,
+      "validation_solver_outcome": "optimal",
+      "interpretation": "Direct policy-path replay accepted a complete validated candidate under the corrected boundary; the policy-selected outer scope and dynamically executed inner scope are retained as separate facts."
+    },
+    "corrected_stateless_calibration": {
+      "artifact": "../adaptive-policy-corrected-v2-20260828/stateless-role-seed101.json",
+      "policy": "stateless_role",
+      "seed": 101,
+      "validation_time_limit_seconds": 60,
+      "final_substantive_value": 37476,
+      "final_assignment_count": 10635,
+      "final_unmet_required_request_count": 0,
+      "final_special_commitment_count": 310,
+      "candidate_complete": true,
+      "execution_status": "completed",
+      "semantic_final_lineage": "not_captured_in_this_calibration_artifact",
+      "interpretation": "Corrected calibration confirms that the policy path can adopt complete validated improvements, but this cell is not used for a clean policy ranking because its final semantic source lineage was not captured and the corrected nine-cell comparison was not rerun."
+    }
+  },
+  "conclusion": {
+    "classification": "policy_session_validation_boundary_mismatch_reproduced",
+    "operator_semantics_changed": false,
+    "production_policy_changed": false,
+    "objective_changed": false,
+    "hard_constraints_changed": false,
+    "next_action": "Rerun predetermined adaptive/stateless-role/fixed-cycle policy cells with the corrected 60-second validation boundary before causal ranking."
+  }
+}

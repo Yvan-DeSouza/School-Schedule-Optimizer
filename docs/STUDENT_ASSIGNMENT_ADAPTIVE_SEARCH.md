@@ -970,8 +970,9 @@ approximately `2,957`-second validation observation remains explicitly
 Accordingly, the current v1 study closes the R64/S8 identity question but does
 not establish that R8/S2 unlocks a better downstream R2 basin than R4/S2.
 The existing R4/S2-to-R2 endpoint remains the stronger measured path evidence.
-Further open-ended v1 endpoint shaving is deferred; the next study is the
-Objective Semantics v2 redesign, beginning with principled normalization.
+Further open-ended v1 endpoint shaving is deferred. Objective Semantics v2 is
+now the active diagnostic boundary; its next required gate is clean
+policy/operator parity under one shared validation configuration.
 
 ## Objective Semantics v2 controlled-policy boundary
 
@@ -1039,3 +1040,72 @@ shows that the three policies were operationally comparable under the
 controlled one-worker boundary for these seeds, but it does not establish a
 quality winner, nor does it justify wiring any policy into ordinary student
 assignment. The earlier host-sleep-contaminated timing remains excluded.
+
+### Policy/operator parity correction (2026-08-28)
+
+The controlled policy artifacts above have one additional diagnostic
+qualification. The original detached calibration runner supplied the
+production-shaped input's 20-second default (clamped to 30 seconds) as the
+nested full-model validation limit. The standalone operator-characterization
+trials used a 60-second validation boundary. A candidate can therefore be
+complete and genuinely better while the shorter nested validator returns
+`UNKNOWN`, causing the policy wrapper to refuse adoption. This was a
+research-harness configuration mismatch, not a scheduling-rule difference.
+
+The calibration runner now uses the shared 60-second minimum boundary used by
+the comparable operator trials. The historical nine-cell policy records remain
+provenance, but their no-adoption outcome is not treated as a clean causal
+policy-quality comparison until those cells are rerun under the corrected
+boundary.
+
+Two clean parity replays from the frozen `37,596` source state established the
+effect without mutating the canonical benchmark. The policy-selected scope
+`(417, 360, 482, 25)` independently produced a complete validated `37,590`
+candidate in three fixed-scope one-worker replays. A direct policy-path replay
+with the aligned 60-second validation boundary accepted a complete candidate
+and reached `37,566` after three inner attempts (`67.27` seconds operator
+execution, `6.46` seconds CP-SAT time, and `10.05` seconds validation). The
+earlier policy-path run with the shorter boundary recorded operator work but
+rejected its candidate as `validation_unknown`.
+
+A corrected detached stateless-role calibration cell using the same 60-second
+validation boundary completed cleanly and retained `37,476` after eight
+operator attempts, with `10,635` assignments, zero unmet required requests,
+and `310` special commitments. Its attempt records retain the canonical
+semantic candidate fingerprint and the actual dynamic target scope. This is
+useful parity evidence, but it is not promoted to a policy comparison result:
+the cell's final calibration artifact did not capture the final semantic
+branch lineage, and adaptive/stateless/fixed must still be rerun as one
+matched corrected cohort before causal ranking.
+
+This is evidence of a validation-boundary/harness effect, not evidence that a
+policy changed the objective or that dynamic targeting is inherently better.
+The policy decision's recorded scope and the operator's dynamically prepared
+scope are separate facts and must be reported separately in future trials.
+### Student-pressure R8/S2 worker frontier (2026-08-28)
+
+The missing student-pressure worker cell was measured from the same `37,596`
+source state using target students `(1052, 1072)`, seed `101`, a 60-second
+operator budget, a 60-second one-worker full validation boundary, and the
+supervised process boundary. Three sequential trials were run at each worker
+count. One worker reproduced `37,590` in all three trials; two workers
+reproduced `37,584` in all three; four and eight workers reproduced `37,590`
+in all three. Each worker cell produced one semantic candidate fingerprint and
+all twelve candidates were complete, fully validated, and adopted. Median
+total operation times were approximately `37.37`, `37.56`, `37.36`, and
+`44.99` seconds for one, two, four, and eight workers. The two-worker result
+is a useful controlled observation, not a production recommendation: worker
+count changes the returned semantic candidate even when all candidates are
+valid.
+
+A corrected three-policy cohort was started only after this gate, with one
+worker and predetermined seeds `101`, `202`, and `303`. The adaptive cells
+completed at `37,488`, but the cohort was intentionally stopped before the
+stateless and fixed-cycle cells completed. Its partial manifest is therefore
+non-promotional evidence; no policy ranking or production-policy conclusion
+is drawn from it.
+
+The corrected runner preserves CP-SAT and full-validation authority rules and
+changes no production scheduling behavior. The next clean policy comparison
+must rerun predetermined policy/seed cells with the corrected boundary before
+making an adaptive-versus-static claim.

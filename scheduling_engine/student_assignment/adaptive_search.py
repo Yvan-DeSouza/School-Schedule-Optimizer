@@ -80,6 +80,14 @@ class AdaptiveOperatorAttempt:
     validation_solver_outcome: str | None = None
     validation_error: str | None = None
     target_scope: tuple = ()
+    # The policy-selected scope and the scope actually passed to the probe can
+    # differ when an operator uses dynamic targeting. Keep both facts so
+    # diagnostic comparisons do not mistake policy selection for execution.
+    actual_target_scope: tuple = ()
+    # Diagnostic identity of the candidate source decisions returned by the
+    # operator. This is deliberately metadata only; candidate authority still
+    # comes from the existing full-model validation boundary.
+    candidate_source_decision_fingerprint: str | None = None
     selected_grade: int | None = None
     utilization_cluster: tuple = ()
     session_attempt_count: int = 0

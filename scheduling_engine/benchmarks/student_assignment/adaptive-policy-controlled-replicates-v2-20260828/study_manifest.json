@@ -60,10 +60,17 @@
       "four_workers": {"artifacts": ["r64-s8-4w-seed101-clean-rep1.json"], "results": [37596], "validated": 0, "validation_unknown": 1, "adopted": 0},
       "eight_workers": {"results": [37590, 37590, 37590], "validated": 3, "adopted": 3}
     },
+    "targeted_r8_s2": {
+      "target_scope": [1052, 1072],
+      "one_worker": {"artifacts": ["r8-s2-1w-seed101-rep1.json", "r8-s2-1w-seed101-rep2.json", "r8-s2-1w-seed101-rep3.json"], "results": [37590, 37590, 37590], "distinct_fingerprints": 1, "validated": 3, "median_cp_sat_seconds": 2.2596492, "median_validation_seconds": 3.7401954, "median_total_seconds": 37.365936},
+      "two_workers": {"artifacts": ["r8-s2-2w-seed101-rep1.json", "r8-s2-2w-seed101-rep2.json", "r8-s2-2w-seed101-rep3.json"], "results": [37584, 37584, 37584], "distinct_fingerprints": 1, "validated": 3, "median_cp_sat_seconds": 2.1994917, "median_validation_seconds": 3.9679233, "median_total_seconds": 37.5578138},
+      "four_workers": {"artifacts": ["r8-s2-4w-seed101-rep1.json", "r8-s2-4w-seed101-rep2.json", "r8-s2-4w-seed101-rep3.json"], "results": [37590, 37590, 37590], "distinct_fingerprints": 1, "validated": 3, "median_cp_sat_seconds": 2.2180569, "median_validation_seconds": 3.8687674, "median_total_seconds": 37.3592297},
+      "eight_workers": {"artifacts": ["r8-s2-8w-seed101-rep1.json", "r8-s2-8w-seed101-rep2.json", "r8-s2-8w-seed101-rep3.json"], "results": [37590, 37590, 37590], "distinct_fingerprints": 1, "validated": 3, "median_cp_sat_seconds": 2.3139752, "median_validation_seconds": 4.526001, "median_total_seconds": 44.9874139}
+    },
     "sleep_contaminated_excluded": ["r64-s8-4w-seed101-rep1.json"]
   },
   "controlled_policy_comparison": {
-    "status": "completed_bounded_comparison",
+    "status": "historical_pre_correction_not_clean",
     "planned_policies": ["adaptive", "stateless_role", "fixed_cycle"],
     "worker_count": 1,
     "profile": "balanced",
@@ -82,8 +89,8 @@
       {"artifact": "fixed-cycle-seed202.json", "policy": "fixed_cycle", "seed": 202, "status": "completed", "initial_substantive": 37596, "final_substantive": 37596, "complete": true, "assignments": 10635, "unmet": 0, "special_commitments": 310, "operator_seconds": 650.53, "total_seconds": 677.13},
       {"artifact": "fixed-cycle-seed303.json", "policy": "fixed_cycle", "seed": 303, "status": "completed", "initial_substantive": 37596, "final_substantive": 37596, "complete": true, "assignments": 10635, "unmet": 0, "special_commitments": 310, "operator_seconds": 607.34, "total_seconds": 631.62}
     ],
-    "outcome": "All nine bounded cells completed with clean worker exit and retained the same complete baseline. No policy showed a quality advantage or a different adopted trajectory in this sample.",
-    "classification": "bounded_tie_inconclusive_for_promotion",
+    "outcome": "Historical cells completed, but the nested validation boundary was mismatched and the cells are not clean causal policy evidence.",
+    "classification": "requires_corrected_rerun",
     "harness_defect": "The first adaptive seed-101 invocation exited before producing a result because record construction referenced missing solver-configuration parameters. The defect was fixed, regression-tested, and the cell was rerun as adaptive-seed101-fixed.json; the failed invocation is retained as harness evidence and is excluded from policy statistics.",
     "recommended_control_worker_count": 1
   },

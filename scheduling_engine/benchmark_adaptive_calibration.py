@@ -55,6 +55,19 @@ from .student_assignment.quality import evaluate_student_assignment_quality
 
 CALIBRATION_SUPERVISED_SCHEMA = "student_assignment_adaptive_calibration_trial_v2"
 CALIBRATION_SUPERVISED_PROTOCOL_VERSION = "adaptive-calibration-v2"
+# Keep the detached policy runner's validation boundary aligned with the
+# standalone operator-characterization trials.  The production-shaped input
+# carries a 20-second engine default, which is sufficient for ordinary work
+# but was too short and inconsistent for the repeated full-model validation
+# used by this offline policy study.
+TARGET_SCALE_CALIBRATION_VALIDATION_TIME_LIMIT_SECONDS = 60.0
+
+
+def _calibration_validation_time_limit(data):
+    return max(
+        TARGET_SCALE_CALIBRATION_VALIDATION_TIME_LIMIT_SECONDS,
+        float(data.time_limit_seconds),
+    )
 
 
 def _source_decisions_from_result(result):
@@ -529,7 +542,7 @@ def _run_supervised_worker(args):
         checked = validate_diagnostic_branch_checkpoint(
             args.branch_input,
             data=data,
-            time_limit_seconds=max(30.0, float(data.time_limit_seconds)),
+            time_limit_seconds=_calibration_validation_time_limit(data),
             worker_count=1,
         )
         branch = read_diagnostic_branch_checkpoint(args.branch_input, data=data)
@@ -551,8 +564,8 @@ def _run_supervised_worker(args):
         total_time_limit_seconds=float(args.total_seconds),
         per_operator_time_limit_seconds=float(args.per_operator_seconds),
         worker_count=int(args.workers),
-        hard_feasibility_validation_time_limit_seconds=max(
-            30.0, float(data.time_limit_seconds)
+        hard_feasibility_validation_time_limit_seconds=(
+            _calibration_validation_time_limit(data)
         ),
         hard_feasibility_validation_worker_count=1,
         cp_sat_random_seed=getattr(args, "cp_sat_random_seed", None),
@@ -808,7 +821,7 @@ def run_supervised_calibration_trial(
         checked = validate_diagnostic_branch_checkpoint(
             branch_input,
             data=data,
-            time_limit_seconds=max(30.0, float(data.time_limit_seconds)),
+            time_limit_seconds=_calibration_validation_time_limit(data),
             worker_count=1,
         )
         branch = read_diagnostic_branch_checkpoint(branch_input, data=data)
@@ -960,7 +973,7 @@ def run_supervised_calibration_trial(
                     branch_validation = validate_diagnostic_branch_checkpoint(
                         validated_branch_output,
                         data=data,
-                        time_limit_seconds=max(30.0, float(data.time_limit_seconds)),
+                        time_limit_seconds=_calibration_validation_time_limit(data),
                         worker_count=1,
                     )
                     if (
@@ -1126,7 +1139,7 @@ def run_calibration_trial(
         checked = validate_diagnostic_branch_checkpoint(
             path,
             data=data,
-            time_limit_seconds=max(30.0, float(data.time_limit_seconds)),
+            time_limit_seconds=_calibration_validation_time_limit(data),
             worker_count=1,
         )
         branch = read_diagnostic_branch_checkpoint(path, data=data)
@@ -1140,8 +1153,8 @@ def run_calibration_trial(
             total_time_limit_seconds=total_time_limit_seconds,
             per_operator_time_limit_seconds=per_operator_time_limit_seconds,
             worker_count=worker_count,
-            hard_feasibility_validation_time_limit_seconds=max(
-                30.0, float(data.time_limit_seconds)
+            hard_feasibility_validation_time_limit_seconds=(
+                _calibration_validation_time_limit(data)
             ),
             hard_feasibility_validation_worker_count=1,
             cp_sat_random_seed=cp_sat_random_seed,

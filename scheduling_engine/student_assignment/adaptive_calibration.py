@@ -241,6 +241,7 @@ class AdaptiveCalibrationTrialRecord:
     final_unmet_count: int
     final_special_commitment_count: int
     candidate_complete: bool
+    final_source_decision_fingerprint: str | None
     attempts: tuple
     decisions: tuple
     timing: dict
@@ -383,6 +384,14 @@ def build_calibration_trial_record(
         candidate_complete=(
             result.result.status == "complete"
             and not result.result.unmet_requests
+        ),
+        final_source_decision_fingerprint=(
+            semantic_stage1_seed_source_fingerprint(
+                data,
+                result.source_decisions,
+            )
+            if getattr(result, "source_decisions", ())
+            else None
         ),
         attempts=tuple(record.attempts),
         decisions=tuple(record.decisions),
