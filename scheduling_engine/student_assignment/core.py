@@ -1094,6 +1094,9 @@ def run_student_assignment_source_decision_validation_diagnostic(
     worker_count=1,
     capture_final_source_decisions=True,
     collect_resource_telemetry=False,
+    collect_validation_presolve_telemetry=False,
+    collect_validation_search_start_telemetry=False,
+    validation_telemetry_callback=None,
 ):
     """Validate detached semantic decisions against the current full model.
 
@@ -1125,6 +1128,13 @@ def run_student_assignment_source_decision_validation_diagnostic(
         hard_feasibility_validation_worker_count=worker_count,
         capture_final_source_decisions=capture_final_source_decisions,
         collect_resource_telemetry=collect_resource_telemetry,
+        collect_validation_presolve_telemetry=(
+            collect_validation_presolve_telemetry
+        ),
+        collect_validation_search_start_telemetry=(
+            collect_validation_search_start_telemetry
+        ),
+        validation_telemetry_callback=validation_telemetry_callback,
     )
 
 
@@ -1154,6 +1164,8 @@ def run_student_assignment_operator_session_diagnostic(
     collect_search_start_telemetry=False,
     collect_resource_telemetry=True,
     capture_final_source_decisions=True,
+    collect_validation_presolve_telemetry=False,
+    collect_validation_search_start_telemetry=False,
     timeline_max_events=128,
     phase_callback=None,
 ):
@@ -1231,6 +1243,12 @@ def run_student_assignment_operator_session_diagnostic(
             ),
             "candidate_validation_time_limit_seconds": (
                 config.candidate_validation_time_limit_seconds
+            ),
+            "collect_validation_presolve_telemetry": bool(
+                collect_validation_presolve_telemetry
+            ),
+            "collect_validation_search_start_telemetry": bool(
+                collect_validation_search_start_telemetry
             ),
             "diagnostic_parent_hard_wall_deadline_monotonic": (
                 diagnostic_parent_hard_wall_deadline_monotonic
@@ -1528,6 +1546,9 @@ def _solve_student_assignment(
     phase_callback=None,
     diagnostic_cp_sat_random_seed=None,
     diagnostic_cp_sat_max_deterministic_time_seconds=None,
+    collect_validation_presolve_telemetry=False,
+    collect_validation_search_start_telemetry=False,
+    validation_telemetry_callback=None,
 ):
     # This monitor covers the complete diagnostic/engine operation, including
     # input validation, model construction, Stage 1, Stage 2, extraction, and
@@ -3478,6 +3499,12 @@ def _solve_student_assignment(
                     max_deterministic_time=(
                         diagnostic_cp_sat_max_deterministic_time_seconds
                     ),
+                    collect_presolve_telemetry=(
+                        collect_validation_presolve_telemetry
+                    ),
+                    collect_search_start_telemetry=(
+                        collect_validation_search_start_telemetry
+                    ),
                 )
             )
             stage_2_seed_solver = (
@@ -3497,6 +3524,16 @@ def _solve_student_assignment(
             alternate_seed_validation_elapsed = (
                 monotonic() - alternate_validation_started
             )
+            if validation_telemetry_callback is not None:
+                try:
+                    validation_telemetry_callback(
+                        alternate_validation_outcome,
+                        elapsed_seconds=alternate_seed_validation_elapsed,
+                    )
+                except Exception:
+                    # Telemetry must never affect candidate authority or the
+                    # result of the diagnostic solve.
+                    pass
             _notify_phase(
                 phase_callback,
                 "mature_seed_validation",
@@ -3965,6 +4002,16 @@ def _solve_student_assignment(
                     max_deterministic_time=(
                         local_config.get(
                             "cp_sat_max_deterministic_time_seconds"
+                        )
+                    ),
+                    collect_presolve_telemetry=bool(
+                        local_config.get(
+                            "collect_validation_presolve_telemetry", False
+                        )
+                    ),
+                    collect_search_start_telemetry=bool(
+                        local_config.get(
+                            "collect_validation_search_start_telemetry", False
                         )
                     ),
                 )

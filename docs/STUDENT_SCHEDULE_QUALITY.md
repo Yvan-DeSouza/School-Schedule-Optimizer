@@ -1730,3 +1730,80 @@ shared-resource dependency, completion condition, objective/lineage check,
 and special commitment is equivalent to the current full authority. Until
 that proof and differential testing exist, the full validator remains the
 only authority for candidate adoption.
+
+### Exact-candidate native validation audit (2026-08-30)
+
+The validation-cost study was extended with opt-in native CP-SAT telemetry and
+an isolated semantic replay of the exact diagnostic `targeted_r4_s2` candidate
+captured from the reference target. The replay used the current detached input
+fingerprint `f56b5c0d5b745d919a57281a2f1e49959b4b23d8feb9486eda3c81afd8bb7906`,
+the candidate source fingerprint
+`50b482c435cc802b2b3e785a738f8e7d26b6a7ff6422cfa3a96f5595facfb46d`, and a
+separate diagnostic branch artifact. The canonical benchmark files and
+lineage were not modified.
+
+The exact candidate contained 9,170 source decisions, 9,030 assignments, zero
+unmet requests, and 140 special commitments. The unchanged validator built a
+167,259-variable / 269,235-constraint full model, then added 9,170 completion
+constraints and 57,666 source-value equalities. The validation model therefore
+had 336,071 constraints after candidate fixes. All 57,666 source variables were
+fixed; 109,593 auxiliary variables remained for CP-SAT to derive. This is an
+important distinction: the validator does not search for alternative source
+assignments in this replay, but it still has to establish the consistency of
+the derived full-model state.
+
+The normal exact-candidate validation replay measured:
+
+| Phase/fact | Measured value |
+| --- | ---: |
+| outer benchmark validation operation | 129.93 s |
+| validator telemetry total | 97.68 s |
+| model construction in the surrounding engine operation | 16.63 s |
+| model clone | 0.281 s |
+| completion-constraint construction | 0.914 s |
+| source-fix construction | 1.541 s |
+| solver creation | 0.0002 s |
+| CP-SAT external wall time | 75.12 s |
+| CP-SAT reported wall time | 74.98 s |
+| first native search marker | 74.93 s |
+| first native solution marker | 74.93 s |
+| candidate extraction | 0.145 s |
+| quality evaluation | 0.307 s |
+| result reconstruction | 0.080 s |
+| review diagnostics in the detached result path | 8.54 s |
+
+The native search-start parser does not expose a supported first-branch
+timestamp, so the first-search and first-solution markers must not be read as
+a complete attribution of every millisecond inside CP-SAT. They do show that
+the large delay is inside the native model presolve/initial-search transition,
+not in Python candidate extraction or quality reconstruction. The detached
+replay returned `validated` / `optimal` and remained complete.
+
+A separate stop-after-presolve probe against the same exact candidate returned
+`validation_unknown` by design: stopping before the normal solve is an
+observational probe and is never an authority result. It measured 104.51 s for
+the outer operation, 87.55 s in validator telemetry, and 62.54 s of native
+CP-SAT wall time before the stop. The current OR-Tools log parser reported zero
+presolved variables and constraints for this stopped run because the complete
+presolved-model summary was not emitted; those zero fields are therefore
+telemetry limitations, not a claim that the model was mathematically reduced
+to zero. The probe confirms substantial native work before a normal validation
+search can begin, but it does not by itself separate every presolve sub-phase.
+
+The validator's source-freedom accounting also confirmed that this target
+candidate fixes every source variable represented by the full model in this
+replay. The diagnostic benchmark retains a separate optional-request test
+showing that, on inputs where non-completion-defining optional source variables
+exist, those variables remain free by the existing completion contract. This
+was measured and documented rather than changed during the audit.
+
+The current conclusion is therefore **full-model CP-SAT reconstruction and
+native presolve/search are the dominant validation cost**, with model
+construction a secondary cost and result/quality extraction comparatively
+small. No deterministic shadow validator, dependency-scoped authority, or
+batched unvalidated-incumbent path is justified by this audit. The full-model
+validator remains the only adoption authority. The next safe research step is
+to determine whether a mathematically equivalent, full-scope validation
+formulation or prepared in-process model context can reduce this native cost;
+any reduced validator must first pass differential equivalence tests against
+the current authority across ordinary and special-commitment candidates.

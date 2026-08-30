@@ -70,6 +70,8 @@ def run_source_decision_validation_benchmark(
     time_limit_seconds=120.0,
     worker_count=1,
     collect_resource_telemetry=True,
+    collect_validation_presolve_telemetry=False,
+    collect_validation_search_start_telemetry=False,
 ):
     """Run and summarize one bounded full-validator benchmark.
 
@@ -121,6 +123,12 @@ def run_source_decision_validation_benchmark(
             raise ValueError("Source-decision fingerprint does not match")
     preparation_seconds = monotonic() - preparation_started
 
+    captured_validation_outcome = {}
+
+    def capture_validation_outcome(outcome, *, elapsed_seconds):
+        captured_validation_outcome["outcome"] = outcome
+        captured_validation_outcome["elapsed_seconds"] = elapsed_seconds
+
     validation_started = monotonic()
     validation_error = None
     try:
@@ -131,6 +139,13 @@ def run_source_decision_validation_benchmark(
             worker_count=worker_count,
             capture_final_source_decisions=True,
             collect_resource_telemetry=collect_resource_telemetry,
+            collect_validation_presolve_telemetry=(
+                collect_validation_presolve_telemetry
+            ),
+            collect_validation_search_start_telemetry=(
+                collect_validation_search_start_telemetry
+            ),
+            validation_telemetry_callback=capture_validation_outcome,
         )
     except ValueError as error:  # pragma: no cover - exercised by invalid probes
         # The engine intentionally fails closed when semantic source decisions
@@ -159,7 +174,22 @@ def run_source_decision_validation_benchmark(
     else:
         final_source_fingerprint = None
 
-    if result is None:
+    captured_outcome = captured_validation_outcome.get("outcome")
+    if result is None and captured_outcome is not None:
+        validation_facts = {
+            "classification": captured_outcome.classification,
+            "solver_outcome": captured_outcome.solver_outcome,
+            "operation_elapsed_seconds": operation_seconds,
+            "telemetry": dict(captured_outcome.telemetry),
+            "error": captured_outcome.error,
+            "source_decision_identity_checked": False,
+            "source_decision_identity_matches": None,
+            "candidate_source_decision_count": len(source_decisions),
+            "validated_source_decision_count": 0,
+            "final_source_decision_fingerprint": None,
+        }
+        result_facts = None
+    elif result is None:
         validation_facts = {
             "classification": "validation_error",
             "solver_outcome": "error",

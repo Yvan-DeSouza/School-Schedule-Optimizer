@@ -54,6 +54,120 @@ def new_solver(
     return solver
 
 
+def _validation_variable_freedom(
+    model,
+    required_decision_groups,
+    source_variable_values,
+):
+    """Describe source variables fixed by validation versus left free.
+
+    This is diagnostic accounting only.  The validator continues to use the
+    complete production model; the counts make explicit whether a supplied
+    semantic candidate fixes every source variable or only the
+    completion-defining groups.
+    """
+
+    required_indexes = {
+        variable.Index()
+        for decision_group in required_decision_groups
+        for variable in decision_group
+    }
+    fixed_indexes = {
+        int(index) for index in (source_variable_values or {})
+    }
+    source_indexes = {
+        index
+        for index, variable in enumerate(model.Proto().variables)
+        if (variable.name or "").startswith(("enroll_", "commitment_"))
+    }
+
+    family_prefixes = {
+        "objective_related": (
+            "utilization_",
+            "semester_balance_",
+            "difficulty_balance_",
+            "category_",
+            "sequence_",
+            "preservation",
+            "tie_break",
+        ),
+        "utilization": ("utilization_",),
+        "semester_balance": ("semester_balance_",),
+        "difficulty": ("difficulty_balance_",),
+        "category_diversity": ("category_",),
+        "sequence": ("sequence_",),
+        "schedule_preservation": ("preservation",),
+        "online_supervision": ("online_",),
+        "half_semester": ("half_",),
+        "study": ("study_",),
+        "focus": ("focus_",),
+        "co_op": ("co_op_",),
+    }
+
+    family_counts = {}
+    for family, prefixes in family_prefixes.items():
+        family_counts[family] = sum(
+            any((variable.name or "").startswith(prefix) for prefix in prefixes)
+            for variable in model.Proto().variables
+        )
+
+    return {
+        "total_variable_count": len(model.Proto().variables),
+        "source_variable_count": len(source_indexes),
+        "completion_defining_source_variable_count": len(required_indexes),
+        "source_variable_fixed_by_candidate_count": len(
+            source_indexes & fixed_indexes
+        ),
+        "source_variable_not_fixed_by_candidate_count": len(
+            source_indexes - fixed_indexes
+        ),
+        "source_variable_fixed_index_count": len(fixed_indexes),
+        "singleton_source_variable_count": sum(
+            index in source_indexes
+            and len(variable.domain) == 2
+            and variable.domain[0] == variable.domain[1]
+            for index, variable in enumerate(model.Proto().variables)
+        ),
+        "auxiliary_variable_count": len(model.Proto().variables) - len(source_indexes),
+        "hinted_variable_count": len(model.Proto().solution_hint.vars),
+        "required_decision_group_count": len(required_decision_groups),
+        "empty_required_decision_group_count": sum(
+            not decision_group for decision_group in required_decision_groups
+        ),
+        "family_variable_counts": family_counts,
+    }
+
+
+def _native_validation_telemetry(
+    model,
+    solver,
+    log_messages,
+    *,
+    collect_presolve_telemetry,
+    collect_search_start_telemetry,
+):
+    """Use the existing bounded CP-SAT log parsers for validation audits."""
+
+    # The parser implementation is shared with substantive-probe diagnostics.
+    # The deferred import avoids a module-import cycle: substantive_probe
+    # already imports solver helpers, while this function runs only after both
+    # modules have been initialized.
+    from .substantive_probe import (
+        _build_presolve_telemetry,
+        _parse_cp_sat_search_start_facts,
+    )
+
+    facts = _build_presolve_telemetry(
+        model,
+        solver,
+        log_messages,
+        stopped_after_presolve=bool(collect_presolve_telemetry),
+    )
+    if collect_search_start_telemetry:
+        facts["search_start"] = _parse_cp_sat_search_start_facts(log_messages)
+    return facts
+
+
 @dataclass(frozen=True)
 class SourceDecisionValidationOutcome:
     """Diagnostic result for validating one semantic source-decision candidate.
@@ -249,6 +363,8 @@ def validate_source_decision_candidate_with_status(
     worker_count=1,
     random_seed=0,
     max_deterministic_time=None,
+    collect_presolve_telemetry=False,
+    collect_search_start_telemetry=False,
 ):
     """Validate a candidate and preserve the bounded validator outcome.
 
@@ -259,6 +375,11 @@ def validate_source_decision_candidate_with_status(
     ``validation_error``.  None of these non-validated outcomes may be
     adopted by the production or diagnostic caller.
     """
+
+    if collect_presolve_telemetry and collect_search_start_telemetry:
+        raise ValueError(
+            "Validation presolve and search-start telemetry modes are mutually exclusive"
+        )
 
     validation_started = monotonic()
     telemetry = {
@@ -276,6 +397,8 @@ def validate_source_decision_candidate_with_status(
         "solver_creation_wall_time_seconds": None,
         "cp_sat_solve_external_wall_time_seconds": None,
         "cp_sat_solver_wall_time_seconds": None,
+        "variable_freedom": None,
+        "native_cp_sat": {},
         "validation_wall_time_seconds": None,
     }
 
@@ -320,6 +443,11 @@ def validate_source_decision_candidate_with_status(
         telemetry["candidate_model_constraint_count_after_fixes"] = len(
             candidate_model.Proto().constraints
         )
+        telemetry["variable_freedom"] = _validation_variable_freedom(
+            candidate_model,
+            required_decision_groups,
+            source_variable_values,
+        )
 
         phase_started = monotonic()
         validator = new_solver(
@@ -330,8 +458,29 @@ def validate_source_decision_candidate_with_status(
         )
         telemetry["solver_creation_wall_time_seconds"] = monotonic() - phase_started
 
+        native_log_messages = []
+        collect_native_log = (
+            collect_presolve_telemetry or collect_search_start_telemetry
+        )
+        if collect_native_log:
+            # OR-Tools 9.15 exposes presolve/search milestones through its
+            # supported progress log rather than a structured Python API.
+            # Keep this entirely opt-in so ordinary validation retains its
+            # established configuration and logging behavior.
+            validator.parameters.log_search_progress = True
+            validator.parameters.log_to_stdout = False
+            if collect_presolve_telemetry:
+                validator.parameters.stop_after_presolve = True
+            validator.log_callback = native_log_messages.append
+
         phase_started = monotonic()
-        status = validator.Solve(candidate_model)
+        try:
+            status = validator.Solve(candidate_model)
+        finally:
+            if collect_native_log:
+                # Native logging can retain a worker thread after Solve on
+                # Windows; detach the callback immediately after the audit.
+                validator.log_callback = None
         telemetry["cp_sat_solve_external_wall_time_seconds"] = (
             monotonic() - phase_started
         )
@@ -339,6 +488,14 @@ def validate_source_decision_candidate_with_status(
         telemetry["cp_sat_solver_wall_time_seconds"] = (
             float(solver_wall_time()) if callable(solver_wall_time) else None
         )
+        if collect_native_log:
+            telemetry["native_cp_sat"] = _native_validation_telemetry(
+                candidate_model,
+                validator,
+                native_log_messages,
+                collect_presolve_telemetry=collect_presolve_telemetry,
+                collect_search_start_telemetry=collect_search_start_telemetry,
+            )
     except Exception as error:  # pragma: no cover - defensive infrastructure path
         telemetry["validation_wall_time_seconds"] = monotonic() - validation_started
         return SourceDecisionValidationOutcome(
