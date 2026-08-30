@@ -159,6 +159,31 @@ def run_source_decision_validation_benchmark(
     optimization_facts = (result.optimization_facts or {}) if result else {}
     stage_2 = optimization_facts.get("stage_2") or {}
     telemetry = dict(stage_2.get("alternate_seed_validation_telemetry") or {})
+    phase_names = (
+        "model_fingerprint_wall_time_seconds",
+        "clone_wall_time_seconds",
+        "completion_constraint_wall_time_seconds",
+        "source_fix_constraint_wall_time_seconds",
+        "variable_freedom_accounting_wall_time_seconds",
+        "solver_creation_wall_time_seconds",
+        "cp_sat_solve_external_wall_time_seconds",
+        "result_classification_wall_time_seconds",
+    )
+    phase_seconds = {
+        name: telemetry.get(name)
+        for name in phase_names
+        if telemetry.get(name) is not None
+    }
+    accounted_phase_seconds = sum(
+        float(value) for value in phase_seconds.values()
+    )
+    telemetry["phase_seconds"] = phase_seconds
+    telemetry["accounted_phase_seconds"] = accounted_phase_seconds
+    telemetry["unattributed_phase_seconds"] = max(
+        0.0,
+        float(telemetry.get("validation_wall_time_seconds") or 0.0)
+        - accounted_phase_seconds,
+    )
     final_source_decisions = tuple(stage_2.get("final_source_decisions") or ())
     identity_matches = stage_2.get("alternate_source_decision_identity_matches")
     if final_source_decisions:
@@ -187,6 +212,7 @@ def run_source_decision_validation_benchmark(
             "candidate_source_decision_count": len(source_decisions),
             "validated_source_decision_count": 0,
             "final_source_decision_fingerprint": None,
+            "outer_phase_seconds": {},
         }
         result_facts = None
     elif result is None:
@@ -196,6 +222,7 @@ def run_source_decision_validation_benchmark(
             "operation_elapsed_seconds": operation_seconds,
             "telemetry": {},
             "error": validation_error,
+            "outer_phase_seconds": {},
         }
         result_facts = None
     else:
@@ -220,6 +247,27 @@ def run_source_decision_validation_benchmark(
                 "validated_source_decision_count"
             ),
             "final_source_decision_fingerprint": final_source_fingerprint,
+            "outer_phase_seconds": {
+                "caller_preparation_seconds": preparation_seconds,
+                "model_construction_seconds": (
+                    (optimization_facts.get("stage_1") or {}).get(
+                        "model_construction_wall_time_seconds"
+                    )
+                ),
+                "semantic_source_materialization_seconds": (
+                    (optimization_facts.get("stage_1") or {}).get(
+                        "mature_seed_materialization_wall_time_seconds"
+                    )
+                ),
+                "result_operation_unattributed_seconds": max(
+                    0.0,
+                    operation_seconds
+                    - preparation_seconds
+                    - float(
+                        telemetry.get("validation_wall_time_seconds") or 0.0
+                    ),
+                ),
+            },
         }
         result_facts = _result_summary(result)
 

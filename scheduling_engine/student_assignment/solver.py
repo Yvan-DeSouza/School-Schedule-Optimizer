@@ -69,6 +69,8 @@ def _validation_variable_freedom(
     model,
     required_decision_groups,
     source_variable_values,
+    *,
+    prepared_context=None,
 ):
     """Describe source variables fixed by validation versus left free.
 
@@ -77,6 +79,43 @@ def _validation_variable_freedom(
     semantic candidate fixes every source variable or only the
     completion-defining groups.
     """
+
+    if prepared_context is not None:
+        required_indexes = {
+            index
+            for group in prepared_context.required_decision_group_indexes
+            for index in group
+        }
+        source_indexes = prepared_context.source_variable_indexes
+        fixed_indexes = {
+            int(index) for index in (source_variable_values or {})
+        }
+        return {
+            "total_variable_count": len(model.Proto().variables),
+            "source_variable_count": len(source_indexes),
+            "completion_defining_source_variable_count": len(required_indexes),
+            "source_variable_fixed_by_candidate_count": len(
+                source_indexes & fixed_indexes
+            ),
+            "source_variable_not_fixed_by_candidate_count": len(
+                source_indexes - fixed_indexes
+            ),
+            "source_variable_fixed_index_count": len(fixed_indexes),
+            "singleton_source_variable_count": (
+                prepared_context.singleton_source_variable_count
+            ),
+            "auxiliary_variable_count": prepared_context.auxiliary_variable_count,
+            "hinted_variable_count": prepared_context.hinted_variable_count,
+            "required_decision_group_count": len(
+                prepared_context.required_decision_group_indexes
+            ),
+            "empty_required_decision_group_count": (
+                prepared_context.empty_required_decision_group_count
+            ),
+            "family_variable_counts": dict(
+                prepared_context.family_variable_counts
+            ),
+        }
 
     required_indexes = {
         variable.Index()
@@ -196,6 +235,126 @@ class SourceDecisionValidationOutcome:
     solver_outcome: str
     error: str | None = None
     telemetry: dict = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class PreparedValidationContext:
+    """Candidate-independent state for diagnostic repeated validation.
+
+    The context owns a clone of the unchanged full model with the existing
+    completion constraints already added.  It never owns a solver, response,
+    source values, or candidate-specific equality.  Each validation still
+    clones this prepared model and creates a fresh solver, so the ordinary
+    CP-SAT authority and fail-closed classifications remain unchanged.
+
+    This is intentionally an opt-in diagnostic facility.  It is useful only
+    when one process validates multiple candidates from the exact same model
+    lineage; it is not a cross-process cache or a replacement for the full
+    validator.
+    """
+
+    model: object
+    source_model: object
+    base_model_fingerprint: str
+    base_model_variable_count: int
+    base_model_constraint_count: int
+    required_decision_group_indexes: tuple[tuple[int, ...], ...]
+    source_variable_indexes: frozenset[int]
+    family_variable_counts: dict
+    singleton_source_variable_count: int
+    auxiliary_variable_count: int
+    hinted_variable_count: int
+    empty_required_decision_group_count: int
+    input_semantic_fingerprint: str | None = None
+    model_schema_version: str | None = None
+    objective_semantics_version: str | None = None
+    configuration_fingerprint: str | None = None
+
+
+def prepare_validation_context(
+    model,
+    required_decision_groups,
+    *,
+    input_semantic_fingerprint=None,
+    model_schema_version=None,
+    objective_semantics_version=None,
+    configuration_fingerprint=None,
+):
+    """Prepare reusable validation-only model/index state for one lineage.
+
+    The prepared clone contains exactly the same completion ``ExactlyOne``
+    constraints the current validator adds for every candidate.  No objective
+    or hard rule is removed, and no candidate values are stored.  The original
+    model remains untouched and the returned context is safe to reuse only
+    with this same in-process model object.
+    """
+
+    prepared_model = model.Clone()
+    group_indexes = tuple(
+        tuple(int(variable.Index()) for variable in decision_group)
+        for decision_group in required_decision_groups
+    )
+    for group in group_indexes:
+        prepared_model.AddExactlyOne(
+            prepared_model.GetIntVarFromProtoIndex(index) for index in group
+        )
+    base_model_fingerprint = model_proto_fingerprint(model)
+    source_variable_indexes = frozenset(
+        index
+        for index, variable in enumerate(model.Proto().variables)
+        if (variable.name or "").startswith(("enroll_", "commitment_"))
+    )
+    family_prefixes = {
+        "objective_related": (
+            "utilization_", "semester_balance_", "difficulty_balance_",
+            "category_", "sequence_", "preservation", "tie_break",
+        ),
+        "utilization": ("utilization_",),
+        "semester_balance": ("semester_balance_",),
+        "difficulty": ("difficulty_balance_",),
+        "category_diversity": ("category_",),
+        "sequence": ("sequence_",),
+        "schedule_preservation": ("preservation",),
+        "online_supervision": ("online_",),
+        "half_semester": ("half_",),
+        "study": ("study_",),
+        "focus": ("focus_",),
+        "co_op": ("co_op_",),
+    }
+    family_variable_counts = {
+        family: sum(
+            any((variable.name or "").startswith(prefix) for prefix in prefixes)
+            for variable in model.Proto().variables
+        )
+        for family, prefixes in family_prefixes.items()
+    }
+    return PreparedValidationContext(
+        model=prepared_model,
+        source_model=model,
+        base_model_fingerprint=base_model_fingerprint,
+        base_model_variable_count=len(model.Proto().variables),
+        base_model_constraint_count=len(model.Proto().constraints),
+        required_decision_group_indexes=group_indexes,
+        source_variable_indexes=source_variable_indexes,
+        family_variable_counts=family_variable_counts,
+        singleton_source_variable_count=sum(
+            index in source_variable_indexes
+            and len(variable.domain) == 2
+            and variable.domain[0] == variable.domain[1]
+            for index, variable in enumerate(model.Proto().variables)
+        ),
+        auxiliary_variable_count=(
+            len(model.Proto().variables) - len(source_variable_indexes)
+        ),
+        hinted_variable_count=len(model.Proto().solution_hint.vars),
+        empty_required_decision_group_count=sum(
+            not group for group in group_indexes
+        ),
+        input_semantic_fingerprint=input_semantic_fingerprint,
+        model_schema_version=model_schema_version,
+        objective_semantics_version=objective_semantics_version,
+        configuration_fingerprint=configuration_fingerprint,
+    )
 
 
 def set_solver_hints(model, solver, *, source_model=None):
@@ -378,6 +537,8 @@ def validate_source_decision_candidate_with_status(
     collect_search_start_telemetry=False,
     base_model_variable_values=None,
     expected_base_model_fingerprint=None,
+    prepared_context=None,
+    expected_prepared_context_identity=None,
 ):
     """Validate a candidate and preserve the bounded validator outcome.
 
@@ -407,6 +568,9 @@ def validate_source_decision_candidate_with_status(
         "clone_wall_time_seconds": None,
         "completion_constraint_wall_time_seconds": None,
         "source_fix_constraint_wall_time_seconds": None,
+        "model_fingerprint_wall_time_seconds": None,
+        "variable_freedom_accounting_wall_time_seconds": None,
+        "result_classification_wall_time_seconds": None,
         "solver_creation_wall_time_seconds": None,
         "cp_sat_solve_external_wall_time_seconds": None,
         "cp_sat_solver_wall_time_seconds": None,
@@ -423,12 +587,68 @@ def validate_source_decision_candidate_with_status(
             "source_witness_mismatch_count": 0,
         },
         "validation_wall_time_seconds": None,
+        "prepared_context": {
+            "used": prepared_context is not None,
+            "identity_valid": None,
+            "completion_constraints_prepared": False,
+        },
     }
 
     try:
-        telemetry["model_variable_count_before"] = len(model.Proto().variables)
-        telemetry["model_constraint_count_before"] = len(model.Proto().constraints)
-        base_model_fingerprint = model_proto_fingerprint(model)
+        if prepared_context is not None:
+            prepared_context_identity = (
+                prepared_context.input_semantic_fingerprint,
+                prepared_context.model_schema_version,
+                prepared_context.objective_semantics_version,
+                prepared_context.configuration_fingerprint,
+                prepared_context.base_model_fingerprint,
+            )
+            if (
+                expected_prepared_context_identity is not None
+                and tuple(expected_prepared_context_identity)
+                != prepared_context_identity
+            ):
+                raise ValueError(
+                    "Prepared validation context identity does not match"
+                )
+            if model is not prepared_context.source_model:
+                raise ValueError(
+                    "Prepared validation context belongs to a different model object"
+                )
+            if (
+                len(model.Proto().variables)
+                != prepared_context.base_model_variable_count
+                or len(model.Proto().constraints)
+                != prepared_context.base_model_constraint_count
+            ):
+                raise ValueError(
+                    "Prepared validation context model shape no longer matches"
+                )
+            requested_group_indexes = tuple(
+                tuple(int(variable.Index()) for variable in decision_group)
+                for decision_group in required_decision_groups
+            )
+            if requested_group_indexes != prepared_context.required_decision_group_indexes:
+                raise ValueError(
+                    "Prepared validation context completion groups do not match"
+                )
+            base_model_fingerprint = prepared_context.base_model_fingerprint
+            telemetry["prepared_context"]["identity_valid"] = True
+            telemetry["prepared_context"]["completion_constraints_prepared"] = True
+            telemetry["model_variable_count_before"] = (
+                prepared_context.base_model_variable_count
+            )
+            telemetry["model_constraint_count_before"] = (
+                prepared_context.base_model_constraint_count
+            )
+        else:
+            telemetry["model_variable_count_before"] = len(model.Proto().variables)
+            telemetry["model_constraint_count_before"] = len(model.Proto().constraints)
+            phase_started = monotonic()
+            base_model_fingerprint = model_proto_fingerprint(model)
+            telemetry["model_fingerprint_wall_time_seconds"] = (
+                monotonic() - phase_started
+            )
         telemetry["witness"]["model_fingerprint"] = base_model_fingerprint
         telemetry["witness"]["base_model_variable_count"] = (
             telemetry["model_variable_count_before"]
@@ -443,7 +663,11 @@ def validate_source_decision_candidate_with_status(
             )
 
         phase_started = monotonic()
-        candidate_model = model.Clone()
+        candidate_model = (
+            prepared_context.model.Clone()
+            if prepared_context is not None
+            else model.Clone()
+        )
         telemetry["clone_wall_time_seconds"] = monotonic() - phase_started
         telemetry["candidate_model_variable_count_after_clone"] = len(
             candidate_model.Proto().variables
@@ -452,15 +676,18 @@ def validate_source_decision_candidate_with_status(
             candidate_model.Proto().constraints
         )
 
-        phase_started = monotonic()
-        for decision_group in required_decision_groups:
-            candidate_model.AddExactlyOne(
-                candidate_model.GetIntVarFromProtoIndex(variable.Index())
-                for variable in decision_group
+        if prepared_context is not None:
+            telemetry["completion_constraint_wall_time_seconds"] = 0.0
+        else:
+            phase_started = monotonic()
+            for decision_group in required_decision_groups:
+                candidate_model.AddExactlyOne(
+                    candidate_model.GetIntVarFromProtoIndex(variable.Index())
+                    for variable in decision_group
+                )
+            telemetry["completion_constraint_wall_time_seconds"] = (
+                monotonic() - phase_started
             )
-        telemetry["completion_constraint_wall_time_seconds"] = (
-            monotonic() - phase_started
-        )
 
         phase_started = monotonic()
         for variable_index, value in source_variable_values.items():
@@ -519,10 +746,15 @@ def validate_source_decision_candidate_with_status(
         telemetry["candidate_model_constraint_count_after_fixes"] = len(
             candidate_model.Proto().constraints
         )
+        phase_started = monotonic()
         telemetry["variable_freedom"] = _validation_variable_freedom(
             candidate_model,
             required_decision_groups,
             source_variable_values,
+            prepared_context=prepared_context,
+        )
+        telemetry["variable_freedom_accounting_wall_time_seconds"] = (
+            monotonic() - phase_started
         )
 
         phase_started = monotonic()
@@ -584,7 +816,11 @@ def validate_source_decision_candidate_with_status(
 
     telemetry["validation_wall_time_seconds"] = monotonic() - validation_started
 
+    classification_started = monotonic()
     if status in {cp_model.OPTIMAL, cp_model.FEASIBLE}:
+        telemetry["result_classification_wall_time_seconds"] = (
+            monotonic() - classification_started
+        )
         return SourceDecisionValidationOutcome(
             classification="validated",
             solver=validator,
@@ -592,12 +828,18 @@ def validate_source_decision_candidate_with_status(
             telemetry=telemetry,
         )
     if status == cp_model.INFEASIBLE:
+        telemetry["result_classification_wall_time_seconds"] = (
+            monotonic() - classification_started
+        )
         return SourceDecisionValidationOutcome(
             classification="hard_invalid",
             solver=None,
             solver_outcome=outcome_name(status),
             telemetry=telemetry,
         )
+    telemetry["result_classification_wall_time_seconds"] = (
+        monotonic() - classification_started
+    )
     return SourceDecisionValidationOutcome(
         classification=(
             "validation_error"

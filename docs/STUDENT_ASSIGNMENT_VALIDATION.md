@@ -128,20 +128,21 @@ telemetry limitation, not a claim that the model reduced to zero.
 
 ## Current bottleneck ranking
 
-1. **Primary: native CP-SAT derived-state reconstruction and presolve/search.**
-   The exact target candidate fixed all source variables, yet CP-SAT still
-   consumed roughly 70--75 seconds in normal validation. The witness A/B shows
-   that supplying a complete original-model response can reduce this cost, but
-   the target experiment is not yet a repeated authority-parity qualification.
-2. **Secondary: full-model construction and constraint-fix preparation.**
-   Target model construction was about 16.63 s in the detached exact replay.
-   Witness mode added 167,259 equality constraints and took about 9.96 s for
-   source/witness fixing, so fewer native seconds do not automatically mean a
-   proportionally smaller total operation.
-3. **Lower priority: clone, completion constraints, extraction, quality, and
-   DTO reconstruction.** These were generally sub-second to low-single-digit
-   seconds in measured target runs, except for completion/fix construction in
-   the witness A/B.
+1. **Current ordinary-path primary: repeated candidate-independent Python
+   preparation.** In the latest direct target observations, variable-freedom
+   accounting was about 5.2--5.9 s and model fingerprinting about 0.9--1.0 s
+   inside a roughly 9.3--10.3 s validator wall. A prepared context removes
+   these repeated scans for later same-process candidates.
+2. **Detached-operation secondary: full-model construction.** The latest
+   detached observations spent approximately 15--16 s outside the validator
+   boundary rebuilding the model. This is not amortized by a context created
+   after the model already exists, and is the next separate preparation/reuse
+   question.
+3. **Remaining per-candidate work: source fixing and CP-SAT.** Source equality
+   construction was about 1.0--1.2 s and CP-SAT about 1.3 s in the direct
+   target replay. Clone and completion construction are small in the warm
+   prepared path. Quality, extraction, and DTO/review work remain outside the
+   authority proof and should be measured separately before being moved.
 
 Priorities may change after repeated measurements on the same process and
 machine.
@@ -383,12 +384,111 @@ The initial one-off witness result remains historical evidence and is not
 overwritten: it used a different candidate/model state and showed a one-run
 native improvement. The repeated paired study is the stronger current result.
 
+## Ordinary validation phase telemetry and prepared-context study (2026-08-30)
+
+The ordinary validation wall boundary starts when
+`validate_source_decision_candidate_with_status` is entered and ends after the
+CP-SAT status has been classified. The detached benchmark's outer operation
+also includes input fingerprinting, full-model construction, semantic source
+materialization, and result reconstruction; those costs are not part of the
+validator's internal wall field. The validator now reports additive phase
+telemetry and accounted/unattributed totals so these boundaries are explicit.
+
+The first three clean target observations used the unchanged durable
+production-scale input and the same complete Stage 1 semantic candidate
+(10,945 source decisions). They were ordinary source-fixed validations only:
+
+| Observation | Outer operation | Validator wall | Fingerprint | Clone | Completion | Source fixes | Variable-freedom accounting | CP-SAT external | Accounted internal phases |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 26.22 s | 10.30 s | 0.93 s | 0.12 s | 0.65 s | 1.16 s | 5.87 s | 1.34 s | 10.07 s |
+| 2 | 25.11 s | 9.30 s | 0.97 s | 0.13 s | 0.62 s | 1.03 s | 5.24 s | 1.30 s | 9.30 s |
+| 3 | 24.61 s | 9.73 s | 0.94 s | 0.12 s | 0.62 s | 1.02 s | 5.69 s | 1.34 s | 9.73 s |
+
+The remaining detached-operation time is primarily full-model reconstruction
+outside the validator (approximately 15--16 seconds in these observations).
+Result extraction and final classification are small in this path. The
+historical 44--48 second qualification observations used a different local
+candidate/operator execution context; the new phase telemetry should be used
+for future attribution instead of assuming the older aggregate split.
+
+The dominant repeatable candidate-independent validator cost is the
+`_validation_variable_freedom` accounting scan, followed by model fingerprint
+construction and ordinary source-equality construction. CP-SAT proof was
+approximately 1.3 seconds in this direct target replay. This telemetry is
+observational and does not alter ordinary authority behavior.
+
+### Diagnostic prepared validation context
+
+Because repeated local diagnostic sessions validate multiple candidates against
+one unchanged in-process model, an opt-in `PreparedValidationContext` is now
+available in `solver.py` and `validation_qualification.py`. Preparation owns a
+clone of the unchanged full model, adds the same completion `ExactlyOne`
+constraints once, caches the model fingerprint and immutable variable/index
+accounting, and stores no candidate values or solver response. Every warm
+validation still clones the prepared model and creates a fresh CP-SAT solver;
+the same full model and source-value equality rules remain in force.
+
+The context is same-process only. It is accepted only with the exact source
+model object, unchanged model shape, and unchanged required-group registry. A
+different model object, changed shape, or changed group registry fails closed.
+Native solver objects and responses are never stored in or shared through the
+context, and no context is trusted across process or durable-checkpoint
+boundaries.
+
+One clean target local diagnostic sequence generated one complete candidate
+through the existing `targeted_r4_s2` callback and then validated that exact
+candidate five times through each path. The candidate had substantive value
+65,171; the sequence was diagnostic-only and did not authorize adoption.
+
+| Path | Cumulative validation wall | Per-validation average | Result |
+| --- | ---: | ---: | --- |
+| Current ordinary path, 5 validations | 63.09 s | 12.62 s | all validated |
+| Prepared path, 5 warm validations | 17.02 s | 3.40 s | all validated |
+| Prepared path including 8.43 s creation | 25.45 s | 5.09 s amortized | all validated |
+
+The same run's prefix amortization, including one-time context creation in the
+prepared column, was: N=1 ordinary 13.85 s versus prepared 11.85 s; N=2
+ordinary 13.12 s versus prepared 7.72 s; N=3 ordinary 12.88 s versus
+prepared 6.26 s; and N=5 ordinary 12.62 s versus prepared 5.09 s. These are
+one clean-process sequence measurements, not universal timing guarantees.
+
+The target sequence had classification parity and zero false acceptances. The
+prepared path removed repeated fingerprint, completion-constraint, and static
+variable-accounting work while retaining ordinary source-fix construction,
+fresh model cloning, and fresh CP-SAT solving. The context is therefore useful
+for multi-candidate local sessions, not for a one-shot detached validation
+whose cold preparation cannot be amortized. The sequence did not enable the
+context in production/default validation and did not promote witness
+validation.
+
+The same sequence sampled memory per validation. Context preparation peaked at
+approximately 688 MiB working set / 654 MiB USS. Ordinary validations, run
+first in this process, peaked at approximately 864, 865, 971, 1,062, and
+1,178 MiB working set. Prepared validations then peaked at approximately
+1,070, 1,078, 958, 868, and 874 MiB working set. Because the two paths were
+intentionally run in one process and in a fixed order, these values are a
+resource envelope rather than a cold-order A/B comparison. The prepared
+sequence itself showed no monotonic memory accumulation; a dedicated
+fresh-process lifetime study remains appropriate before any broader reuse.
+The target process returned below its transient peak after native work was
+released. Existing worker recycling remains required.
+
+**Classification:** `PREPARED CONTEXT PROVIDES STRONG MULTI-CANDIDATE SPEEDUP`
+for the tested same-process diagnostic sequence, with the qualification that
+the result is not a production authority change and target memory evidence is
+not yet a full promotion gate.
+
+The next validation-research direction is to retain/refine this prepared
+in-process context for diagnostic multi-candidate sessions, add explicit
+memory/lifetime and distinct-candidate parity coverage, and keep detached
+one-shot validation on the ordinary full validator.
+
 ## Validation-specific backlog
 
 | Idea | Upside | Risk/complexity | Evidence required | Status |
 | --- | --- | --- | --- | --- |
 | Repeat exact-witness A/B on the same candidate with persisted source identity | Confirm native and total speedup is real | Medium | Multiple clean-process or same-lineage repetitions; exact source fingerprints; memory envelope | Completed; parity passed, total performance benefit not demonstrated |
-| Prepared in-process validation context | Reduce repeated model/index construction | Medium | Safe clone/lifetime tests and process-recycle measurements | Later |
+| Prepared in-process validation context | Reduce repeated model/index construction | Medium | Safe clone/lifetime tests and process-recycle measurements | Diagnostic path implemented; retain/refine for multi-candidate sessions |
 | Immutable index/model-build reuse | Reduce Python preparation overhead | Low/medium | No stale DTO or lineage state; benchmark parity | Later |
 | Differential-equivalence framework | Prevent false-positive fast acceptance | High | Randomized/adversarial candidate matrix against current validator | Small deterministic gate passed; broader corpus remains before any authority study |
 | Deterministic full-schedule shadow validator | Potentially avoid native solve | Very high | Formal coverage of every hard/shared/special rule and exhaustive differential tests | Later; not justified yet |
@@ -412,10 +512,10 @@ the full validator.
 
 ## Recommended next step
 
-The repeated paired study has now completed for the current reference target.
-The next safe step is to expand the differential corpus across the supported
-special-commitment, lock, capacity, prerequisite, online, and half-semester
-mutations, while keeping the current full-model validator authoritative. If a
-future performance study is warranted after that coverage, compare prepared
-in-process full-validator reuse before reconsidering exact witnesses. The
-current full-model validator remains the sole authority.
+The current safe performance step is to retain and refine the diagnostic
+prepared in-process context for multi-candidate local sessions, with explicit
+memory/lifetime and distinct-candidate parity coverage. The ordinary full-model
+validator remains the sole authority. Exact-witness validation remains
+diagnostic-only and is not reopened by this study. Dependency-scoped and
+deterministic validators remain deferred until prepared-context reuse and the
+broader differential corpus justify another authority study.

@@ -16,6 +16,7 @@ from time import monotonic
 from .runtime import ProcessResourceMonitor, semantic_student_assignment_input_fingerprint
 from .solver import (
     model_proto_fingerprint,
+    prepare_validation_context,
     validate_source_decision_candidate_with_status,
 )
 from .stage2_benchmark import (
@@ -56,6 +57,27 @@ def _verified_input_fingerprint(data, expected_input_fingerprint=None):
 
 def _validation_record(outcome, *, elapsed_seconds, resource):
     telemetry = dict(outcome.telemetry or {})
+    phase_seconds = {
+        name: telemetry.get(name)
+        for name in (
+            "model_fingerprint_wall_time_seconds",
+            "clone_wall_time_seconds",
+            "completion_constraint_wall_time_seconds",
+            "source_fix_constraint_wall_time_seconds",
+            "variable_freedom_accounting_wall_time_seconds",
+            "solver_creation_wall_time_seconds",
+            "cp_sat_solve_external_wall_time_seconds",
+            "result_classification_wall_time_seconds",
+        )
+        if telemetry.get(name) is not None
+    }
+    accounted = sum(float(value) for value in phase_seconds.values())
+    telemetry["phase_seconds"] = phase_seconds
+    telemetry["accounted_phase_seconds"] = accounted
+    telemetry["unattributed_phase_seconds"] = max(
+        0.0,
+        float(elapsed_seconds) - accounted,
+    )
     return {
         "classification": outcome.classification,
         "solver_outcome": outcome.solver_outcome,
@@ -68,6 +90,9 @@ def _validation_record(outcome, *, elapsed_seconds, resource):
             "cp_sat_solver_wall_time_seconds"
         ),
         "preparation": {
+            "model_fingerprint_seconds": telemetry.get(
+                "model_fingerprint_wall_time_seconds"
+            ),
             "clone_seconds": telemetry.get("clone_wall_time_seconds"),
             "completion_constraints_seconds": telemetry.get(
                 "completion_constraint_wall_time_seconds"
@@ -78,7 +103,13 @@ def _validation_record(outcome, *, elapsed_seconds, resource):
             "solver_creation_seconds": telemetry.get(
                 "solver_creation_wall_time_seconds"
             ),
+            "variable_freedom_accounting_seconds": telemetry.get(
+                "variable_freedom_accounting_wall_time_seconds"
+            ),
         },
+        "phase_seconds": phase_seconds,
+        "accounted_phase_seconds": accounted,
+        "unattributed_phase_seconds": telemetry["unattributed_phase_seconds"],
         "model": {
             "variables_before": telemetry.get("model_variable_count_before"),
             "constraints_before": telemetry.get("model_constraint_count_before"),
@@ -90,6 +121,7 @@ def _validation_record(outcome, *, elapsed_seconds, resource):
             ),
         },
         "witness": dict(telemetry.get("witness") or {}),
+        "prepared_context": dict(telemetry.get("prepared_context") or {}),
         "resource": dict(resource or {}),
     }
 
@@ -168,6 +200,124 @@ def compare_validation_classifications(
         "false_acceptance": (
             witness_result["classification"] == "validated"
             and ordinary["classification"] != "validated"
+        ),
+    }
+
+
+def run_prepared_validation_sequence(
+    model,
+    required_decision_groups,
+    source_variable_values,
+    *,
+    repetitions=5,
+    time_limit_seconds=5.0,
+    worker_count=1,
+    collect_resource_telemetry=False,
+):
+    """Compare repeated ordinary validation with diagnostic prepared reuse.
+
+    The same semantic source values are sent through both paths.  The
+    prepared context is created once and contains only candidate-independent
+    model/index state; each repetition still gets a fresh clone and solver.
+    This helper is diagnostic infrastructure and never authorizes a result.
+    """
+
+    repetitions = max(1, int(repetitions))
+    context_monitor = ProcessResourceMonitor(
+        interval_seconds=0.10,
+        enabled=collect_resource_telemetry,
+    ).start()
+    preparation_started = monotonic()
+    try:
+        context = prepare_validation_context(model, required_decision_groups)
+    finally:
+        context_resource = context_monitor.stop()
+    context_creation_seconds = monotonic() - preparation_started
+
+    def run(*, prepared):
+        records = []
+        for index in range(repetitions):
+            monitor = ProcessResourceMonitor(
+                interval_seconds=0.10,
+                enabled=collect_resource_telemetry,
+            ).start()
+            started = monotonic()
+            try:
+                outcome = validate_source_decision_candidate_with_status(
+                    model,
+                    required_decision_groups,
+                    source_variable_values,
+                    time_limit_seconds,
+                    worker_count=worker_count,
+                    random_seed=0,
+                    prepared_context=context if prepared else None,
+                )
+            finally:
+                resource = monitor.stop()
+            records.append({
+                "index": index + 1,
+                **_validation_record(
+                    outcome,
+                    elapsed_seconds=monotonic() - started,
+                    resource=resource,
+                ),
+            })
+        return records
+
+    ordinary = run(prepared=False)
+    prepared = run(prepared=True)
+    ordinary_total = sum(float(item["elapsed_seconds"]) for item in ordinary)
+    prepared_total = sum(float(item["elapsed_seconds"]) for item in prepared)
+    prefix_amortized = {}
+    for count in (1, 2, 3, 5):
+        if count <= repetitions:
+            prefix_amortized[str(count)] = {
+                "ordinary_seconds": sum(
+                    float(item["elapsed_seconds"])
+                    for item in ordinary[:count]
+                ),
+                "prepared_seconds": (
+                    context_creation_seconds
+                    + sum(
+                        float(item["elapsed_seconds"])
+                        for item in prepared[:count]
+                    )
+                ),
+                "ordinary_amortized_seconds": (
+                    sum(
+                        float(item["elapsed_seconds"])
+                        for item in ordinary[:count]
+                    ) / count
+                ),
+                "prepared_amortized_seconds": (
+                    context_creation_seconds
+                    + sum(
+                        float(item["elapsed_seconds"])
+                        for item in prepared[:count]
+                    )
+                ) / count,
+            }
+    return {
+        "context_creation_seconds": context_creation_seconds,
+        "context_resource": dict(context_resource or {}),
+        "repetitions": repetitions,
+        "ordinary": ordinary,
+        "prepared": prepared,
+        "ordinary_total_seconds": ordinary_total,
+        "prepared_total_seconds": prepared_total,
+        "ordinary_amortized_seconds": ordinary_total / repetitions,
+        "prepared_amortized_seconds": (
+            context_creation_seconds + prepared_total
+        ) / repetitions,
+        "prefix_amortized": prefix_amortized,
+        "classification_parity": all(
+            left["classification"] == right["classification"]
+            for left, right in zip(ordinary, prepared)
+        ),
+        "false_acceptance": any(
+            right["classification"] == "validated"
+            and left["classification"] != "validated"
+            for left, right in zip(ordinary, prepared)
         ),
     }
 

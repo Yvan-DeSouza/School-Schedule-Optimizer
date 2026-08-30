@@ -4,7 +4,11 @@ from ortools.sat.python import cp_model
 
 from scheduling_engine.tests.test_validation_benchmark import _data, _source_decisions
 from scheduling_engine.student_assignment import validation_qualification
-from scheduling_engine.student_assignment.solver import model_proto_fingerprint
+from scheduling_engine.student_assignment.solver import (
+    model_proto_fingerprint,
+    prepare_validation_context,
+    validate_source_decision_candidate_with_status,
+)
 
 
 def _fake_candidate(model, source, auxiliary):
@@ -172,3 +176,87 @@ def test_differential_corpus_is_fail_closed_for_invalid_or_stale_witnesses():
     assert extra["ordinary"]["classification"] == "validated"
     assert extra["witness"]["classification"] == "validation_error"
     assert extra["false_acceptance"] is False
+
+
+def test_prepared_validation_reuses_completion_and_static_indexes_with_parity():
+    model = cp_model.CpModel()
+    left = model.NewBoolVar("enroll_1_1")
+    right = model.NewBoolVar("enroll_1_2")
+    model.AddExactlyOne((left, right))
+    source_values = {left.Index(): 1, right.Index(): 0}
+
+    report = validation_qualification.run_prepared_validation_sequence(
+        model,
+        ((left, right),),
+        source_values,
+        repetitions=2,
+        time_limit_seconds=5,
+    )
+
+    assert report["classification_parity"] is True
+    assert report["false_acceptance"] is False
+    assert all(
+        item["classification"] == "validated"
+        for item in report["ordinary"] + report["prepared"]
+    )
+    assert all(
+        item["prepared_context"]["used"] is False
+        for item in report["ordinary"]
+    )
+    assert all(
+        item["prepared_context"]["used"] is True
+        and item["prepared_context"][
+            "completion_constraints_prepared"
+        ] is True
+        for item in report["prepared"]
+    )
+
+
+def test_prepared_validation_context_rejects_a_different_model_lineage():
+    model = cp_model.CpModel()
+    source = model.NewBoolVar("enroll_1_1")
+    context = prepare_validation_context(model, ((source,),))
+    other_model = cp_model.CpModel()
+    other_source = other_model.NewBoolVar("enroll_1_1")
+
+    outcome = validate_source_decision_candidate_with_status(
+        other_model,
+        ((other_source,),),
+        {other_source.Index(): 1},
+        5,
+        prepared_context=context,
+    )
+
+    assert outcome.classification == "validation_error"
+    assert "different model object" in (outcome.error or "")
+
+
+def test_prepared_validation_context_rejects_stale_identity_metadata():
+    model = cp_model.CpModel()
+    source = model.NewBoolVar("enroll_1_1")
+    context = prepare_validation_context(
+        model,
+        ((source,),),
+        input_semantic_fingerprint="input-v1",
+        model_schema_version="model-v1",
+        objective_semantics_version="objective-v2",
+        configuration_fingerprint="config-v1",
+    )
+
+    outcome = validate_source_decision_candidate_with_status(
+        model,
+        ((source,),),
+        {source.Index(): 1},
+        5,
+        prepared_context=context,
+        expected_prepared_context_identity=(
+            "input-v2",
+            "model-v1",
+            "objective-v2",
+            "config-v1",
+            context.base_model_fingerprint,
+        ),
+    )
+
+    assert outcome.classification == "validation_error"
+    assert "identity" in (outcome.error or "")
