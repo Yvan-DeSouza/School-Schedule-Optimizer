@@ -114,6 +114,7 @@ from .quality import (
 )
 from .substantive_probe import (
     SubstantiveSoftTierProbeContext,
+    _model_family_constraint_counts,
     _model_family_variable_counts,
     probe_substantive_soft_tier,
 )
@@ -324,6 +325,7 @@ def _optimization_facts(
     full_model_constraint_count=None,
     optimization_worker_count=None,
     model_family_variable_counts=None,
+    model_family_constraint_counts=None,
     objective_metadata_summary=(),
 ):
     """Expose stage handoff and quality facts without changing solver logic."""
@@ -337,6 +339,9 @@ def _optimization_facts(
         "full_model_variable_count": full_model_variable_count,
         "full_model_constraint_count": full_model_constraint_count,
         "model_family_variable_counts": dict(model_family_variable_counts or {}),
+        "model_family_constraint_counts": dict(
+            model_family_constraint_counts or {}
+        ),
         "objective_metadata": list(objective_metadata_summary),
         "stage_1": {
             "solver_outcome": _outcome_name(hard_feasibility_outcome),
@@ -1144,6 +1149,7 @@ def run_student_assignment_operator_session_diagnostic(
     hard_feasibility_validation_worker_count=None,
     cp_sat_random_seed=None,
     cp_sat_max_deterministic_time_seconds=None,
+    collect_presolve_telemetry=False,
     collect_resource_telemetry=True,
     capture_final_source_decisions=True,
     timeline_max_events=128,
@@ -1214,6 +1220,7 @@ def run_student_assignment_operator_session_diagnostic(
             "cp_sat_max_deterministic_time_seconds": (
                 config.cp_sat_max_deterministic_time_seconds
             ),
+            "collect_presolve_telemetry": bool(collect_presolve_telemetry),
             "source_seed_fingerprint": (
                 sha256(
                     repr(tuple(sorted(initial_source_decisions, key=repr))).encode()
@@ -3699,14 +3706,38 @@ def _solve_student_assignment(
         tuple(group) for group in complete_required_decision_groups
     )
     probe_source_variable_groups = {}
+    probe_model_family_variable_indexes = defaultdict(set)
     for request in data.requests:
         for _section, variable in request_candidates[request.request_id]:
+            variable_index = variable.Index()
+            probe_model_family_variable_indexes["source_assignment"].add(
+                variable_index
+            )
+            if request.delivery_kind == "online":
+                probe_model_family_variable_indexes["online_supervision"].add(
+                    variable_index
+                )
+            else:
+                probe_model_family_variable_indexes["normal_course_assignment"].add(
+                    variable_index
+                )
+            if request.duration == "half_semester":
+                probe_model_family_variable_indexes["half_semester_assignment"].add(
+                    variable_index
+                )
             probe_source_variable_groups.setdefault(request.student_id, []).append(
-                variable.Index()
+                variable_index
             )
     for (source_key, _index), variable in commitment_variables.items():
         owner = commitment_metadata[source_key][0]
-        probe_source_variable_groups.setdefault(owner, []).append(variable.Index())
+        variable_index = variable.Index()
+        commitment_kind = commitment_metadata[source_key][1]
+        probe_model_family_variable_indexes["source_assignment"].add(variable_index)
+        probe_model_family_variable_indexes["special_commitment"].add(variable_index)
+        probe_model_family_variable_indexes[
+            f"{commitment_kind}_commitment"
+        ].add(variable_index)
+        probe_source_variable_groups.setdefault(owner, []).append(variable_index)
     probe_source_variable_groups = tuple(
         (
             owner,
@@ -3715,6 +3746,13 @@ def _solve_student_assignment(
         for owner, variable_indexes in sorted(
             probe_source_variable_groups.items(), key=lambda item: repr(item[0])
         )
+    )
+    probe_model_family_variable_indexes = tuple(
+        (
+            family,
+            tuple(sorted(indexes)),
+        )
+        for family, indexes in sorted(probe_model_family_variable_indexes.items())
     )
 
     def _build_probe_context(seed_solver):
@@ -3738,6 +3776,7 @@ def _solve_student_assignment(
             candidate_quality_facts=_candidate_quality_facts,
             student_grades=tuple(data.student_grades),
             source_variable_groups=probe_source_variable_groups,
+            model_family_variable_indexes=probe_model_family_variable_indexes,
             seed_objective_vector=_objective_values(
                 seed_solver, objectives
             ) if seed_solver is not None else (),
@@ -4075,6 +4114,9 @@ def _solve_student_assignment(
                                 "cp_sat_max_deterministic_time_seconds"
                             )
                         ),
+                        collect_presolve_telemetry=bool(
+                            local_config.get("collect_presolve_telemetry", False)
+                        ),
                         phase_callback=phase_callback,
                     )
                     last_result = local_result
@@ -4143,6 +4185,16 @@ def _solve_student_assignment(
                         "validation_elapsed_seconds": validation_elapsed,
                         "model_variable_count": local_result.model_variable_count,
                         "model_constraint_count": local_result.model_constraint_count,
+                        "model_family_variable_counts": dict(
+                            local_result.model_family_variable_counts
+                        ),
+                        "model_family_constraint_counts": dict(
+                            local_result.model_family_constraint_counts
+                        ),
+                        "presolve_telemetry": dict(
+                            local_result.presolve_telemetry
+                        ),
+                        "hint_telemetry": dict(local_result.hint_telemetry),
                         "branches": local_result.branches,
                         "conflicts": local_result.conflicts,
                         "deterministic_time_seconds": local_result.timings.get(
@@ -4436,6 +4488,14 @@ def _solve_student_assignment(
                     "improvement_adopted": candidate_validated,
                     "model_variable_count": local_result.model_variable_count,
                     "model_constraint_count": local_result.model_constraint_count,
+                    "model_family_variable_counts": dict(
+                        local_result.model_family_variable_counts
+                    ),
+                    "model_family_constraint_counts": dict(
+                        local_result.model_family_constraint_counts
+                    ),
+                    "presolve_telemetry": dict(local_result.presolve_telemetry),
+                    "hint_telemetry": dict(local_result.hint_telemetry),
                     "branches": local_result.branches,
                     "conflicts": local_result.conflicts,
                     "deterministic_time_seconds": local_result.timings.get(
@@ -4579,7 +4639,11 @@ def _solve_student_assignment(
             if optimization_worker_count is not None
             else STUDENT_ASSIGNMENT_OPTIMIZATION_WORKER_COUNT
         ),
-        model_family_variable_counts=_model_family_variable_counts(model),
+        model_family_variable_counts=_model_family_variable_counts(
+            model,
+            probe_model_family_variable_indexes,
+        ),
+        model_family_constraint_counts=_model_family_constraint_counts(model),
         objective_metadata_summary=tuple(
             {
                 "index": index,

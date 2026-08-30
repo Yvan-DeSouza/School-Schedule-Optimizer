@@ -1001,3 +1001,54 @@ the target run, but the one target trial produced no candidate and no useful
 runtime improvement. It is classified as **SEMANTICALLY VALID BUT PERFORMANCE
 BENEFIT UNPROVEN**. No multi-grade replication, grade-cycle orchestration,
 hybrid controller, or production wiring is authorized by this result.
+
+### Grade-bound presolve/residualization audit (2026-08-30)
+
+The one permitted target-scale follow-up audit compared the existing full
+Grade 12 formulation with the diagnostic projected formulation. Both used the
+unchanged `mixed_grade_v2_production_shape` input fingerprint
+`c07c77d0aa077a3e72240f27644d86b8a1a4faecb2f72a900aacc3fcb792d28a`, the
+validated source seed, one worker, and `stop_after_presolve`. This was a model
+audit, not a new quality-search experiment.
+
+The source-variable accounting was:
+
+| Fact | Existing full grade-bound | Projected grade-bound |
+| --- | ---: | ---: |
+| Model variables before presolve | 110,922 | 110,922 |
+| Model constraints before presolve | 184,107 | 175,899 |
+| Source variables | 83,188 | 83,188 |
+| Grade 12 active source variables | 20,824 | 20,824 |
+| Outside-grade frozen source variables | 8,208 explicit fixed-context groups | 62,364 singleton-domain variables |
+| Presolved variables | 23,242 | 23,242 |
+| Presolved constraints | 8,362 | 8,362 |
+
+The full formulation fixes outside-grade required groups with `8,208`
+explicit equality constraints. The projected formulation instead assigns
+the validated outside-grade source values as singleton domains, which removes
+those explicit equalities and exposes `62,364` frozen source variables before
+presolve. Both formulations nevertheless reach the same presolved model
+size. In the projected run CP-SAT removed `87,680` variables and `167,537`
+constraints during presolve; the full run's native presolve summary also
+ended at `23,242` variables and `8,362` constraints. The presolved model
+retains the shared active/global structure needed to account for frozen
+students' capacity, conflicts, special commitments, and objective effects.
+
+The short presolve-only wall times were approximately `28.44` seconds for the
+full formulation and `31.86` seconds for the projected formulation. These are
+not quality-search timings, and the difference is not evidence of a useful
+speedup. Symmetry detection ran three times in each audit; the observed graph
+sizes differed before presolve because singleton domains changed the input
+representation, but the final presolved counts were identical. The audit
+therefore provides no evidence that source-domain projection alone removes a
+meaningful residual model. It does show that CP-SAT already eliminates most
+fixed source structure, while globally coupled auxiliaries and active/shared
+constraints remain.
+
+The conclusion is **SEMANTICALLY VALID BUT PERFORMANCE BENEFIT UNPROVEN**.
+No true residualized model prototype is retained, and no grade-bounded
+operator is authorized for production. A future residualization experiment
+would need to substitute frozen effects into dependent capacity, conflict,
+special-commitment, and objective structures—not merely singleton-fix source
+variables—and would require exact-equivalence validation against the full
+model before any search comparison.

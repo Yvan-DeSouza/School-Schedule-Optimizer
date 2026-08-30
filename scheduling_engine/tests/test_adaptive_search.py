@@ -47,6 +47,9 @@ from scheduling_engine.student_assignment.operator_session import (
 from scheduling_engine.student_assignment.grade_guidance import (
     build_grade_opportunity_facts,
 )
+from scheduling_engine.student_assignment.substantive_probe import (
+    _parse_cp_sat_model_summaries,
+)
 
 
 def _state(*, local_share, utilization_share, history=()):
@@ -293,6 +296,70 @@ def test_projected_grade_scope_includes_special_commitment_source_variables():
     assert iteration["projected_frozen_source_variable_count"] > 0
     if iteration["candidate_value"] is not None:
         assert iteration["candidate_validated"] is True
+
+
+def test_projected_grade_scope_can_report_presolve_and_hint_telemetry():
+    """The opt-in audit reports native presolve and hint facts."""
+
+    original_data, source = _multi_attempt_operator_fixture((1, 2))
+    data = replace(original_data, student_grades=((1, 9), (2, 12)))
+    common = dict(
+        data=data,
+        operator_family="grade_bounded_g9",
+        selected_grade=9,
+        target_policy="fixed",
+        initial_source_decisions=source,
+        total_time_limit_seconds=4,
+        max_attempts=1,
+        per_attempt_time_limit_seconds=2,
+        worker_count=1,
+        hard_feasibility_validation_time_limit_seconds=2,
+        hard_feasibility_validation_worker_count=1,
+        collect_resource_telemetry=False,
+    )
+    result = run_student_assignment_operator_session_diagnostic(
+        projected_grade_scope=True,
+        collect_presolve_telemetry=True,
+        **common,
+    )
+
+    assert result.status == "complete"
+    assert not result.unmet_requests
+    iteration = result.optimization_facts["stage_2_local_bootstrap"][
+        "iterations"
+    ][0]
+    presolve = iteration["presolve_telemetry"]
+    hints = iteration["hint_telemetry"]
+    assert presolve["enabled"] is True
+    assert presolve["stop_after_presolve"] is True
+    assert presolve["initial_log_variable_count"] == iteration[
+        "model_variable_count"
+    ]
+    assert presolve["initial_log_constraint_count"] == iteration[
+        "model_constraint_count"
+    ]
+    assert presolve["presolved_variable_count"] is not None
+    assert presolve["presolved_constraint_count"] is not None
+    assert hints["projected_grade_scope"] is True
+    assert hints["outside_grade_source_variable_count"] > 0
+    assert hints["hinted_frozen_source_variable_count"] > 0
+    assert iteration["model_family_constraint_counts"]
+
+
+def test_presolve_parser_accepts_ortools_grouped_counts():
+    initial, presolved = _parse_cp_sat_model_summaries((
+        "Initial satisfaction model '':",
+        "#Variables: 110'922",
+        "#kLinearN: 75'848",
+        "Presolved satisfaction model '':",
+        "#Variables: 23'242",
+        "#kLinearN: 1'300",
+    ))
+
+    assert initial["variable_count"] == 110922
+    assert initial["constraint_count"] == 75848
+    assert presolved["variable_count"] == 23242
+    assert presolved["constraint_count"] == 1300
 
 
 def test_operator_session_emits_live_phase_breadcrumbs_without_changing_result():

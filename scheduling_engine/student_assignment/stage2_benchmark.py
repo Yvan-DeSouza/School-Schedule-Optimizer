@@ -1868,9 +1868,17 @@ def compact_substantive_probe_record(
         "memory": memory,
         "model_variable_count": result.model_variable_count,
         "model_constraint_count": result.model_constraint_count,
+        "model_family_variable_counts": dict(
+            result.model_family_variable_counts
+        ),
+        "model_family_constraint_counts": dict(
+            result.model_family_constraint_counts
+        ),
         "component_deltas": dict(result.component_deltas),
         "candidate_quality_summary": dict(result.candidate_quality_summary),
         "quality_comparison": dict(result.quality_comparison),
+        "presolve_telemetry": dict(result.presolve_telemetry),
+        "hint_telemetry": dict(result.hint_telemetry),
         "timings": dict(result.timings),
     }
 

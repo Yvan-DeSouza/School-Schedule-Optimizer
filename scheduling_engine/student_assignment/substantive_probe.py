@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from numbers import Real
+import re
 from time import monotonic
 
 from ortools.sat.python import cp_model
@@ -43,6 +44,10 @@ class SubstantiveSoftTierProbeContext:
     # is used only by the opt-in projected grade diagnostic so optional source
     # decisions are frozen with the same semantic incumbent as required ones.
     source_variable_groups: tuple = ()
+    # Optional source-variable family indexes are diagnostic metadata only. The
+    # model builder remains the authority for source semantics; the probe uses
+    # these indexes only to report overlapping family counts.
+    model_family_variable_indexes: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -100,9 +105,12 @@ class SubstantiveSoftTierProbeResult:
     projected_grade_scope: bool = False
     projected_active_source_variable_count: int = 0
     projected_frozen_source_variable_count: int = 0
+    model_family_constraint_counts: dict = field(default_factory=dict)
+    presolve_telemetry: dict = field(default_factory=dict)
+    hint_telemetry: dict = field(default_factory=dict)
 
 
-def _model_family_variable_counts(model):
+def _model_family_variable_counts(model, variable_family_indexes=()):
     """Classify model variables for diagnostic accounting only.
 
     The names are assigned by the existing model builder.  This report is
@@ -138,7 +146,294 @@ def _model_family_variable_counts(model):
         else:
             family = "other"
         counts[family] = counts.get(family, 0) + 1
+    variable_count = len(model.Proto().variables)
+    for family, indexes in variable_family_indexes or ():
+        counts[str(family)] = sum(
+            0 <= int(index) < variable_count for index in set(indexes)
+        )
     return dict(sorted(counts.items()))
+
+
+def _model_family_constraint_counts(model):
+    """Count native CP-SAT constraint families without assigning semantics."""
+
+    counts = {}
+    for constraint in model.Proto().constraints:
+        family = "unknown"
+        # OR-Tools 9.15 exposes the generated constraint wrapper's oneof
+        # through ``has_*`` methods rather than protobuf ``WhichOneof``.
+        # Keep this diagnostic accounting version-tolerant and independent of
+        # the model's scheduling semantics.
+        for field_name in (
+            "linear",
+            "bool_or",
+            "bool_and",
+            "bool_xor",
+            "at_most_one",
+            "exactly_one",
+            "int_prod",
+            "lin_max",
+            "element",
+            "table",
+            "automaton",
+            "inverse",
+            "reservoir",
+            "interval",
+            "no_overlap",
+            "no_overlap_2d",
+            "cumulative",
+            "circuit",
+            "routes",
+            "all_diff",
+            "int_div",
+            "int_mod",
+        ):
+            has_field = getattr(constraint, f"has_{field_name}", None)
+            if has_field is not None and has_field():
+                family = field_name
+                break
+        counts[family] = counts.get(family, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def _singleton_domain_variable_count(model):
+    """Count source/model variables already fixed before CP-SAT presolve."""
+
+    return sum(
+        len(variable.domain) == 2 and variable.domain[0] == variable.domain[1]
+        for variable in model.Proto().variables
+    )
+
+
+def _parse_cp_sat_model_summaries(log_messages):
+    """Parse the supported human-readable model summaries emitted by CP-SAT.
+
+    OR-Tools 9.15 exposes presolve counts through ``log_search_progress`` but
+    does not expose a structured presolved-model object through the Python
+    API.  This parser retains only bounded aggregate facts; raw native logs
+    are never returned in a result payload.
+    """
+
+    summaries = []
+    current = None
+    lines = "\n".join(log_messages or ()).splitlines()
+    # CP-SAT formats large counts with apostrophe group separators on the
+    # installed OR-Tools build (for example ``110'922``).  Accept both that
+    # form and comma-separated output so telemetry remains observational
+    # rather than depending on a locale-specific rendering.
+    variable_pattern = re.compile(r"#Variables:\s*([0-9,']+)")
+    constraint_pattern = re.compile(r"^#(k[A-Za-z0-9_]+):\s*([0-9,']+)")
+
+    def parse_count(value):
+        return int(value.replace(",", "").replace("'", ""))
+
+    for raw_line in lines:
+        line = raw_line.strip()
+        if line.startswith("Initial ") and " model" in line:
+            current = {
+                "kind": "initial",
+                "variable_count": None,
+                "constraint_count": 0,
+                "constraint_type_counts": {},
+            }
+            summaries.append(current)
+        elif line.startswith("Presolved ") and " model" in line:
+            current = {
+                "kind": "presolved",
+                "variable_count": None,
+                "constraint_count": 0,
+                "constraint_type_counts": {},
+            }
+            summaries.append(current)
+        if current is None:
+            continue
+        variable_match = variable_pattern.search(line)
+        if variable_match:
+            current["variable_count"] = parse_count(variable_match.group(1))
+        constraint_match = constraint_pattern.match(line)
+        if constraint_match:
+            family = constraint_match.group(1)
+            count = parse_count(constraint_match.group(2))
+            current["constraint_type_counts"][family] = count
+            current["constraint_count"] += count
+    initial = next(
+        (item for item in summaries if item["kind"] == "initial"), None
+    )
+    presolved = next(
+        (item for item in reversed(summaries) if item["kind"] == "presolved"), None
+    )
+    return initial, presolved
+
+
+def _parse_cp_sat_symmetry_facts(log_messages):
+    """Return bounded symmetry facts when CP-SAT reports them."""
+
+    lines = "\n".join(log_messages or ()).splitlines()
+    graph_pattern = re.compile(
+        r"Graph for symmetry has\s+([0-9,']+) nodes and\s+([0-9,']+) arcs"
+    )
+    done_pattern = re.compile(
+        r"Symmetry computation done\. time:\s*([0-9.eE+-]+)"
+        r"\s+dtime:\s*([0-9.eE+-]+)"
+    )
+    graphs = []
+    completions = []
+    for line in lines:
+        graph_match = graph_pattern.search(line)
+        if graph_match:
+            graphs.append({
+                "nodes": int(graph_match.group(1).replace(",", "").replace("'", "")),
+                "arcs": int(graph_match.group(2).replace(",", "").replace("'", "")),
+            })
+        done_match = done_pattern.search(line)
+        if done_match:
+            completions.append({
+                "wall_seconds": float(done_match.group(1)),
+                "deterministic_seconds": float(done_match.group(2)),
+            })
+    return {
+        "graph_runs": tuple(graphs),
+        "computation_runs": tuple(completions),
+    }
+
+
+def _build_presolve_telemetry(
+    model,
+    solver,
+    log_messages,
+    *,
+    stopped_after_presolve,
+):
+    """Build compact solver-native presolve facts for an opt-in audit."""
+
+    initial, presolved = _parse_cp_sat_model_summaries(log_messages)
+    original_variable_count = len(model.Proto().variables)
+    original_constraint_count = len(model.Proto().constraints)
+    presolved_variable_count = (
+        presolved["variable_count"] if presolved is not None else None
+    )
+    presolved_constraint_count = (
+        presolved["constraint_count"] if presolved is not None else None
+    )
+    response = solver.ResponseProto() if hasattr(solver, "ResponseProto") else None
+    solver_wall_time = float(solver.WallTime()) if hasattr(solver, "WallTime") else None
+    return {
+        "enabled": True,
+        "stop_after_presolve": bool(stopped_after_presolve),
+        "original_variable_count": original_variable_count,
+        "original_constraint_count": original_constraint_count,
+        "original_singleton_domain_variable_count": _singleton_domain_variable_count(model),
+        "initial_log_variable_count": (
+            initial["variable_count"] if initial is not None else None
+        ),
+        "initial_log_constraint_count": (
+            initial["constraint_count"] if initial is not None else None
+        ),
+        "initial_log_constraint_type_counts": (
+            dict(initial["constraint_type_counts"])
+            if initial is not None else {}
+        ),
+        "presolved_variable_count": presolved_variable_count,
+        "presolved_constraint_count": presolved_constraint_count,
+        "presolved_log_constraint_type_counts": (
+            dict(presolved["constraint_type_counts"])
+            if presolved is not None else {}
+        ),
+        "variables_removed_by_presolve": (
+            original_variable_count - presolved_variable_count
+            if presolved_variable_count is not None else None
+        ),
+        "constraints_removed_by_presolve": (
+            original_constraint_count - presolved_constraint_count
+            if presolved_constraint_count is not None else None
+        ),
+        # With stop_after_presolve enabled, CP-SAT's native wall time covers
+        # presolve and its immediate response finalization.  It is deliberately
+        # not labelled as a pure presolve timer because the Python API exposes
+        # no narrower structured duration.
+        "presolve_phase_wall_seconds": (
+            solver_wall_time if stopped_after_presolve else None
+        ),
+        "solver_wall_time_seconds": solver_wall_time,
+        "deterministic_time_seconds": (
+            float(getattr(response, "deterministic_time", 0.0))
+            if response is not None else None
+        ),
+        "symmetry": _parse_cp_sat_symmetry_facts(log_messages),
+        "log_summary_available": bool(initial is not None or presolved is not None),
+    }
+
+
+def _build_hint_telemetry(
+    model,
+    context,
+    *,
+    selected_grade_student_ids,
+    selected_grade,
+    projected_grade_scope,
+):
+    """Describe incumbent hints and fixed source structure without identities."""
+
+    source_indexes = {
+        int(index)
+        for _family, indexes in context.model_family_variable_indexes or ()
+        for index in indexes
+    }
+    hint_indexes = set(model.Proto().solution_hint.vars)
+    singleton_indexes = {
+        index
+        for index, variable in enumerate(model.Proto().variables)
+        if len(variable.domain) == 2 and variable.domain[0] == variable.domain[1]
+    }
+    explicitly_fixed_indexes = set()
+    if selected_grade is not None and not projected_grade_scope:
+        for group_index, decision_group in enumerate(
+            context.complete_required_decision_groups
+        ):
+            owner = (
+                context.source_decision_owners[group_index]
+                if group_index < len(context.source_decision_owners)
+                else None
+            )
+            if owner in selected_grade_student_ids:
+                continue
+            selected_variable = next(
+                (
+                    variable for variable in decision_group
+                    if context.validated_seed_solver.Value(
+                        context.model.GetIntVarFromProtoIndex(variable.Index())
+                    )
+                ),
+                None,
+            )
+            if selected_variable is not None:
+                explicitly_fixed_indexes.add(selected_variable.Index())
+    frozen_source_indexes = {
+        index for index in source_indexes if index in singleton_indexes
+    }
+    if selected_grade is not None and context.source_variable_groups:
+        frozen_source_indexes = {
+            index
+            for owner, indexes in context.source_variable_groups
+            if owner not in selected_grade_student_ids
+            for index in indexes
+        } if projected_grade_scope else explicitly_fixed_indexes
+    return {
+        "hint_count": len(hint_indexes),
+        "hinted_source_variable_count": len(hint_indexes & source_indexes),
+        "hinted_auxiliary_variable_count": len(hint_indexes - source_indexes),
+        "source_variable_count": len(source_indexes),
+        "outside_grade_source_variable_count": (
+            len(frozen_source_indexes)
+            if selected_grade is not None else None
+        ),
+        "explicit_grade_fixed_source_variable_count": len(explicitly_fixed_indexes),
+        "singleton_domain_variable_count": len(singleton_indexes),
+        "singleton_domain_source_variable_count": len(singleton_indexes & source_indexes),
+        "hinted_singleton_domain_variable_count": len(hint_indexes & singleton_indexes),
+        "hinted_frozen_source_variable_count": len(hint_indexes & frozen_source_indexes),
+        "projected_grade_scope": bool(projected_grade_scope),
+    }
 
 
 def _expression(model, term_specs):
@@ -182,6 +477,7 @@ def probe_substantive_soft_tier(
     cp_sat_random_seed: int | None = None,
     cp_sat_max_deterministic_time_seconds: float | None = None,
     phase_callback=None,
+    collect_presolve_telemetry: bool = False,
 ) -> SubstantiveSoftTierProbeResult:
     """Ask whether the unchanged full model can beat one soft tier.
 
@@ -590,16 +886,52 @@ def probe_substantive_soft_tier(
             ),
             max_deterministic_time=cp_sat_max_deterministic_time_seconds,
         )
+    presolve_log_messages = []
+    if collect_presolve_telemetry:
+        # OR-Tools exposes presolved model counts through its supported log
+        # stream, not through a structured Python response. This opt-in audit
+        # mode captures that stream, suppresses stdout, and stops after
+        # presolve so it cannot be mistaken for a quality-search result.
+        solver.parameters.log_search_progress = True
+        solver.parameters.log_to_stdout = False
+        solver.parameters.stop_after_presolve = True
+        solver.log_callback = presolve_log_messages.append
+    hint_telemetry = {}
+    if collect_presolve_telemetry:
+        hint_telemetry = _build_hint_telemetry(
+            probe_model,
+            context,
+            selected_grade_student_ids=selected_grade_student_ids,
+            selected_grade=selected_grade,
+            projected_grade_scope=projected_grade_scope,
+        )
     _emit_phase("cp_sat", "started")
     with timing.measure("cp_solver_solve_external_wall_seconds"):
         started = monotonic()
-        status_code = solver.Solve(probe_model)
+        try:
+            status_code = solver.Solve(probe_model)
+        finally:
+            # The OR-Tools logging callback can retain a native logging
+            # thread after Solve returns on Windows.  Detach it immediately
+            # after the opt-in presolve audit so a completed test/process is
+            # not held open by diagnostic plumbing.
+            if collect_presolve_telemetry:
+                solver.log_callback = None
         elapsed = monotonic() - started
     _emit_phase(
         "cp_sat",
         "completed",
         elapsed_seconds=elapsed,
         status=outcome_name(status_code),
+    )
+    presolve_telemetry = (
+        _build_presolve_telemetry(
+            probe_model,
+            solver,
+            presolve_log_messages,
+            stopped_after_presolve=bool(collect_presolve_telemetry),
+        )
+        if collect_presolve_telemetry else {}
     )
     complete_candidate_found = status_code in {cp_model.OPTIMAL, cp_model.FEASIBLE}
 
@@ -745,7 +1077,10 @@ def probe_substantive_soft_tier(
             float(solver.BestObjectiveBound())
             if minimize_component is not None else None
         ),
-        model_family_variable_counts=_model_family_variable_counts(probe_model),
+        model_family_variable_counts=_model_family_variable_counts(
+            probe_model,
+            context.model_family_variable_indexes,
+        ),
         seed_source_decisions=tuple(sorted(seed_source_decisions.items(), key=repr)),
         candidate_source_decisions=candidate_source_decisions,
         seed_summary=seed_summary,
@@ -782,4 +1117,7 @@ def probe_substantive_soft_tier(
         projected_frozen_source_variable_count=(
             projected_frozen_source_variable_count
         ),
+        model_family_constraint_counts=_model_family_constraint_counts(probe_model),
+        presolve_telemetry=presolve_telemetry,
+        hint_telemetry=hint_telemetry,
     )
