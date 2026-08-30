@@ -263,6 +263,12 @@ def test_targeted_s1_probe_records_selected_students_and_remains_diagnostic_only
     facts = result.optimization_facts["stage_2_local_bootstrap"]
     assert facts["selected_student_ids"] == (1,)
     assert facts["neighborhood_radius"] == 0
+    if facts["candidate_validated"]:
+        assert facts["source_decision_identity_checked"] is True
+        assert facts["source_decision_identity_matches"] is True
+        assert facts["validation_telemetry"][
+            "cp_sat_solve_external_wall_time_seconds"
+        ] is not None
     assert result.status == "complete"
     assert len(result.assignments) == 2
 
@@ -723,6 +729,15 @@ def test_stage2_diagnostic_can_replay_a_validated_alternate_incumbent():
 
     assert result.status == "complete"
     assert result.optimization_facts["stage_2"]["alternate_seed_validated"] is True
+    assert result.optimization_facts["stage_2"][
+        "alternate_source_decision_identity_checked"
+    ] is True
+    assert result.optimization_facts["stage_2"][
+        "alternate_source_decision_identity_matches"
+    ] is True
+    assert result.optimization_facts["stage_2"][
+        "alternate_seed_validation_telemetry"
+    ]["cp_sat_solve_external_wall_time_seconds"] is not None
     first_pass = result.optimization_facts["stage_2_trace"][0]
     assert first_pass["entering_candidate"]["hard_valid"] is True
     assert first_pass["entering_candidate"]["fulfillment_complete"] is True

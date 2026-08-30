@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from time import monotonic
 
 from ortools.sat.python import cp_model
@@ -70,6 +70,7 @@ class SourceDecisionValidationOutcome:
     solver: object | None
     solver_outcome: str
     error: str | None = None
+    telemetry: dict = field(default_factory=dict)
 
 
 def set_solver_hints(model, solver, *, source_model=None):
@@ -259,13 +260,50 @@ def validate_source_decision_candidate_with_status(
     adopted by the production or diagnostic caller.
     """
 
+    validation_started = monotonic()
+    telemetry = {
+        "model_variable_count_before": None,
+        "model_constraint_count_before": None,
+        "candidate_model_variable_count_after_clone": None,
+        "candidate_model_constraint_count_after_clone": None,
+        "candidate_model_variable_count_after_fixes": None,
+        "candidate_model_constraint_count_after_fixes": None,
+        "required_decision_group_count": len(required_decision_groups),
+        "source_variable_value_count": len(source_variable_values),
+        "clone_wall_time_seconds": None,
+        "completion_constraint_wall_time_seconds": None,
+        "source_fix_constraint_wall_time_seconds": None,
+        "solver_creation_wall_time_seconds": None,
+        "cp_sat_solve_external_wall_time_seconds": None,
+        "cp_sat_solver_wall_time_seconds": None,
+        "validation_wall_time_seconds": None,
+    }
+
     try:
+        telemetry["model_variable_count_before"] = len(model.Proto().variables)
+        telemetry["model_constraint_count_before"] = len(model.Proto().constraints)
+
+        phase_started = monotonic()
         candidate_model = model.Clone()
+        telemetry["clone_wall_time_seconds"] = monotonic() - phase_started
+        telemetry["candidate_model_variable_count_after_clone"] = len(
+            candidate_model.Proto().variables
+        )
+        telemetry["candidate_model_constraint_count_after_clone"] = len(
+            candidate_model.Proto().constraints
+        )
+
+        phase_started = monotonic()
         for decision_group in required_decision_groups:
             candidate_model.AddExactlyOne(
                 candidate_model.GetIntVarFromProtoIndex(variable.Index())
                 for variable in decision_group
             )
+        telemetry["completion_constraint_wall_time_seconds"] = (
+            monotonic() - phase_started
+        )
+
+        phase_started = monotonic()
         for variable_index, value in source_variable_values.items():
             # This is validation, not search guidance.  Equality constraints
             # avoid CP-SAT's ``fix_variables_to_their_hinted_value``
@@ -273,32 +311,59 @@ def validate_source_decision_candidate_with_status(
             candidate_model.Add(
                 candidate_model.GetIntVarFromProtoIndex(variable_index) == int(value)
             )
+        telemetry["source_fix_constraint_wall_time_seconds"] = (
+            monotonic() - phase_started
+        )
+        telemetry["candidate_model_variable_count_after_fixes"] = len(
+            candidate_model.Proto().variables
+        )
+        telemetry["candidate_model_constraint_count_after_fixes"] = len(
+            candidate_model.Proto().constraints
+        )
+
+        phase_started = monotonic()
         validator = new_solver(
             time_limit_seconds,
             worker_count=worker_count,
             random_seed=random_seed,
             max_deterministic_time=max_deterministic_time,
         )
+        telemetry["solver_creation_wall_time_seconds"] = monotonic() - phase_started
+
+        phase_started = monotonic()
         status = validator.Solve(candidate_model)
+        telemetry["cp_sat_solve_external_wall_time_seconds"] = (
+            monotonic() - phase_started
+        )
+        solver_wall_time = getattr(validator, "WallTime", None)
+        telemetry["cp_sat_solver_wall_time_seconds"] = (
+            float(solver_wall_time()) if callable(solver_wall_time) else None
+        )
     except Exception as error:  # pragma: no cover - defensive infrastructure path
+        telemetry["validation_wall_time_seconds"] = monotonic() - validation_started
         return SourceDecisionValidationOutcome(
             classification="validation_error",
             solver=None,
             solver_outcome="error",
             error=f"{type(error).__name__}: {error}",
+            telemetry=telemetry,
         )
+
+    telemetry["validation_wall_time_seconds"] = monotonic() - validation_started
 
     if status in {cp_model.OPTIMAL, cp_model.FEASIBLE}:
         return SourceDecisionValidationOutcome(
             classification="validated",
             solver=validator,
             solver_outcome=outcome_name(status),
+            telemetry=telemetry,
         )
     if status == cp_model.INFEASIBLE:
         return SourceDecisionValidationOutcome(
             classification="hard_invalid",
             solver=None,
             solver_outcome=outcome_name(status),
+            telemetry=telemetry,
         )
     return SourceDecisionValidationOutcome(
         classification=(
@@ -308,6 +373,7 @@ def validate_source_decision_candidate_with_status(
         ),
         solver=None,
         solver_outcome=outcome_name(status),
+        telemetry=telemetry,
     )
 
 

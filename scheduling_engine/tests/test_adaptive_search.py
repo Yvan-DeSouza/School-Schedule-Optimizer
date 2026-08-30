@@ -403,6 +403,14 @@ def test_operator_session_can_bound_candidate_validation_independently():
     assert iteration["validation_requested_time_limit_seconds"] <= 1
     assert iteration["candidate_validated"] is True
     assert iteration["validation_classification"] == "validated"
+    assert iteration["source_decision_identity_checked"] is True
+    assert iteration["source_decision_identity_matches"] is True
+    assert iteration["candidate_source_decision_count"] == (
+        iteration["validated_source_decision_count"]
+    )
+    assert iteration["validation_telemetry"][
+        "cp_sat_solve_external_wall_time_seconds"
+    ] is not None
 
 
 def test_presolve_parser_accepts_ortools_grouped_counts():

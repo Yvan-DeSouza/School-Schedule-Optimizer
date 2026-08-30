@@ -92,7 +92,6 @@ from .solver import (
     solve_complete_hard_feasibility_seed as _solve_complete_hard_feasibility_seed,
     solve_lexicographically as _solve_lexicographically,
     validate_complete_hard_feasibility_seed as _validate_complete_hard_feasibility_seed,
-    validate_source_decision_candidate as _validate_source_decision_candidate,
     validate_source_decision_candidate_with_status as _validate_source_decision_candidate_with_status,
 )
 from .initial_hint import build_initial_assignment_hints as _build_initial_assignment_hints
@@ -3414,6 +3413,9 @@ def _solve_student_assignment(
     alternate_seed_resolution_failure = None
     alternate_seed_materialization_elapsed = 0.0
     alternate_seed_validation_elapsed = 0.0
+    alternate_seed_validation_classification = None
+    alternate_seed_validation_solver_outcome = None
+    alternate_seed_validation_telemetry = {}
 
     if alternate_source_decisions:
         if alternate_source_variable_values is not None:
@@ -3457,24 +3459,40 @@ def _solve_student_assignment(
                 "mature_seed_validation",
                 "started",
             )
-            stage_2_seed_solver = _validate_source_decision_candidate(
-                model,
-                complete_required_decision_groups,
-                alternate_values,
-                alternate_validation_time_limit,
-                worker_count=(
-                    hard_feasibility_validation_worker_count
-                    if hard_feasibility_validation_worker_count is not None
-                    else STUDENT_ASSIGNMENT_HARD_FEASIBILITY_VALIDATION_WORKER_COUNT
-                ),
-                random_seed=(
-                    0
-                    if diagnostic_cp_sat_random_seed is None
-                    else int(diagnostic_cp_sat_random_seed)
-                ),
-                max_deterministic_time=(
-                    diagnostic_cp_sat_max_deterministic_time_seconds
-                ),
+            alternate_validation_outcome = (
+                _validate_source_decision_candidate_with_status(
+                    model,
+                    complete_required_decision_groups,
+                    alternate_values,
+                    alternate_validation_time_limit,
+                    worker_count=(
+                        hard_feasibility_validation_worker_count
+                        if hard_feasibility_validation_worker_count is not None
+                        else STUDENT_ASSIGNMENT_HARD_FEASIBILITY_VALIDATION_WORKER_COUNT
+                    ),
+                    random_seed=(
+                        0
+                        if diagnostic_cp_sat_random_seed is None
+                        else int(diagnostic_cp_sat_random_seed)
+                    ),
+                    max_deterministic_time=(
+                        diagnostic_cp_sat_max_deterministic_time_seconds
+                    ),
+                )
+            )
+            stage_2_seed_solver = (
+                alternate_validation_outcome.solver
+                if alternate_validation_outcome.classification == "validated"
+                else None
+            )
+            alternate_seed_validation_classification = (
+                alternate_validation_outcome.classification
+            )
+            alternate_seed_validation_solver_outcome = (
+                alternate_validation_outcome.solver_outcome
+            )
+            alternate_seed_validation_telemetry = dict(
+                alternate_validation_outcome.telemetry
             )
             alternate_seed_validation_elapsed = (
                 monotonic() - alternate_validation_started
@@ -3505,6 +3523,15 @@ def _solve_student_assignment(
             ),
             "mature_seed_validation_wall_time_seconds": (
                 alternate_seed_validation_elapsed
+            ),
+            "mature_seed_validation_classification": (
+                alternate_seed_validation_classification
+            ),
+            "mature_seed_validation_solver_outcome": (
+                alternate_seed_validation_solver_outcome
+            ),
+            "mature_seed_validation_telemetry": dict(
+                alternate_seed_validation_telemetry
             ),
             "operation_wall_time_seconds": (
                 alternate_seed_materialization_elapsed
@@ -3941,6 +3968,14 @@ def _solve_student_assignment(
                         )
                     ),
                 )
+                validated_source_decisions = (
+                    tuple(_source_decision_fingerprint(validation_outcome.solver))
+                    if validation_outcome.solver is not None
+                    else ()
+                )
+                candidate_source_decisions = tuple(
+                    local_result.candidate_source_decisions or ()
+                )
                 return (
                     validation_outcome.solver,
                     monotonic() - started,
@@ -3948,6 +3983,24 @@ def _solve_student_assignment(
                         "classification": validation_outcome.classification,
                         "solver_outcome": validation_outcome.solver_outcome,
                         "error": validation_outcome.error,
+                        "validation_telemetry": dict(
+                            validation_outcome.telemetry
+                        ),
+                        "source_decision_identity_checked": bool(
+                            candidate_source_decisions
+                            and validated_source_decisions
+                        ),
+                        "source_decision_identity_matches": (
+                            candidate_source_decisions == validated_source_decisions
+                            if candidate_source_decisions and validated_source_decisions
+                            else None
+                        ),
+                        "candidate_source_decision_count": len(
+                            candidate_source_decisions
+                        ),
+                        "validated_source_decision_count": len(
+                            validated_source_decisions
+                        ),
                     },
                 )
 
@@ -4307,6 +4360,21 @@ def _solve_student_assignment(
                             "solver_outcome"
                         ],
                         "validation_error": validation_facts["error"],
+                        "validation_telemetry": dict(
+                            validation_facts.get("validation_telemetry") or {}
+                        ),
+                        "source_decision_identity_checked": validation_facts.get(
+                            "source_decision_identity_checked"
+                        ),
+                        "source_decision_identity_matches": validation_facts.get(
+                            "source_decision_identity_matches"
+                        ),
+                        "candidate_source_decision_count": validation_facts.get(
+                            "candidate_source_decision_count"
+                        ),
+                        "validated_source_decision_count": validation_facts.get(
+                            "validated_source_decision_count"
+                        ),
                         "adopted": adopted,
                         "validation_elapsed_seconds": validation_elapsed,
                         "model_variable_count": local_result.model_variable_count,
@@ -4620,6 +4688,21 @@ def _solve_student_assignment(
                         "solver_outcome"
                     ],
                     "validation_error": validation_facts["error"],
+                    "validation_telemetry": dict(
+                        validation_facts.get("validation_telemetry") or {}
+                    ),
+                    "source_decision_identity_checked": validation_facts.get(
+                        "source_decision_identity_checked"
+                    ),
+                    "source_decision_identity_matches": validation_facts.get(
+                        "source_decision_identity_matches"
+                    ),
+                    "candidate_source_decision_count": validation_facts.get(
+                        "candidate_source_decision_count"
+                    ),
+                    "validated_source_decision_count": validation_facts.get(
+                        "validated_source_decision_count"
+                    ),
                     "improvement_adopted": candidate_validated,
                     "model_variable_count": local_result.model_variable_count,
                     "model_constraint_count": local_result.model_constraint_count,
@@ -4827,6 +4910,37 @@ def _solve_student_assignment(
             incumbent_timeline
         )
     optimization_facts["stage_2"]["alternate_seed_validated"] = alternate_seed_validated
+    if alternate_source_decisions:
+        optimization_facts["stage_2"][
+            "alternate_seed_validation_classification"
+        ] = alternate_seed_validation_classification
+        optimization_facts["stage_2"][
+            "alternate_seed_validation_solver_outcome"
+        ] = alternate_seed_validation_solver_outcome
+        optimization_facts["stage_2"][
+            "alternate_seed_validation_telemetry"
+        ] = dict(alternate_seed_validation_telemetry)
+    if stage_2_seed_solver is not None:
+        optimization_facts["stage_2"]["validated_source_decision_count"] = len(
+            _source_decision_fingerprint(stage_2_seed_solver)
+        )
+    if alternate_source_decisions and alternate_seed_validated:
+        supplied_source_decisions = tuple(sorted(
+            dict(alternate_source_decisions).items(),
+            key=repr,
+        ))
+        validated_source_decisions = tuple(
+            _source_decision_fingerprint(stage_2_seed_solver)
+        )
+        optimization_facts["stage_2"][
+            "alternate_source_decision_identity_checked"
+        ] = True
+        optimization_facts["stage_2"][
+            "alternate_source_decision_identity_matches"
+        ] = supplied_source_decisions == validated_source_decisions
+        optimization_facts["stage_2"][
+            "alternate_source_decision_count"
+        ] = len(supplied_source_decisions)
     optimization_facts["stage_2"]["alternate_seed_resolution_failure"] = (
         alternate_seed_resolution_failure
     )

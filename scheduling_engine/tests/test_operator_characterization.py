@@ -180,6 +180,14 @@ def test_candidate_validation_distinguishes_validated_from_hard_invalid():
     assert outcome.classification == "validated"
     assert outcome.solver_outcome in {"optimal", "feasible"}
     assert outcome.solver is not None
+    assert outcome.telemetry["required_decision_group_count"] == 1
+    assert outcome.telemetry["source_variable_value_count"] == 1
+    assert outcome.telemetry["model_variable_count_before"] == 1
+    assert outcome.telemetry["candidate_model_variable_count_after_clone"] == 1
+    assert outcome.telemetry["candidate_model_constraint_count_after_fixes"] >= 2
+    assert outcome.telemetry["clone_wall_time_seconds"] is not None
+    assert outcome.telemetry["cp_sat_solve_external_wall_time_seconds"] is not None
+    assert outcome.telemetry["validation_wall_time_seconds"] is not None
 
     invalid_model, invalid_selected = _single_boolean_candidate_model()
     invalid_outcome = validate_source_decision_candidate_with_status(
@@ -192,6 +200,7 @@ def test_candidate_validation_distinguishes_validated_from_hard_invalid():
     assert invalid_outcome.classification == "hard_invalid"
     assert invalid_outcome.solver_outcome == "infeasible"
     assert invalid_outcome.solver is None
+    assert invalid_outcome.telemetry["validation_wall_time_seconds"] is not None
 
 
 def test_candidate_validation_unknown_and_errors_are_not_adoptable(monkeypatch):
