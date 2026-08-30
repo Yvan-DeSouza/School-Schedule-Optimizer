@@ -6,14 +6,22 @@
   "fixture_version": "mixed_grade_v2_fixture_v1",
   "synthetic_only": true,
   "production_wiring": false,
-  "policies": ["adaptive", "stateless_role", "fixed_cycle"],
-  "seeds": [101],
+  "policies": [
+    "adaptive",
+    "stateless_role",
+    "fixed_cycle"
+  ],
+  "seeds": [
+    101
+  ],
   "medium_protocol": {
     "profile": "balanced",
     "worker_count": 1,
     "cp_sat_random_seed": 101,
     "total_time_limit_seconds": 120.0,
     "per_operator_time_limit_seconds": 30.0,
+    "hard_wall_seconds": 180.0,
+    "termination_grace_seconds": 5.0,
     "full_model_validation": true
   },
   "scenarios": [
@@ -65,19 +73,73 @@
   ],
   "medium_results": {
     "reference_medium": {
-      "adaptive": {"start": 42552, "final": 42528, "gain": 24, "complete": true, "unmet": 0},
-      "stateless_role": {"start": 42552, "final": 42528, "gain": 24, "complete": true, "unmet": 0},
-      "fixed_cycle": {"start": 42552, "final": 42402, "gain": 150, "complete": true, "unmet": 0}
+      "adaptive": {
+        "start": 42552,
+        "final": 42528,
+        "gain": 24,
+        "complete": true,
+        "unmet": 0
+      },
+      "stateless_role": {
+        "start": 42552,
+        "final": 42528,
+        "gain": 24,
+        "complete": true,
+        "unmet": 0
+      },
+      "fixed_cycle": {
+        "start": 42552,
+        "final": 42402,
+        "gain": 150,
+        "complete": true,
+        "unmet": 0
+      }
     },
     "population_pressure_medium": {
-      "adaptive": {"start": 42690, "final": 42654, "gain": 36, "complete": true, "unmet": 0},
-      "stateless_role": {"start": 42690, "final": 42648, "gain": 42, "complete": true, "unmet": 0},
-      "fixed_cycle": {"start": 42690, "final": 42600, "gain": 90, "complete": true, "unmet": 0}
+      "adaptive": {
+        "start": 42690,
+        "final": 42654,
+        "gain": 36,
+        "complete": true,
+        "unmet": 0
+      },
+      "stateless_role": {
+        "start": 42690,
+        "final": 42648,
+        "gain": 42,
+        "complete": true,
+        "unmet": 0
+      },
+      "fixed_cycle": {
+        "start": 42690,
+        "final": 42600,
+        "gain": 90,
+        "complete": true,
+        "unmet": 0
+      }
     },
     "special_commitment_pressure_medium": {
-      "adaptive": {"start": 45900, "final": 45840, "gain": 60, "complete": true, "unmet": 0},
-      "stateless_role": {"start": 45900, "final": 45852, "gain": 48, "complete": true, "unmet": 0},
-      "fixed_cycle": {"start": 45900, "final": 45030, "gain": 870, "complete": true, "unmet": 0}
+      "adaptive": {
+        "start": 45900,
+        "final": 45840,
+        "gain": 60,
+        "complete": true,
+        "unmet": 0
+      },
+      "stateless_role": {
+        "start": 45900,
+        "final": 45852,
+        "gain": 48,
+        "complete": true,
+        "unmet": 0
+      },
+      "fixed_cycle": {
+        "start": 45900,
+        "final": 45030,
+        "gain": 870,
+        "complete": true,
+        "unmet": 0
+      }
     }
   },
   "target_promotion": {
@@ -94,13 +156,3001 @@
     "attempts": 2,
     "stopping_observation": "Both operator attempts returned UNKNOWN without a strict improvement; target optimality is unresolved."
   },
-  "completed_cells": 10,
-  "skipped_cells": [
-    {"cell": "target_adaptive", "reason": "Not promoted after fixed-cycle was the only strongest medium candidate selected for target screening."},
-    {"cell": "target_stateless_role", "reason": "Not promoted after fixed-cycle was the only strongest medium candidate selected for target screening."},
-    {"cell": "medium_seed_202_303_replication", "reason": "Initial matched seed-101 screen was sufficient to identify discriminative conditions; replication remains the next phase."}
+  "target_screening": {
+    "protocol": {
+      "profile": "balanced",
+      "objective_semantics_version": "v2",
+      "cp_sat_random_seed": 101,
+      "worker_count": 1,
+      "total_time_limit_seconds": 600.0,
+      "per_operator_time_limit_seconds": 180.0,
+      "validation_time_limit_seconds": 180.0,
+      "parent_wall_seconds": 720.0,
+      "full_model_validation": true,
+      "validation_budget_adjustment": "Target-scale full-model validation measured approximately 89-100 seconds; the original 60-second operator/validation budget could not authoritatively classify candidates, so the long-horizon gate used 180 seconds for each.",
+      "target_seed101_gate": "600 seconds total, 180 seconds per operator, 180 seconds validation, one CP-SAT worker, supervised 720-second parent wall",
+      "candidate_validation_observation": "No target candidate was validated or adopted. Most probes returned UNKNOWN; several final attempts reached candidate_validation_error after the operator consumed its search budget. The retained Stage 1 seed is authoritative and complete, but target substantive optimality remains unresolved."
+    },
+    "scenario_selection": {
+      "reason": "Promoted matched analogues after fixed-cycle was strongest in all three medium scenario families across seeds 101, 202, and 303.",
+      "scenarios": [
+        {
+          "scenario_id": "reference_target",
+          "scenario_version": "target-v1",
+          "student_count": 1400,
+          "request_count": 9072,
+          "required_source_decision_group_count": 9170,
+          "section_count": 308,
+          "special_commitment_count": 140,
+          "input_fingerprint": "f56b5c0d5b745d919a57281a2f1e49959b4b23d8feb9486eda3c81afd8bb7906",
+          "stage1_seed_fingerprint": "f5cfd15465bab1815ad21a3565236f1ff383e8ffff82a4c783ab62ff410c9fb1",
+          "stage1_objective_vector": [
+            -5516.0,
+            0.0,
+            0.0,
+            -3654.0,
+            0.0,
+            42750.0,
+            4097745251610.0
+          ],
+          "stage1_complete_validated": true
+        },
+        {
+          "scenario_id": "reference_near_target",
+          "scenario_version": "target-v1",
+          "student_count": 800,
+          "request_count": 5184,
+          "required_source_decision_group_count": 5240,
+          "section_count": 308,
+          "special_commitment_count": 80,
+          "input_fingerprint": "724748412163aa422c2db455c72a1fee9598d161c241dfe9bb9acdb3a2c2ce3e",
+          "stage1_seed_fingerprint": "e369f7075b0b4c86bdb79cd6fc6e853ac90ee6dc9b0522cc1baf38252611bb04",
+          "stage1_objective_vector": [
+            -3152.0,
+            0.0,
+            0.0,
+            -2088.0,
+            0.0,
+            41448.0,
+            1338464715163.0
+          ],
+          "stage1_complete_validated": true
+        },
+        {
+          "scenario_id": "population_pressure_near_target",
+          "scenario_version": "target-v1",
+          "student_count": 1050,
+          "request_count": 6783,
+          "required_source_decision_group_count": 6859,
+          "section_count": 308,
+          "special_commitment_count": 109,
+          "input_fingerprint": "536d17d8f808c9f92538b0bef1a52b879a8007cea219c9dac520e8777ffe7a03",
+          "stage1_seed_fingerprint": "0d73d87137d12f4dd7a5427c259f73307a42ad46b01ed9e27ea95071be4aa1f8",
+          "stage1_objective_vector": [
+            -4135.0,
+            0.0,
+            0.0,
+            -2724.0,
+            0.0,
+            42936.0,
+            2290040934097.0
+          ],
+          "stage1_complete_validated": true
+        },
+        {
+          "scenario_id": "special_commitment_pressure_target",
+          "scenario_version": "target-v1",
+          "student_count": 1400,
+          "request_count": 8344,
+          "required_source_decision_group_count": 8540,
+          "section_count": 308,
+          "special_commitment_count": 280,
+          "input_fingerprint": "93d4bdf208027d50e51842290d77b7f77c6a92af724a7bd99ce6b78519bc0ca5",
+          "stage1_seed_fingerprint": "1866d7dca8dddb65a93f7eb1eb6935a329098c49da17c7897edc4a027c72cd46",
+          "stage1_objective_vector": [
+            -5432.0,
+            0.0,
+            0.0,
+            -3108.0,
+            0.0,
+            43626.0,
+            3447585097106.0
+          ],
+          "stage1_complete_validated": true
+        }
+      ],
+      "dense_special_target_stage1_validation_note": "The 1,400-student dense-special seed required the longer validation allowance; the earlier 30-second validation failure was not a feasibility result.",
+      "promoted_for_long_horizon_screening": [
+        "reference_target",
+        "special_commitment_pressure_target"
+      ],
+      "not_promoted_for_long_horizon_screening": [
+        {
+          "scenario": "reference_near_target",
+          "reason": "No seed-101 policy distinction in preliminary screen; near-target reference is redundant with exact-target reference control."
+        },
+        {
+          "scenario": "population_pressure_near_target",
+          "reason": "No seed-101 policy distinction in preliminary screen; near-target population condition is retained as structural evidence but not promoted."
+        }
+      ]
+    },
+    "target_replications": {
+      "status": "not_run_no_seed101_policy_discrimination",
+      "cp_sat_random_seeds": [
+        202,
+        303
+      ],
+      "reason": "All promoted seed-101 policy gates completed without a validated improvement; seeds 202 and 303 were not required by the preregistered promotion rule."
+    },
+    "artifact_sha256": {
+      "reference_target/input.json.gz": "a69b071e60ee67e031cccf30f2ad3e41aeb941755589d587ee106708c982a046",
+      "reference_target/stage1_seed.json.gz": "54c8bc6fd765dd92704a50ef94140f6de6dc2af73e4e5c9f800f1779e6a8ebf2",
+      "reference_target/manifest.json": "6d4ee8a443a51e933f8eaff14cbaa8d34cd1f0cdc347a3631d4e282db09b3c11",
+      "reference_target_adaptive.json": "eebcb0a9646f57eb4edd8e79c062d5337224a8d0ee934d8225a811779edf6742",
+      "reference_target_stateless_role.json": "23a38a722563db170b9b26cd05a5ccd73fbd1e2e12ce34314304f126b371e575",
+      "reference_target_fixed_cycle.json": "75f14575b67253e10d7e1eb02e150a568790a8d5de3e6182b2221354b4907ac1",
+      "reference_near_target/input.json.gz": "bde38ed430b9d1a874a4af89fd510be9879969edbe9d329024e370ee23de363c",
+      "reference_near_target/stage1_seed.json.gz": "3a7e38b299ad39fcd9d9b86e63358a902b196da8666f69b19b4b7d17c62ca9d2",
+      "reference_near_target/manifest.json": "5a70dba136239bd25c587376cd4cf2270907b5358478f7f66cad591c16a1b9d5",
+      "reference_near_target_adaptive.json": "c0be629b8a1d2bd196175629c2d08b3bafcbf7322e4c78d1f8f554ccd8d0826c",
+      "reference_near_target_stateless_role.json": "f28e65a3c8667b6d42429deca2f085cbc352926e53a1bd575e751d1f535893a5",
+      "reference_near_target_fixed_cycle.json": "606c1a2dccbd1480e916889ec0ebb2beeeeb85ad5562904bc18fe00885c2f83e",
+      "population_pressure_near_target/input.json.gz": "6b89386805ce1cfb3e6855eac74940c7610a8326301cbffe5a0bbd2228e2e89c",
+      "population_pressure_near_target/stage1_seed.json.gz": "9c4cc33d533fa58a67884394fdca62672735d8c4c3c0d81860c4c16a5e995fde",
+      "population_pressure_near_target/manifest.json": "bedac9161a1ef41f9fde3e57bd1ce6880cb8eaa6a13068877ad11413aa5bc87f",
+      "population_pressure_near_target_adaptive.json": "d2b5d0a388ee6559fb74b5b962f22cd0a67733a3ddfdfd5411b5ab029a3f9ba4",
+      "population_pressure_near_target_stateless_role.json": "501279de549446326e96daadb3c44699b007a41813f0f67d2fe7abec99e4d952",
+      "population_pressure_near_target_fixed_cycle.json": "542dc02a46169fa2be613b31d9fb41b8338e9fce80f21f44fbcd081ea5cb7a7e",
+      "special_commitment_pressure_target/input.json.gz": "cb798c61e985245b4c72b1180d77aec674bd04600e1ce0fe15efccfd0ecc7b70",
+      "special_commitment_pressure_target/stage1_seed.json.gz": "63687e1008c655225298f6f82b2888957945d842133b42d840b985aeaa778006",
+      "special_commitment_pressure_target/manifest.json": "95d359f55bdb25d0735cc6afd177a3668cddef73ac6f06d528a8af681d3568d8",
+      "special_commitment_pressure_target_adaptive.json": "a7629cbd506d41cb2ce4c5884db896a5ed59abc6208d08fcf4fa8ac572951075",
+      "special_commitment_pressure_target_stateless_role.json": "aaf6e74316eb66886f35b0b4660413e24889727ea433bc33a98a1b2341ea331a",
+      "special_commitment_pressure_target_fixed_cycle.json": "70db623e5fb8ec71542ef498e4ec2197dbc55d91f0a056515c756f4259bc86aa",
+      "reference_target_adaptive_target600_supervised.json": "5dc3b95027dc089fa6c0ca90eed375adc86c12287e8aebf97974a294cd85b9e7",
+      "reference_target_stateless_role_target600_supervised.json": "6a8faf424d212ef62ea00b8d74d4e68aca8f053a702192cf54973497995e3e8d",
+      "reference_target_fixed_cycle_target600_supervised.json": "a3e8a367f565cfc04d74bb9a0d1df63879d6ca60bcfbd6ad7cad63ec2f603289",
+      "special_commitment_pressure_target_adaptive_target600_supervised.json": "5daad290c85f60c03fcb2acafe794c7e46f2f9cdcb154f072d8daafbb037f3ed",
+      "special_commitment_pressure_target_stateless_role_target600_supervised.json": "72912387f284b6c0cf061427378f0b2dfd5b658414ab18bcee9ba8977173dc1b",
+      "special_commitment_pressure_target_fixed_cycle_target600_supervised.json": "61c3cae45f85b977ae24a513dfe75d1cdb6e4cbbb8a16c16fdd8d8fae0b27696"
+    },
+    "preliminary_120_second_screening_results": [
+      {
+        "cell": "reference_target/adaptive/101",
+        "scenario": "reference_target",
+        "policy": "adaptive",
+        "cp_sat_random_seed": 101,
+        "input_fingerprint": "f56b5c0d5b745d919a57281a2f1e49959b4b23d8feb9486eda3c81afd8bb7906",
+        "source_seed_fingerprint": "f5cfd15465bab1815ad21a3565236f1ff383e8ffff82a4c783ab62ff410c9fb1",
+        "initial_substantive_value": 42750.0,
+        "final_substantive_value": 42750.0,
+        "gain": 0.0,
+        "complete": true,
+        "unmet_count": 0,
+        "final_assignment_count": 9030,
+        "special_commitment_count": 140,
+        "attempts_count": 2,
+        "elapsed_seconds": 153.92558469995856,
+        "artifact_path": "reference_target_adaptive.json",
+        "artifact_sha256": "eebcb0a9646f57eb4edd8e79c062d5337224a8d0ee934d8225a811779edf6742"
+      },
+      {
+        "cell": "reference_target/stateless_role/101",
+        "scenario": "reference_target",
+        "policy": "stateless_role",
+        "cp_sat_random_seed": 101,
+        "input_fingerprint": "f56b5c0d5b745d919a57281a2f1e49959b4b23d8feb9486eda3c81afd8bb7906",
+        "source_seed_fingerprint": "f5cfd15465bab1815ad21a3565236f1ff383e8ffff82a4c783ab62ff410c9fb1",
+        "initial_substantive_value": 42750.0,
+        "final_substantive_value": 42750.0,
+        "gain": 0.0,
+        "complete": true,
+        "unmet_count": 0,
+        "final_assignment_count": 9030,
+        "special_commitment_count": 140,
+        "attempts_count": 2,
+        "elapsed_seconds": 206.30845589993987,
+        "artifact_path": "reference_target_stateless_role.json",
+        "artifact_sha256": "23a38a722563db170b9b26cd05a5ccd73fbd1e2e12ce34314304f126b371e575"
+      },
+      {
+        "cell": "reference_target/fixed_cycle/101",
+        "scenario": "reference_target",
+        "policy": "fixed_cycle",
+        "cp_sat_random_seed": 101,
+        "input_fingerprint": "f56b5c0d5b745d919a57281a2f1e49959b4b23d8feb9486eda3c81afd8bb7906",
+        "source_seed_fingerprint": "f5cfd15465bab1815ad21a3565236f1ff383e8ffff82a4c783ab62ff410c9fb1",
+        "initial_substantive_value": 42750.0,
+        "final_substantive_value": 42750.0,
+        "gain": 0.0,
+        "complete": true,
+        "unmet_count": 0,
+        "final_assignment_count": 9030,
+        "special_commitment_count": 140,
+        "attempts_count": 2,
+        "elapsed_seconds": 198.5889509000117,
+        "artifact_path": "reference_target_fixed_cycle.json",
+        "artifact_sha256": "75f14575b67253e10d7e1eb02e150a568790a8d5de3e6182b2221354b4907ac1"
+      },
+      {
+        "cell": "reference_near_target/adaptive/101",
+        "scenario": "reference_near_target",
+        "policy": "adaptive",
+        "cp_sat_random_seed": 101,
+        "input_fingerprint": "724748412163aa422c2db455c72a1fee9598d161c241dfe9bb9acdb3a2c2ce3e",
+        "source_seed_fingerprint": "e369f7075b0b4c86bdb79cd6fc6e853ac90ee6dc9b0522cc1baf38252611bb04",
+        "initial_substantive_value": 41448.0,
+        "final_substantive_value": 41448.0,
+        "gain": 0.0,
+        "complete": true,
+        "unmet_count": 0,
+        "final_assignment_count": 5160,
+        "special_commitment_count": 80,
+        "attempts_count": 3,
+        "elapsed_seconds": 145.13436339993495,
+        "artifact_path": "reference_near_target_adaptive.json",
+        "artifact_sha256": "c0be629b8a1d2bd196175629c2d08b3bafcbf7322e4c78d1f8f554ccd8d0826c"
+      },
+      {
+        "cell": "reference_near_target/stateless_role/101",
+        "scenario": "reference_near_target",
+        "policy": "stateless_role",
+        "cp_sat_random_seed": 101,
+        "input_fingerprint": "724748412163aa422c2db455c72a1fee9598d161c241dfe9bb9acdb3a2c2ce3e",
+        "source_seed_fingerprint": "e369f7075b0b4c86bdb79cd6fc6e853ac90ee6dc9b0522cc1baf38252611bb04",
+        "initial_substantive_value": 41448.0,
+        "final_substantive_value": 41448.0,
+        "gain": 0.0,
+        "complete": true,
+        "unmet_count": 0,
+        "final_assignment_count": 5160,
+        "special_commitment_count": 80,
+        "attempts_count": 3,
+        "elapsed_seconds": 160.9706030000234,
+        "artifact_path": "reference_near_target_stateless_role.json",
+        "artifact_sha256": "f28e65a3c8667b6d42429deca2f085cbc352926e53a1bd575e751d1f535893a5"
+      },
+      {
+        "cell": "reference_near_target/fixed_cycle/101",
+        "scenario": "reference_near_target",
+        "policy": "fixed_cycle",
+        "cp_sat_random_seed": 101,
+        "input_fingerprint": "724748412163aa422c2db455c72a1fee9598d161c241dfe9bb9acdb3a2c2ce3e",
+        "source_seed_fingerprint": "e369f7075b0b4c86bdb79cd6fc6e853ac90ee6dc9b0522cc1baf38252611bb04",
+        "initial_substantive_value": 41448.0,
+        "final_substantive_value": 41448.0,
+        "gain": 0.0,
+        "complete": true,
+        "unmet_count": 0,
+        "final_assignment_count": 5160,
+        "special_commitment_count": 80,
+        "attempts_count": 2,
+        "elapsed_seconds": 179.5334343999857,
+        "artifact_path": "reference_near_target_fixed_cycle.json",
+        "artifact_sha256": "606c1a2dccbd1480e916889ec0ebb2beeeeb85ad5562904bc18fe00885c2f83e"
+      },
+      {
+        "cell": "population_pressure_near_target/adaptive/101",
+        "scenario": "population_pressure_near_target",
+        "policy": "adaptive",
+        "cp_sat_random_seed": 101,
+        "input_fingerprint": "536d17d8f808c9f92538b0bef1a52b879a8007cea219c9dac520e8777ffe7a03",
+        "source_seed_fingerprint": "0d73d87137d12f4dd7a5427c259f73307a42ad46b01ed9e27ea95071be4aa1f8",
+        "initial_substantive_value": 42936.0,
+        "final_substantive_value": 42936.0,
+        "gain": 0.0,
+        "complete": true,
+        "unmet_count": 0,
+        "final_assignment_count": 6750,
+        "special_commitment_count": 109,
+        "attempts_count": 2,
+        "elapsed_seconds": 134.21996889996808,
+        "artifact_path": "population_pressure_near_target_adaptive.json",
+        "artifact_sha256": "d2b5d0a388ee6559fb74b5b962f22cd0a67733a3ddfdfd5411b5ab029a3f9ba4"
+      },
+      {
+        "cell": "population_pressure_near_target/stateless_role/101",
+        "scenario": "population_pressure_near_target",
+        "policy": "stateless_role",
+        "cp_sat_random_seed": 101,
+        "input_fingerprint": "536d17d8f808c9f92538b0bef1a52b879a8007cea219c9dac520e8777ffe7a03",
+        "source_seed_fingerprint": "0d73d87137d12f4dd7a5427c259f73307a42ad46b01ed9e27ea95071be4aa1f8",
+        "initial_substantive_value": 42936.0,
+        "final_substantive_value": 42936.0,
+        "gain": 0.0,
+        "complete": true,
+        "unmet_count": 0,
+        "final_assignment_count": 6750,
+        "special_commitment_count": 109,
+        "attempts_count": 2,
+        "elapsed_seconds": 171.38234220002778,
+        "artifact_path": "population_pressure_near_target_stateless_role.json",
+        "artifact_sha256": "501279de549446326e96daadb3c44699b007a41813f0f67d2fe7abec99e4d952"
+      },
+      {
+        "cell": "population_pressure_near_target/fixed_cycle/101",
+        "scenario": "population_pressure_near_target",
+        "policy": "fixed_cycle",
+        "cp_sat_random_seed": 101,
+        "input_fingerprint": "536d17d8f808c9f92538b0bef1a52b879a8007cea219c9dac520e8777ffe7a03",
+        "source_seed_fingerprint": "0d73d87137d12f4dd7a5427c259f73307a42ad46b01ed9e27ea95071be4aa1f8",
+        "initial_substantive_value": 42936.0,
+        "final_substantive_value": 42936.0,
+        "gain": 0.0,
+        "complete": true,
+        "unmet_count": 0,
+        "final_assignment_count": 6750,
+        "special_commitment_count": 109,
+        "attempts_count": 2,
+        "elapsed_seconds": 242.02511699998286,
+        "artifact_path": "population_pressure_near_target_fixed_cycle.json",
+        "artifact_sha256": "542dc02a46169fa2be613b31d9fb41b8338e9fce80f21f44fbcd081ea5cb7a7e"
+      },
+      {
+        "cell": "special_commitment_pressure_target/adaptive/101",
+        "scenario": "special_commitment_pressure_target",
+        "policy": "adaptive",
+        "cp_sat_random_seed": 101,
+        "input_fingerprint": "93d4bdf208027d50e51842290d77b7f77c6a92af724a7bd99ce6b78519bc0ca5",
+        "source_seed_fingerprint": "1866d7dca8dddb65a93f7eb1eb6935a329098c49da17c7897edc4a027c72cd46",
+        "initial_substantive_value": 43626.0,
+        "final_substantive_value": 43626.0,
+        "gain": 0.0,
+        "complete": true,
+        "unmet_count": 0,
+        "final_assignment_count": 8260,
+        "special_commitment_count": 280,
+        "attempts_count": 2,
+        "elapsed_seconds": 125.17245090007782,
+        "artifact_path": "special_commitment_pressure_target_adaptive.json",
+        "artifact_sha256": "a7629cbd506d41cb2ce4c5884db896a5ed59abc6208d08fcf4fa8ac572951075"
+      },
+      {
+        "cell": "special_commitment_pressure_target/stateless_role/101",
+        "scenario": "special_commitment_pressure_target",
+        "policy": "stateless_role",
+        "cp_sat_random_seed": 101,
+        "input_fingerprint": "93d4bdf208027d50e51842290d77b7f77c6a92af724a7bd99ce6b78519bc0ca5",
+        "source_seed_fingerprint": "1866d7dca8dddb65a93f7eb1eb6935a329098c49da17c7897edc4a027c72cd46",
+        "initial_substantive_value": 43626.0,
+        "final_substantive_value": 43626.0,
+        "gain": 0.0,
+        "complete": true,
+        "unmet_count": 0,
+        "final_assignment_count": 8260,
+        "special_commitment_count": 280,
+        "attempts_count": 2,
+        "elapsed_seconds": 150.3571161000291,
+        "artifact_path": "special_commitment_pressure_target_stateless_role.json",
+        "artifact_sha256": "aaf6e74316eb66886f35b0b4660413e24889727ea433bc33a98a1b2341ea331a"
+      },
+      {
+        "cell": "special_commitment_pressure_target/fixed_cycle/101",
+        "scenario": "special_commitment_pressure_target",
+        "policy": "fixed_cycle",
+        "cp_sat_random_seed": 101,
+        "input_fingerprint": "93d4bdf208027d50e51842290d77b7f77c6a92af724a7bd99ce6b78519bc0ca5",
+        "source_seed_fingerprint": "1866d7dca8dddb65a93f7eb1eb6935a329098c49da17c7897edc4a027c72cd46",
+        "initial_substantive_value": 43626.0,
+        "final_substantive_value": 43626.0,
+        "gain": 0.0,
+        "complete": true,
+        "unmet_count": 0,
+        "final_assignment_count": 8260,
+        "special_commitment_count": 280,
+        "attempts_count": 2,
+        "elapsed_seconds": 190.18580400000792,
+        "artifact_path": "special_commitment_pressure_target_fixed_cycle.json",
+        "artifact_sha256": "70db623e5fb8ec71542ef498e4ec2197dbc55d91f0a056515c756f4259bc86aa"
+      }
+    ],
+    "results": [
+      {
+        "cell": "reference_target/adaptive/101/target600",
+        "scenario": "reference_target",
+        "policy": "adaptive",
+        "cp_sat_random_seed": 101,
+        "input_fingerprint": "f56b5c0d5b745d919a57281a2f1e49959b4b23d8feb9486eda3c81afd8bb7906",
+        "source_seed_fingerprint": "f5cfd15465bab1815ad21a3565236f1ff383e8ffff82a4c783ab62ff410c9fb1",
+        "initial_substantive_value": 42750.0,
+        "final_substantive_value": 42750.0,
+        "gain": 0.0,
+        "complete": true,
+        "unmet_count": 0,
+        "final_assignment_count": 9030,
+        "special_commitment_count": 140,
+        "attempts_count": 5,
+        "elapsed_seconds": 611.9579519999679,
+        "solver_reached": true,
+        "validated_improvement_count": 0,
+        "stopping_observation": "No validated improvement; target substantive optimum unresolved within the bounded gate.",
+        "artifact_path": "reference_target_adaptive_target600_supervised.json",
+        "artifact_sha256": "5dc3b95027dc089fa6c0ca90eed375adc86c12287e8aebf97974a294cd85b9e7"
+      },
+      {
+        "cell": "reference_target/stateless_role/101/target600",
+        "scenario": "reference_target",
+        "policy": "stateless_role",
+        "cp_sat_random_seed": 101,
+        "input_fingerprint": "f56b5c0d5b745d919a57281a2f1e49959b4b23d8feb9486eda3c81afd8bb7906",
+        "source_seed_fingerprint": "f5cfd15465bab1815ad21a3565236f1ff383e8ffff82a4c783ab62ff410c9fb1",
+        "initial_substantive_value": 42750.0,
+        "final_substantive_value": 42750.0,
+        "gain": 0.0,
+        "complete": true,
+        "unmet_count": 0,
+        "final_assignment_count": 9030,
+        "special_commitment_count": 140,
+        "attempts_count": 7,
+        "elapsed_seconds": 612.8020075999666,
+        "solver_reached": true,
+        "validated_improvement_count": 0,
+        "stopping_observation": "No validated improvement; target substantive optimum unresolved within the bounded gate.",
+        "artifact_path": "reference_target_stateless_role_target600_supervised.json",
+        "artifact_sha256": "6a8faf424d212ef62ea00b8d74d4e68aca8f053a702192cf54973497995e3e8d"
+      },
+      {
+        "cell": "reference_target/fixed_cycle/101/target600",
+        "scenario": "reference_target",
+        "policy": "fixed_cycle",
+        "cp_sat_random_seed": 101,
+        "input_fingerprint": "f56b5c0d5b745d919a57281a2f1e49959b4b23d8feb9486eda3c81afd8bb7906",
+        "source_seed_fingerprint": "f5cfd15465bab1815ad21a3565236f1ff383e8ffff82a4c783ab62ff410c9fb1",
+        "initial_substantive_value": 42750.0,
+        "final_substantive_value": 42750.0,
+        "gain": 0.0,
+        "complete": true,
+        "unmet_count": 0,
+        "final_assignment_count": 9030,
+        "special_commitment_count": 140,
+        "attempts_count": 6,
+        "elapsed_seconds": 612.5412371000275,
+        "solver_reached": true,
+        "validated_improvement_count": 0,
+        "stopping_observation": "No validated improvement; target substantive optimum unresolved within the bounded gate.",
+        "artifact_path": "reference_target_fixed_cycle_target600_supervised.json",
+        "artifact_sha256": "a3e8a367f565cfc04d74bb9a0d1df63879d6ca60bcfbd6ad7cad63ec2f603289"
+      },
+      {
+        "cell": "special_commitment_pressure_target/adaptive/101/target600",
+        "scenario": "special_commitment_pressure_target",
+        "policy": "adaptive",
+        "cp_sat_random_seed": 101,
+        "input_fingerprint": "93d4bdf208027d50e51842290d77b7f77c6a92af724a7bd99ce6b78519bc0ca5",
+        "source_seed_fingerprint": "1866d7dca8dddb65a93f7eb1eb6935a329098c49da17c7897edc4a027c72cd46",
+        "initial_substantive_value": 43626.0,
+        "final_substantive_value": 43626.0,
+        "gain": 0.0,
+        "complete": true,
+        "unmet_count": 0,
+        "final_assignment_count": 8260,
+        "special_commitment_count": 280,
+        "attempts_count": 6,
+        "elapsed_seconds": 624.0108076001052,
+        "solver_reached": true,
+        "validated_improvement_count": 0,
+        "stopping_observation": "No validated improvement; target substantive optimum unresolved within the bounded gate.",
+        "artifact_path": "special_commitment_pressure_target_adaptive_target600_supervised.json",
+        "artifact_sha256": "5daad290c85f60c03fcb2acafe794c7e46f2f9cdcb154f072d8daafbb037f3ed"
+      },
+      {
+        "cell": "special_commitment_pressure_target/stateless_role/101/target600",
+        "scenario": "special_commitment_pressure_target",
+        "policy": "stateless_role",
+        "cp_sat_random_seed": 101,
+        "input_fingerprint": "93d4bdf208027d50e51842290d77b7f77c6a92af724a7bd99ce6b78519bc0ca5",
+        "source_seed_fingerprint": "1866d7dca8dddb65a93f7eb1eb6935a329098c49da17c7897edc4a027c72cd46",
+        "initial_substantive_value": 43626.0,
+        "final_substantive_value": 43626.0,
+        "gain": 0.0,
+        "complete": true,
+        "unmet_count": 0,
+        "final_assignment_count": 8260,
+        "special_commitment_count": 280,
+        "attempts_count": 5,
+        "elapsed_seconds": 611.9297174999956,
+        "solver_reached": true,
+        "validated_improvement_count": 0,
+        "stopping_observation": "No validated improvement; target substantive optimum unresolved within the bounded gate.",
+        "artifact_path": "special_commitment_pressure_target_stateless_role_target600_supervised.json",
+        "artifact_sha256": "72912387f284b6c0cf061427378f0b2dfd5b658414ab18bcee9ba8977173dc1b"
+      },
+      {
+        "cell": "special_commitment_pressure_target/fixed_cycle/101/target600",
+        "scenario": "special_commitment_pressure_target",
+        "policy": "fixed_cycle",
+        "cp_sat_random_seed": 101,
+        "input_fingerprint": "93d4bdf208027d50e51842290d77b7f77c6a92af724a7bd99ce6b78519bc0ca5",
+        "source_seed_fingerprint": "1866d7dca8dddb65a93f7eb1eb6935a329098c49da17c7897edc4a027c72cd46",
+        "initial_substantive_value": 43626.0,
+        "final_substantive_value": 43626.0,
+        "gain": 0.0,
+        "complete": true,
+        "unmet_count": 0,
+        "final_assignment_count": 8260,
+        "special_commitment_count": 280,
+        "attempts_count": 4,
+        "elapsed_seconds": 637.227,
+        "solver_reached": true,
+        "validated_improvement_count": 0,
+        "stopping_observation": "No validated improvement; target substantive optimum unresolved within the bounded gate.",
+        "artifact_path": "special_commitment_pressure_target_fixed_cycle_target600_supervised.json",
+        "artifact_sha256": "61c3cae45f85b977ae24a513dfe75d1cdb6e4cbbb8a16c16fdd8d8fae0b27696"
+      }
+    ],
+    "status": "completed_seed101_no_policy_discrimination"
+  },
+  "planned_medium_replication": {
+    "protocol": "Same detached scenario input and Stage 1 source seed as seed 101; only CP-SAT random seed changes.",
+    "profile": "balanced",
+    "objective_semantics_version": "v2",
+    "worker_count": 1,
+    "total_time_limit_seconds": 120.0,
+    "per_operator_time_limit_seconds": 30.0,
+    "hard_wall_seconds": 180.0,
+    "termination_grace_seconds": 5.0,
+    "full_model_validation": true,
+    "cp_sat_random_seeds": [
+      202,
+      303
+    ],
+    "cells": [
+      "reference_medium/adaptive/202",
+      "reference_medium/stateless_role/202",
+      "reference_medium/fixed_cycle/202",
+      "population_pressure_medium/adaptive/202",
+      "population_pressure_medium/stateless_role/202",
+      "population_pressure_medium/fixed_cycle/202",
+      "special_commitment_pressure_medium/adaptive/202",
+      "special_commitment_pressure_medium/stateless_role/202",
+      "special_commitment_pressure_medium/fixed_cycle/202",
+      "reference_medium/adaptive/303",
+      "reference_medium/stateless_role/303",
+      "reference_medium/fixed_cycle/303",
+      "population_pressure_medium/adaptive/303",
+      "population_pressure_medium/stateless_role/303",
+      "population_pressure_medium/fixed_cycle/303",
+      "special_commitment_pressure_medium/adaptive/303",
+      "special_commitment_pressure_medium/stateless_role/303",
+      "special_commitment_pressure_medium/fixed_cycle/303"
+    ]
+  },
+  "replication_results": [
+    {
+      "cell": "reference_medium/adaptive/202",
+      "scenario": "reference_medium",
+      "policy": "adaptive",
+      "cp_sat_random_seed": 202,
+      "input_fingerprint": "9c9ffe0924a8d36b8673c14a7706b239a1d22cae31e06196ea850589b0556956",
+      "source_seed_fingerprint": "bb81698614f3c88730d5a628ceab2683624384b96e1991e7db068a89f261a531",
+      "final_source_decision_fingerprint": "cb9c65442fe13abf2efa36c3d7cf9fa9848a968eb552e0343e8d444f655e5e68",
+      "initial_substantive_value": 42552.0,
+      "final_substantive_value": 42456.0,
+      "gain": 96,
+      "complete": true,
+      "unmet_count": 0,
+      "attempts_count": 4,
+      "adopted_count": 4,
+      "inner_probe_count": 16,
+      "validation_outcomes": [
+        "validation_unknown",
+        "validation_unknown",
+        "validated",
+        "not_attempted"
+      ],
+      "component_deltas": [
+        {
+          "course_category_diversity_penalty": -70.0,
+          "difficulty_balance_penalty": 28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -2.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": -70.0,
+          "difficulty_balance_penalty": 28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -6.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -2.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": -70.0,
+          "difficulty_balance_penalty": 28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -2.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {}
+      ],
+      "execution_status": "completed",
+      "artifact_path": "y_generalization_suite_20260829/reference_medium_adaptive_seed202.json",
+      "artifact_sha256": "d09a625189d433536765e04efecef653b6a3d36e509785e740eeed1e42361620"
+    },
+    {
+      "cell": "reference_medium/stateless_role/202",
+      "scenario": "reference_medium",
+      "policy": "stateless_role",
+      "cp_sat_random_seed": 202,
+      "input_fingerprint": "9c9ffe0924a8d36b8673c14a7706b239a1d22cae31e06196ea850589b0556956",
+      "source_seed_fingerprint": "bb81698614f3c88730d5a628ceab2683624384b96e1991e7db068a89f261a531",
+      "final_source_decision_fingerprint": "452c11c06e1f9f696163b1e1b007c75ba9d5f4ccb439867572720bae9c7103e1",
+      "initial_substantive_value": 42552.0,
+      "final_substantive_value": 42450.0,
+      "gain": 102,
+      "complete": true,
+      "unmet_count": 0,
+      "attempts_count": 4,
+      "adopted_count": 4,
+      "inner_probe_count": 17,
+      "validation_outcomes": [
+        "validated",
+        "not_attempted",
+        "validation_unknown",
+        "not_attempted"
+      ],
+      "component_deltas": [
+        {
+          "course_category_diversity_penalty": -70.0,
+          "difficulty_balance_penalty": 28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -2.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": -70.0,
+          "difficulty_balance_penalty": 28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -6.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -2.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {},
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": -70.0,
+          "difficulty_balance_penalty": 28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -2.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -2.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -2.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {}
+      ],
+      "execution_status": "completed",
+      "artifact_path": "y_generalization_suite_20260829/reference_medium_stateless_role_seed202.json",
+      "artifact_sha256": "3f6a588a2aa5abb22ea823b40b63c2b2f3550ee1d394522e0379cde0a893ea82"
+    },
+    {
+      "cell": "reference_medium/fixed_cycle/202",
+      "scenario": "reference_medium",
+      "policy": "fixed_cycle",
+      "cp_sat_random_seed": 202,
+      "input_fingerprint": "9c9ffe0924a8d36b8673c14a7706b239a1d22cae31e06196ea850589b0556956",
+      "source_seed_fingerprint": "bb81698614f3c88730d5a628ceab2683624384b96e1991e7db068a89f261a531",
+      "final_source_decision_fingerprint": "e0ba7e9b8fa40d1dc66d29b8f0ef14dd43bf0934459486c0c1f6976a892f91d1",
+      "initial_substantive_value": 42552.0,
+      "final_substantive_value": 41892.0,
+      "gain": 660,
+      "complete": true,
+      "unmet_count": 0,
+      "attempts_count": 4,
+      "adopted_count": 3,
+      "inner_probe_count": 13,
+      "validation_outcomes": [
+        "not_attempted",
+        "validated",
+        "not_attempted",
+        "validated"
+      ],
+      "component_deltas": [
+        {
+          "course_category_diversity_penalty": -30.0,
+          "difficulty_balance_penalty": -94.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": 0.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": -4.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": -60.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": 0.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": -4.0
+        },
+        {
+          "course_category_diversity_penalty": 23.0,
+          "difficulty_balance_penalty": -166.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": 4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": -4.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": -76.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": 14.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": -4.0
+        },
+        {},
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -2.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": -70.0,
+          "difficulty_balance_penalty": 28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -2.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {},
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": -10.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": 0.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": -2.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": 0.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": -72.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": 6.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": -4.0
+        }
+      ],
+      "execution_status": "completed",
+      "artifact_path": "y_generalization_suite_20260829/reference_medium_fixed_cycle_seed202.json",
+      "artifact_sha256": "45911792cd30908a76d2c66bbd316954c685acd1bca861d7135303d0581fc74d"
+    },
+    {
+      "cell": "population_pressure_medium/adaptive/202",
+      "scenario": "population_pressure_medium",
+      "policy": "adaptive",
+      "cp_sat_random_seed": 202,
+      "input_fingerprint": "5352e4d45ce4d3396030a275ba25a3166783a7bab3267a0a26b8501610c61bed",
+      "source_seed_fingerprint": "609c841cf8707670da27e537bb9fe9a8af7ea50acf799f3f0ac0b2f9abd16262",
+      "final_source_decision_fingerprint": "772a4b60221310b1cea48f65cf6e8f5f1c15a2c62e7e9f8d486b650b5c5bcfb3",
+      "initial_substantive_value": 42690.0,
+      "final_substantive_value": 42570.0,
+      "gain": 120,
+      "complete": true,
+      "unmet_count": 0,
+      "attempts_count": 4,
+      "adopted_count": 4,
+      "inner_probe_count": 11,
+      "validation_outcomes": [
+        "validation_unknown",
+        "validation_unknown",
+        "validation_unknown",
+        "validation_unknown"
+      ],
+      "component_deltas": [
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -8.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 30.0,
+          "difficulty_balance_penalty": -16.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -8.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -2.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -2.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 45.0,
+          "difficulty_balance_penalty": 20.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -10.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 45.0,
+          "difficulty_balance_penalty": -60.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -6.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 45.0,
+          "difficulty_balance_penalty": -60.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -6.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 45.0,
+          "difficulty_balance_penalty": -24.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -14.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 45.0,
+          "difficulty_balance_penalty": -24.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -14.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        }
+      ],
+      "execution_status": "completed",
+      "artifact_path": "y_generalization_suite_20260829/population_pressure_medium_adaptive_seed202.json",
+      "artifact_sha256": "2e2d1dbb15a257e64f3aae0822d877be5161472695220102fa164ef3aa89d50b"
+    },
+    {
+      "cell": "population_pressure_medium/stateless_role/202",
+      "scenario": "population_pressure_medium",
+      "policy": "stateless_role",
+      "cp_sat_random_seed": 202,
+      "input_fingerprint": "5352e4d45ce4d3396030a275ba25a3166783a7bab3267a0a26b8501610c61bed",
+      "source_seed_fingerprint": "609c841cf8707670da27e537bb9fe9a8af7ea50acf799f3f0ac0b2f9abd16262",
+      "final_source_decision_fingerprint": "772a4b60221310b1cea48f65cf6e8f5f1c15a2c62e7e9f8d486b650b5c5bcfb3",
+      "initial_substantive_value": 42690.0,
+      "final_substantive_value": 42570.0,
+      "gain": 120,
+      "complete": true,
+      "unmet_count": 0,
+      "attempts_count": 4,
+      "adopted_count": 4,
+      "inner_probe_count": 11,
+      "validation_outcomes": [
+        "not_attempted",
+        "validation_unknown",
+        "validation_unknown",
+        "validation_unknown"
+      ],
+      "component_deltas": [
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -8.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 30.0,
+          "difficulty_balance_penalty": -16.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -8.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {},
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -2.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 45.0,
+          "difficulty_balance_penalty": 20.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -10.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 45.0,
+          "difficulty_balance_penalty": -60.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -6.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 45.0,
+          "difficulty_balance_penalty": -60.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -6.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 45.0,
+          "difficulty_balance_penalty": -24.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -14.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 45.0,
+          "difficulty_balance_penalty": -24.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -14.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        }
+      ],
+      "execution_status": "completed",
+      "artifact_path": "y_generalization_suite_20260829/population_pressure_medium_stateless_role_seed202.json",
+      "artifact_sha256": "e251d43093188e7109514ad5946a16335086617724a56c20d66f5ff94c2058b5"
+    },
+    {
+      "cell": "population_pressure_medium/fixed_cycle/202",
+      "scenario": "population_pressure_medium",
+      "policy": "fixed_cycle",
+      "cp_sat_random_seed": 202,
+      "input_fingerprint": "5352e4d45ce4d3396030a275ba25a3166783a7bab3267a0a26b8501610c61bed",
+      "source_seed_fingerprint": "609c841cf8707670da27e537bb9fe9a8af7ea50acf799f3f0ac0b2f9abd16262",
+      "final_source_decision_fingerprint": "bb0e8fe37a56df66d0492a4d56b4cbc8e8c3a295964cb5179a4f1d275cb68ca0",
+      "initial_substantive_value": 42690.0,
+      "final_substantive_value": 42486.0,
+      "gain": 204,
+      "complete": true,
+      "unmet_count": 0,
+      "attempts_count": 4,
+      "adopted_count": 3,
+      "inner_probe_count": 9,
+      "validation_outcomes": [
+        "validation_unknown",
+        "not_attempted",
+        "not_attempted",
+        "not_attempted"
+      ],
+      "component_deltas": [
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": -52.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": 0.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": -4.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": -82.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": 4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": -4.0
+        },
+        {
+          "course_category_diversity_penalty": -28.0,
+          "difficulty_balance_penalty": 8.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -2.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -8.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {},
+        {},
+        {
+          "course_category_diversity_penalty": -28.0,
+          "difficulty_balance_penalty": 8.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {}
+      ],
+      "execution_status": "completed",
+      "artifact_path": "y_generalization_suite_20260829/population_pressure_medium_fixed_cycle_seed202.json",
+      "artifact_sha256": "562791c2f6b7bf1ce562240cfcda640bc5c4d5b5b884ca1a258d09112c6ddd46"
+    },
+    {
+      "cell": "special_commitment_pressure_medium/adaptive/202",
+      "scenario": "special_commitment_pressure_medium",
+      "policy": "adaptive",
+      "cp_sat_random_seed": 202,
+      "input_fingerprint": "ee72844523d917b293e6d0b1b309805754ed6f1b2973cab42a3b3316612bc079",
+      "source_seed_fingerprint": "c40e0a30b7fbd512c6feb0c60729fc753747339c72617e4d0db4a4b3486823cb",
+      "final_source_decision_fingerprint": "d0959ba59e5d0e5750f30033ca8b2b97adbe0421358baeb0c2d4965a6f9582b4",
+      "initial_substantive_value": 45900.0,
+      "final_substantive_value": 45726.0,
+      "gain": 174,
+      "complete": true,
+      "unmet_count": 0,
+      "attempts_count": 4,
+      "adopted_count": 4,
+      "inner_probe_count": 19,
+      "validation_outcomes": [
+        "validation_unknown",
+        "validation_unknown",
+        "validation_unknown",
+        "not_attempted"
+      ],
+      "component_deltas": [
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -8.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -8.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -8.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -8.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -8.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -8.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -8.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -6.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -6.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -6.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -6.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -6.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {}
+      ],
+      "execution_status": "completed",
+      "artifact_path": "y_generalization_suite_20260829/special_commitment_pressure_medium_adaptive_seed202.json",
+      "artifact_sha256": "0fb01022e8153edf44fd10c03004ef7c2be7679c58c4954afc64d91e58b2996f"
+    },
+    {
+      "cell": "special_commitment_pressure_medium/stateless_role/202",
+      "scenario": "special_commitment_pressure_medium",
+      "policy": "stateless_role",
+      "cp_sat_random_seed": 202,
+      "input_fingerprint": "ee72844523d917b293e6d0b1b309805754ed6f1b2973cab42a3b3316612bc079",
+      "source_seed_fingerprint": "c40e0a30b7fbd512c6feb0c60729fc753747339c72617e4d0db4a4b3486823cb",
+      "final_source_decision_fingerprint": "d0959ba59e5d0e5750f30033ca8b2b97adbe0421358baeb0c2d4965a6f9582b4",
+      "initial_substantive_value": 45900.0,
+      "final_substantive_value": 45726.0,
+      "gain": 174,
+      "complete": true,
+      "unmet_count": 0,
+      "attempts_count": 4,
+      "adopted_count": 4,
+      "inner_probe_count": 19,
+      "validation_outcomes": [
+        "validation_unknown",
+        "validation_unknown",
+        "validation_unknown",
+        "validation_unknown"
+      ],
+      "component_deltas": [
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -8.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -8.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -8.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -8.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -8.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -8.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -8.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -6.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -6.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -6.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -6.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -6.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -6.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        }
+      ],
+      "execution_status": "completed",
+      "artifact_path": "y_generalization_suite_20260829/special_commitment_pressure_medium_stateless_role_seed202.json",
+      "artifact_sha256": "daa9739a0c6cc7a5680ad5ef2f8e4f0b87e7044a158588b71a4bda65b0c996c3"
+    },
+    {
+      "cell": "special_commitment_pressure_medium/fixed_cycle/202",
+      "scenario": "special_commitment_pressure_medium",
+      "policy": "fixed_cycle",
+      "cp_sat_random_seed": 202,
+      "input_fingerprint": "ee72844523d917b293e6d0b1b309805754ed6f1b2973cab42a3b3316612bc079",
+      "source_seed_fingerprint": "c40e0a30b7fbd512c6feb0c60729fc753747339c72617e4d0db4a4b3486823cb",
+      "final_source_decision_fingerprint": "8f8811602e37ada5d88f2c0be8709cf5b6182a1afe589da0f6289674328d86ad",
+      "initial_substantive_value": 45900.0,
+      "final_substantive_value": 44214.0,
+      "gain": 1686,
+      "complete": true,
+      "unmet_count": 0,
+      "attempts_count": 4,
+      "adopted_count": 3,
+      "inner_probe_count": 15,
+      "validation_outcomes": [
+        "not_attempted",
+        "validation_unknown",
+        "not_attempted",
+        "validation_unknown"
+      ],
+      "component_deltas": [
+        {
+          "course_category_diversity_penalty": -72.0,
+          "difficulty_balance_penalty": -342.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": -8.0
+        },
+        {
+          "course_category_diversity_penalty": -72.0,
+          "difficulty_balance_penalty": -342.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": -8.0
+        },
+        {
+          "course_category_diversity_penalty": -30.0,
+          "difficulty_balance_penalty": -94.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": 0.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": -4.0
+        },
+        {
+          "course_category_diversity_penalty": -30.0,
+          "difficulty_balance_penalty": -94.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": 0.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": -4.0
+        },
+        {},
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -6.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -6.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -6.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -6.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -6.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {},
+        {
+          "course_category_diversity_penalty": -30.0,
+          "difficulty_balance_penalty": -94.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": 0.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": -4.0
+        },
+        {
+          "course_category_diversity_penalty": -30.0,
+          "difficulty_balance_penalty": -94.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": 0.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": -4.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": -128.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": 0.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": -4.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": -60.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": 0.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": -4.0
+        }
+      ],
+      "execution_status": "completed",
+      "artifact_path": "y_generalization_suite_20260829/special_commitment_pressure_medium_fixed_cycle_seed202.json",
+      "artifact_sha256": "691615f5a4a314ecb47d28bc66b13d802c1dc87683f125db2897ba578e0176da"
+    },
+    {
+      "cell": "reference_medium/adaptive/303",
+      "scenario": "reference_medium",
+      "policy": "adaptive",
+      "cp_sat_random_seed": 303,
+      "input_fingerprint": "9c9ffe0924a8d36b8673c14a7706b239a1d22cae31e06196ea850589b0556956",
+      "source_seed_fingerprint": "bb81698614f3c88730d5a628ceab2683624384b96e1991e7db068a89f261a531",
+      "final_source_decision_fingerprint": "452c11c06e1f9f696163b1e1b007c75ba9d5f4ccb439867572720bae9c7103e1",
+      "initial_substantive_value": 42552.0,
+      "final_substantive_value": 42450.0,
+      "gain": 102,
+      "complete": true,
+      "unmet_count": 0,
+      "attempts_count": 4,
+      "adopted_count": 4,
+      "inner_probe_count": 16,
+      "validation_outcomes": [
+        "validated",
+        "validation_unknown",
+        "validated",
+        "validation_unknown"
+      ],
+      "component_deltas": [
+        {
+          "course_category_diversity_penalty": -70.0,
+          "difficulty_balance_penalty": 28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -2.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": -70.0,
+          "difficulty_balance_penalty": 28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -6.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -2.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -2.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": -70.0,
+          "difficulty_balance_penalty": 28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -2.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -2.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -2.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        }
+      ],
+      "execution_status": "completed",
+      "artifact_path": "y_generalization_suite_20260829/reference_medium_adaptive_seed303.json",
+      "artifact_sha256": "c93fea5511803b0cbef21db1969747e9979c635c2500c6c27a8d8bc18d1655d3"
+    },
+    {
+      "cell": "reference_medium/stateless_role/303",
+      "scenario": "reference_medium",
+      "policy": "stateless_role",
+      "cp_sat_random_seed": 303,
+      "input_fingerprint": "9c9ffe0924a8d36b8673c14a7706b239a1d22cae31e06196ea850589b0556956",
+      "source_seed_fingerprint": "bb81698614f3c88730d5a628ceab2683624384b96e1991e7db068a89f261a531",
+      "final_source_decision_fingerprint": "452c11c06e1f9f696163b1e1b007c75ba9d5f4ccb439867572720bae9c7103e1",
+      "initial_substantive_value": 42552.0,
+      "final_substantive_value": 42450.0,
+      "gain": 102,
+      "complete": true,
+      "unmet_count": 0,
+      "attempts_count": 4,
+      "adopted_count": 4,
+      "inner_probe_count": 16,
+      "validation_outcomes": [
+        "validated",
+        "not_attempted",
+        "not_attempted",
+        "validated"
+      ],
+      "component_deltas": [
+        {
+          "course_category_diversity_penalty": -70.0,
+          "difficulty_balance_penalty": 28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -2.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": -70.0,
+          "difficulty_balance_penalty": 28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -6.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -2.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {},
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": -70.0,
+          "difficulty_balance_penalty": 28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {},
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -2.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -2.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        }
+      ],
+      "execution_status": "completed",
+      "artifact_path": "y_generalization_suite_20260829/reference_medium_stateless_role_seed303.json",
+      "artifact_sha256": "7a588f9c63fab554ea343fa6522ecf7735202dc5c92f0b1135407e1f319fcf3a"
+    },
+    {
+      "cell": "reference_medium/fixed_cycle/303",
+      "scenario": "reference_medium",
+      "policy": "fixed_cycle",
+      "cp_sat_random_seed": 303,
+      "input_fingerprint": "9c9ffe0924a8d36b8673c14a7706b239a1d22cae31e06196ea850589b0556956",
+      "source_seed_fingerprint": "bb81698614f3c88730d5a628ceab2683624384b96e1991e7db068a89f261a531",
+      "final_source_decision_fingerprint": "e0ba7e9b8fa40d1dc66d29b8f0ef14dd43bf0934459486c0c1f6976a892f91d1",
+      "initial_substantive_value": 42552.0,
+      "final_substantive_value": 41892.0,
+      "gain": 660,
+      "complete": true,
+      "unmet_count": 0,
+      "attempts_count": 4,
+      "adopted_count": 3,
+      "inner_probe_count": 13,
+      "validation_outcomes": [
+        "validated",
+        "validated",
+        "not_attempted",
+        "not_attempted"
+      ],
+      "component_deltas": [
+        {
+          "course_category_diversity_penalty": -30.0,
+          "difficulty_balance_penalty": -94.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": 0.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": -4.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": -60.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": 0.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": -4.0
+        },
+        {
+          "course_category_diversity_penalty": 23.0,
+          "difficulty_balance_penalty": -166.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": 4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": -4.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": -76.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": 14.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": -4.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -2.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": -70.0,
+          "difficulty_balance_penalty": 28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -2.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {},
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": -10.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": 0.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": -2.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": 0.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": -72.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": 6.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": -4.0
+        },
+        {}
+      ],
+      "execution_status": "completed",
+      "artifact_path": "y_generalization_suite_20260829/reference_medium_fixed_cycle_seed303.json",
+      "artifact_sha256": "1fbdf7848c7f19a27c3d4affbcd055d49a6bb28f032e84760ec4c43b6c4cfc63"
+    },
+    {
+      "cell": "population_pressure_medium/adaptive/303",
+      "scenario": "population_pressure_medium",
+      "policy": "adaptive",
+      "cp_sat_random_seed": 303,
+      "input_fingerprint": "5352e4d45ce4d3396030a275ba25a3166783a7bab3267a0a26b8501610c61bed",
+      "source_seed_fingerprint": "609c841cf8707670da27e537bb9fe9a8af7ea50acf799f3f0ac0b2f9abd16262",
+      "final_source_decision_fingerprint": "772a4b60221310b1cea48f65cf6e8f5f1c15a2c62e7e9f8d486b650b5c5bcfb3",
+      "initial_substantive_value": 42690.0,
+      "final_substantive_value": 42570.0,
+      "gain": 120,
+      "complete": true,
+      "unmet_count": 0,
+      "attempts_count": 4,
+      "adopted_count": 4,
+      "inner_probe_count": 11,
+      "validation_outcomes": [
+        "validation_unknown",
+        "validation_unknown",
+        "validation_unknown",
+        "validation_unknown"
+      ],
+      "component_deltas": [
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -8.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 30.0,
+          "difficulty_balance_penalty": -16.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -8.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -2.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -2.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 45.0,
+          "difficulty_balance_penalty": 20.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -10.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 45.0,
+          "difficulty_balance_penalty": -60.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -6.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 45.0,
+          "difficulty_balance_penalty": -60.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -6.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 45.0,
+          "difficulty_balance_penalty": -24.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -14.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 45.0,
+          "difficulty_balance_penalty": -24.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -14.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        }
+      ],
+      "execution_status": "completed",
+      "artifact_path": "y_generalization_suite_20260829/population_pressure_medium_adaptive_seed303.json",
+      "artifact_sha256": "bc18f51823cd5ddfd641daa42d68473e3a5364fef39821d7cb21cc8a8acf9bde"
+    },
+    {
+      "cell": "population_pressure_medium/stateless_role/303",
+      "scenario": "population_pressure_medium",
+      "policy": "stateless_role",
+      "cp_sat_random_seed": 303,
+      "input_fingerprint": "5352e4d45ce4d3396030a275ba25a3166783a7bab3267a0a26b8501610c61bed",
+      "source_seed_fingerprint": "609c841cf8707670da27e537bb9fe9a8af7ea50acf799f3f0ac0b2f9abd16262",
+      "final_source_decision_fingerprint": "772a4b60221310b1cea48f65cf6e8f5f1c15a2c62e7e9f8d486b650b5c5bcfb3",
+      "initial_substantive_value": 42690.0,
+      "final_substantive_value": 42570.0,
+      "gain": 120,
+      "complete": true,
+      "unmet_count": 0,
+      "attempts_count": 4,
+      "adopted_count": 4,
+      "inner_probe_count": 11,
+      "validation_outcomes": [
+        "not_attempted",
+        "not_attempted",
+        "validation_unknown",
+        "validation_unknown"
+      ],
+      "component_deltas": [
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -8.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 30.0,
+          "difficulty_balance_penalty": -16.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -8.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {},
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -2.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 45.0,
+          "difficulty_balance_penalty": 20.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -10.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {},
+        {
+          "course_category_diversity_penalty": 45.0,
+          "difficulty_balance_penalty": -60.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -6.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 45.0,
+          "difficulty_balance_penalty": -24.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -14.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 45.0,
+          "difficulty_balance_penalty": -24.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -14.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        }
+      ],
+      "execution_status": "completed",
+      "artifact_path": "y_generalization_suite_20260829/population_pressure_medium_stateless_role_seed303.json",
+      "artifact_sha256": "d9dee24cbe0911b129d44096d5c414cfa7f137d7c86367efd2f19e482390b768"
+    },
+    {
+      "cell": "population_pressure_medium/fixed_cycle/303",
+      "scenario": "population_pressure_medium",
+      "policy": "fixed_cycle",
+      "cp_sat_random_seed": 303,
+      "input_fingerprint": "5352e4d45ce4d3396030a275ba25a3166783a7bab3267a0a26b8501610c61bed",
+      "source_seed_fingerprint": "609c841cf8707670da27e537bb9fe9a8af7ea50acf799f3f0ac0b2f9abd16262",
+      "final_source_decision_fingerprint": "bb0e8fe37a56df66d0492a4d56b4cbc8e8c3a295964cb5179a4f1d275cb68ca0",
+      "initial_substantive_value": 42690.0,
+      "final_substantive_value": 42486.0,
+      "gain": 204,
+      "complete": true,
+      "unmet_count": 0,
+      "attempts_count": 4,
+      "adopted_count": 3,
+      "inner_probe_count": 9,
+      "validation_outcomes": [
+        "validation_unknown",
+        "validation_unknown",
+        "not_attempted",
+        "validation_unknown"
+      ],
+      "component_deltas": [
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": -52.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": 0.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": -4.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": -82.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": 4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": -4.0
+        },
+        {
+          "course_category_diversity_penalty": -28.0,
+          "difficulty_balance_penalty": 8.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -2.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -8.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -2.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {},
+        {
+          "course_category_diversity_penalty": -28.0,
+          "difficulty_balance_penalty": 8.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 23.0,
+          "difficulty_balance_penalty": -166.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": -4.0
+        }
+      ],
+      "execution_status": "completed",
+      "artifact_path": "y_generalization_suite_20260829/population_pressure_medium_fixed_cycle_seed303.json",
+      "artifact_sha256": "26eb5e0b5f5a5f08ab0fd82037d8285e034c4b43a96342f46dd686e9b8d72570"
+    },
+    {
+      "cell": "special_commitment_pressure_medium/adaptive/303",
+      "scenario": "special_commitment_pressure_medium",
+      "policy": "adaptive",
+      "cp_sat_random_seed": 303,
+      "input_fingerprint": "ee72844523d917b293e6d0b1b309805754ed6f1b2973cab42a3b3316612bc079",
+      "source_seed_fingerprint": "c40e0a30b7fbd512c6feb0c60729fc753747339c72617e4d0db4a4b3486823cb",
+      "final_source_decision_fingerprint": "d0959ba59e5d0e5750f30033ca8b2b97adbe0421358baeb0c2d4965a6f9582b4",
+      "initial_substantive_value": 45900.0,
+      "final_substantive_value": 45726.0,
+      "gain": 174,
+      "complete": true,
+      "unmet_count": 0,
+      "attempts_count": 4,
+      "adopted_count": 4,
+      "inner_probe_count": 18,
+      "validation_outcomes": [
+        "validation_unknown",
+        "validation_unknown",
+        "validation_unknown",
+        "validated"
+      ],
+      "component_deltas": [
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -8.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -8.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -8.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -8.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -8.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -8.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -8.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -6.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -6.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -6.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -6.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -6.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        }
+      ],
+      "execution_status": "completed",
+      "artifact_path": "y_generalization_suite_20260829/special_commitment_pressure_medium_adaptive_seed303.json",
+      "artifact_sha256": "a426acba1622fe3d80a9b8de799e166bf3434f211da178895cd12615b318f048"
+    },
+    {
+      "cell": "special_commitment_pressure_medium/stateless_role/303",
+      "scenario": "special_commitment_pressure_medium",
+      "policy": "stateless_role",
+      "cp_sat_random_seed": 303,
+      "input_fingerprint": "ee72844523d917b293e6d0b1b309805754ed6f1b2973cab42a3b3316612bc079",
+      "source_seed_fingerprint": "c40e0a30b7fbd512c6feb0c60729fc753747339c72617e4d0db4a4b3486823cb",
+      "final_source_decision_fingerprint": "da76684c1ce1f2f572eb4c3ad850e9686c28d828146ea2d5bac3c56e7f949421",
+      "initial_substantive_value": 45900.0,
+      "final_substantive_value": 45702.0,
+      "gain": 198,
+      "complete": true,
+      "unmet_count": 0,
+      "attempts_count": 4,
+      "adopted_count": 4,
+      "inner_probe_count": 20,
+      "validation_outcomes": [
+        "validation_unknown",
+        "validated",
+        "validation_unknown",
+        "not_attempted"
+      ],
+      "component_deltas": [
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -8.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -8.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -8.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 70.0,
+          "difficulty_balance_penalty": -28.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -8.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -8.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -8.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -6.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -6.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -6.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -6.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -6.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -6.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {}
+      ],
+      "execution_status": "completed",
+      "artifact_path": "y_generalization_suite_20260829/special_commitment_pressure_medium_stateless_role_seed303.json",
+      "artifact_sha256": "fdd9fdb792abb033f0bd7cb8b364df900d285fcc3938fc081ccf1fb5ba96e271"
+    },
+    {
+      "cell": "special_commitment_pressure_medium/fixed_cycle/303",
+      "scenario": "special_commitment_pressure_medium",
+      "policy": "fixed_cycle",
+      "cp_sat_random_seed": 303,
+      "input_fingerprint": "ee72844523d917b293e6d0b1b309805754ed6f1b2973cab42a3b3316612bc079",
+      "source_seed_fingerprint": "c40e0a30b7fbd512c6feb0c60729fc753747339c72617e4d0db4a4b3486823cb",
+      "final_source_decision_fingerprint": "8f8811602e37ada5d88f2c0be8709cf5b6182a1afe589da0f6289674328d86ad",
+      "initial_substantive_value": 45900.0,
+      "final_substantive_value": 44214.0,
+      "gain": 1686,
+      "complete": true,
+      "unmet_count": 0,
+      "attempts_count": 4,
+      "adopted_count": 3,
+      "inner_probe_count": 14,
+      "validation_outcomes": [
+        "validation_unknown",
+        "validation_unknown",
+        "not_attempted",
+        "validated"
+      ],
+      "component_deltas": [
+        {
+          "course_category_diversity_penalty": -72.0,
+          "difficulty_balance_penalty": -342.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": -8.0
+        },
+        {
+          "course_category_diversity_penalty": -72.0,
+          "difficulty_balance_penalty": -342.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -4.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": -8.0
+        },
+        {
+          "course_category_diversity_penalty": -30.0,
+          "difficulty_balance_penalty": -94.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": 0.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": -4.0
+        },
+        {
+          "course_category_diversity_penalty": -30.0,
+          "difficulty_balance_penalty": -94.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": 0.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": -4.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -6.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -6.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -6.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -6.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": 0.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": -6.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": 0.0
+        },
+        {},
+        {
+          "course_category_diversity_penalty": -30.0,
+          "difficulty_balance_penalty": -94.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": 0.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": -4.0
+        },
+        {
+          "course_category_diversity_penalty": -30.0,
+          "difficulty_balance_penalty": -94.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": 0.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": -4.0
+        },
+        {
+          "course_category_diversity_penalty": -30.0,
+          "difficulty_balance_penalty": -94.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": 0.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": -4.0
+        },
+        {
+          "course_category_diversity_penalty": 0.0,
+          "difficulty_balance_penalty": -128.0,
+          "schedule_preservation_move_penalty": 0.0,
+          "section_utilization_balance_penalty": 0.0,
+          "soft_sequence_preferences_satisfied": 0.0,
+          "student_semester_balance_penalty": -4.0
+        }
+      ],
+      "execution_status": "completed",
+      "artifact_path": "y_generalization_suite_20260829/special_commitment_pressure_medium_fixed_cycle_seed303.json",
+      "artifact_sha256": "7b1be052c43d70abc7541646e66146b8b5ed36684dab411062a770adca5512b4"
+    }
   ],
-  "classification": "POLICY PRODUCTIVITY IS GENUINELY SCENARIO-DEPENDENT",
+  "completed_cells": 46,
+  "skipped_cells": [
+    {
+      "cell": "target_adaptive",
+      "reason": "Not promoted after fixed-cycle was the only strongest medium candidate selected for target screening."
+    },
+    {
+      "cell": "target_stateless_role",
+      "reason": "Not promoted after fixed-cycle was the only strongest medium candidate selected for target screening."
+    }
+  ],
+  "classification": "FIXED CYCLE WAS STRONGEST ACROSS ALL TESTED MEDIUM SCENARIOS; TARGET SCREENS TIED",
   "hybrid_gate": "CLOSED",
   "production_promotion": "NO-GO",
   "artifact_sha256": {
@@ -122,6 +3172,24 @@
     "special_commitment_pressure_medium_adaptive.json": "f0da6518a71294e59b1f6629408eed15d3a71a1b4794a5a9fe13ff1065742e5d",
     "special_commitment_pressure_medium_stateless_role.json": "15411bf3682b6d019330a6c2800902e3251f12a4c9ee5413cf30b1b57f029c2e",
     "special_commitment_pressure_medium_fixed_cycle.json": "fcba824b1b2de5eac752b8a03e358ccc373b34dfef29e3de7272538f94ce8931",
-    "target_fixed_cycle.json": "e76fd850f591116acc37c2658ef8815dcdb9de32e5994b4dc67f410831d8793c"
+    "target_fixed_cycle.json": "e76fd850f591116acc37c2658ef8815dcdb9de32e5994b4dc67f410831d8793c",
+    "reference_medium_adaptive_seed202.json": "d09a625189d433536765e04efecef653b6a3d36e509785e740eeed1e42361620",
+    "reference_medium_stateless_role_seed202.json": "3f6a588a2aa5abb22ea823b40b63c2b2f3550ee1d394522e0379cde0a893ea82",
+    "reference_medium_fixed_cycle_seed202.json": "45911792cd30908a76d2c66bbd316954c685acd1bca861d7135303d0581fc74d",
+    "population_pressure_medium_adaptive_seed202.json": "2e2d1dbb15a257e64f3aae0822d877be5161472695220102fa164ef3aa89d50b",
+    "population_pressure_medium_stateless_role_seed202.json": "e251d43093188e7109514ad5946a16335086617724a56c20d66f5ff94c2058b5",
+    "population_pressure_medium_fixed_cycle_seed202.json": "562791c2f6b7bf1ce562240cfcda640bc5c4d5b5b884ca1a258d09112c6ddd46",
+    "special_commitment_pressure_medium_adaptive_seed202.json": "0fb01022e8153edf44fd10c03004ef7c2be7679c58c4954afc64d91e58b2996f",
+    "special_commitment_pressure_medium_stateless_role_seed202.json": "daa9739a0c6cc7a5680ad5ef2f8e4f0b87e7044a158588b71a4bda65b0c996c3",
+    "special_commitment_pressure_medium_fixed_cycle_seed202.json": "691615f5a4a314ecb47d28bc66b13d802c1dc87683f125db2897ba578e0176da",
+    "reference_medium_adaptive_seed303.json": "c93fea5511803b0cbef21db1969747e9979c635c2500c6c27a8d8bc18d1655d3",
+    "reference_medium_stateless_role_seed303.json": "7a588f9c63fab554ea343fa6522ecf7735202dc5c92f0b1135407e1f319fcf3a",
+    "reference_medium_fixed_cycle_seed303.json": "1fbdf7848c7f19a27c3d4affbcd055d49a6bb28f032e84760ec4c43b6c4cfc63",
+    "population_pressure_medium_adaptive_seed303.json": "bc18f51823cd5ddfd641daa42d68473e3a5364fef39821d7cb21cc8a8acf9bde",
+    "population_pressure_medium_stateless_role_seed303.json": "d9dee24cbe0911b129d44096d5c414cfa7f137d7c86367efd2f19e482390b768",
+    "population_pressure_medium_fixed_cycle_seed303.json": "26eb5e0b5f5a5f08ab0fd82037d8285e034c4b43a96342f46dd686e9b8d72570",
+    "special_commitment_pressure_medium_adaptive_seed303.json": "a426acba1622fe3d80a9b8de799e166bf3434f211da178895cd12615b318f048",
+    "special_commitment_pressure_medium_stateless_role_seed303.json": "fdd9fdb792abb033f0bd7cb8b364df900d285fcc3938fc081ccf1fb5ba96e271",
+    "special_commitment_pressure_medium_fixed_cycle_seed303.json": "7b1be052c43d70abc7541646e66146b8b5ed36684dab411062a770adca5512b4"
   }
 }

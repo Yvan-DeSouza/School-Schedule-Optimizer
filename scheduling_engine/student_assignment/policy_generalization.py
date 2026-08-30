@@ -69,6 +69,39 @@ DEFAULT_POLICY_GENERALIZATION_SCENARIOS = (
     ),
 )
 
+# Promote only semantically matched variants after the medium gate.  The
+# reference and ordinary-population pressures are kept distinct at near-target
+# scale because this fixture builder's only ordinary-pressure control is the
+# population size.  The denser special cohort is also run at the exact target
+# population, where its defining pressure remains meaningful.
+TARGET_POLICY_GENERALIZATION_SCENARIOS = (
+    PolicyGeneralizationScenario(
+        scenario_id="reference_target",
+        description="Exact-target reference mixed-grade condition.",
+        student_count=1400,
+        scenario_version="target-v1",
+    ),
+    PolicyGeneralizationScenario(
+        scenario_id="reference_near_target",
+        description="Near-target reference mixed-grade condition.",
+        student_count=800,
+        scenario_version="target-v1",
+    ),
+    PolicyGeneralizationScenario(
+        scenario_id="population_pressure_near_target",
+        description="Near-target higher student and ordinary-demand pressure.",
+        student_count=1050,
+        scenario_version="target-v1",
+    ),
+    PolicyGeneralizationScenario(
+        scenario_id="special_commitment_pressure_target",
+        description="Exact-target denser recurrence of the existing special cohorts.",
+        student_count=1400,
+        special_profile_cycle=50,
+        scenario_version="target-v1",
+    ),
+)
+
 
 def build_policy_generalization_scenario(scenario):
     """Build one scenario through the existing DTO-only fixture path."""
@@ -117,6 +150,7 @@ def build_policy_generalization_suite(scenarios=None):
 
 __all__ = [
     "DEFAULT_POLICY_GENERALIZATION_SCENARIOS",
+    "TARGET_POLICY_GENERALIZATION_SCENARIOS",
     "POLICY_GENERALIZATION_FIXTURE_VERSION",
     "POLICY_GENERALIZATION_PER_OPERATOR_SECONDS",
     "POLICY_GENERALIZATION_POLICIES",

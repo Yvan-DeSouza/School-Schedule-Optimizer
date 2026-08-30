@@ -1,0 +1,104 @@
+{
+  "artifacts": {
+    "input": {
+      "compressed_bytes": 64902,
+      "path": "input.json.gz",
+      "sha256_compressed": "bde38ed430b9d1a874a4af89fd510be9879969edbe9d329024e370ee23de363c",
+      "sha256_uncompressed": "3f859cc6541ce6bce24963cb19fcbbf42ef08ca74b32a2dcb42603999ab05977",
+      "uncompressed_bytes": 4552520
+    },
+    "stage1_seed": {
+      "compressed_bytes": 42425,
+      "path": "stage1_seed.json.gz",
+      "sha256_compressed": "3a7e38b299ad39fcd9d9b86e63358a902b196da8666f69b19b4b7d17c62ca9d2",
+      "sha256_uncompressed": "7caca5cff3c0f8e1a9af9e30b5cea53d893ae00a6a82e67e0e66732a557f320f",
+      "uncompressed_bytes": 2188067
+    }
+  },
+  "benchmark_name": "policy_generalization_reference_near_target",
+  "benchmark_schema": "student_assignment_stage2_benchmark_v1",
+  "counts": {
+    "normal_section_count": 304,
+    "online_supervision_session_count": 4,
+    "request_count": 5184,
+    "required_source_decision_group_count": 5240,
+    "special_commitment_count": 80,
+    "special_commitment_request_count": 56,
+    "student_assignment_section_record_count": 308,
+    "student_count": 800
+  },
+  "created_at_utc": "2026-08-29T23:29:57.052399+00:00",
+  "input_semantic_fingerprint": "724748412163aa422c2db455c72a1fee9598d161c241dfe9bb9acdb3a2c2ce3e",
+  "schema": "student_assignment_stage2_benchmark_manifest_v1",
+  "seed_source_decision_fingerprint": "e369f7075b0b4c86bdb79cd6fc6e853ac90ee6dc9b0522cc1baf38252611bb04",
+  "solver": {
+    "ortools": "9.15.6755",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python": "3.14.5"
+  },
+  "source": "synthetic semantically matched target analogue",
+  "stage1": {
+    "complete": true,
+    "objective_vector": [
+      -3152.0,
+      0.0,
+      0.0,
+      -2088.0,
+      0.0,
+      41448.0,
+      1338464715163.0
+    ],
+    "source_decision_count": 5240,
+    "substantive_components": {
+      "course_category_diversity_penalty": 172350.0,
+      "difficulty_balance_penalty": 60636.0,
+      "normalization": {
+        "course_category_diversity_penalty": {
+          "denominator": 803280,
+          "importance_score": 6,
+          "normalized_scale": 10000
+        },
+        "course_sequence_preferences_penalty": {
+          "denominator": 32,
+          "importance_score": 6,
+          "normalized_scale": 10000
+        },
+        "difficulty_balance_penalty": {
+          "denominator": 314456,
+          "importance_score": 6,
+          "normalized_scale": 10000
+        },
+        "section_utilization_balance_penalty": {
+          "denominator": 29172,
+          "importance_score": 6,
+          "normalized_scale": 10000
+        },
+        "student_semester_balance_penalty": {
+          "denominator": 10496,
+          "importance_score": 6,
+          "normalized_scale": 10000
+        }
+      },
+      "normalized_components": {
+        "course_category_diversity_penalty": 2145.0,
+        "course_sequence_preferences_penalty": 0.0,
+        "difficulty_balance_penalty": 1928.0,
+        "section_utilization_balance_penalty": 1288.0,
+        "student_semester_balance_penalty": 1547.0
+      },
+      "objective_semantics_version": "v2",
+      "schedule_preservation_move_penalty": 0.0,
+      "section_utilization_balance_penalty": 3760.0,
+      "soft_sequence_preferences_satisfied": 32.0,
+      "student_semester_balance_penalty": 1624.0,
+      "weighted_normalized_contributions": {
+        "course_category_diversity_penalty": 12870.0,
+        "course_sequence_preferences_penalty": 0.0,
+        "difficulty_balance_penalty": 11568.0,
+        "section_utilization_balance_penalty": 7728.0,
+        "student_semester_balance_penalty": 9282.0
+      }
+    },
+    "validated": true
+  }
+}

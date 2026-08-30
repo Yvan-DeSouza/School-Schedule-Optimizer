@@ -63,9 +63,11 @@ CALIBRATION_SUPERVISED_PROTOCOL_VERSION = "adaptive-calibration-v2"
 TARGET_SCALE_CALIBRATION_VALIDATION_TIME_LIMIT_SECONDS = 60.0
 
 
-def _calibration_validation_time_limit(data):
+def _calibration_validation_time_limit(data, override=None):
     return max(
-        TARGET_SCALE_CALIBRATION_VALIDATION_TIME_LIMIT_SECONDS,
+        TARGET_SCALE_CALIBRATION_VALIDATION_TIME_LIMIT_SECONDS
+        if override is None
+        else float(override),
         float(data.time_limit_seconds),
     )
 
@@ -542,7 +544,9 @@ def _run_supervised_worker(args):
         checked = validate_diagnostic_branch_checkpoint(
             args.branch_input,
             data=data,
-            time_limit_seconds=_calibration_validation_time_limit(data),
+            time_limit_seconds=_calibration_validation_time_limit(
+                data, getattr(args, "validation_seconds", None)
+            ),
             worker_count=1,
         )
         branch = read_diagnostic_branch_checkpoint(args.branch_input, data=data)
@@ -565,7 +569,9 @@ def _run_supervised_worker(args):
         per_operator_time_limit_seconds=float(args.per_operator_seconds),
         worker_count=int(args.workers),
         hard_feasibility_validation_time_limit_seconds=(
-            _calibration_validation_time_limit(data)
+            _calibration_validation_time_limit(
+                data, getattr(args, "validation_seconds", None)
+            )
         ),
         hard_feasibility_validation_worker_count=1,
         cp_sat_random_seed=getattr(args, "cp_sat_random_seed", None),
@@ -784,6 +790,7 @@ def run_supervised_calibration_trial(
     total_time_limit_seconds=1800.0,
     per_operator_time_limit_seconds=180.0,
     worker_count=8,
+    validation_time_limit_seconds=None,
     hard_wall_seconds=None,
     termination_grace_seconds=5.0,
     max_process_tree_rss_bytes=None,
@@ -852,7 +859,9 @@ def run_supervised_calibration_trial(
         checked = validate_diagnostic_branch_checkpoint(
             branch_input,
             data=data,
-            time_limit_seconds=_calibration_validation_time_limit(data),
+            time_limit_seconds=_calibration_validation_time_limit(
+                data, validation_time_limit_seconds
+            ),
             worker_count=1,
         )
         branch = read_diagnostic_branch_checkpoint(branch_input, data=data)
@@ -913,6 +922,10 @@ def run_supervised_calibration_trial(
                 "--workers",
                 str(int(worker_count)),
             ]
+            if validation_time_limit_seconds is not None:
+                command.extend(
+                    ["--validation-seconds", str(float(validation_time_limit_seconds))]
+                )
             if cp_sat_random_seed is not None:
                 command.extend(["--cp-sat-random-seed", str(int(cp_sat_random_seed))])
             if cp_sat_max_deterministic_time_seconds is not None:
@@ -1004,7 +1017,9 @@ def run_supervised_calibration_trial(
                     branch_validation = validate_diagnostic_branch_checkpoint(
                         validated_branch_output,
                         data=data,
-                        time_limit_seconds=_calibration_validation_time_limit(data),
+                        time_limit_seconds=_calibration_validation_time_limit(
+                            data, validation_time_limit_seconds
+                        ),
                         worker_count=1,
                     )
                     if (
@@ -1248,6 +1263,7 @@ def main(argv=None):  # pragma: no cover - clean-process experiment surface
     parser.add_argument("--total-seconds", type=float, default=60.0)
     parser.add_argument("--per-operator-seconds", type=float, default=60.0)
     parser.add_argument("--workers", type=int, default=2)
+    parser.add_argument("--validation-seconds", type=float)
     parser.add_argument("--branch-output", type=Path)
     parser.add_argument("--hard-wall-seconds", type=float)
     parser.add_argument("--termination-grace-seconds", type=float, default=5.0)
@@ -1271,6 +1287,7 @@ def main(argv=None):  # pragma: no cover - clean-process experiment surface
             total_time_limit_seconds=args.total_seconds,
             per_operator_time_limit_seconds=args.per_operator_seconds,
             worker_count=args.workers,
+            validation_time_limit_seconds=args.validation_seconds,
             hard_wall_seconds=args.hard_wall_seconds,
             termination_grace_seconds=args.termination_grace_seconds,
             max_process_tree_rss_bytes=args.max_process_tree_rss_bytes,

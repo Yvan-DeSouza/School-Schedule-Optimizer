@@ -1512,3 +1512,141 @@ state-aware hybrid gate is stopped. No hybrid policy, adaptive coefficient,
 objective definition, constraint, or production scheduling path was changed.
 Derived-state repetitions and target-scale hybrid evaluation are deferred
 until a separately scoped study controls or models this solver variance.
+
+### Objective Semantics v2 policy-generalization study (2026-08-29)
+
+The medium replication and gated target screening are recorded in the
+versioned, synthetic-only study lineage
+`benchmarks/student_assignment/v2_policy_generalization_suite_20260829/`.
+The study is diagnostic evidence only: it does not alter the ordinary
+student-assignment workflow or production policy. Every adopted diagnostic
+candidate was complete, full-model validated, unmet-free, and preserved the
+scenario's special commitments.
+
+The three medium scenarios were repeated with CP-SAT seeds 101, 202, and 303
+using the same detached input and Stage 1 source seed within each scenario.
+The final substantive values were:
+
+| Scenario | Policy | Seed 101 | Seed 202 | Seed 303 |
+| --- | --- | ---: | ---: | ---: |
+| reference medium | adaptive | 42,528 | 42,456 | 42,450 |
+| reference medium | stateless role | 42,528 | 42,450 | 42,450 |
+| reference medium | fixed cycle | **42,402** | **41,892** | **41,892** |
+| population-pressure medium | adaptive | 42,654 | 42,570 | 42,570 |
+| population-pressure medium | stateless role | 42,648 | 42,570 | 42,570 |
+| population-pressure medium | fixed cycle | **42,600** | **42,486** | **42,486** |
+| special-commitment-pressure medium | adaptive | 45,840 | 45,726 | 45,726 |
+| special-commitment-pressure medium | stateless role | 45,852 | 45,726 | 45,702 |
+| special-commitment-pressure medium | fixed cycle | **45,030** | **44,214** | **44,214** |
+
+The fixed cycle was the strongest observed policy family in all three medium
+scenario families and all three seeds. Its absolute gain varied materially,
+so this is directional/operator-family evidence rather than a universal
+quality guarantee. Adaptive and stateless-role policies often selected the
+same utilization operator in this fixture. The evidence does not establish
+that adaptive history itself caused a quality difference.
+
+The first target screens used the old 120-second shared policy budget and 30
+seconds per operator. They are retained as **preliminary, non-authoritative
+screening evidence** because target-scale full-model candidate validation took
+longer than that allowance; the resulting rows could not distinguish an
+unresolved solver probe from a rejected candidate. They are not used for
+policy promotion or target repeatability claims.
+
+The promoted target seed-101 gate was then rerun in clean supervised worker
+processes with one worker, a 600-second shared policy budget, 180 seconds per
+operator, 180 seconds for full-model validation, and a 720-second parent hard
+wall. The validation allowance was increased only after measurement showed
+that target-scale full validation took approximately 89--100 seconds. This
+was a benchmark-protocol correction; it did not change the scheduling model,
+fixture, or ordinary production workflow:
+
+| Scenario | Students | Requests | Required groups | Special commitments | Adaptive | Stateless role | Fixed cycle |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| reference target | 1,400 | 9,072 | 9,170 | 140 | 42,750 | 42,750 | 42,750 |
+| reference near-target | 800 | 5,184 | 5,240 | 80 | 41,448 | 41,448 | 41,448 |
+| population-pressure near-target | 1,050 | 6,783 | 6,859 | 109 | 42,936 | 42,936 | 42,936 |
+| special-commitment-pressure target | 1,400 | 8,344 | 8,540 | 280 | 43,626 | 43,626 | 43,626 |
+
+The authoritative promoted target results were:
+
+| Scenario | Policy | Start | Final | Validated improvements | Attempts | Supervised elapsed |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| reference target | adaptive | 42,750 | 42,750 | 0 | 5 | 611.96 s |
+| reference target | stateless role | 42,750 | 42,750 | 0 | 7 | 612.80 s |
+| reference target | fixed cycle | 42,750 | 42,750 | 0 | 6 | 612.54 s |
+| special-commitment-pressure target | adaptive | 43,626 | 43,626 | 0 | 6 | 624.01 s |
+| special-commitment-pressure target | stateless role | 43,626 | 43,626 | 0 | 5 | 611.93 s |
+| special-commitment-pressure target | fixed cycle | 43,626 | 43,626 | 0 | 4 | 637.23 s |
+
+All six authoritative cells completed under supervision, reached CP-SAT,
+retained complete unmet-free seeds, and produced no validated substantive
+improvement. Most operator attempts returned unresolved `UNKNOWN`; several
+final attempts reached `candidate_validation_error` after consuming the
+operator budget, so the target gate is a clean non-promotion result but not a
+proof of a target-scale substantive local optimum. No target cell produced a
+temporary improved branch, so no branch was created and the canonical
+benchmark lineage remained untouched. Because seed 101 showed no policy
+distinction in either promoted scenario, the preregistered seeds 202 and 303
+target replications were not run.
+
+The medium and target records deliberately remain separate from the earlier
+production-shaped v1 artifacts. The target analogues use the same DTO-only
+fixture builder and objective profile as the medium scenarios; they are not
+claims about the existing Django production fixture's 304-section/13-session
+topology. The current classification is: **fixed cycle is the strongest
+observed medium operator family; all authoritative promoted target seed-101
+cells tied at their Stage 1 values; no policy is approved for production
+wiring**. The target study is therefore a clean non-discrimination result,
+not an optimality proof and not evidence that fixed cycle's medium advantage
+survives at target scale.
+
+The current v2 policy-generalization evidence is now frozen. The next
+authorized research boundary is a separately scoped state-aware search-policy
+study, beginning with reproducible matched-state evidence. It must continue to
+keep policy selection separate from schedule quality, retain CP-SAT and full
+validation as the only authorities, and leave hybrid/adaptive production
+wiring closed until a controlled study demonstrates a repeatable benefit.
+
+The frozen roadmap after this study is:
+
+1. Preserve this complete medium/target policy characterization as historical
+   diagnostic evidence.
+2. Design principled soft-objective normalization; do not normalize from
+   current benchmark values alone.
+3. Introduce one canonical counselor importance score from 0 through 10.
+4. Map labels such as not-important through extremely-important to presets
+   over that same canonical scale rather than creating a second weighting
+   system.
+5. Create the Objective Semantics v2 normalized baseline and revalidate only
+   the retained search operators that remain relevant.
+6. Investigate student-targeted repair using counselor weight multiplied by
+   current per-student opportunity; this may guide search, but never authorizes
+   a candidate.
+7. Investigate adaptive operator allocation across targeted repair, R2,
+   R4/S1, R4/S2, R8/S1, R8/S2, and useful unrestricted variants.
+8. Investigate grade-bounded unrestricted escape only after the preceding
+   evidence exists, starting separately with Grades 9, 10, 11, and 12.
+9. Define grade-bounded escape over students in the selected grade while
+   retaining the full model, including frozen-student capacity, conflicts,
+   prerequisites, locks, special commitments, mixed-grade sections, and all
+   other hard constraints.
+10. Use grade-scoped global search only as a local-minimum escape, then return
+    to faster targeted/R2/R4/R8 operators after a useful valid incumbent.
+11. Consider full-school unrestricted global escape only as a later escalation
+    if grade-scoped evidence justifies it.
+12. Run a final production-policy/promotion study only after normalization,
+    importance-scale, and search-policy prerequisites are complete.
+
+Objective Semantics v2 must preserve the invariant that soft preferences with
+the same counselor importance score have approximately comparable practical
+influence rather than being dominated by raw metric magnitude. Search policy
+answers how to search; the normalized counselor-weighted objective answers
+what schedule is better. No single opaque confidence score, AI-generated
+causal narrative, or heuristic authorization of candidates is part of this
+roadmap.
+
+No hybrid controller, objective change, constraint change, or production
+promotion is part of this study. The earlier direct, unsupervised
+`reference_target` adaptive run is retained only as protocol-inconclusive
+diagnostic evidence; it is not included in the authoritative target table.

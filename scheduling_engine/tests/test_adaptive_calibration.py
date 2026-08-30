@@ -70,6 +70,13 @@ def test_target_scale_calibration_uses_shared_validation_boundary():
         )
         == 90.0
     )
+    assert (
+        benchmark_calibration._calibration_validation_time_limit(
+            SimpleNamespace(time_limit_seconds=20.0),
+            180.0,
+        )
+        == 180.0
+    )
 
 
 def test_calibration_profiles_are_explicit_and_fingerprinted():

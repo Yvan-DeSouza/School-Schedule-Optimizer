@@ -19,6 +19,7 @@ from scheduling_engine.student_assignment.policy_generalization import (
     POLICY_GENERALIZATION_PROFILE,
     POLICY_GENERALIZATION_RANDOM_SEED,
     POLICY_GENERALIZATION_WORKER_COUNT,
+    TARGET_POLICY_GENERALIZATION_SCENARIOS,
     build_policy_generalization_suite,
     summarize_policy_generalization_scenario,
 )
@@ -164,6 +165,47 @@ def test_policy_generalization_suite_is_deterministic_and_semantically_distinct(
         for scenario in DEFAULT_POLICY_GENERALIZATION_SCENARIOS
     ]
     assert repeated == [summary["input_fingerprint"] for summary in summaries]
+
+
+def test_policy_generalization_target_promotions_preserve_the_three_pressure_families():
+    scenarios = TARGET_POLICY_GENERALIZATION_SCENARIOS
+    summaries = [
+        summarize_policy_generalization_scenario(
+            scenario,
+            build_mixed_grade_v2_fixture(
+                student_count=scenario.student_count,
+                special_profile_cycle=scenario.special_profile_cycle,
+            ),
+        )
+        for scenario in scenarios
+    ]
+
+    assert [scenario.scenario_id for scenario in scenarios] == [
+        "reference_target",
+        "reference_near_target",
+        "population_pressure_near_target",
+        "special_commitment_pressure_target",
+    ]
+    assert [scenario.scenario_version for scenario in scenarios] == [
+        "target-v1",
+        "target-v1",
+        "target-v1",
+        "target-v1",
+    ]
+    assert [summary["mixed_grade_summary"]["student_count"] for summary in summaries] == [
+        1400,
+        800,
+        1050,
+        1400,
+    ]
+    assert [scenario.special_profile_cycle for scenario in scenarios] == [100, 100, 100, 50]
+    assert len({summary["input_fingerprint"] for summary in summaries}) == 4
+    assert summaries[2]["mixed_grade_summary"]["request_count"] > summaries[1][
+        "mixed_grade_summary"
+    ]["request_count"]
+    assert summaries[3]["mixed_grade_summary"]["special_commitment_count"] > summaries[1][
+        "mixed_grade_summary"
+    ]["special_commitment_count"]
 
 
 def test_policy_generalization_fixture_rejects_a_cycle_that_omits_profiles():
