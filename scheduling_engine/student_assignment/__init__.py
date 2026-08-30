@@ -92,6 +92,10 @@ from .adaptive_calibration import (
     profile_fingerprint,
     run_matched_calibration_trial,
 )
+from .validation_benchmark import (
+    VALIDATION_BENCHMARK_SCHEMA,
+    run_source_decision_validation_benchmark,
+)
 __all__ = [
     "run_substantive_soft_tier_probe",
     "solve_student_assignment",
@@ -155,4 +159,6 @@ __all__ = [
     "build_calibration_trial_record",
     "profile_fingerprint",
     "run_matched_calibration_trial",
+    "VALIDATION_BENCHMARK_SCHEMA",
+    "run_source_decision_validation_benchmark",
 ]

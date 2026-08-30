@@ -1660,3 +1660,73 @@ No hybrid controller, objective change, constraint change, or production
 promotion is part of this study. The earlier direct, unsupervised
 `reference_target` adaptive run is retained only as protocol-inconclusive
 diagnostic evidence; it is not included in the authoritative target table.
+
+## Candidate-validation cost study
+
+The candidate-validation authority remains unchanged. A diagnostic candidate
+is still checked against the full student-assignment model: required groups
+are completed, the candidate source decisions are fixed, and a fresh bounded
+CP-SAT satisfiability solve must validate the result before it can be adopted.
+`UNKNOWN`, validation errors, and hard-invalid candidates remain fail-closed.
+The benchmark described here measures that existing path; it does not create
+a reduced validator or authorize partial validation.
+
+The Phase 0 telemetry added to the engine separates the validation operation
+into preparation, full-model construction, model cloning, completion-group
+constraints, candidate source-value fixing, CP-SAT creation/search, and the
+outer operation time. The result wrapper also records extraction, quality,
+result reconstruction, review-diagnostic, and resource-monitor timings when
+the surrounding diagnostic path performs them. These timings are diagnostic
+evidence, not new scheduling semantics.
+
+The measured validation-cost records are:
+
+| Input | Model (variables / constraints) | Full-model build | Clone | Completion constraints | Source fixes | CP-SAT wall | Validator telemetry total | Review diagnostics | Result |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| small focused fixture | 24 / 50 | n/a | 0.0003 s | 0.0000 s | 0.0001 s | 0.0006 s | 0.0011 s | n/a | validated |
+| medium production-shaped fixture (baseline) | 10,901 / 16,942 | n/a | 0.0178 s | 0.0435 s | 0.0813 s | 0.2073 s | approximately 0.37 s | n/a | validated |
+| reference target, Stage 1 source | 167,259 / 269,235 | 7.60 s | 0.2071 s | 0.4925 s | 0.8000 s | 35.8766 s | 37.4689 s | 0.22--0.22 s | validated |
+| special-pressure target, Stage 1 source | 150,487 / 244,343 | 7.56 s | 0.1691 s | 0.4815 s | 0.7511 s | 28.6718 s | 30.1692 s | 0.15--0.15 s | validated |
+
+The target-scale surrounding operation is materially larger than the CP-SAT
+telemetry alone. In the reference target run, the end-to-end validation
+operation was approximately 53.14 seconds, including the surrounding model
+and result work. In the special-pressure target run it was approximately
+44.92 seconds. The captured finalization and review work was approximately
+0.3--0.5 seconds for finalization and 3.3--4.7 seconds for review
+diagnostics in the target-scale records;
+the remainder is model preparation and operation overhead not yet split into
+more granular phases. The direct local operator path can reuse an already
+built model, so its repeated-validation cost is not identical to this
+detached full-path benchmark.
+
+The target records used the available Stage 1 source snapshots because the
+detached artifacts do not contain the exact improved R4/S2 source-decision
+maps. They therefore establish the cost of authoritative validation at the
+target model sizes, but they are not a replay of the exact improved branch
+lineage. Semantic input/source identity checks were exercised and no identity
+mismatch was observed.
+
+Two low-risk validator experiments were rejected rather than retained:
+
+* Skipping redundant completion-group constraints when the supplied source
+  map already contains exactly one selected value per required group reduced
+  the post-fix constraint count on the reference target from 336,071 to
+  326,901, but two target runs measured approximately 62.84 and 64.47 seconds
+  externally, versus an approximately 53.14-second baseline run. The target
+  evidence did not demonstrate an improvement, so production validation keeps
+  the original complete-model construction.
+* Supplying complete CP-SAT hints with
+  `fix_variables_to_their_hinted_value` removed the explicit source-equality
+  constraints in a medium trial, but measured validation was slower or more
+  variable than the baseline. The experiment was not promoted to target
+  scale and no hint-fixing behavior remains in production.
+
+These measurements classify target validation as CP-SAT-dominated, with full
+model construction and review/result work as secondary costs. They do not yet
+justify dependency-scoped, student-scoped, grade-scoped, or batched authority
+validation. Any future faster validator must first prove that every hard rule,
+shared-resource dependency, completion condition, objective/lineage check,
+and special commitment is equivalent to the current full authority. Until
+that proof and differential testing exist, the full validator remains the
+only authority for candidate adoption.
