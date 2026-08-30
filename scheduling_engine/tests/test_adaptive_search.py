@@ -5,6 +5,7 @@ import pytest
 
 from scheduling_engine.realistic_student_assignment_validation import (
     build_realistic_quality_tradeoff_fixture,
+    build_production_shaped_medium_fixture,
 )
 from scheduling_engine.dto import (
     StudentAssignmentInputDTO,
@@ -190,6 +191,108 @@ def test_grade_bounded_operator_uses_actual_grade_without_radius_or_student_cap(
     assert facts["iterations"][0]["candidate_validated"] is True
     assert set(facts["iterations"][0]["affected_student_ids"]).issubset({1})
     assert facts["grade_opportunity"]["student_ids"] == (1,)
+
+
+def test_projected_grade_scope_matches_full_grade_scope_on_complete_fixture():
+    """The residualized diagnostic keeps the same complete semantic result."""
+
+    original_data, source = _multi_attempt_operator_fixture((1, 2))
+    data = replace(original_data, student_grades=((1, 9), (2, 12)))
+    common = dict(
+        operator_family="grade_bounded_g9",
+        selected_grade=9,
+        target_policy="fixed",
+        initial_source_decisions=source,
+        total_time_limit_seconds=4,
+        max_attempts=1,
+        per_attempt_time_limit_seconds=2,
+        worker_count=1,
+        hard_feasibility_validation_time_limit_seconds=2,
+        hard_feasibility_validation_worker_count=1,
+        collect_resource_telemetry=False,
+    )
+
+    full_result = run_student_assignment_operator_session_diagnostic(
+        data, **common
+    )
+    projected_result = run_student_assignment_operator_session_diagnostic(
+        data, projected_grade_scope=True, **common
+    )
+
+    assert full_result.status == projected_result.status == "complete"
+    assert not full_result.unmet_requests
+    assert not projected_result.unmet_requests
+    assert full_result.assignments == projected_result.assignments
+    assert full_result.commitment_assignments == projected_result.commitment_assignments
+    assert full_result.objective_components == projected_result.objective_components
+
+    projected_facts = projected_result.optimization_facts[
+        "stage_2_local_bootstrap"
+    ]
+    iteration = projected_facts["iterations"][0]
+    assert iteration["projected_grade_scope"] is True
+    assert iteration["projected_active_source_variable_count"] > 0
+    assert iteration["projected_frozen_source_variable_count"] > 0
+    assert iteration["candidate_validated"] is True
+
+
+def test_projected_grade_scope_includes_special_commitment_source_variables():
+    """Study, Focus, and Co-op sources participate in grade residualization."""
+
+    data = build_production_shaped_medium_fixture(
+        student_count=80,
+        special_profile_cycle=50,
+    )
+    data = replace(
+        data,
+        student_grades=tuple(
+            (student_id, 9 if student_id % 2 else 12)
+            for student_id in range(1, 81)
+        ),
+    )
+    initial = run_student_assignment_stage2_diagnostic(
+        data,
+        total_time_limit_seconds=8,
+        hard_feasibility_time_limit_seconds=8,
+        hard_feasibility_validation_time_limit_seconds=8,
+        hard_feasibility_worker_count=1,
+        hard_feasibility_validation_worker_count=1,
+        optimization_worker_count=1,
+        capture_final_source_decisions=True,
+    )
+    assert initial.status == "complete"
+    assert {item.commitment_kind for item in initial.commitment_assignments} >= {
+        "study",
+        "focus",
+        "co_op",
+    }
+    source = initial.optimization_facts["stage_2"]["final_source_decisions"]
+
+    result = run_student_assignment_operator_session_diagnostic(
+        data,
+        operator_family="grade_bounded_g9",
+        selected_grade=9,
+        projected_grade_scope=True,
+        target_policy="fixed",
+        initial_source_decisions=source,
+        total_time_limit_seconds=4,
+        max_attempts=1,
+        per_attempt_time_limit_seconds=2,
+        worker_count=1,
+        hard_feasibility_validation_time_limit_seconds=2,
+        hard_feasibility_validation_worker_count=1,
+        collect_resource_telemetry=False,
+    )
+
+    assert result.status == "complete"
+    assert not result.unmet_requests
+    iteration = result.optimization_facts[
+        "stage_2_local_bootstrap"
+    ]["iterations"][0]
+    assert iteration["projected_grade_scope"] is True
+    assert iteration["projected_frozen_source_variable_count"] > 0
+    if iteration["candidate_value"] is not None:
+        assert iteration["candidate_validated"] is True
 
 
 def test_operator_session_emits_live_phase_breadcrumbs_without_changing_result():

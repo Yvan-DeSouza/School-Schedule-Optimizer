@@ -39,6 +39,10 @@ class SubstantiveSoftTierProbeContext:
     seed_source_decision_variable_values: object
     candidate_quality_facts: object | None = None
     student_grades: tuple = ()
+    # Every source assignment variable grouped by its owning student.  This
+    # is used only by the opt-in projected grade diagnostic so optional source
+    # decisions are frozen with the same semantic incumbent as required ones.
+    source_variable_groups: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -93,6 +97,9 @@ class SubstantiveSoftTierProbeResult:
     selected_grade: int | None = None
     cp_sat_random_seed: int | None = None
     cp_sat_max_deterministic_time_seconds: float | None = None
+    projected_grade_scope: bool = False
+    projected_active_source_variable_count: int = 0
+    projected_frozen_source_variable_count: int = 0
 
 
 def _model_family_variable_counts(model):
@@ -171,6 +178,7 @@ def probe_substantive_soft_tier(
     max_changed_students: int | None = None,
     selected_student_ids=(),
     selected_grade: int | None = None,
+    projected_grade_scope: bool = False,
     cp_sat_random_seed: int | None = None,
     cp_sat_max_deterministic_time_seconds: float | None = None,
     phase_callback=None,
@@ -204,6 +212,8 @@ def probe_substantive_soft_tier(
             return
 
     selected_student_ids = tuple(sorted(set(selected_student_ids), key=repr))
+    if projected_grade_scope and selected_grade is None:
+        raise ValueError("projected_grade_scope requires selected_grade")
     if selected_grade is not None:
         selected_grade = int(selected_grade)
         if selected_grade not in VALID_STUDENT_GRADE_LEVELS:
@@ -302,6 +312,7 @@ def probe_substantive_soft_tier(
             cp_sat_max_deterministic_time_seconds=(
                 cp_sat_max_deterministic_time_seconds
             ),
+            projected_grade_scope=bool(projected_grade_scope),
         )
 
     target_entries = [
@@ -363,38 +374,67 @@ def probe_substantive_soft_tier(
         constraint_count=len(probe_model.Proto().constraints),
     )
 
+    projected_active_source_variable_count = 0
+    projected_frozen_source_variable_count = 0
     if selected_grade is not None:
         probe_phase_started = monotonic()
         _emit_phase("probe_grade_scope_constraints", "started")
-        with timing.measure("grade_scope_constraints_seconds"):
-            for group_index, decision_group in enumerate(
-                context.complete_required_decision_groups
-            ):
-                selected_seed_variable = next(
-                    (
-                        variable
-                        for variable in decision_group
-                        if seed_solver.Value(
-                            context.model.GetIntVarFromProtoIndex(variable.Index())
-                        )
-                    ),
-                    None,
-                )
-                if selected_seed_variable is None:
-                    probe_model.AddBoolOr(())
-                    continue
-                owner = (
-                    context.source_decision_owners[group_index]
-                    if group_index < len(context.source_decision_owners)
-                    else None
-                )
-                if owner is None or owner not in selected_grade_student_ids:
-                    probe_model.Add(
-                        probe_model.GetIntVarFromProtoIndex(
-                            selected_seed_variable.Index()
-                        )
-                        == 1
+        if projected_grade_scope:
+            # Residualize only source variables whose semantic owner is
+            # outside the selected actual grade.  Their incumbent values are
+            # substituted as singleton domains; all auxiliary variables and
+            # every hard/shared/global constraint remain in the clone.  This
+            # is a diagnostic formulation, never a candidate-authority path.
+            with timing.measure("grade_scope_constraints_seconds"):
+                if not context.source_variable_groups:
+                    raise ValueError(
+                        "projected_grade_scope requires source variable groups"
                     )
+                for owner, variable_indexes in context.source_variable_groups:
+                    is_active_owner = owner in selected_grade_student_ids
+                    for variable_index in variable_indexes:
+                        if is_active_owner:
+                            projected_active_source_variable_count += 1
+                            continue
+                        source_value = int(
+                            seed_solver.Value(
+                                context.model.GetIntVarFromProtoIndex(variable_index)
+                            )
+                        )
+                        variable_proto = probe_model.Proto().variables[variable_index]
+                        variable_proto.domain.clear()
+                        variable_proto.domain.extend((source_value, source_value))
+                        projected_frozen_source_variable_count += 1
+        else:
+            with timing.measure("grade_scope_constraints_seconds"):
+                for group_index, decision_group in enumerate(
+                    context.complete_required_decision_groups
+                ):
+                    selected_seed_variable = next(
+                        (
+                            variable
+                            for variable in decision_group
+                            if seed_solver.Value(
+                                context.model.GetIntVarFromProtoIndex(variable.Index())
+                            )
+                        ),
+                        None,
+                    )
+                    if selected_seed_variable is None:
+                        probe_model.AddBoolOr(())
+                        continue
+                    owner = (
+                        context.source_decision_owners[group_index]
+                        if group_index < len(context.source_decision_owners)
+                        else None
+                    )
+                    if owner is None or owner not in selected_grade_student_ids:
+                        probe_model.Add(
+                            probe_model.GetIntVarFromProtoIndex(
+                                selected_seed_variable.Index()
+                            )
+                            == 1
+                        )
         _emit_phase(
             "probe_grade_scope_constraints",
             "completed",
@@ -734,5 +774,12 @@ def probe_substantive_soft_tier(
         cp_sat_random_seed=cp_sat_random_seed,
         cp_sat_max_deterministic_time_seconds=(
             cp_sat_max_deterministic_time_seconds
+        ),
+        projected_grade_scope=bool(projected_grade_scope),
+        projected_active_source_variable_count=(
+            projected_active_source_variable_count
+        ),
+        projected_frozen_source_variable_count=(
+            projected_frozen_source_variable_count
         ),
     )

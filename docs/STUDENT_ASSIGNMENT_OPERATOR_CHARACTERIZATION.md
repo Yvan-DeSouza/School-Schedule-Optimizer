@@ -961,3 +961,43 @@ The canonical benchmark and the durable 37,128 source lineage were not
 modified. The payload records outer policy trajectories and terminal facts;
 it does not claim complete inner-probe candidate comparison evidence where the
 current artifact schema does not preserve it.
+
+### Projected grade-bound diagnostic (2026-08-30)
+
+The target-scale policy evidence did not distinguish the existing policies:
+all six authoritative seed-101 target cells retained their complete source
+incumbent and returned no validated strict improvement. Because the target
+attempts used a much larger model than the medium scenarios and most attempts
+ended `UNKNOWN`, a single diagnostic comparison was made for the existing
+Grade 12 basin only. This was not a new operator family or a production policy
+change.
+
+The projected diagnostic used the unchanged durable
+`mixed_grade_v2_production_shape` input
+(`c07c77d0aa077a3e72240f27644d86b8a1a4faecb2f72a900aacc3fcb792d28a`), the
+same Stage 1 source seed, Objective Semantics v2 profile, random seed `101`,
+one worker, a `180`-second Grade 12 probe window, and the unchanged
+full-model validation boundary. It differs from the existing full
+grade-bound probe only in how outside-grade source variables are represented:
+their validated incumbent values are assigned singleton domains in the
+diagnostic clone. All source variables owned by Grade 12 remain movable;
+auxiliary variables, frozen-student effects on shared resources, global
+objective expressions, and all hard constraints remain in the clone. A
+projected candidate would still require unchanged full-model validation before
+adoption.
+
+The matched target results were:
+
+| Formulation | Model variables | Model constraints | Active source variables | Frozen source variables | CP-SAT time | Candidate | Result |
+| --- | ---: | ---: | ---: | ---: | ---: | --- | --- |
+| existing full grade-bound | 110,922 | 184,107 | not separately recorded | not separately recorded | 180.039 s | none (`UNKNOWN`) | complete incumbent retained |
+| projected diagnostic | 110,922 | 175,899 | 20,824 | 62,364 | 225.567 s | none (`UNKNOWN`) | complete incumbent retained |
+
+Both cells returned `complete`, preserved `10,635` assignments and zero unmet
+required requests, and retained the same raw and normalized v2 component
+values. The projected clone therefore passed the focused semantic equivalence
+test on a complete small fixture and reduced explicit freeze constraints on
+the target run, but the one target trial produced no candidate and no useful
+runtime improvement. It is classified as **SEMANTICALLY VALID BUT PERFORMANCE
+BENEFIT UNPROVEN**. No multi-grade replication, grade-cycle orchestration,
+hybrid controller, or production wiring is authorized by this result.

@@ -1612,31 +1612,41 @@ The frozen roadmap after this study is:
 
 1. Preserve this complete medium/target policy characterization as historical
    diagnostic evidence.
-2. Design principled soft-objective normalization; do not normalize from
-   current benchmark values alone.
-3. Introduce one canonical counselor importance score from 0 through 10.
-4. Map labels such as not-important through extremely-important to presets
-   over that same canonical scale rather than creating a second weighting
-   system.
-5. Create the Objective Semantics v2 normalized baseline and revalidate only
-   the retained search operators that remain relevant.
-6. Investigate student-targeted repair using counselor weight multiplied by
-   current per-student opportunity; this may guide search, but never authorizes
-   a candidate.
-7. Investigate adaptive operator allocation across targeted repair, R2,
-   R4/S1, R4/S2, R8/S1, R8/S2, and useful unrestricted variants.
-8. Investigate grade-bounded unrestricted escape only after the preceding
-   evidence exists, starting separately with Grades 9, 10, 11, and 12.
-9. Define grade-bounded escape over students in the selected grade while
-   retaining the full model, including frozen-student capacity, conflicts,
+2. Treat Objective Semantics v2, input-derived normalization, and the single
+   canonical counselor importance score from 0 through 10 as implemented
+   state, not as future design work. Label presets remain mappings over that
+   same canonical scale.
+3. Preserve the authoritative target-policy result as unresolved search
+   evidence: all six seed-101 target cells retained complete schedules but
+   found no validated strict improvement, and `UNKNOWN` remains inconclusive.
+4. Use model-family, candidate-generation, validation, and state-signal
+   forensics to distinguish policy selection from target-scale formulation or
+   search difficulty. Do not infer target optimality from the tied endpoints.
+5. If the evidence justifies it, test an exact projected/residualized
+   grade-bounded diagnostic formulation. A selected grade means students in
+   that actual grade; outside-grade decisions remain frozen context, and all
+   shared resources and global v2 metrics must still include their incumbent
+   effects.
+6. Require focused mathematical-equivalence tests before any target-scale
+   projected-formulation comparison. The unchanged full model and
+   full-model validator remain authoritative; no reduced model may authorize
+   a candidate on its own.
+7. Run at most one matched target-scale current-versus-projected grade
+   diagnostic after the equivalence gate. Record resource and validated-search
+   evidence, then stop rather than implementing a four-grade cycle.
+8. Only if the projected experiment is both exactly equivalent and materially
+   useful should a later multi-grade replication be considered. Any later
+   grade-scoped escape must retain frozen-student capacity, conflicts,
    prerequisites, locks, special commitments, mixed-grade sections, and all
    other hard constraints.
-10. Use grade-scoped global search only as a local-minimum escape, then return
-    to faster targeted/R2/R4/R8 operators after a useful valid incumbent.
-11. Consider full-school unrestricted global escape only as a later escalation
-    if grade-scoped evidence justifies it.
-12. Run a final production-policy/promotion study only after normalization,
-    importance-scale, and search-policy prerequisites are complete.
+9. Keep adaptive, stateless-role, fixed-cycle, hybrid/router, and production
+   policy decisions in the separately documented research boundary. No
+   diagnostic success authorizes production wiring.
+10. Consider full-school unrestricted global escape only as a later escalation
+    if grade-scoped evidence justifies it, followed by faster local operators
+    after a useful valid incumbent.
+11. Run a final production-policy/promotion study only after the objective,
+    search-policy, and formulation evidence gates are complete.
 
 Objective Semantics v2 must preserve the invariant that soft preferences with
 the same counselor importance score have approximately comparable practical

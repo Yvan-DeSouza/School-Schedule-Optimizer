@@ -1137,6 +1137,7 @@ def run_student_assignment_operator_session_diagnostic(
     target_policy="dynamic",
     selected_student_ids=(),
     selected_grade=None,
+    projected_grade_scope=False,
     utilization_cluster_policy="interaction_aware",
     minimum_next_attempt_seconds=1.0,
     hard_feasibility_validation_time_limit_seconds=None,
@@ -1206,6 +1207,7 @@ def run_student_assignment_operator_session_diagnostic(
             "target_policy": config.target_policy,
             "selected_student_ids": tuple(config.selected_student_ids),
             "selected_grade": config.selected_grade,
+            "projected_grade_scope": bool(projected_grade_scope),
             "utilization_cluster_policy": config.utilization_cluster_policy,
             "minimum_next_attempt_seconds": config.minimum_next_attempt_seconds,
             "cp_sat_random_seed": config.cp_sat_random_seed,
@@ -3696,6 +3698,24 @@ def _solve_student_assignment(
     probe_required_decision_groups = tuple(
         tuple(group) for group in complete_required_decision_groups
     )
+    probe_source_variable_groups = {}
+    for request in data.requests:
+        for _section, variable in request_candidates[request.request_id]:
+            probe_source_variable_groups.setdefault(request.student_id, []).append(
+                variable.Index()
+            )
+    for (source_key, _index), variable in commitment_variables.items():
+        owner = commitment_metadata[source_key][0]
+        probe_source_variable_groups.setdefault(owner, []).append(variable.Index())
+    probe_source_variable_groups = tuple(
+        (
+            owner,
+            tuple(sorted(variable_indexes)),
+        )
+        for owner, variable_indexes in sorted(
+            probe_source_variable_groups.items(), key=lambda item: repr(item[0])
+        )
+    )
 
     def _build_probe_context(seed_solver):
         # The model, source groups, owner map, and objective metadata are
@@ -3717,6 +3737,7 @@ def _solve_student_assignment(
             seed_source_decision_variable_values=_source_decision_variable_values,
             candidate_quality_facts=_candidate_quality_facts,
             student_grades=tuple(data.student_grades),
+            source_variable_groups=probe_source_variable_groups,
             seed_objective_vector=_objective_values(
                 seed_solver, objectives
             ) if seed_solver is not None else (),
@@ -4042,6 +4063,10 @@ def _solve_student_assignment(
                         ),
                         selected_student_ids=probe_selected_student_ids,
                         selected_grade=(int(selected_grade) if grade_bounded else None),
+                        projected_grade_scope=(
+                            bool(local_config.get("projected_grade_scope", False))
+                            if grade_bounded else False
+                        ),
                         time_limit_seconds=probe_limit,
                         worker_count=int(local_config.get("worker_count", 8)),
                         cp_sat_random_seed=local_config.get("cp_sat_random_seed"),
@@ -4149,6 +4174,13 @@ def _solve_student_assignment(
                         "section_load_deltas": dict(local_result.section_load_deltas),
                         "target_guidance": dict(target_guidance),
                         "selected_grade": int(selected_grade) if grade_bounded else None,
+                        "projected_grade_scope": local_result.projected_grade_scope,
+                        "projected_active_source_variable_count": (
+                            local_result.projected_active_source_variable_count
+                        ),
+                        "projected_frozen_source_variable_count": (
+                            local_result.projected_frozen_source_variable_count
+                        ),
                         "cp_sat_random_seed": local_config.get("cp_sat_random_seed"),
                         "cp_sat_max_deterministic_time_seconds": (
                             local_config.get(
