@@ -1052,3 +1052,88 @@ would need to substitute frozen effects into dependent capacity, conflict,
 special-commitment, and objective structures—not merely singleton-fix source
 variables—and would require exact-equivalence validation against the full
 model before any search comparison.
+
+### Objective Semantics v2 scale-crossover study (2026-08-30)
+
+This separate diagnostic lineage studies why existing v2 operators are
+productive in the replicated medium policy-generalization scenarios but
+non-discriminating in the authoritative target-scale one-worker policy gate.
+It is not production wiring, does not mutate the canonical benchmark or
+checkpoint, and does not claim optimality from `UNKNOWN`.
+
+The preregistered lineage is
+`scheduling_engine/benchmarks/student_assignment/v2_policy_scale_crossover_20260830/`.
+It is bound to the `reference_target` input fingerprint
+`f56b5c0d5b745d919a57281a2f1e49959b4b23d8feb9486eda3c81afd8bb7906` and the
+source-seed fingerprint
+`f5cfd15465bab1815ad21a3565236f1ff383e8ffff82a4c783ab62ff410c9fb1`.
+
+#### Fixed-cycle medium forensics
+
+Across every stored fixed-cycle medium scenario and seeds `101`, `202`, and
+`303`, `targeted_r4_s2` produced the dominant observed descent. The smaller
+`targeted_utilization_r64_s8` step appeared as a follow-on in each family:
+
+| Scenario | Seed | Start | Final | `targeted_r4_s2` gain | `targeted_utilization_r64_s8` gain |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| reference medium | 101 | 42,552 | 42,402 | 144 | 6 |
+| reference medium | 202 | 42,552 | 41,892 | 630 | 30 |
+| reference medium | 303 | 42,552 | 41,892 | 630 | 30 |
+| population pressure | 101 | 42,690 | 42,600 | 84 | 6 |
+| population pressure | 202 | 42,690 | 42,486 | 186 | 18 |
+| population pressure | 303 | 42,690 | 42,486 | 186 | 18 |
+| special-commitment pressure | 101 | 45,900 | 45,030 | 846 | 24 |
+| special-commitment pressure | 202 | 45,900 | 44,214 | 1,632 | 54 |
+| special-commitment pressure | 303 | 45,900 | 44,214 | 1,632 | 54 |
+
+The evidence supports an operator-family explanation for most of the medium
+gain, not causal credit for fixed-cycle policy logic by itself. The final
+seed-202 and seed-303 endpoints converge in all three scenario families, but
+their special-pressure adoption sequences are not identical. The later
+`targeted_r4_s2` attempt after the utilization step demonstrates that
+sequencing can expose complementary opportunities, so fixed-cycle sequencing
+cannot be reduced to the first operator alone without a matched policy
+experiment.
+
+#### Target artifact forensics
+
+The stored target fixed-cycle artifacts reached the same first two families:
+`targeted_r4_s2`, then `targeted_utilization_r64_s8`. On both promoted target
+scenarios, the target attempts ran with large models and ended `UNKNOWN` before
+candidate validation. The `reference_target` `targeted_r4_s2` attempt had
+`168,660` variables and `299,545` constraints; the dense-special analogue had
+`151,888` variables and `272,763` constraints. The recorded attempts had zero
+branches and zero conflicts, so the artifacts do not show genuine branch
+search. They therefore do not prove that the operator is incapable of target
+improvement, nor that target substantive values are optimal.
+
+#### Matched target worker-count gate
+
+Because `targeted_r4_s2` was the dominant medium family and the same family
+was attempted at target scale, it was the only promoted operator. Both cells
+used the same target input, source seed, actual selected students `(204, 604)`,
+Objective Semantics v2 profile, CP-SAT random seed `101`, 30-second operator
+horizon, 180-second validation allowance, and unchanged full-model validator.
+They were executed sequentially under the supervised parent watchdog:
+
+| Workers | Status | Candidate | CP-SAT s | External operator s | Process s | Seed validation s | Variables | Constraints | Branches | Conflicts |
+| ---: | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | `UNKNOWN` | none | 30.407 | 121.312 | 247.198 | 120.742 | 168,660 | 299,545 | 0 | 0 |
+| 8 | `UNKNOWN` | none | 30.427 | 92.566 | 145.336 | 51.200 | 168,660 | 299,545 | 0 | 0 |
+
+Both source seeds were complete, feasible, source-fingerprint-matching, and
+unmet-free. Neither operator attempt produced a candidate, so full candidate
+validation was not entered and no substantive component changed. The worker
+gate therefore found no worker-count effect on target operator productivity:
+both configurations stopped before genuine CP-SAT branch search. The lower
+eight-worker external time is preparation variance, principally source-seed
+validation, not evidence of a better operator transition.
+
+Under the preregistered gate, seed-202/303 replication and a longer horizon
+were not justified: there was no decision-relevant one-versus-eight-worker
+difference, and neither cell demonstrated genuine search that a longer
+horizon would extend. This classifies target operator capability as
+**UNRESOLVED**, not infeasible, optimal, or production-ready. A future study
+may inspect model setup/presolve or provide a separately justified search
+configuration, but must retain the unchanged full-model validation boundary
+and must not infer a policy ranking from these unresolved cells.

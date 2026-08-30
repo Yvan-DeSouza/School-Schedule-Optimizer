@@ -1,0 +1,122 @@
+{
+  "schema": "student_assignment_policy_scale_crossover_study_v1",
+  "study_id": "objective_semantics_v2_policy_scale_crossover_20260830",
+  "purpose": "Determine why productive Objective Semantics v2 operators lose observed productivity between replicated medium and authoritative target-scale inputs.",
+  "objective_semantics_version": "v2",
+  "synthetic_only": true,
+  "production_wiring": false,
+  "source_lineage": "v2_policy_generalization_suite_20260829",
+  "source_artifact_sha256": {
+    "reference_target/input.json.gz": "A69B071E60EE67E031CCCF30F2AD3E41AEB941755589D587EE106708C982A046",
+    "reference_target/stage1_seed.json.gz": "54C8BC6FD765DD92704A50EF94140F6DE6DC2AF73E4E5C9F800F1779E6A8EBF2",
+    "reference_target/manifest.json": "6D4EE8A443A51E933F8EAFF14CBAA8D34CD1F0CDC347A3631D4E282DB09B3C11",
+    "reference_target_fixed_cycle_target600_supervised.json": "A3E8A367F565CFC04D74BB9A0D1DF63879D6CA60BCFBD6AD7CAD63EC2F603289",
+    "special_commitment_pressure_target/input.json.gz": "CB798C61E985245B4C72B1180D77AEC674BD04600E1CE0FE15EFCCFD0ECC7B70",
+    "special_commitment_pressure_target/stage1_seed.json.gz": "63687E1008C655225298F6F82B2888957945D842133B42D840B985AEAA778006",
+    "special_commitment_pressure_target/manifest.json": "95D359F55BDB25D0735CC6AFD177A3668CDDEF73AC6F06D528A8AF681D3568D8",
+    "special_commitment_pressure_target_fixed_cycle_target600_supervised.json": "61C3CAE45F85B977AE24A513DFE75D1CDB6E4CBBB8A16C16FDD8D8FAE0B27696"
+  },
+  "operator_selection": {
+    "selected_operators": [
+      {
+        "operator": "targeted_r4_s2",
+        "role": "student_pressure_repair",
+        "reason": "The fixed-cycle medium artifacts show this family accounts for the dominant repeated gains in all three scenario families, including the large special-commitment-pressure descent. It is also the first fixed-cycle operator attempted at target scale, so it directly tests the medium-to-target crossover.",
+        "target_scale_selected_student_ids": [204, 604]
+      }
+    ],
+    "not_selected_second_operator": {
+      "operator": "targeted_utilization_r64_s8",
+      "reason": "It contributes a smaller follow-on utilization step after targeted_r4_s2 in the medium fixed-cycle trajectories. Existing artifacts do not require a second expensive target operator to explain the dominant medium advantage; it remains reference evidence only."
+    }
+  },
+  "artifact_first_protocol": {
+    "existing_medium_artifacts": "Use without rerun for fixed-cycle forensics.",
+    "existing_target_artifacts": "Use without rerun for target attempt forensics.",
+    "canonical_inputs_mutated": false,
+    "canonical_checkpoints_mutated": false,
+    "clean_process_required": true
+  },
+  "target_worker_gate": {
+    "scenario": "reference_target",
+    "benchmark_directory": "scheduling_engine/benchmarks/student_assignment/v2_policy_generalization_suite_20260829/reference_target",
+    "input_fingerprint": "f56b5c0d5b745d919a57281a2f1e49959b4b23d8feb9486eda3c81afd8bb7906",
+    "source_seed_fingerprint": "f5cfd15465bab1815ad21a3565236f1ff383e8ffff82a4c783ab62ff410c9fb1",
+    "operator": "targeted_r4_s2",
+    "actual_selected_student_ids": [204, 604],
+    "cp_sat_random_seed": 101,
+    "worker_counts": [1, 8],
+    "per_attempt_time_limit_seconds": 30.0,
+    "validation_time_limit_seconds": 180.0,
+    "validation_worker_count": 1,
+    "total_time_limit_seconds": 240.0,
+    "hard_wall_seconds": 360.0,
+    "full_model_validation_required": true,
+    "candidate_adoption_required": true,
+    "interpretation": "A candidate counts only after unchanged full-model validation. UNKNOWN is unresolved and never evidence of infeasibility or optimality. The worker-count comparison is diagnostic only and does not select a production worker configuration."
+  },
+  "replication_gate": {
+    "seed_202_or_303": "Run only if the seed-101 worker comparison is decision-relevant under the preregistered evidence rules.",
+    "longer_horizon": "Run at most one longer seed-101 cell only if both worker counts are unresolved, CP-SAT reached genuine search, the process was resource healthy, and the prior horizon is plausibly too short."
+  },
+  "artifact_first_findings": {
+    "medium_fixed_cycle": {
+      "reference_medium": {
+        "seed_101": {"starting": 42552, "final": 42402, "r4_s2_gain": 144, "utilization_r64_s8_gain": 6},
+        "seed_202": {"starting": 42552, "final": 41892, "r4_s2_gain": 630, "utilization_r64_s8_gain": 30},
+        "seed_303": {"starting": 42552, "final": 41892, "r4_s2_gain": 630, "utilization_r64_s8_gain": 30}
+      },
+      "population_pressure_medium": {
+        "seed_101": {"starting": 42690, "final": 42600, "r4_s2_gain": 84, "utilization_r64_s8_gain": 6},
+        "seed_202": {"starting": 42690, "final": 42486, "r4_s2_gain": 186, "utilization_r64_s8_gain": 18},
+        "seed_303": {"starting": 42690, "final": 42486, "r4_s2_gain": 186, "utilization_r64_s8_gain": 18}
+      },
+      "special_commitment_pressure_medium": {
+        "seed_101": {"starting": 45900, "final": 45030, "r4_s2_gain": 846, "utilization_r64_s8_gain": 24},
+        "seed_202": {"starting": 45900, "final": 44214, "r4_s2_gain": 1632, "utilization_r64_s8_gain": 54},
+        "seed_303": {"starting": 45900, "final": 44214, "r4_s2_gain": 1632, "utilization_r64_s8_gain": 54}
+      }
+    },
+    "medium_conclusion": "targeted_r4_s2 accounts for the dominant observed gain in every fixed-cycle medium family. The utilization operator is a smaller follow-on contributor. Seeds 202 and 303 converge to the same endpoint in all three families, although the special-pressure adoption sequences are not identical.",
+    "target_artifact_conclusion": "Fixed-cycle target artifacts reached the same two operator families as the medium sequence, including targeted_r4_s2, but every one-worker target attempt ended UNKNOWN with zero branches and zero conflicts before candidate validation. The artifacts do not establish infeasibility or optimality.",
+    "scale_crossover_interpretation": "The stored evidence is consistent with a target-scale setup/presolve/search-start bottleneck rather than proof that the operator family cannot improve the target. The new matched worker gate is required to test worker throughput, but the zero-branch result means a longer horizon is not justified by the preregistered rule unless a future run demonstrates genuine search."
+  },
+  "results": {
+    "reference_target_targeted_r4_s2_workers1_seed101.json": {
+      "sha256": "40FCA8EB4E64EE4D62BF20E53060E48CF537CE1918A08B8DF29B334AB137AE09",
+      "status": "unknown",
+      "candidate_validated": false,
+      "cp_sat_seconds": 30.4072604,
+      "external_seconds": 121.311793,
+      "process_seconds": 247.1976498,
+      "model_variables": 168660,
+      "model_constraints": 299545,
+      "branches": 0,
+      "conflicts": 0,
+      "seed_validation_seconds": 120.742157,
+      "seed_validation": "complete_feasible_unmet_free"
+    },
+    "reference_target_targeted_r4_s2_workers8_seed101.json": {
+      "sha256": "9EA50D60793CE7FE27591CFB45D113C93A9172689E0364B40D84C901124F3FCE",
+      "status": "unknown",
+      "candidate_validated": false,
+      "cp_sat_seconds": 30.4271202,
+      "external_seconds": 92.5658794,
+      "process_seconds": 145.33551,
+      "model_variables": 168660,
+      "model_constraints": 299545,
+      "branches": 0,
+      "conflicts": 0,
+      "seed_validation_seconds": 51.199554,
+      "seed_validation": "complete_feasible_unmet_free"
+    }
+  },
+  "final_classification": {
+    "target_operator_capability": "unresolved",
+    "worker_count_effect": "not_demonstrated; one and eight workers both stopped before genuine branch search",
+    "replications": "not_run because the seed-101 comparison was not decision-relevant under the gate",
+    "longer_horizon": "not_run because neither cell demonstrated genuine CP-SAT search",
+    "production_wiring": "none"
+  },
+  "status": "completed_artifact_forensics_and_seed101_worker_gate"
+}
