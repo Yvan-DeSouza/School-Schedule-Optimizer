@@ -1168,6 +1168,8 @@ def run_student_assignment_operator_session_diagnostic(
     collect_validation_search_start_telemetry=False,
     capture_candidate_base_model_witness=False,
     use_candidate_base_model_witness_for_validation=False,
+    candidate_capture_callback=None,
+    skip_candidate_validation=False,
     timeline_max_events=128,
     phase_callback=None,
 ):
@@ -1258,6 +1260,8 @@ def run_student_assignment_operator_session_diagnostic(
             "use_candidate_base_model_witness_for_validation": bool(
                 use_candidate_base_model_witness_for_validation
             ),
+            "candidate_capture_callback": candidate_capture_callback,
+            "skip_candidate_validation": bool(skip_candidate_validation),
             "diagnostic_parent_hard_wall_deadline_monotonic": (
                 diagnostic_parent_hard_wall_deadline_monotonic
             ),
@@ -3986,6 +3990,21 @@ def _solve_student_assignment(
                     not local_result.complete_candidate_found
                     or not local_result.candidate_source_variable_values
                 ):
+                    return None, 0.0, {
+                        "classification": "not_attempted",
+                        "solver_outcome": None,
+                        "error": None,
+                    }
+                candidate_capture_callback = local_config.get(
+                    "candidate_capture_callback"
+                )
+                if candidate_capture_callback is not None:
+                    candidate_capture_callback(
+                        model=model,
+                        required_decision_groups=complete_required_decision_groups,
+                        local_result=local_result,
+                    )
+                if local_config.get("skip_candidate_validation", False):
                     return None, 0.0, {
                         "classification": "not_attempted",
                         "solver_outcome": None,

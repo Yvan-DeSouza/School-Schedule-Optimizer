@@ -1,0 +1,40 @@
+{
+  "artifacts": {
+    "medium-normal-first.json": {
+      "bytes": 20962,
+      "path": "medium-normal-first.json",
+      "sha256": "b9fac5bed268391cb5f2a4498e24eab0f8bd4f6de38b71fa507e4d427e6e901e"
+    },
+    "reference-pair-01-normal-first.json": {
+      "bytes": 19758,
+      "path": "reference-pair-01-normal-first.json",
+      "sha256": "df79ba80d3688fb563903fb1a073b1455a75dc625f98e36c4eca5699db320072"
+    },
+    "reference-pair-02-witness-first.json": {
+      "bytes": 19744,
+      "path": "reference-pair-02-witness-first.json",
+      "sha256": "d7ea7583ac6ed0cf7b616192ad233348b4bcb8d512550cdc0ea042ceb60b1828"
+    },
+    "reference-pair-03-normal-first.json": {
+      "bytes": 19735,
+      "path": "reference-pair-03-normal-first.json",
+      "sha256": "c00ab80afb41355650c7aa0e19190d4529e9de9bc27b67a3c15791a11f125ab4"
+    },
+    "reference-pair-04-witness-first.json": {
+      "bytes": 19749,
+      "path": "reference-pair-04-witness-first.json",
+      "sha256": "b6ca1f2790d46ec6468b9b1aafa6e27804f3ff320824b034681e940b2c1506d0"
+    }
+  },
+  "metadata": {
+    "canonical_benchmark": "production_scale_v1",
+    "input_fingerprint": "1c4843ac33fccabd76218c63d8818c94a0a8ddab2886e3f5718ca1cd9576a11",
+    "operator": "targeted_r4_s2",
+    "stage1_seed_fingerprint": "00889b7f4110dc19c6cdcb413b44fe77ab9598cb0fde25de6ea618ddb27325e7",
+    "study": "exact_full_witness_authority_parity",
+    "target_pair_count": 4,
+    "witness_values_durable": false
+  },
+  "schema": "student_assignment_validation_qualification_manifest_v1",
+  "study_schema": "student_assignment_validation_qualification_v1"
+}

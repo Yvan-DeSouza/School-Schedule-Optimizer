@@ -269,14 +269,128 @@ complete persisted source-identity parity. It must not replace the current
 validator in production or authorize a candidate by itself in the current
 workflow.
 
+## Authority-parity qualification study (2026-08-30)
+
+The qualification harness is a clean-process diagnostic surface in
+`validation_qualification.py`. One operator solve captures one complete
+semantic candidate, one candidate source fingerprint, one base-model
+fingerprint, and one in-process witness. The same candidate and witness are
+then sent to both validation paths. The ordinary source-fixed validator is
+recorded as the authority; witness validation is shadow-only and cannot rescue
+an ordinary rejection or authorize adoption.
+
+The durable study lineage is
+`scheduling_engine/benchmarks/student_assignment/validation_qualification_20260830/`.
+Its manifest and records contain only compact facts and file hashes. Raw
+anonymous auxiliary values are never serialized.
+
+The four reference-target pairs all used the verified durable benchmark input
+fingerprint `1c4843ac33fccabd76218c63d8818c94a0a8ddab2886e3f5718ca1cd9576a11`,
+the Stage 1 parent fingerprint
+`00889b7f4110dc19c6cdcb413b44fe77ab9598cb0fde25de6ea618ddb27325e7`,
+`targeted_r4_s2`, selected students `(204, 604)`, one worker, a 300-second
+probe allowance, and a 180-second validation allowance. All four produced the
+same candidate fingerprint
+`02fed7c072ddffea70900796eb19a0fcde723dcb8fb8e7f6f85c308169015a52`,
+substantive value `65,171`, 10,760 assignments, zero unmet requests, and 310
+special commitments. Each changed one source decision for one student.
+
+| Pair | Order | Ordinary validation | Witness validation | Ordinary CP wall | Witness CP wall | Ordinary peak WS | Witness peak WS | Parity / false acceptance |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| 1 | normal -> witness | 44.54 s | 54.21 s | 2.87 s | 3.11 s | 738,103,296 | 779,202,560 | parity / none |
+| 2 | witness -> normal | 44.19 s | 56.18 s | 2.69 s | 3.40 s | 870,244,352 | 774,885,376 | parity / none |
+| 3 | normal -> witness | 47.59 s | 57.28 s | 2.80 s | 2.86 s | 742,064,128 | 772,239,360 | parity / none |
+| 4 | witness -> normal | 46.73 s | 54.09 s | 2.63 s | 2.76 s | 877,711,360 | 775,032,832 | parity / none |
+
+Across the four pairs, ordinary validation was 44.19--47.59 seconds with a
+45.64-second median; witness validation was 54.09--57.28 seconds with a
+55.19-second median. Witness validation was therefore slower in every pair by
+7.35--11.99 seconds (15.73--27.14% relative to ordinary validation; median
+18.78%). Native CP-SAT wall time was similar and showed no stable witness
+advantage. Witness preparation was higher because it added equality constraints
+for all 110,916 base variables: ordinary validation ended with 259,077
+constraints, while witness validation ended with 369,993. Witness peak working
+set was approximately 775--779 MB in these runs, while ordinary peak working
+set varied from approximately 738--878 MB with validation order; there was no
+monotonic accumulation across the four clean processes.
+
+The medium production-shaped gate also passed classification parity. It used
+the same candidate callback with 2,064 source decisions and 39 special
+commitments: ordinary validation was `validated/optimal` in 19.92 seconds
+with 7.77 seconds of CP-SAT wall time; witness validation was
+`validated/optimal` in 22.94 seconds with 1.25 seconds of CP-SAT wall time.
+The witness path was slower overall. This confirms the harness works beyond
+the tiny unit model but does not qualify production replacement.
+
+### Differential parity matrix
+
+The focused corpus currently covers the deterministic cases supported by the
+small model builders:
+
+| Candidate/witness case | Ordinary | Witness | Result |
+| --- | --- | --- | --- |
+| Valid source and exact witness | validated | validated | exact parity |
+| Source violates an exactly-one hard rule | hard_invalid | hard_invalid | exact parity |
+| Auxiliary value altered | validated | hard_invalid | conservative witness rejection; no false acceptance |
+| Stale model fingerprint | validated | validation_error | fail closed |
+| Missing witness variable | validated | validation_error | fail closed |
+| Extra witness variable | validated | validation_error | fail closed |
+
+The target candidates exercised complete normal, special-commitment, online,
+half-semester, Study/Focus/Co-op, lock, capacity, and shared-resource model
+state through the unchanged full model. The corpus does not yet contain an
+independent mutation fixture for every listed lock or special-commitment
+failure mode; those remain qualification gaps rather than invented evidence.
+No false acceptance occurred. The required invariant held in every supported
+case: the witness path never classified a candidate as valid when the ordinary
+authority rejected it.
+
+### Candidate-generation witness eligibility
+
+The current probe implementation clones the same base model for every operator
+family. It appends only probe constraints to that clone; targeted families also
+append `changed_student_*` indicators after the original base-variable prefix.
+The implementation asserts the base variable count and proto fingerprint before
+capturing the witness.
+
+| Operator family | Current classification | Reason |
+| --- | --- | --- |
+| R2 | witness eligible with assertion | Same base clone; no student-change indicator variables |
+| targeted R4/S1, R4/S2, R8/S1, R8/S2 | witness eligible with assertion | Same base clone; bounded student indicators are appended after the base prefix |
+| utilization-cluster families | witness eligible with assertion | Same probe path; target-selection constraints do not replace the base model |
+| grade-bounded families | witness eligible with assertion | Same base clone; grade scope adds constraints over the original variables |
+
+These are diagnostic eligibility classifications, not production wiring. A
+future caller must still require a complete witness, matching model lineage,
+matching semantic source values, and full validation classification checks.
+
+### Qualification decision
+
+`PERFORMANCE QUALIFIED BUT AUTHORITY COVERAGE INCOMPLETE` is not appropriate
+for this study because total validation was not faster. The result is:
+
+`AUTHORITY PARITY PASSES BUT PERFORMANCE BENEFIT INSUFFICIENT`
+
+for the tested reference target and medium gate. Exact classification parity
+and the no-false-acceptance invariant passed, but the witness adds preparation
+work and memory without a repeatable total-wall-time benefit on the current
+Objective Semantics v2 target. Special-pressure promotion was correctly
+skipped because the prerequisite target performance gate failed. Witness
+validation is not production-enabled and the ordinary full validator remains
+the sole authority.
+
+The initial one-off witness result remains historical evidence and is not
+overwritten: it used a different candidate/model state and showed a one-run
+native improvement. The repeated paired study is the stronger current result.
+
 ## Validation-specific backlog
 
 | Idea | Upside | Risk/complexity | Evidence required | Status |
 | --- | --- | --- | --- | --- |
-| Repeat exact-witness A/B on the same candidate with persisted source identity | Confirm native and total speedup is real | Medium | Multiple clean-process or same-lineage repetitions; exact source fingerprints; memory envelope | Investigate now |
+| Repeat exact-witness A/B on the same candidate with persisted source identity | Confirm native and total speedup is real | Medium | Multiple clean-process or same-lineage repetitions; exact source fingerprints; memory envelope | Completed; parity passed, total performance benefit not demonstrated |
 | Prepared in-process validation context | Reduce repeated model/index construction | Medium | Safe clone/lifetime tests and process-recycle measurements | Later |
 | Immutable index/model-build reuse | Reduce Python preparation overhead | Low/medium | No stale DTO or lineage state; benchmark parity | Later |
-| Differential-equivalence framework | Prevent false-positive fast acceptance | High | Randomized/adversarial candidate matrix against current validator | Investigate now before authority promotion |
+| Differential-equivalence framework | Prevent false-positive fast acceptance | High | Randomized/adversarial candidate matrix against current validator | Small deterministic gate passed; broader corpus remains before any authority study |
 | Deterministic full-schedule shadow validator | Potentially avoid native solve | Very high | Formal coverage of every hard/shared/special rule and exhaustive differential tests | Later; not justified yet |
 | Dependency-aware shadow validation | Fast small-move validation | Very high | Complete transitive dependency closure and proof of global-resource coverage | Blocked pending dependency proof |
 | Separate review/result work from authority validation | Remove non-authority overhead | Low/medium | Phase telemetry and API/result compatibility tests | Later |
@@ -298,15 +412,10 @@ the full validator.
 
 ## Recommended next step
 
-Repeat the exact-witness A/B with a durable result record that stores both
-complete semantic source fingerprints and witness telemetry, preferably using
-one captured candidate/model lineage for both validation modes. Require
-classification parity across valid, hard-invalid, incomplete, altered-auxiliary,
-special-commitment, online, half-semester, Study, Focus, Co-op, lock, and
-capacity cases. Compare native CP-SAT, preparation, total wall time, and memory
-over multiple repetitions.
-
-Only if that gate passes should a separate authority-parity qualification study
-consider production use. Otherwise, the next fallback is prepared in-process
-full-validator reuse and more native CP-SAT forensics. The current full-model
-validator remains the sole authority.
+The repeated paired study has now completed for the current reference target.
+The next safe step is to expand the differential corpus across the supported
+special-commitment, lock, capacity, prerequisite, online, and half-semester
+mutations, while keeping the current full-model validator authoritative. If a
+future performance study is warranted after that coverage, compare prepared
+in-process full-validator reuse before reconsidering exact witnesses. The
+current full-model validator remains the sole authority.
