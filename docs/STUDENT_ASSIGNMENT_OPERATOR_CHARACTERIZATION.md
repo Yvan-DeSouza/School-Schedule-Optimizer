@@ -1222,3 +1222,62 @@ reference horizon, while the successful one-worker cells show that the
 post-start search itself can be productive. The existing uniform per-attempt
 budget therefore remains a future diagnostic-policy question, not a production
 change authorized by this study.
+
+#### Independent candidate-validation budget and target repeatability (2026-08-30)
+
+The continuation above exposed an important diagnostic accounting issue: a
+single per-attempt deadline charged model preparation, CP-SAT search, candidate
+extraction, and unchanged full-model validation against one allowance. A
+candidate found late in that allowance could therefore be rejected as
+unvalidated even though the validator itself had not received a fair bounded
+window.
+
+The diagnostic-only operator-session path now supports an opt-in independent
+candidate-validation allowance. When configured, preparation is part of the
+outer operation, CP-SAT receives its configured search allowance, and a
+complete extracted candidate receives a new bounded validation allowance. No
+validation is started when CP-SAT returns no complete candidate. The unchanged
+full-model validator remains authoritative: a validation `UNKNOWN`, error, or
+hard-invalid result never authorizes adoption. The existing shared session
+budget and supervised parent wall remain outer bounds. With the option omitted,
+the historical deadline behavior is preserved.
+
+The target repeatability cells used the existing detached inputs and source
+incumbents, operator `targeted_r4_s2`, one CP-SAT worker, random seeds `202` and
+`303`, a 300-second search allowance, a 180-second candidate-validation
+allowance, a 900-second diagnostic session allowance, and a 1,200-second parent
+wall. They were run in clean sequential processes and did not mutate a
+canonical checkpoint:
+
+| Scenario | Seed | Start | Candidate | Direct gain | CP-SAT s | Full validation s | Process s | Result |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| reference target | 202 | 42,750 | 42,672 | 78 | 167.524 | 106.884 | 626.435 | validated/adopted |
+| reference target | 303 | 42,750 | 42,672 | 78 | 158.717 | 109.925 | 619.978 | validated/adopted |
+| special-pressure target | 202 | 43,626 | 43,548 | 78 | 103.616 | 69.757 | 427.995 | validated/adopted |
+| special-pressure target | 303 | 43,626 | 43,548 | 78 | 115.411 | 74.802 | 473.844 | validated/adopted |
+
+All four cells retained complete, unmet-free assignments and crossed the
+unchanged full-model validation boundary. The two predetermined seeds produced
+the same candidate substantive value, source-level result, and branch/conflict
+profile within each scenario (`100` branches / `1` conflict for reference;
+`126` / `1` for special-pressure). This is strong exact result repeatability
+for `targeted_r4_s2` under this diagnostic configuration, while runtime remains
+subject to setup, validation, and host variation. It is not a universal
+guarantee for other operators, inputs, worker counts, or time budgets.
+
+The first rerun attempt used a 300-second *total* session allowance while also
+charging source validation and preparation to that allowance. Its effective
+search/validation windows were truncated and it is not included in the matched
+four-cell scorecard. This correction is why the recorded target cells use a
+900-second session allowance: it leaves room for source validation, preparation,
+the 300-second CP-SAT allowance, and the independent 180-second candidate
+validation allowance inside the 1,200-second parent wall.
+
+This evidence changes the interpretation of the historical target policy gate,
+but does not change production policy. The original 30-second comparison
+remains valid as an exact historical-budget experiment and remains startup
+confounded. The new cells show that the selected operator is repeatably
+productive when it receives a genuine search window and a separate validation
+window. A full target-scale policy-generalization restudy may therefore be
+justified, but it is a separate future experiment; this study does not launch
+that restudy or wire the diagnostic configuration into production.

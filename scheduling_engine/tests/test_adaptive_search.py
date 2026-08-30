@@ -375,6 +375,36 @@ def test_operator_session_can_report_search_start_without_stopping_at_presolve()
     assert iteration["presolve_telemetry"]["stop_after_presolve"] is False
 
 
+def test_operator_session_can_bound_candidate_validation_independently():
+    data, source = _multi_attempt_operator_fixture((1, 2))
+    result = run_student_assignment_operator_session_diagnostic(
+        data,
+        operator_family="targeted_r4_s2",
+        target_policy="fixed",
+        selected_student_ids=(1, 2),
+        initial_source_decisions=source,
+        total_time_limit_seconds=8,
+        max_attempts=1,
+        per_attempt_time_limit_seconds=1,
+        candidate_validation_time_limit_seconds=1,
+        worker_count=1,
+        hard_feasibility_validation_time_limit_seconds=2,
+        hard_feasibility_validation_worker_count=1,
+        collect_resource_telemetry=False,
+    )
+
+    facts = result.optimization_facts["stage_2_local_bootstrap"]
+    iteration = facts["iterations"][0]
+    assert facts["independent_validation_budget_enabled"] is True
+    assert facts["candidate_validation_time_limit_seconds"] == pytest.approx(1)
+    assert iteration["search_time_limit_seconds"] == pytest.approx(1)
+    assert iteration["candidate_validation_time_limit_seconds"] == pytest.approx(1)
+    assert iteration["remaining_stage2_budget_at_validation_start"] is not None
+    assert iteration["validation_requested_time_limit_seconds"] <= 1
+    assert iteration["candidate_validated"] is True
+    assert iteration["validation_classification"] == "validated"
+
+
 def test_presolve_parser_accepts_ortools_grouped_counts():
     initial, presolved = _parse_cp_sat_model_summaries((
         "Initial satisfaction model '':",
@@ -1603,6 +1633,7 @@ def test_operator_session_keeps_unknown_distinct_from_proven_scope_exhaustion():
         selected_student_ids=(1,),
         hard_feasibility_validation_time_limit_seconds=1,
         hard_feasibility_validation_worker_count=1,
+        candidate_validation_time_limit_seconds=1,
         collect_resource_telemetry=False,
     )
     unknown_facts = unknown.optimization_facts["stage_2_local_bootstrap"]
@@ -1610,6 +1641,11 @@ def test_operator_session_keeps_unknown_distinct_from_proven_scope_exhaustion():
     assert unknown_facts["iterations"][0]["status"] == "unknown"
     assert unknown_facts["stopping_reason"] == "unresolved_unknown"
     assert unknown_facts["candidate_validated"] is False
+    assert unknown_facts["iterations"][0]["validation_classification"] == (
+        "not_attempted"
+    )
+    assert unknown_facts["iterations"][0]["validation_elapsed_seconds"] == 0.0
+    assert unknown_facts["iterations"][0]["validation_requested_time_limit_seconds"] is None
 
     balanced_source = tuple(
         (

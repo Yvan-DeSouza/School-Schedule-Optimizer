@@ -104,6 +104,7 @@ class ContinuousOperatorSessionConfig:
     collect_resource_telemetry: bool = True
     hard_feasibility_validation_time_limit_seconds: float | None = None
     hard_feasibility_validation_worker_count: int | None = None
+    candidate_validation_time_limit_seconds: float | None = None
     cp_sat_random_seed: int | None = None
     cp_sat_max_deterministic_time_seconds: float | None = None
 
@@ -122,6 +123,13 @@ class ContinuousOperatorSessionConfig:
             raise ValueError("worker_count must be positive")
         if self.minimum_next_attempt_seconds < 0:
             raise ValueError("minimum_next_attempt_seconds cannot be negative")
+        if (
+            self.candidate_validation_time_limit_seconds is not None
+            and self.candidate_validation_time_limit_seconds <= 0
+        ):
+            raise ValueError(
+                "candidate_validation_time_limit_seconds must be positive"
+            )
         if (
             self.cp_sat_max_deterministic_time_seconds is not None
             and self.cp_sat_max_deterministic_time_seconds <= 0

@@ -110,6 +110,8 @@ def run_variance_trial(
     validation_worker_count=1,
     collect_resource_telemetry=True,
     collect_search_start_telemetry=False,
+    candidate_validation_time_limit_seconds=None,
+    parent_hard_wall_seconds=None,
     worker_status_path=None,
     capture_candidate_source_decisions=False,
 ):
@@ -186,6 +188,16 @@ def run_variance_trial(
             worker_count=int(worker_count),
             collect_resource_telemetry=bool(collect_resource_telemetry),
             collect_search_start_telemetry=bool(collect_search_start_telemetry),
+            candidate_validation_time_limit_seconds=(
+                float(candidate_validation_time_limit_seconds)
+                if candidate_validation_time_limit_seconds is not None
+                else None
+            ),
+            diagnostic_parent_hard_wall_deadline_monotonic=(
+                started + float(parent_hard_wall_seconds)
+                if parent_hard_wall_seconds is not None
+                else None
+            ),
             hard_feasibility_validation_time_limit_seconds=(
                 float(validation_time_limit_seconds)
                 if validation_time_limit_seconds is not None
@@ -327,6 +339,7 @@ def run_supervised_variance_trial(
     validation_worker_count=1,
     collect_resource_telemetry=True,
     collect_search_start_telemetry=False,
+    candidate_validation_time_limit_seconds=None,
     hard_wall_seconds=None,
     termination_grace_seconds=5.0,
     max_process_tree_rss_bytes=None,
@@ -408,6 +421,17 @@ def run_supervised_variance_trial(
             command.append("--no-resource-telemetry")
         if collect_search_start_telemetry:
             command.append("--collect-search-start-telemetry")
+        if candidate_validation_time_limit_seconds is not None:
+            command.extend(
+                [
+                    "--candidate-validation-seconds",
+                    str(float(candidate_validation_time_limit_seconds)),
+                ]
+            )
+        if hard_wall_seconds is not None:
+            command.extend(
+                ["--parent-hard-wall-seconds", str(float(hard_wall_seconds))]
+            )
         if capture_candidate_source_decisions:
             command.append("--capture-candidate-source-decisions")
         supervision = supervise_json_worker(
@@ -465,6 +489,16 @@ def main(argv=None):  # pragma: no cover - offline experiment entry point
         help="capture bounded native CP-SAT presolve/search milestones",
     )
     parser.add_argument(
+        "--candidate-validation-seconds",
+        type=float,
+        help="diagnostic-only validation allowance after candidate extraction",
+    )
+    parser.add_argument(
+        "--parent-hard-wall-seconds",
+        type=float,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
         "--supervised",
         action="store_true",
         help="run the trial under the hard parent-side watchdog",
@@ -499,6 +533,10 @@ def main(argv=None):  # pragma: no cover - offline experiment entry point
         validation_worker_count=args.validation_workers,
         collect_resource_telemetry=not args.no_resource_telemetry,
         collect_search_start_telemetry=args.collect_search_start_telemetry,
+        candidate_validation_time_limit_seconds=(
+            args.candidate_validation_seconds
+        ),
+        parent_hard_wall_seconds=args.parent_hard_wall_seconds,
         worker_status_path=args.worker_status if args.worker else None,
         capture_candidate_source_decisions=args.capture_candidate_source_decisions,
     )
@@ -532,6 +570,9 @@ def main(argv=None):  # pragma: no cover - offline experiment entry point
             validation_worker_count=args.validation_workers,
             collect_resource_telemetry=not args.no_resource_telemetry,
             collect_search_start_telemetry=args.collect_search_start_telemetry,
+            candidate_validation_time_limit_seconds=(
+                args.candidate_validation_seconds
+            ),
             hard_wall_seconds=args.hard_wall_seconds,
             termination_grace_seconds=args.termination_grace_seconds,
             max_process_tree_rss_bytes=args.max_process_tree_rss_bytes,

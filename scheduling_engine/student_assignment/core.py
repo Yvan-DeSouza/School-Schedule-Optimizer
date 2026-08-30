@@ -1147,6 +1147,8 @@ def run_student_assignment_operator_session_diagnostic(
     minimum_next_attempt_seconds=1.0,
     hard_feasibility_validation_time_limit_seconds=None,
     hard_feasibility_validation_worker_count=None,
+    candidate_validation_time_limit_seconds=None,
+    diagnostic_parent_hard_wall_deadline_monotonic=None,
     cp_sat_random_seed=None,
     cp_sat_max_deterministic_time_seconds=None,
     collect_presolve_telemetry=False,
@@ -1184,6 +1186,9 @@ def run_student_assignment_operator_session_diagnostic(
         ),
         hard_feasibility_validation_worker_count=(
             hard_feasibility_validation_worker_count
+        ),
+        candidate_validation_time_limit_seconds=(
+            candidate_validation_time_limit_seconds
         ),
         cp_sat_random_seed=(
             int(cp_sat_random_seed) if cp_sat_random_seed is not None else None
@@ -1224,6 +1229,12 @@ def run_student_assignment_operator_session_diagnostic(
             "collect_presolve_telemetry": bool(collect_presolve_telemetry),
             "collect_search_start_telemetry": bool(
                 collect_search_start_telemetry
+            ),
+            "candidate_validation_time_limit_seconds": (
+                config.candidate_validation_time_limit_seconds
+            ),
+            "diagnostic_parent_hard_wall_deadline_monotonic": (
+                diagnostic_parent_hard_wall_deadline_monotonic
             ),
             "source_seed_fingerprint": (
                 sha256(
@@ -3877,8 +3888,26 @@ def _solve_student_assignment(
 
             def _remaining_stage2_budget():
                 if stage_2_deadline is None:
-                    return float(data.time_limit_seconds)
-                return max(0.001, stage_2_deadline.remaining())
+                    remaining = float(data.time_limit_seconds)
+                else:
+                    remaining = stage_2_deadline.remaining()
+                parent_deadline = local_config.get(
+                    "diagnostic_parent_hard_wall_deadline_monotonic"
+                )
+                if parent_deadline is not None:
+                    remaining = min(
+                        remaining,
+                        max(0.001, float(parent_deadline) - monotonic()),
+                    )
+                return max(0.001, remaining)
+
+            def _remaining_parent_wall_seconds():
+                parent_deadline = local_config.get(
+                    "diagnostic_parent_hard_wall_deadline_monotonic"
+                )
+                if parent_deadline is None:
+                    return None
+                return max(0.0, float(parent_deadline) - monotonic())
 
             def _validate_local_result(local_result, validation_deadline):
                 if (
@@ -3945,6 +3974,10 @@ def _solve_student_assignment(
                 per_probe_limit = float(
                     local_config.get("per_probe_time_limit_seconds", 90.0)
                 )
+                separate_validation_budget = (
+                    local_config.get("candidate_validation_time_limit_seconds")
+                    is not None
+                )
                 if operator_session:
                     current_operator_radius = (
                         None
@@ -3981,10 +4014,21 @@ def _solve_student_assignment(
                         radius_attempts.get(current_radius, 0) + 1
                     )
                     current_seed_value = _current_substantive_value(stage_2_seed_solver)
-                    iteration_deadline = MonotonicDeadline.start(
-                        min(per_probe_limit, _remaining_stage2_budget())
-                    )
-                    probe_limit = max(0.001, iteration_deadline.remaining())
+                    iteration_started = monotonic()
+                    if separate_validation_budget:
+                        # In the opt-in diagnostic mode, the CP-SAT allowance
+                        # begins after target/model preparation. The shared
+                        # Stage 2 deadline still bounds the whole operation.
+                        iteration_deadline = None
+                        probe_limit = None
+                    else:
+                        # Preserve the historical diagnostic semantics when no
+                        # independent validation allowance was requested.
+                        iteration_deadline = MonotonicDeadline.start(
+                            min(per_probe_limit, _remaining_stage2_budget())
+                        )
+                        probe_limit = max(0.001, iteration_deadline.remaining())
+                    validation_deadline = None
                     target_preparation_started = monotonic()
                     _notify_phase(
                         phase_callback,
@@ -4093,6 +4137,13 @@ def _solve_student_assignment(
                         iteration=iteration_count + 1,
                         selected_student_ids=selected_student_ids,
                     )
+                    if separate_validation_budget:
+                        # Re-read the shared budget after preparation so the
+                        # CP-SAT allowance cannot consume time already spent
+                        # selecting targets or preparing the attempt.
+                        probe_limit = max(
+                            0.001, min(per_probe_limit, _remaining_stage2_budget())
+                        )
                     probe_selected_student_ids = (
                         selected_student_ids if operator_session else ()
                     )
@@ -4131,28 +4182,58 @@ def _solve_student_assignment(
                     last_result = local_result
                     candidate_before_validation = local_result.candidate_substantive_value
                     validation_started = monotonic()
-                    _notify_phase(
-                        phase_callback,
-                        "candidate_validation",
-                        "started",
-                        iteration=iteration_count + 1,
-                    )
+                    validation_budget_start_remaining = None
+                    parent_wall_remaining_at_validation_start = None
+                    validation_limit = None
+                    if local_result.complete_candidate_found:
+                        validation_budget_start_remaining = _remaining_stage2_budget()
+                        parent_wall_remaining_at_validation_start = (
+                            _remaining_parent_wall_seconds()
+                        )
+                        _notify_phase(
+                            phase_callback,
+                            "candidate_validation",
+                            "started",
+                            iteration=iteration_count + 1,
+                        )
+                        if separate_validation_budget:
+                            validation_limit = max(
+                                0.001,
+                                min(
+                                    float(
+                                        local_config[
+                                            "candidate_validation_time_limit_seconds"
+                                        ]
+                                    ),
+                                    validation_budget_start_remaining,
+                                ),
+                            )
+                            validation_deadline = MonotonicDeadline.start(
+                                validation_limit
+                            )
+                        else:
+                            validation_deadline = iteration_deadline
+                    else:
+                        # Candidate validation is deliberately not entered when
+                        # CP-SAT did not return a complete candidate.
+                        validation_deadline = None
                     (
                         local_validator,
                         validation_elapsed,
                         validation_facts,
                     ) = _validate_local_result(
                         local_result,
-                        iteration_deadline,
+                        validation_deadline,
                     )
-                    _notify_phase(
-                        phase_callback,
-                        "candidate_validation",
-                        "completed",
-                        elapsed_seconds=monotonic() - validation_started,
-                        iteration=iteration_count + 1,
-                        validated=local_validator is not None,
-                    )
+                    if local_result.complete_candidate_found:
+                        _notify_phase(
+                            phase_callback,
+                            "candidate_validation",
+                            "completed",
+                            elapsed_seconds=monotonic() - validation_started,
+                            iteration=iteration_count + 1,
+                            validated=local_validator is not None,
+                        )
                     candidate_validated = local_validator is not None
                     if candidate_validated:
                         any_candidate_validated = True
@@ -4177,9 +4258,45 @@ def _solve_student_assignment(
                         "solver_wall_time_seconds": local_result.solver_wall_time_seconds,
                         "probe_timings": dict(local_result.timings),
                         "time_limit_seconds": probe_limit,
-                        "iteration_requested_time_limit_seconds": iteration_deadline.requested_seconds,
-                        "iteration_elapsed_seconds": iteration_deadline.elapsed(),
-                        "iteration_remaining_seconds": iteration_deadline.remaining(),
+                        "iteration_requested_time_limit_seconds": (
+                            iteration_deadline.requested_seconds
+                            if iteration_deadline is not None
+                            else probe_limit
+                        ),
+                        "iteration_elapsed_seconds": (
+                            monotonic() - iteration_started
+                        ),
+                        "iteration_remaining_seconds": (
+                            iteration_deadline.remaining()
+                            if iteration_deadline is not None
+                            else _remaining_stage2_budget()
+                        ),
+                        "search_time_limit_seconds": probe_limit,
+                        "candidate_validation_time_limit_seconds": (
+                            float(
+                                local_config[
+                                    "candidate_validation_time_limit_seconds"
+                                ]
+                            )
+                            if separate_validation_budget
+                            else None
+                        ),
+                        "validation_requested_time_limit_seconds": (
+                            validation_deadline.requested_seconds
+                            if validation_deadline is not None
+                            else None
+                        ),
+                        "remaining_stage2_budget_at_validation_start": (
+                            validation_budget_start_remaining
+                        ),
+                        "remaining_parent_wall_seconds_at_validation_start": (
+                            parent_wall_remaining_at_validation_start
+                        ),
+                        "validation_remaining_time_seconds": (
+                            validation_deadline.remaining()
+                            if validation_deadline is not None
+                            else None
+                        ),
                         "incumbent_before": current_seed_value,
                         "candidate_value": candidate_before_validation,
                         "candidate_validated": candidate_validated,
@@ -4359,6 +4476,12 @@ def _solve_student_assignment(
                     "validation_elapsed_seconds": sum(
                         item["validation_elapsed_seconds"] for item in iterations
                     ),
+                    "candidate_validation_time_limit_seconds": (
+                        float(local_config["candidate_validation_time_limit_seconds"])
+                        if separate_validation_budget
+                        else None
+                    ),
+                    "independent_validation_budget_enabled": separate_validation_budget,
                     "time_limit_seconds": per_probe_limit,
                     "max_iterations": max_iterations,
                     "deadline_requested_time_limit_seconds": stage_2_budget_seconds,

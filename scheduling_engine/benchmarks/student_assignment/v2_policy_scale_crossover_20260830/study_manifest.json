@@ -178,13 +178,121 @@
       "model_variables": 151888,
       "model_constraints": 272763,
       "interpretation": "Search began after presolve and the complete candidate passed unchanged full-model validation with a separated diagnostic allowance."
+    },
+    "reference_target_targeted_r4_s2_cp300_validation180_workers1_seed202.json": {
+      "sha256": "A84F61EA9A5712DBCEBFAA53CE38CC717DB41A44A08667C38433C564F953DB20",
+      "status": "optimal",
+      "candidate_validated": true,
+      "starting_substantive": 42750,
+      "candidate_substantive": 42672,
+      "direct_gain": 78,
+      "cp_sat_seconds": 167.5239764,
+      "search_time_limit_seconds": 300.0,
+      "candidate_validation_time_limit_seconds": 180.0,
+      "full_validation_seconds": 106.8842258,
+      "process_seconds": 626.4354818,
+      "parent_seconds": 631.44128,
+      "branches": 100,
+      "conflicts": 1,
+      "validation_classification": "validated",
+      "interpretation": "Independent candidate validation allowance was available after the 300-second search allowance; the complete candidate was accepted by unchanged full-model validation."
+    },
+    "reference_target_targeted_r4_s2_cp300_validation180_workers1_seed303.json": {
+      "sha256": "D571D6C182EF1269190CC73D2BDF71FB7DCC65C54F6C8E45B6E5C120AFAF95AE",
+      "status": "optimal",
+      "candidate_validated": true,
+      "starting_substantive": 42750,
+      "candidate_substantive": 42672,
+      "direct_gain": 78,
+      "cp_sat_seconds": 158.716758,
+      "search_time_limit_seconds": 300.0,
+      "candidate_validation_time_limit_seconds": 180.0,
+      "full_validation_seconds": 109.9247125,
+      "process_seconds": 619.9783337,
+      "parent_seconds": 625.1857253,
+      "branches": 100,
+      "conflicts": 1,
+      "validation_classification": "validated",
+      "interpretation": "Independent candidate validation allowance was available after the 300-second search allowance; the complete candidate was accepted by unchanged full-model validation."
+    },
+    "special_pressure_target_targeted_r4_s2_cp300_validation180_workers1_seed202.json": {
+      "sha256": "4EA24BEB56E3E71051D4C8BE1230A295999491B31A547EF5C416DBE4C009BE60",
+      "status": "optimal",
+      "candidate_validated": true,
+      "starting_substantive": 43626,
+      "candidate_substantive": 43548,
+      "direct_gain": 78,
+      "cp_sat_seconds": 103.6157481,
+      "search_time_limit_seconds": 300.0,
+      "candidate_validation_time_limit_seconds": 180.0,
+      "full_validation_seconds": 69.757258,
+      "process_seconds": 427.9947931,
+      "parent_seconds": 433.0179241,
+      "branches": 126,
+      "conflicts": 1,
+      "validation_classification": "validated",
+      "interpretation": "Independent candidate validation allowance was available after the 300-second search allowance; the complete candidate was accepted by unchanged full-model validation."
+    },
+    "special_pressure_target_targeted_r4_s2_cp300_validation180_workers1_seed303.json": {
+      "sha256": "30FBADD78F20E5EAC26E16124B1E295E04018C846CCEE9577046CF045B315A46",
+      "status": "optimal",
+      "candidate_validated": true,
+      "starting_substantive": 43626,
+      "candidate_substantive": 43548,
+      "direct_gain": 78,
+      "cp_sat_seconds": 115.4107957,
+      "search_time_limit_seconds": 300.0,
+      "candidate_validation_time_limit_seconds": 180.0,
+      "full_validation_seconds": 74.802468,
+      "process_seconds": 473.8442881,
+      "parent_seconds": 478.2079618,
+      "branches": 126,
+      "conflicts": 1,
+      "validation_classification": "validated",
+      "interpretation": "Independent candidate validation allowance was available after the 300-second search allowance; the complete candidate was accepted by unchanged full-model validation."
     }
+  },
+  "independent_validation_budget_repeatability": {
+    "status": "completed",
+    "configuration": {
+      "operator": "targeted_r4_s2",
+      "worker_count": 1,
+      "cp_sat_random_seeds": [202, 303],
+      "search_time_limit_seconds": 300.0,
+      "candidate_validation_time_limit_seconds": 180.0,
+      "session_time_limit_seconds": 900.0,
+      "parent_hard_wall_seconds": 1200.0,
+      "source_validation_worker_count": 1,
+      "canonical_state_mutated": false
+    },
+    "reference_target": {
+      "input_fingerprint": "f56b5c0d5b745d919a57281a2f1e49959b4b23d8feb9486eda3c81afd8bb7906",
+      "source_seed_fingerprint": "f5cfd15465bab1815ad21a3565236f1ff383e8ffff82a4c783ab62ff410c9fb1",
+      "selected_student_ids": [204, 604],
+      "trials": [
+        {"seed": 202, "artifact": "reference_target_targeted_r4_s2_cp300_validation180_workers1_seed202.json", "starting": 42750, "candidate": 42672, "direct_gain": 78, "cp_sat_seconds": 167.5239764, "full_validation_seconds": 106.8842258, "process_seconds": 626.4354818, "branches": 100, "conflicts": 1, "validated": true},
+        {"seed": 303, "artifact": "reference_target_targeted_r4_s2_cp300_validation180_workers1_seed303.json", "starting": 42750, "candidate": 42672, "direct_gain": 78, "cp_sat_seconds": 158.716758, "full_validation_seconds": 109.9247125, "process_seconds": 619.9783337, "branches": 100, "conflicts": 1, "validated": true}
+      ],
+      "classification": "strong_exact_result_repeatability"
+    },
+    "special_commitment_pressure_target": {
+      "input_fingerprint": "93d4bdf208027d50e51842290d77b7f77c6a92af724a7bd99ce6b78519bc0ca5",
+      "source_seed_fingerprint": "1866d7dca8dddb65a93f7eb1eb6935a329098c49da17c7897edc4a027c72cd46",
+      "selected_student_ids": [1054, 554],
+      "trials": [
+        {"seed": 202, "artifact": "special_pressure_target_targeted_r4_s2_cp300_validation180_workers1_seed202.json", "starting": 43626, "candidate": 43548, "direct_gain": 78, "cp_sat_seconds": 103.6157481, "full_validation_seconds": 69.757258, "process_seconds": 427.9947931, "branches": 126, "conflicts": 1, "validated": true},
+        {"seed": 303, "artifact": "special_pressure_target_targeted_r4_s2_cp300_validation180_workers1_seed303.json", "starting": 43626, "candidate": 43548, "direct_gain": 78, "cp_sat_seconds": 115.4107957, "full_validation_seconds": 74.802468, "process_seconds": 473.8442881, "branches": 126, "conflicts": 1, "validated": true}
+      ],
+      "classification": "strong_exact_result_repeatability"
+    },
+    "interpretation": "Across both target scenarios and both predetermined replication seeds, the operator returned the same complete validated substantive candidate and the same source-level branch shape. Runtime varied with setup and validation cost, while CP-SAT branches/conflicts were stable. This establishes strong result repeatability for targeted_r4_s2 under the separated diagnostic budget, not a universal runtime guarantee.",
+    "historical_policy_implication": "The original 30-second policy comparison remains valid as an exact historical-budget experiment but was startup-confounded. The new evidence shows the operator is repeatably productive when given a genuine search allowance and independent validation allowance. A full target-scale policy-generalization restudy is justified only as a separately scheduled experiment; it is not launched in this increment."
   },
   "final_classification": {
     "target_operator_capability": "productive_after_search_start; short_horizon_startup_limited",
     "worker_count_effect": "not_demonstrated in the original 30-second gate; one worker demonstrated genuine post-presolve search and produced validated candidates, while the matched eight-worker follow-up was hard-wall terminated before publishing a result",
     "startup_characterization": "Reference one-worker R4/S2 did not reach search by 120 seconds, then reached search at 132.08 seconds and produced a validated strict improvement. Special-pressure reached search at 100.01/153.25 seconds and produced the same validated direct gain when validation was given sufficient diagnostic allowance.",
-    "replications": "not run; the continuation goal was startup/horizon characterization after the prior zero-branch gate, not a new repeatability study",
+    "replications": "completed for targeted_r4_s2 under separated diagnostic budgets: both predetermined seeds reproduced the same result in both target scenarios",
     "longer_horizon": "300-second reference probe was sufficient to observe and validate post-presolve productivity; no 600/1800-second probe was justified after a validated candidate was found",
     "production_wiring": "none"
   },
@@ -199,5 +307,5 @@
     "batch_reuse_implemented": false,
     "reason": "The validated solver response is process-local and source decisions alone do not reconstruct solver-backed auxiliary values. A safe cross-process trust/handoff protocol would be required; every child therefore retained unchanged current-model validation."
   },
-  "status": "completed_artifact_forensics_startup_characterization"
+  "status": "completed_budget_separation_and_target_repeatability"
 }
