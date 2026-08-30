@@ -16,7 +16,12 @@ from time import monotonic
 
 from ortools.sat.python import cp_model
 
-from .solver import new_solver, outcome_name, set_solver_hints
+from .solver import (
+    model_proto_fingerprint,
+    new_solver,
+    outcome_name,
+    set_solver_hints,
+)
 from .runtime import OperationTimer
 from ..constants import VALID_STUDENT_GRADE_LEVELS
 
@@ -109,6 +114,12 @@ class SubstantiveSoftTierProbeResult:
     presolve_telemetry: dict = field(default_factory=dict)
     hint_telemetry: dict = field(default_factory=dict)
     search_start_telemetry: dict = field(default_factory=dict)
+    # Opt-in diagnostic witness for the original full-model variable prefix.
+    # This is intentionally not a semantic result and is never serialized as
+    # a durable schedule identity.
+    candidate_base_model_fingerprint: str | None = None
+    candidate_base_model_variable_values: dict = field(default_factory=dict)
+    candidate_base_model_witness_error: str | None = None
 
 
 def _model_family_variable_counts(model, variable_family_indexes=()):
@@ -549,6 +560,7 @@ def probe_substantive_soft_tier(
     phase_callback=None,
     collect_presolve_telemetry: bool = False,
     collect_search_start_telemetry: bool = False,
+    capture_base_model_witness: bool = False,
 ) -> SubstantiveSoftTierProbeResult:
     """Ask whether the unchanged full model can beat one soft tier.
 
@@ -726,6 +738,12 @@ def probe_substantive_soft_tier(
     _emit_phase("probe_model_clone", "started")
     with timing.measure("model_clone_seconds"):
         probe_model = context.model.Clone()
+    base_model_variable_count = len(context.model.Proto().variables)
+    base_model_fingerprint = model_proto_fingerprint(context.model)
+    if len(probe_model.Proto().variables) != base_model_variable_count:
+        raise ValueError("Probe clone changed the base variable count")
+    if model_proto_fingerprint(probe_model) != base_model_fingerprint:
+        raise ValueError("Probe clone changed the base model proto")
     _emit_phase(
         "probe_model_clone",
         "completed",
@@ -1030,6 +1048,8 @@ def probe_substantive_soft_tier(
     minimized_component_value = None
     candidate_source_decisions = ()
     candidate_source_variable_values = {}
+    candidate_base_model_variable_values = {}
+    candidate_base_model_witness_error = None
     candidate_summary = {}
     candidate_quality_summary = {}
     quality_comparison = {}
@@ -1060,6 +1080,18 @@ def probe_substantive_soft_tier(
             candidate_source_variable_values = dict(
                 context.source_decision_variable_values(solver)
             )
+            if capture_base_model_witness:
+                response = tuple(solver.ResponseProto().solution)
+                if len(response) < base_model_variable_count:
+                    candidate_base_model_witness_error = (
+                        "Candidate solver response does not contain every "
+                        "base-model variable"
+                    )
+                else:
+                    candidate_base_model_variable_values = {
+                        index: int(response[index])
+                        for index in range(base_model_variable_count)
+                    }
             candidate_source_decision_map = dict(candidate_source_decisions)
             source_keys = set(seed_source_decisions) | set(candidate_source_decision_map)
             changed_source_decision_count = sum(
@@ -1206,4 +1238,11 @@ def probe_substantive_soft_tier(
         presolve_telemetry=presolve_telemetry,
         hint_telemetry=hint_telemetry,
         search_start_telemetry=search_start_telemetry,
+        candidate_base_model_fingerprint=(
+            base_model_fingerprint if capture_base_model_witness else None
+        ),
+        candidate_base_model_variable_values=(
+            candidate_base_model_variable_values
+        ),
+        candidate_base_model_witness_error=candidate_base_model_witness_error,
     )

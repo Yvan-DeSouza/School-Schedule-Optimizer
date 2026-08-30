@@ -1166,6 +1166,8 @@ def run_student_assignment_operator_session_diagnostic(
     capture_final_source_decisions=True,
     collect_validation_presolve_telemetry=False,
     collect_validation_search_start_telemetry=False,
+    capture_candidate_base_model_witness=False,
+    use_candidate_base_model_witness_for_validation=False,
     timeline_max_events=128,
     phase_callback=None,
 ):
@@ -1249,6 +1251,12 @@ def run_student_assignment_operator_session_diagnostic(
             ),
             "collect_validation_search_start_telemetry": bool(
                 collect_validation_search_start_telemetry
+            ),
+            "capture_candidate_base_model_witness": bool(
+                capture_candidate_base_model_witness
+            ),
+            "use_candidate_base_model_witness_for_validation": bool(
+                use_candidate_base_model_witness_for_validation
             ),
             "diagnostic_parent_hard_wall_deadline_monotonic": (
                 diagnostic_parent_hard_wall_deadline_monotonic
@@ -4014,6 +4022,22 @@ def _solve_student_assignment(
                             "collect_validation_search_start_telemetry", False
                         )
                     ),
+                    base_model_variable_values=(
+                        dict(local_result.candidate_base_model_variable_values)
+                        if local_config.get(
+                            "use_candidate_base_model_witness_for_validation",
+                            False,
+                        )
+                        else None
+                    ),
+                    expected_base_model_fingerprint=(
+                        local_result.candidate_base_model_fingerprint
+                        if local_config.get(
+                            "use_candidate_base_model_witness_for_validation",
+                            False,
+                        )
+                        else None
+                    ),
                 )
                 validated_source_decisions = (
                     tuple(_source_decision_fingerprint(validation_outcome.solver))
@@ -4277,6 +4301,11 @@ def _solve_student_assignment(
                                 "collect_search_start_telemetry", False
                             )
                         ),
+                        capture_base_model_witness=bool(
+                            local_config.get(
+                                "capture_candidate_base_model_witness", False
+                            )
+                        ),
                         phase_callback=phase_callback,
                     )
                     last_result = local_result
@@ -4410,6 +4439,24 @@ def _solve_student_assignment(
                         "validation_telemetry": dict(
                             validation_facts.get("validation_telemetry") or {}
                         ),
+                        "candidate_base_model_witness": {
+                            "captured": bool(
+                                local_result.candidate_base_model_variable_values
+                            ),
+                            "variable_count": len(
+                                local_result.candidate_base_model_variable_values
+                            ),
+                            "model_fingerprint": (
+                                local_result.candidate_base_model_fingerprint
+                            ),
+                            "error": local_result.candidate_base_model_witness_error,
+                            "used_for_validation": bool(
+                                local_config.get(
+                                    "use_candidate_base_model_witness_for_validation",
+                                    False,
+                                )
+                            ),
+                        },
                         "source_decision_identity_checked": validation_facts.get(
                             "source_decision_identity_checked"
                         ),

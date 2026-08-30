@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from hashlib import sha256
 from time import monotonic
 
 from ortools.sat.python import cp_model
@@ -22,6 +23,16 @@ def outcome_name(status):
         cp_model.MODEL_INVALID: "model_invalid",
         cp_model.UNKNOWN: "unknown",
     }.get(status, "unknown")
+
+
+def model_proto_fingerprint(model):
+    """Return a stable identity for one CP-SAT model proto representation."""
+
+    # OR-Tools 9.15 exposes ``CpModelProto`` through its Python helper type,
+    # which does not expose protobuf's SerializeToString method. Its text
+    # representation preserves ordered variables/constraints and is sufficient
+    # for the same-process lineage assertion used by this diagnostic path.
+    return sha256(str(model.Proto()).encode("utf-8")).hexdigest()
 
 
 def new_solver(
@@ -365,6 +376,8 @@ def validate_source_decision_candidate_with_status(
     max_deterministic_time=None,
     collect_presolve_telemetry=False,
     collect_search_start_telemetry=False,
+    base_model_variable_values=None,
+    expected_base_model_fingerprint=None,
 ):
     """Validate a candidate and preserve the bounded validator outcome.
 
@@ -399,12 +412,35 @@ def validate_source_decision_candidate_with_status(
         "cp_sat_solver_wall_time_seconds": None,
         "variable_freedom": None,
         "native_cp_sat": {},
+        "witness": {
+            "enabled": base_model_variable_values is not None,
+            "model_fingerprint": None,
+            "expected_model_fingerprint": expected_base_model_fingerprint,
+            "base_model_variable_count": None,
+            "fixed_variable_count": 0,
+            "missing_variable_count": 0,
+            "extra_variable_count": 0,
+            "source_witness_mismatch_count": 0,
+        },
         "validation_wall_time_seconds": None,
     }
 
     try:
         telemetry["model_variable_count_before"] = len(model.Proto().variables)
         telemetry["model_constraint_count_before"] = len(model.Proto().constraints)
+        base_model_fingerprint = model_proto_fingerprint(model)
+        telemetry["witness"]["model_fingerprint"] = base_model_fingerprint
+        telemetry["witness"]["base_model_variable_count"] = (
+            telemetry["model_variable_count_before"]
+        )
+        if (
+            base_model_variable_values is not None
+            and expected_base_model_fingerprint is not None
+            and base_model_fingerprint != expected_base_model_fingerprint
+        ):
+            raise ValueError(
+                "Candidate witness model fingerprint does not match validation model"
+            )
 
         phase_started = monotonic()
         candidate_model = model.Clone()
@@ -433,6 +469,46 @@ def validate_source_decision_candidate_with_status(
             # requirement that every auxiliary variable also carry a hint.
             candidate_model.Add(
                 candidate_model.GetIntVarFromProtoIndex(variable_index) == int(value)
+            )
+        if base_model_variable_values is not None:
+            expected_indexes = set(range(len(model.Proto().variables)))
+            witness_indexes = {
+                int(index) for index in base_model_variable_values
+            }
+            missing_indexes = expected_indexes - witness_indexes
+            extra_indexes = witness_indexes - expected_indexes
+            telemetry["witness"]["missing_variable_count"] = len(missing_indexes)
+            telemetry["witness"]["extra_variable_count"] = len(extra_indexes)
+            if missing_indexes or extra_indexes:
+                raise ValueError(
+                    "Candidate witness must contain exactly one value for every "
+                    "base-model variable"
+                )
+            source_mismatches = sum(
+                int(base_model_variable_values[int(index)]) != int(value)
+                for index, value in source_variable_values.items()
+                if int(index) in base_model_variable_values
+            )
+            telemetry["witness"]["source_witness_mismatch_count"] = (
+                source_mismatches
+            )
+            if source_mismatches:
+                raise ValueError(
+                    "Candidate witness source values disagree with semantic source values"
+                )
+            for variable_index, value in sorted(
+                base_model_variable_values.items(), key=lambda item: int(item[0])
+            ):
+                variable_index = int(variable_index)
+                variable = candidate_model.GetIntVarFromProtoIndex(variable_index)
+                value = int(value)
+                # The unchanged CP-SAT model remains the authority for domain
+                # membership and every derived constraint. Avoid duplicating
+                # OR-Tools' domain representation here; an equality outside
+                # the domain is rejected by the validation solve itself.
+                candidate_model.Add(variable == value)
+            telemetry["witness"]["fixed_variable_count"] = len(
+                base_model_variable_values
             )
         telemetry["source_fix_constraint_wall_time_seconds"] = (
             monotonic() - phase_started

@@ -1,3 +1,5 @@
+from ortools.sat.python import cp_model
+
 from scheduling_engine.dto import (
     StudentAssignmentInputDTO,
     StudentAssignmentRequestDTO,
@@ -10,6 +12,10 @@ from scheduling_engine.student_assignment.core import (
 from scheduling_engine.student_assignment.validation_benchmark import (
     VALIDATION_BENCHMARK_SCHEMA,
     run_source_decision_validation_benchmark,
+)
+from scheduling_engine.student_assignment.solver import (
+    model_proto_fingerprint,
+    validate_source_decision_candidate_with_status,
 )
 
 
@@ -189,3 +195,54 @@ def test_validation_benchmark_reports_optional_source_decisions_as_free():
     assert freedom["source_variable_count"] == 2
     assert freedom["completion_defining_source_variable_count"] == 1
     assert freedom["source_variable_not_fixed_by_candidate_count"] == 1
+
+
+def test_exact_base_model_witness_is_fail_closed_and_authority_parity_safe():
+    model = cp_model.CpModel()
+    source = model.NewBoolVar("enroll_1_1")
+    auxiliary = model.NewIntVar(0, 2, "derived_auxiliary")
+    model.Add(auxiliary == source + 1)
+    source_values = {source.Index(): 1}
+    witness = {
+        source.Index(): 1,
+        auxiliary.Index(): 2,
+    }
+
+    normal = validate_source_decision_candidate_with_status(
+        model,
+        ((source,),),
+        source_values,
+        5,
+    )
+    witnessed = validate_source_decision_candidate_with_status(
+        model,
+        ((source,),),
+        source_values,
+        5,
+        base_model_variable_values=witness,
+        expected_base_model_fingerprint=model_proto_fingerprint(model),
+    )
+    assert normal.classification == "validated"
+    assert witnessed.classification == normal.classification
+    assert witnessed.telemetry["witness"]["fixed_variable_count"] == 2
+    assert witnessed.telemetry["witness"]["missing_variable_count"] == 0
+
+    invalid = validate_source_decision_candidate_with_status(
+        model,
+        ((source,),),
+        source_values,
+        5,
+        base_model_variable_values={source.Index(): 1, auxiliary.Index(): 0},
+        expected_base_model_fingerprint=model_proto_fingerprint(model),
+    )
+    assert invalid.classification == "hard_invalid"
+
+    incomplete = validate_source_decision_candidate_with_status(
+        model,
+        ((source,),),
+        source_values,
+        5,
+        base_model_variable_values={source.Index(): 1},
+        expected_base_model_fingerprint=model_proto_fingerprint(model),
+    )
+    assert incomplete.classification == "validation_error"
