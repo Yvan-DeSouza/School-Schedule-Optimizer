@@ -49,6 +49,7 @@ from scheduling_engine.student_assignment.grade_guidance import (
 )
 from scheduling_engine.student_assignment.substantive_probe import (
     _parse_cp_sat_model_summaries,
+    _parse_cp_sat_search_start_facts,
 )
 
 
@@ -346,6 +347,34 @@ def test_projected_grade_scope_can_report_presolve_and_hint_telemetry():
     assert iteration["model_family_constraint_counts"]
 
 
+def test_operator_session_can_report_search_start_without_stopping_at_presolve():
+    data, source = _multi_attempt_operator_fixture((1, 2))
+    result = run_student_assignment_operator_session_diagnostic(
+        data,
+        operator_family="targeted_r4_s2",
+        target_policy="fixed",
+        selected_student_ids=(1, 2),
+        initial_source_decisions=source,
+        total_time_limit_seconds=4,
+        max_attempts=1,
+        per_attempt_time_limit_seconds=2,
+        worker_count=1,
+        hard_feasibility_validation_time_limit_seconds=2,
+        hard_feasibility_validation_worker_count=1,
+        collect_resource_telemetry=False,
+        collect_search_start_telemetry=True,
+    )
+
+    iteration = result.optimization_facts["stage_2_local_bootstrap"][
+        "iterations"
+    ][0]
+    telemetry = iteration["search_start_telemetry"]
+    assert telemetry["enabled"] is True
+    assert telemetry["search_started"] is True
+    assert telemetry["first_branch_time_supported"] is False
+    assert iteration["presolve_telemetry"]["stop_after_presolve"] is False
+
+
 def test_presolve_parser_accepts_ortools_grouped_counts():
     initial, presolved = _parse_cp_sat_model_summaries((
         "Initial satisfaction model '':",
@@ -360,6 +389,29 @@ def test_presolve_parser_accepts_ortools_grouped_counts():
     assert initial["constraint_count"] == 75848
     assert presolved["variable_count"] == 23242
     assert presolved["constraint_count"] == 1300
+
+
+def test_search_start_parser_reports_only_supported_native_milestones():
+    facts = _parse_cp_sat_search_start_facts((
+        "Starting presolve at 0.12s",
+        "Presolve summary:",
+        "Preloading model.",
+        "The solution hint is complete and is feasible.",
+        "Starting search at 1.75s",
+        "#1       2.10s best:42 next:[0,41]",
+        "#Bound   2.25s best:42 next:[0,41]",
+    ))
+
+    assert facts["search_started"] is True
+    assert facts["presolve_start_seconds"] == pytest.approx(0.12)
+    assert facts["search_start_seconds"] == pytest.approx(1.75)
+    assert facts["first_solution_seconds"] == pytest.approx(2.10)
+    assert facts["first_bound_seconds"] == pytest.approx(2.25)
+    assert facts["presolve_summary_emitted"] is True
+    assert facts["preloading_model_started"] is True
+    assert facts["complete_hint_reported"] is True
+    assert facts["first_branch_seconds"] is None
+    assert facts["first_branch_time_supported"] is False
 
 
 def test_operator_session_emits_live_phase_breadcrumbs_without_changing_result():

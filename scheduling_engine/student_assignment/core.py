@@ -1150,6 +1150,7 @@ def run_student_assignment_operator_session_diagnostic(
     cp_sat_random_seed=None,
     cp_sat_max_deterministic_time_seconds=None,
     collect_presolve_telemetry=False,
+    collect_search_start_telemetry=False,
     collect_resource_telemetry=True,
     capture_final_source_decisions=True,
     timeline_max_events=128,
@@ -1221,6 +1222,9 @@ def run_student_assignment_operator_session_diagnostic(
                 config.cp_sat_max_deterministic_time_seconds
             ),
             "collect_presolve_telemetry": bool(collect_presolve_telemetry),
+            "collect_search_start_telemetry": bool(
+                collect_search_start_telemetry
+            ),
             "source_seed_fingerprint": (
                 sha256(
                     repr(tuple(sorted(initial_source_decisions, key=repr))).encode()
@@ -4117,6 +4121,11 @@ def _solve_student_assignment(
                         collect_presolve_telemetry=bool(
                             local_config.get("collect_presolve_telemetry", False)
                         ),
+                        collect_search_start_telemetry=bool(
+                            local_config.get(
+                                "collect_search_start_telemetry", False
+                            )
+                        ),
                         phase_callback=phase_callback,
                     )
                     last_result = local_result
@@ -4193,6 +4202,9 @@ def _solve_student_assignment(
                         ),
                         "presolve_telemetry": dict(
                             local_result.presolve_telemetry
+                        ),
+                        "search_start_telemetry": dict(
+                            local_result.search_start_telemetry
                         ),
                         "hint_telemetry": dict(local_result.hint_telemetry),
                         "branches": local_result.branches,
@@ -4495,6 +4507,9 @@ def _solve_student_assignment(
                         local_result.model_family_constraint_counts
                     ),
                     "presolve_telemetry": dict(local_result.presolve_telemetry),
+                    "search_start_telemetry": dict(
+                        local_result.search_start_telemetry
+                    ),
                     "hint_telemetry": dict(local_result.hint_telemetry),
                     "branches": local_result.branches,
                     "conflicts": local_result.conflicts,

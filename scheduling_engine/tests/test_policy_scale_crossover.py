@@ -10,6 +10,47 @@ STUDY_DIRECTORY = (
     / "v2_policy_scale_crossover_20260830"
 )
 
+GATE_RESULT_FILENAMES = (
+    "reference_target_targeted_r4_s2_workers1_seed101.json",
+    "reference_target_targeted_r4_s2_workers8_seed101.json",
+)
+
+CONTINUATION_RESULT_FILENAMES = (
+    "reference_target_targeted_r4_s2_startup120_workers1_seed101.json",
+    "reference_target_targeted_r4_s2_horizon300_workers1_seed101.json",
+    "reference_target_targeted_r4_s2_horizon300_workers8_seed101.json",
+    "special_pressure_target_targeted_r4_s2_horizon180_workers1_seed101.json",
+    "special_pressure_target_targeted_r4_s2_horizon360_workers1_seed101.json",
+)
+
+CONTINUATION_BINDINGS = {
+    "reference_target_targeted_r4_s2_startup120_workers1_seed101.json": (
+        "f56b5c0d5b745d919a57281a2f1e49959b4b23d8feb9486eda3c81afd8bb7906",
+        "f5cfd15465bab1815ad21a3565236f1ff383e8ffff82a4c783ab62ff410c9fb1",
+        (204, 604),
+    ),
+    "reference_target_targeted_r4_s2_horizon300_workers1_seed101.json": (
+        "f56b5c0d5b745d919a57281a2f1e49959b4b23d8feb9486eda3c81afd8bb7906",
+        "f5cfd15465bab1815ad21a3565236f1ff383e8ffff82a4c783ab62ff410c9fb1",
+        (204, 604),
+    ),
+    "reference_target_targeted_r4_s2_horizon300_workers8_seed101.json": (
+        "f56b5c0d5b745d919a57281a2f1e49959b4b23d8feb9486eda3c81afd8bb7906",
+        "f5cfd15465bab1815ad21a3565236f1ff383e8ffff82a4c783ab62ff410c9fb1",
+        (204, 604),
+    ),
+    "special_pressure_target_targeted_r4_s2_horizon180_workers1_seed101.json": (
+        "93d4bdf208027d50e51842290d77b7f77c6a92af724a7bd99ce6b78519bc0ca5",
+        "1866d7dca8dddb65a93f7eb1eb6935a329098c49da17c7897edc4a027c72cd46",
+        (1054, 554),
+    ),
+    "special_pressure_target_targeted_r4_s2_horizon360_workers1_seed101.json": (
+        "93d4bdf208027d50e51842290d77b7f77c6a92af724a7bd99ce6b78519bc0ca5",
+        "1866d7dca8dddb65a93f7eb1eb6935a329098c49da17c7897edc4a027c72cd46",
+        (1054, 554),
+    ),
+}
+
 
 def _read_json(path):
     return json.loads(path.read_text(encoding="utf-8-sig"))
@@ -22,7 +63,7 @@ def _sha256(path):
 def test_scale_crossover_lineage_is_bound_to_declared_target_and_source():
     manifest = _read_json(STUDY_DIRECTORY / "study_manifest.json")
     gate = manifest["target_worker_gate"]
-    assert manifest["status"] == "completed_artifact_forensics_and_seed101_worker_gate"
+    assert manifest["status"] == "completed_artifact_forensics_startup_characterization"
     assert gate["input_fingerprint"] == (
         "f56b5c0d5b745d919a57281a2f1e49959b4b23d8feb9486eda3c81afd8bb7906"
     )
@@ -39,7 +80,8 @@ def test_scale_crossover_lineage_is_bound_to_declared_target_and_source():
 def test_scale_crossover_result_artifacts_match_manifest_and_gate():
     manifest = _read_json(STUDY_DIRECTORY / "study_manifest.json")
     gate = manifest["target_worker_gate"]
-    for filename, expected in manifest["results"].items():
+    for filename in GATE_RESULT_FILENAMES:
+        expected = manifest["results"][filename]
         path = STUDY_DIRECTORY / "results" / filename
         result = _read_json(path)
         assert _sha256(path) == expected["sha256"]
@@ -57,6 +99,46 @@ def test_scale_crossover_result_artifacts_match_manifest_and_gate():
         assert result["seed_validation"]["complete"] is True
         assert result["seed_validation"]["full_model_validation"] is True
         assert result["seed_validation"]["unmet_request_count"] == 0
+
+
+def test_startup_characterization_artifacts_record_search_gate_and_validation():
+    manifest = _read_json(STUDY_DIRECTORY / "study_manifest.json")
+    gate = manifest["target_worker_gate"]
+    for filename in CONTINUATION_RESULT_FILENAMES:
+        expected = manifest["results"][filename]
+        path = STUDY_DIRECTORY / "results" / filename
+        result = _read_json(path)
+        input_fingerprint, source_fingerprint, selected_students = (
+            CONTINUATION_BINDINGS[filename]
+        )
+        assert _sha256(path) == expected["sha256"]
+        assert result["benchmark_manifest_fingerprint"] == input_fingerprint
+        assert result["source_seed_fingerprint"] == source_fingerprint
+        assert result["operator"] == gate["operator"]
+        assert tuple(result["selected_student_ids"]) == selected_students
+        if result["execution_status"] == "hard_deadline_terminated":
+            assert "attempts" not in result
+            assert result["candidate_found"] is False
+            assert result["candidate_validated"] is False
+            continue
+        attempt = result["attempts"][0]
+        telemetry = attempt["search_start_telemetry"]
+        assert telemetry["enabled"] is True
+        if "startup120" in filename:
+            assert result["solver_status"] == "unknown"
+            assert result["candidate_found"] is False
+            assert telemetry["search_started"] is False
+            assert attempt["branches"] == 0
+        else:
+            assert telemetry["search_started"] is True
+            assert telemetry["first_solution_found"] is True
+            assert attempt["candidate_value"] is not None
+        if "horizon360" in filename or "horizon300" in filename:
+            assert result["candidate_validated"] is True
+            assert result["candidate_adopted"] is True
+        if "horizon180" in filename:
+            assert result["candidate_validated"] is False
+            assert result["validation_solver_outcome"] == "unknown"
 
 
 def test_scale_crossover_source_artifact_hashes_match_declared_lineage():

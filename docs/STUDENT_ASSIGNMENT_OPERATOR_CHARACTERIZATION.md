@@ -1137,3 +1137,88 @@ horizon would extend. This classifies target operator capability as
 may inspect model setup/presolve or provide a separately justified search
 configuration, but must retain the unchanged full-model validation boundary
 and must not infer a policy ranking from these unresolved cells.
+
+#### Target startup/search-start continuation (2026-08-30)
+
+The zero-branch worker gate above justified a bounded startup characterization,
+because it did not show that the operator had reached CP-SAT search. This
+continuation used the same `reference_target` input and source seed, the same
+fixed target students `(204, 604)`, one worker, random seed `101`, and the
+unchanged full-model validator. It added only opt-in native progress-log
+telemetry. Production calls do not enable this logging, and no candidate was
+accepted without full validation.
+
+The native log milestones show that the short target horizon was startup/
+presolve limited rather than a search failure:
+
+| Scenario / horizon | Variables | Constraints | CP-SAT wall | Presolve summary | Search start | First solution | Branches / conflicts | Candidate | Full validation |
+| --- | ---: | ---: | ---: | --- | ---: | ---: | ---: | --- | ---: |
+| reference, 120 s | 168,660 | 299,545 | 121.272 s | observed; not fully reduced before cutoff | not observed | not observed | 0 / 0 | none (`UNKNOWN`) | not entered |
+| reference, 300 s | 168,660 | 299,545 | 132.149 s | completed; 62 vars / 69 constraints | 132.08 s | 132.09 s | 100 / 1 | 42,750 → 42,672 | 89.515 s, accepted |
+| reference, 300 s, 8 workers | not published | not published | parent wall 600 s | not published | not published | not published | not published | none authoritative | hard-wall terminated |
+| special-pressure, 180 s | 151,888 | 272,763 | 100.081 s | completed; 94 vars / 96 constraints | 100.01 s | 100.02 s | 126 / 1 | 43,626 → 43,548 | not accepted: validation window exhausted |
+| special-pressure, 360 s | 151,888 | 272,763 | 153.387 s | completed; 94 vars / 96 constraints | 153.25 s | 153.26 s | 126 / 1 | 43,626 → 43,548 | 92.763 s, accepted |
+
+The 120-second reference cell recorded 59 native log messages, a presolve
+start at 1.29 seconds, and no `Starting search` marker. It therefore provides
+direct evidence that CP-SAT had not begun actual search by the cutoff; zero
+branches alone was not treated as an infeasibility or optimality result. In
+the 300-second reference cell, presolve/model loading completed at about
+132.08 seconds and CP-SAT immediately found a complete strict-improvement
+candidate. The accepted candidate changed two source decisions owned by one
+student and changed sections `301`–`304`; its component deltas were section
+utilization `-4`, semester balance `-8`, difficulty `-342`, and category
+diversity `-72`.
+
+The special-pressure cell confirms that this is not unique to the reference
+model. It reached native search at 100.01 seconds and found the same candidate
+in the shorter run, but the existing per-attempt deadline is shared by model
+setup, solve, extraction, and validation. Only about 43 seconds remained for
+full validation, so the candidate was correctly classified as unvalidated.
+With a 360-second diagnostic allowance, the same candidate passed unchanged
+full-model validation. Its component deltas were section utilization `-4`,
+semester balance `-8`, difficulty `-342`, and category diversity `-72`.
+
+This continuation classifies the observed one-worker target behavior as
+**short-horizon startup-limited; productive after search begins**. It does not
+establish a target-scale operator optimum, a complete quality curve, or a
+worker-count advantage. A matched eight-worker reference cell was attempted
+after the one-worker search gate was met, but the existing supervised parent
+wall terminated it at 600 seconds before the worker published an authoritative
+attempt result. Its termination therefore cannot be interpreted as
+infeasibility, lack of search, or a worker-count comparison. No 600- or
+1800-second one-worker probe was justified after the bounded reference run
+found and validated a candidate. The first-branch time is not reported:
+OR-Tools 9.15 exposes aggregate branches after `Solve`, but no supported
+per-branch timestamp. Native log search-start and first-solution timestamps are
+the authoritative milestones captured here.
+
+#### Source-validation overhead audit
+
+The supervised variance runner validates the detached source branch through
+the current full-model validator before every isolated child trial. The
+historical matched worker gate measured source-validation preparation of
+approximately `120.742` seconds for the one-worker cell and `51.200` seconds
+for the eight-worker cell. The new reference horizon cell measured
+`120.135` seconds of source validation before the operator attempt; the
+special-pressure cells measured `94.359` and `148.635` seconds respectively.
+
+This repetition was audited for safe batch reuse and was deliberately left in
+place. The validated CP-SAT response is an in-process solver object and is not
+a portable trusted artifact. Source decisions and fingerprints alone are not
+enough to reconstruct the solver-backed auxiliary values that the operator
+probe uses for objective facts and hints. Skipping the child validator would
+therefore require a new explicit cross-process trust/handoff protocol, not a
+local cache, and would risk confusing stored provenance with current-model
+authority. No such bypass was implemented. Every generated candidate in the
+continuation still crossed the unchanged full-model validation boundary; the
+short special-pressure candidate that ran out of validation time was correctly
+not adopted.
+
+The resulting scale evidence separates three costs where telemetry supports
+it: source/model preparation, native CP-SAT presolve/startup, and actual
+search. At target scale, native startup dominates the short 120-second
+reference horizon, while the successful one-worker cells show that the
+post-start search itself can be productive. The existing uniform per-attempt
+budget therefore remains a future diagnostic-policy question, not a production
+change authorized by this study.

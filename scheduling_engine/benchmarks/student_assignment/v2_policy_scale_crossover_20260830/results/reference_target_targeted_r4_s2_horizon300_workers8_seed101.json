@@ -1,0 +1,72 @@
+{
+  "benchmark_manifest_fingerprint": "f56b5c0d5b745d919a57281a2f1e49959b4b23d8feb9486eda3c81afd8bb7906",
+  "candidate_adopted": false,
+  "candidate_diagnostic": "not_authoritative_after_worker_termination",
+  "candidate_found": false,
+  "candidate_validated": false,
+  "cp_sat_max_deterministic_time_seconds": null,
+  "cp_sat_random_seed": 101,
+  "execution_status": "hard_deadline_terminated",
+  "final_assignment_count": null,
+  "final_special_commitment_count": 140,
+  "final_substantive_value": null,
+  "final_unmet_count": 0,
+  "hard_wall_seconds": 600.0,
+  "initial_substantive_value": null,
+  "operator": "targeted_r4_s2",
+  "output_protocol_complete": true,
+  "per_attempt_time_limit_seconds": 300.0,
+  "preparation_seconds": 603.5316263999994,
+  "schema": "student_assignment_adaptive_variance_trial_v1",
+  "selected_student_ids": [
+    204,
+    604
+  ],
+  "source_seed_fingerprint": "f5cfd15465bab1815ad21a3565236f1ff383e8ffff82a4c783ab62ff410c9fb1",
+  "study_id": "adaptive-policy-variance-v2-20260828",
+  "supervision": {
+    "cleanup": {
+      "cleanup_elapsed_seconds": 0.19472129999485333,
+      "descendants_clean": true,
+      "initial_process_count": 1,
+      "remaining_process_count": 0,
+      "requested_pid": 12636
+    },
+    "elapsed_seconds": 600.2588153000033,
+    "execution_status": "hard_deadline_terminated",
+    "hard_deadline_elapsed_seconds": 600.2588153000033,
+    "last_worker_phase": {
+      "elapsed_seconds": 0.0005397999993874691,
+      "event": "started",
+      "phase": "variance_trial",
+      "phase_history": [
+        {
+          "elapsed_seconds": 0.0005310999986249954,
+          "event": "started",
+          "phase": "variance_trial"
+        }
+      ]
+    },
+    "payload": null,
+    "protocol_error": null,
+    "resource_guard_facts": {},
+    "resource_snapshot": {
+      "available": true,
+      "pids": [
+        12636
+      ],
+      "process_count": 1,
+      "root_pid": 12636,
+      "system_available_memory_bytes": 4713578496,
+      "tree_rss_bytes": 914685952,
+      "tree_uss_bytes": 877256704
+    },
+    "worker_exit_code": null,
+    "worker_pid": 12636
+  },
+  "termination_grace_seconds": 5.0,
+  "total_time_limit_seconds": 420.0,
+  "validation_time_limit_seconds": 180.0,
+  "validation_worker_count": 1,
+  "worker_count": 8
+}

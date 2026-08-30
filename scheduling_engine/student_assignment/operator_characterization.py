@@ -486,6 +486,7 @@ def run_operator_characterization_trial(
     worker_count=8,
     target_policy="dynamic",
     collect_resource_telemetry=False,
+    collect_search_start_telemetry=False,
     hard_feasibility_validation_time_limit_seconds=None,
     hard_feasibility_validation_worker_count=None,
     cp_sat_random_seed=None,
@@ -527,6 +528,7 @@ def run_operator_characterization_trial(
         per_attempt_time_limit_seconds=per_attempt_time_limit_seconds,
         worker_count=worker_count,
         collect_resource_telemetry=collect_resource_telemetry,
+        collect_search_start_telemetry=collect_search_start_telemetry,
         hard_feasibility_validation_time_limit_seconds=(
             hard_feasibility_validation_time_limit_seconds
         ),

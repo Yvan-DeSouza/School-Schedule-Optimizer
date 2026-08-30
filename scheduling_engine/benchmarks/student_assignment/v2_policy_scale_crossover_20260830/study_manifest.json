@@ -109,14 +109,95 @@
       "conflicts": 0,
       "seed_validation_seconds": 51.199554,
       "seed_validation": "complete_feasible_unmet_free"
+    },
+    "reference_target_targeted_r4_s2_startup120_workers1_seed101.json": {
+      "sha256": "D9E4311866B15C9D780AD33A787B7D743FF67C9C6482C53D2E2A904C19BB39D8",
+      "status": "unknown",
+      "candidate_validated": false,
+      "cp_sat_seconds": 121.2716738,
+      "search_start_seconds": null,
+      "branches": 0,
+      "conflicts": 0,
+      "model_variables": 168660,
+      "model_constraints": 299545,
+      "interpretation": "Presolve/model loading did not reach native search within the 120-second probe horizon; UNKNOWN is unresolved, not infeasible."
+    },
+    "reference_target_targeted_r4_s2_horizon300_workers1_seed101.json": {
+      "sha256": "4BD44E9604E8D4AA440A9194551BE2DC1D10994A99CB01EB6CC504AEF40C219A",
+      "status": "optimal",
+      "candidate_validated": true,
+      "starting_substantive": 42750,
+      "candidate_substantive": 42672,
+      "direct_gain": 78,
+      "cp_sat_seconds": 132.1487056,
+      "search_start_seconds": 132.08,
+      "first_solution_seconds": 132.09,
+      "branches": 100,
+      "conflicts": 1,
+      "model_variables": 168660,
+      "model_constraints": 299545,
+      "interpretation": "Presolve completed and native search began; a complete candidate was found and accepted by unchanged full-model validation."
+    },
+    "reference_target_targeted_r4_s2_horizon300_workers8_seed101.json": {
+      "sha256": "D57D34976BA011CFF36CE108B9ACE1F1957565BF685CEA382C958223BBBFC5C5",
+      "status": "hard_deadline_terminated",
+      "candidate_validated": false,
+      "hard_wall_seconds": 600.0,
+      "model_variables": null,
+      "model_constraints": null,
+      "interpretation": "Matched eight-worker follow-up was terminated by the existing supervised 600-second parent wall before the worker published an authoritative result; this is not evidence of infeasibility or worker benefit."
+    },
+    "special_pressure_target_targeted_r4_s2_horizon180_workers1_seed101.json": {
+      "sha256": "E0DE9A697C2979C48D4ED6BDBBD71E79B04B8BAF2420A8EC484E5B9B905C44A7",
+      "status": "optimal",
+      "candidate_validated": false,
+      "starting_substantive": 43626,
+      "candidate_substantive": 43548,
+      "direct_gain": 78,
+      "cp_sat_seconds": 100.0814278,
+      "search_start_seconds": 100.01,
+      "first_solution_seconds": 100.02,
+      "validation_status": "unknown_due_to_shared_per_attempt_deadline",
+      "model_variables": 151888,
+      "model_constraints": 272763,
+      "interpretation": "Search found a candidate, but the 180-second attempt budget left only about 43 seconds for full validation; the candidate was not adopted."
+    },
+    "special_pressure_target_targeted_r4_s2_horizon360_workers1_seed101.json": {
+      "sha256": "355A26F0B9E6F13E93CE1DE0DB15AD49AE0286D1261E0DAAAEFBAFDA2813A82F",
+      "status": "optimal",
+      "candidate_validated": true,
+      "starting_substantive": 43626,
+      "candidate_substantive": 43548,
+      "direct_gain": 78,
+      "cp_sat_seconds": 153.3867696,
+      "search_start_seconds": 153.25,
+      "first_solution_seconds": 153.26,
+      "full_validation_seconds": 92.7625616,
+      "branches": 126,
+      "conflicts": 1,
+      "model_variables": 151888,
+      "model_constraints": 272763,
+      "interpretation": "Search began after presolve and the complete candidate passed unchanged full-model validation with a separated diagnostic allowance."
     }
   },
   "final_classification": {
-    "target_operator_capability": "unresolved",
-    "worker_count_effect": "not_demonstrated; one and eight workers both stopped before genuine branch search",
-    "replications": "not_run because the seed-101 comparison was not decision-relevant under the gate",
-    "longer_horizon": "not_run because neither cell demonstrated genuine CP-SAT search",
+    "target_operator_capability": "productive_after_search_start; short_horizon_startup_limited",
+    "worker_count_effect": "not_demonstrated in the original 30-second gate; one worker demonstrated genuine post-presolve search and produced validated candidates, while the matched eight-worker follow-up was hard-wall terminated before publishing a result",
+    "startup_characterization": "Reference one-worker R4/S2 did not reach search by 120 seconds, then reached search at 132.08 seconds and produced a validated strict improvement. Special-pressure reached search at 100.01/153.25 seconds and produced the same validated direct gain when validation was given sufficient diagnostic allowance.",
+    "replications": "not run; the continuation goal was startup/horizon characterization after the prior zero-branch gate, not a new repeatability study",
+    "longer_horizon": "300-second reference probe was sufficient to observe and validate post-presolve productivity; no 600/1800-second probe was justified after a validated candidate was found",
     "production_wiring": "none"
   },
-  "status": "completed_artifact_forensics_and_seed101_worker_gate"
+  "source_validation_audit": {
+    "measured_seconds": {
+      "historical_workers1": 120.742,
+      "historical_workers8": 51.2,
+      "reference_horizon300_workers1": 120.135,
+      "special_horizon180_workers1": 94.359,
+      "special_horizon360_workers1": 148.635
+    },
+    "batch_reuse_implemented": false,
+    "reason": "The validated solver response is process-local and source decisions alone do not reconstruct solver-backed auxiliary values. A safe cross-process trust/handoff protocol would be required; every child therefore retained unchanged current-model validation."
+  },
+  "status": "completed_artifact_forensics_startup_characterization"
 }

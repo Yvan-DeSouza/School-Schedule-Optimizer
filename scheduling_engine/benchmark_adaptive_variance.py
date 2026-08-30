@@ -109,6 +109,7 @@ def run_variance_trial(
     validation_time_limit_seconds=None,
     validation_worker_count=1,
     collect_resource_telemetry=True,
+    collect_search_start_telemetry=False,
     worker_status_path=None,
     capture_candidate_source_decisions=False,
 ):
@@ -184,6 +185,7 @@ def run_variance_trial(
             per_attempt_time_limit_seconds=float(per_attempt_time_limit_seconds),
             worker_count=int(worker_count),
             collect_resource_telemetry=bool(collect_resource_telemetry),
+            collect_search_start_telemetry=bool(collect_search_start_telemetry),
             hard_feasibility_validation_time_limit_seconds=(
                 float(validation_time_limit_seconds)
                 if validation_time_limit_seconds is not None
@@ -324,6 +326,7 @@ def run_supervised_variance_trial(
     validation_time_limit_seconds=None,
     validation_worker_count=1,
     collect_resource_telemetry=True,
+    collect_search_start_telemetry=False,
     hard_wall_seconds=None,
     termination_grace_seconds=5.0,
     max_process_tree_rss_bytes=None,
@@ -403,6 +406,8 @@ def run_supervised_variance_trial(
             command.extend(["--validation-seconds", str(float(validation_time_limit_seconds))])
         if not collect_resource_telemetry:
             command.append("--no-resource-telemetry")
+        if collect_search_start_telemetry:
+            command.append("--collect-search-start-telemetry")
         if capture_candidate_source_decisions:
             command.append("--capture-candidate-source-decisions")
         supervision = supervise_json_worker(
@@ -455,6 +460,11 @@ def main(argv=None):  # pragma: no cover - offline experiment entry point
     parser.add_argument("--validation-workers", type=int, default=1)
     parser.add_argument("--no-resource-telemetry", action="store_true")
     parser.add_argument(
+        "--collect-search-start-telemetry",
+        action="store_true",
+        help="capture bounded native CP-SAT presolve/search milestones",
+    )
+    parser.add_argument(
         "--supervised",
         action="store_true",
         help="run the trial under the hard parent-side watchdog",
@@ -488,6 +498,7 @@ def main(argv=None):  # pragma: no cover - offline experiment entry point
         validation_time_limit_seconds=args.validation_seconds,
         validation_worker_count=args.validation_workers,
         collect_resource_telemetry=not args.no_resource_telemetry,
+        collect_search_start_telemetry=args.collect_search_start_telemetry,
         worker_status_path=args.worker_status if args.worker else None,
         capture_candidate_source_decisions=args.capture_candidate_source_decisions,
     )
@@ -520,6 +531,7 @@ def main(argv=None):  # pragma: no cover - offline experiment entry point
             validation_time_limit_seconds=args.validation_seconds,
             validation_worker_count=args.validation_workers,
             collect_resource_telemetry=not args.no_resource_telemetry,
+            collect_search_start_telemetry=args.collect_search_start_telemetry,
             hard_wall_seconds=args.hard_wall_seconds,
             termination_grace_seconds=args.termination_grace_seconds,
             max_process_tree_rss_bytes=args.max_process_tree_rss_bytes,

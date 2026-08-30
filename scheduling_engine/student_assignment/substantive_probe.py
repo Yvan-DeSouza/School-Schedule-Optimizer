@@ -108,6 +108,7 @@ class SubstantiveSoftTierProbeResult:
     model_family_constraint_counts: dict = field(default_factory=dict)
     presolve_telemetry: dict = field(default_factory=dict)
     hint_telemetry: dict = field(default_factory=dict)
+    search_start_telemetry: dict = field(default_factory=dict)
 
 
 def _model_family_variable_counts(model, variable_family_indexes=()):
@@ -297,6 +298,75 @@ def _parse_cp_sat_symmetry_facts(log_messages):
     }
 
 
+def _parse_cp_sat_search_start_facts(log_messages):
+    """Parse bounded native milestones from a normal CP-SAT search log.
+
+    The Python API exposes aggregate branches and conflicts after ``Solve``
+    but no structured timestamp for the transition out of presolve.  CP-SAT's
+    supported progress log does expose that transition, so this opt-in parser
+    records only the first bounded milestone for each event.  It deliberately
+    does not infer a first branch from an aggregate counter.
+    """
+
+    lines = "\n".join(log_messages or ()).splitlines()
+    presolve_start_pattern = re.compile(
+        r"Starting presolve at\s*([0-9.eE+-]+)s"
+    )
+    search_start_pattern = re.compile(
+        r"Starting (?:sequential )?search at\s*([0-9.eE+-]+)s"
+    )
+    solution_pattern = re.compile(
+        r"^#(?:[0-9]+)\s+([0-9.eE+-]+)s\b"
+    )
+    bound_pattern = re.compile(
+        r"^#Bound\s+([0-9.eE+-]+)s\b"
+    )
+
+    def first_match(pattern):
+        for raw_line in lines:
+            match = pattern.search(raw_line.strip())
+            if match:
+                return float(match.group(1))
+        return None
+
+    presolve_start = first_match(presolve_start_pattern)
+    search_start = first_match(search_start_pattern)
+    first_solution = first_match(solution_pattern)
+    first_bound = first_match(bound_pattern)
+    presolve_summary_emitted = any(
+        line.strip().startswith("Presolve summary:") for line in lines
+    )
+    preloading_model_started = any(
+        line.strip().startswith("Preloading model.") for line in lines
+    )
+    complete_hint_reported = any(
+        "The solution hint is complete and is feasible." in line
+        for line in lines
+    )
+    return {
+        "enabled": True,
+        "log_message_count": len(log_messages or ()),
+        "presolve_start_seconds": presolve_start,
+        "search_start_seconds": search_start,
+        "first_solution_seconds": first_solution,
+        "first_bound_seconds": first_bound,
+        "search_started": search_start is not None,
+        "first_solution_found": first_solution is not None,
+        "first_bound_found": first_bound is not None,
+        "presolve_summary_emitted": presolve_summary_emitted,
+        "preloading_model_started": preloading_model_started,
+        "complete_hint_reported": complete_hint_reported,
+        # CP-SAT does not expose a supported per-branch timestamp. Keep this
+        # explicit so consumers cannot mistake aggregate branch counts for a
+        # measured time-to-first-branch fact.
+        "first_branch_seconds": None,
+        "first_branch_time_supported": False,
+        "native_search_start_evidence": (
+            "log_marker" if search_start is not None else "not_observed"
+        ),
+    }
+
+
 def _build_presolve_telemetry(
     model,
     solver,
@@ -478,6 +548,7 @@ def probe_substantive_soft_tier(
     cp_sat_max_deterministic_time_seconds: float | None = None,
     phase_callback=None,
     collect_presolve_telemetry: bool = False,
+    collect_search_start_telemetry: bool = False,
 ) -> SubstantiveSoftTierProbeResult:
     """Ask whether the unchanged full model can beat one soft tier.
 
@@ -494,6 +565,11 @@ def probe_substantive_soft_tier(
     """
 
     operation_started = monotonic()
+
+    if collect_presolve_telemetry and collect_search_start_telemetry:
+        raise ValueError(
+            "presolve and normal-search telemetry modes are mutually exclusive"
+        )
 
     def _emit_phase(phase, event="completed", **facts):
         """Publish optional live diagnostics without changing probe behavior."""
@@ -886,18 +962,23 @@ def probe_substantive_soft_tier(
             ),
             max_deterministic_time=cp_sat_max_deterministic_time_seconds,
         )
-    presolve_log_messages = []
-    if collect_presolve_telemetry:
+    native_log_messages = []
+    collect_native_log = (
+        collect_presolve_telemetry or collect_search_start_telemetry
+    )
+    if collect_native_log:
         # OR-Tools exposes presolved model counts through its supported log
-        # stream, not through a structured Python response. This opt-in audit
-        # mode captures that stream, suppresses stdout, and stops after
-        # presolve so it cannot be mistaken for a quality-search result.
+        # stream, not through a structured Python response. These opt-in audit
+        # modes capture that stream and suppress stdout. The presolve mode
+        # stops before search; the search-start mode runs the normal solve and
+        # records only bounded native milestones.
         solver.parameters.log_search_progress = True
         solver.parameters.log_to_stdout = False
-        solver.parameters.stop_after_presolve = True
-        solver.log_callback = presolve_log_messages.append
+        if collect_presolve_telemetry:
+            solver.parameters.stop_after_presolve = True
+        solver.log_callback = native_log_messages.append
     hint_telemetry = {}
-    if collect_presolve_telemetry:
+    if collect_native_log:
         hint_telemetry = _build_hint_telemetry(
             probe_model,
             context,
@@ -913,9 +994,9 @@ def probe_substantive_soft_tier(
         finally:
             # The OR-Tools logging callback can retain a native logging
             # thread after Solve returns on Windows.  Detach it immediately
-            # after the opt-in presolve audit so a completed test/process is
+            # after the opt-in native-log audit so a completed test/process is
             # not held open by diagnostic plumbing.
-            if collect_presolve_telemetry:
+            if collect_native_log:
                 solver.log_callback = None
         elapsed = monotonic() - started
     _emit_phase(
@@ -928,10 +1009,14 @@ def probe_substantive_soft_tier(
         _build_presolve_telemetry(
             probe_model,
             solver,
-            presolve_log_messages,
+            native_log_messages,
             stopped_after_presolve=bool(collect_presolve_telemetry),
         )
-        if collect_presolve_telemetry else {}
+        if collect_native_log else {}
+    )
+    search_start_telemetry = (
+        _parse_cp_sat_search_start_facts(native_log_messages)
+        if collect_search_start_telemetry else {}
     )
     complete_candidate_found = status_code in {cp_model.OPTIMAL, cp_model.FEASIBLE}
 
@@ -1120,4 +1205,5 @@ def probe_substantive_soft_tier(
         model_family_constraint_counts=_model_family_constraint_counts(probe_model),
         presolve_telemetry=presolve_telemetry,
         hint_telemetry=hint_telemetry,
+        search_start_telemetry=search_start_telemetry,
     )
