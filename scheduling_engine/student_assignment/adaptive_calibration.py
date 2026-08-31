@@ -234,8 +234,24 @@ def build_calibration_policy(
     policy_name,
     *,
     portfolio=DEFAULT_ADAPTIVE_OPERATOR_PORTFOLIO,
+    fixed_cycle_names=None,
 ):
     """Return the runtime selector configuration for a matched control."""
+
+    if fixed_cycle_names is not None:
+        if policy_name != "fixed_cycle":
+            raise ValueError(
+                "fixed_cycle_names may only override the fixed_cycle policy"
+            )
+        names = tuple(fixed_cycle_names)
+        if not names:
+            raise ValueError("fixed_cycle_names must contain an operator")
+        return {
+            "selection_policy": "fixed_cycle",
+            "fixed_cycle": tuple(
+                _operator_by_name(name, portfolio) for name in names
+            ),
+        }
 
     if policy_name == "adaptive":
         return {"selection_policy": "adaptive", "fixed_cycle": ()}
@@ -320,17 +336,11 @@ def run_matched_calibration_trial(
     source_decisions = tuple(initial_source_decisions)
     if not source_decisions:
         raise ValueError("Calibration requires semantic source decisions")
-    policy_config = build_calibration_policy(policy, portfolio=portfolio)
-    if fixed_cycle_names is not None:
-        fixed_cycle = tuple(
-            _operator_by_name(name, portfolio) for name in fixed_cycle_names
-        )
-        if not fixed_cycle:
-            raise ValueError("fixed_cycle_names must contain an operator")
-        policy_config = {
-            "selection_policy": "fixed_cycle",
-            "fixed_cycle": fixed_cycle,
-        }
+    policy_config = build_calibration_policy(
+        policy,
+        portfolio=portfolio,
+        fixed_cycle_names=fixed_cycle_names,
+    )
     result = run_adaptive_local_search_diagnostic(
         data,
         initial_result=initial_result,

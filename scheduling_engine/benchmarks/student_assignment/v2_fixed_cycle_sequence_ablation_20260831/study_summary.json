@@ -108044,6 +108044,7 @@
     }
   },
   "interpretation": {
+    "causal_comparison_status": "PRELIMINARY_NON_PARITY_QUALIFIED",
     "hard_constraints_changed": false,
     "objective_semantics_changed": false,
     "promotion_decision": "PENDING_SEQUENCE_ABLATION_EVIDENCE",

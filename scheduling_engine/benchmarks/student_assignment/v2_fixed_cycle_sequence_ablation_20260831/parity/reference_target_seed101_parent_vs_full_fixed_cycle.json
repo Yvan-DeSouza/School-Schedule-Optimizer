@@ -1,0 +1,672 @@
+{
+  "classification": "TRAJECTORY_NON_PARITY",
+  "configuration": {
+    "ablation": {
+      "budget": {
+        "candidate_validation_time_limit_seconds": null,
+        "candidate_validation_worker_count": null,
+        "cp_sat_random_seed": 101,
+        "cumulative_seconds": null,
+        "full_model_validation_required": null,
+        "ordinary_stage2_between_iterations": null,
+        "parent_hard_wall_seconds": 1800.0,
+        "per_operator_maximum_seconds": null,
+        "profile": "balanced",
+        "profile_fingerprint": "d1eb7b0501db1b8fd6a2cf0598f4788a6864e4eb11ced45617f102f6f6b628da",
+        "session_overrides": {
+          "r2": {
+            "per_attempt_cp_sat_limit_seconds": null,
+            "session_max_attempts": null,
+            "session_time_limit_seconds": null
+          },
+          "targeted_r4_s2": {
+            "per_attempt_cp_sat_limit_seconds": null,
+            "session_max_attempts": null,
+            "session_time_limit_seconds": null
+          },
+          "targeted_utilization_r64_s8": {
+            "per_attempt_cp_sat_limit_seconds": null,
+            "session_max_attempts": null,
+            "session_time_limit_seconds": null
+          }
+        },
+        "worker_count": 1
+      },
+      "input_fingerprint": "f56b5c0d5b745d919a57281a2f1e49959b4b23d8feb9486eda3c81afd8bb7906",
+      "policy": "fixed_cycle",
+      "sequence": [
+        "targeted_r4_s2",
+        "targeted_utilization_r64_s8",
+        "r2"
+      ],
+      "source_seed_fingerprint": "f5cfd15465bab1815ad21a3565236f1ff383e8ffff82a4c783ab62ff410c9fb1"
+    },
+    "differences": [],
+    "parent": {
+      "budget": {
+        "candidate_validation_time_limit_seconds": null,
+        "candidate_validation_worker_count": null,
+        "cp_sat_random_seed": 101,
+        "cumulative_seconds": null,
+        "full_model_validation_required": null,
+        "ordinary_stage2_between_iterations": null,
+        "parent_hard_wall_seconds": 1800.0,
+        "per_operator_maximum_seconds": null,
+        "profile": "balanced",
+        "profile_fingerprint": "d1eb7b0501db1b8fd6a2cf0598f4788a6864e4eb11ced45617f102f6f6b628da",
+        "session_overrides": {
+          "r2": {
+            "per_attempt_cp_sat_limit_seconds": null,
+            "session_max_attempts": null,
+            "session_time_limit_seconds": null
+          },
+          "targeted_r4_s2": {
+            "per_attempt_cp_sat_limit_seconds": null,
+            "session_max_attempts": null,
+            "session_time_limit_seconds": null
+          },
+          "targeted_utilization_r64_s8": {
+            "per_attempt_cp_sat_limit_seconds": null,
+            "session_max_attempts": null,
+            "session_time_limit_seconds": null
+          }
+        },
+        "worker_count": 1
+      },
+      "input_fingerprint": "f56b5c0d5b745d919a57281a2f1e49959b4b23d8feb9486eda3c81afd8bb7906",
+      "policy": "fixed_cycle",
+      "sequence": [
+        "targeted_r4_s2",
+        "targeted_utilization_r64_s8",
+        "r2"
+      ],
+      "source_seed_fingerprint": "f5cfd15465bab1815ad21a3565236f1ff383e8ffff82a4c783ab62ff410c9fb1"
+    }
+  },
+  "observations": {
+    "ablation": {
+      "attempts": [
+        {
+          "adopted": false,
+          "candidate_found": false,
+          "candidate_validated": false,
+          "operator": "targeted_r4_s2",
+          "solver_wall_time_seconds": 146.32220660000002,
+          "validation_classification": "not_attempted",
+          "validation_seconds": 0.0
+        },
+        {
+          "adopted": false,
+          "candidate_found": false,
+          "candidate_validated": false,
+          "operator": "targeted_utilization_r64_s8",
+          "solver_wall_time_seconds": 149.0696289,
+          "validation_classification": "not_attempted",
+          "validation_seconds": 0.0
+        },
+        {
+          "adopted": false,
+          "candidate_found": false,
+          "candidate_validated": false,
+          "operator": "r2",
+          "solver_wall_time_seconds": null,
+          "validation_classification": "validation_error",
+          "validation_seconds": null
+        }
+      ],
+      "candidate_complete": true,
+      "cell_elapsed_seconds": null,
+      "execution_status": "completed",
+      "final_assignment_count": 9030,
+      "final_special_commitment_count": 140,
+      "final_substantive_value": 42750.0,
+      "final_unmet_count": 0,
+      "initial_substantive_value": 42750.0,
+      "phase_timings": {},
+      "policy_accounting": {},
+      "resource": {},
+      "supervision": {
+        "elapsed_seconds": 964.9634619999997,
+        "execution_status": "completed",
+        "hard_deadline_elapsed_seconds": null,
+        "protocol_error": null,
+        "worker_exit_code": 0,
+        "worker_pid": 20924
+      },
+      "timing": {
+        "external_overrun_seconds": 51.71409349999158,
+        "finalization_seconds": 0.8950189000024693,
+        "operator_execution_seconds": 934.2459677000006,
+        "policy_selection_seconds": 0.1364882000198122,
+        "total_elapsed_seconds": 951.7140934999916
+      }
+    },
+    "parent": {
+      "attempts": [
+        {
+          "adopted": false,
+          "candidate_found": false,
+          "candidate_validated": false,
+          "operator": "targeted_r4_s2",
+          "solver_wall_time_seconds": 160.19375970000002,
+          "validation_classification": "validation_unknown",
+          "validation_seconds": 12.09324740000011
+        },
+        {
+          "adopted": false,
+          "candidate_found": false,
+          "candidate_validated": false,
+          "operator": "targeted_utilization_r64_s8",
+          "solver_wall_time_seconds": 167.6255896,
+          "validation_classification": "not_attempted",
+          "validation_seconds": 0.0
+        },
+        {
+          "adopted": false,
+          "candidate_found": false,
+          "candidate_validated": false,
+          "operator": "r2",
+          "solver_wall_time_seconds": 0,
+          "validation_classification": "not_attempted",
+          "validation_seconds": 0
+        }
+      ],
+      "candidate_complete": true,
+      "cell_elapsed_seconds": null,
+      "execution_status": "completed",
+      "final_assignment_count": 9030,
+      "final_special_commitment_count": 140,
+      "final_substantive_value": 42750.0,
+      "final_unmet_count": 0,
+      "initial_substantive_value": 42750.0,
+      "phase_timings": {},
+      "policy_accounting": {},
+      "resource": {},
+      "supervision": {
+        "elapsed_seconds": 949.1606360000005,
+        "execution_status": "completed",
+        "hard_deadline_elapsed_seconds": null,
+        "protocol_error": null,
+        "worker_exit_code": 0,
+        "worker_pid": 18388
+      },
+      "timing": {
+        "external_overrun_seconds": 40.162752400006866,
+        "finalization_seconds": 0.7137175000098068,
+        "operator_execution_seconds": 928.642165199999,
+        "policy_selection_seconds": 0.09374339999340009,
+        "total_elapsed_seconds": 940.1627524000069
+      }
+    }
+  },
+  "schema": "student_assignment_fixed_cycle_parity_diff_v1",
+  "trajectory": {
+    "ablation": {
+      "attempts": [
+        {
+          "actual_target_scope": [
+            204,
+            604
+          ],
+          "adopted": false,
+          "candidate_found": false,
+          "candidate_source_decision_fingerprint": "aa49dde149fe927ff1bb8707d139d44a12a28459170b292d3da06ca5082327c4",
+          "candidate_validated": false,
+          "gain": 0.0,
+          "inner_probe_summaries": [
+            {
+              "actual_target_scope": [
+                204,
+                604
+              ],
+              "affected_section_ids": [],
+              "affected_student_ids": [],
+              "candidate_complete": true,
+              "candidate_found": false,
+              "candidate_source_decision_fingerprint": null,
+              "candidate_substantive_value": null,
+              "candidate_validated": false,
+              "component_deltas": {},
+              "effective_radius": null,
+              "iteration": 1,
+              "model_constraint_count": 299545,
+              "model_variable_count": 168660,
+              "operator": "targeted_r4_s2",
+              "radius": 4,
+              "selected_grade": null,
+              "starting_incumbent_value": 42750,
+              "status": "unknown",
+              "stopping_reason": null,
+              "substantive_gain": 0.0,
+              "target_scope": [
+                1201,
+                106
+              ],
+              "validation_classification": "not_attempted"
+            }
+          ],
+          "operator": "targeted_r4_s2",
+          "selected_grade": null,
+          "sequence_position": 0,
+          "status": "unknown",
+          "stopping_reason": "unresolved_unknown",
+          "target_scope": [
+            1201,
+            106
+          ],
+          "validation_classification": "not_attempted",
+          "validation_solver_outcome": null
+        },
+        {
+          "actual_target_scope": [
+            391,
+            571,
+            741,
+            761,
+            941,
+            961,
+            1021,
+            1241
+          ],
+          "adopted": false,
+          "candidate_found": false,
+          "candidate_source_decision_fingerprint": "aa49dde149fe927ff1bb8707d139d44a12a28459170b292d3da06ca5082327c4",
+          "candidate_validated": false,
+          "gain": 0.0,
+          "inner_probe_summaries": [
+            {
+              "actual_target_scope": [
+                391,
+                571,
+                741,
+                761,
+                941,
+                961,
+                1021,
+                1241
+              ],
+              "affected_section_ids": [],
+              "affected_student_ids": [],
+              "candidate_complete": true,
+              "candidate_found": false,
+              "candidate_source_decision_fingerprint": null,
+              "candidate_substantive_value": null,
+              "candidate_validated": false,
+              "component_deltas": {},
+              "effective_radius": null,
+              "iteration": 1,
+              "model_constraint_count": 299497,
+              "model_variable_count": 168660,
+              "operator": "targeted_utilization_r64_s8",
+              "radius": 64,
+              "selected_grade": null,
+              "starting_incumbent_value": 42750,
+              "status": "unknown",
+              "stopping_reason": null,
+              "substantive_gain": 0.0,
+              "target_scope": [
+                1392,
+                423,
+                750,
+                1025,
+                667,
+                1172,
+                1397,
+                1021
+              ],
+              "validation_classification": "not_attempted"
+            }
+          ],
+          "operator": "targeted_utilization_r64_s8",
+          "selected_grade": null,
+          "sequence_position": 1,
+          "status": "unknown",
+          "stopping_reason": "unresolved_unknown",
+          "target_scope": [
+            1392,
+            423,
+            750,
+            1025,
+            667,
+            1172,
+            1397,
+            1021
+          ],
+          "validation_classification": "not_attempted",
+          "validation_solver_outcome": null
+        },
+        {
+          "actual_target_scope": [],
+          "adopted": false,
+          "candidate_found": false,
+          "candidate_source_decision_fingerprint": "aa49dde149fe927ff1bb8707d139d44a12a28459170b292d3da06ca5082327c4",
+          "candidate_validated": false,
+          "gain": 0.0,
+          "inner_probe_summaries": [],
+          "operator": "r2",
+          "selected_grade": null,
+          "sequence_position": 2,
+          "status": "validation_error",
+          "stopping_reason": "candidate_validation_error",
+          "target_scope": [],
+          "validation_classification": "validation_error",
+          "validation_solver_outcome": null
+        }
+      ],
+      "final": {
+        "candidate_complete": true,
+        "execution_status": "completed",
+        "final_assignment_count": 9030,
+        "final_source_decision_fingerprint": "f5cfd15465bab1815ad21a3565236f1ff383e8ffff82a4c783ab62ff410c9fb1",
+        "final_special_commitment_count": 140,
+        "final_substantive_value": 42750.0,
+        "final_unmet_count": 0
+      },
+      "initial_substantive_value": 42750.0
+    },
+    "differences": [
+      {
+        "left": 301,
+        "path": "trajectory.attempts[0].inner_probe_summaries[0].affected_section_ids[0]",
+        "right": null
+      },
+      {
+        "left": 302,
+        "path": "trajectory.attempts[0].inner_probe_summaries[0].affected_section_ids[1]",
+        "right": null
+      },
+      {
+        "left": 303,
+        "path": "trajectory.attempts[0].inner_probe_summaries[0].affected_section_ids[2]",
+        "right": null
+      },
+      {
+        "left": 304,
+        "path": "trajectory.attempts[0].inner_probe_summaries[0].affected_section_ids[3]",
+        "right": null
+      },
+      {
+        "left": 604,
+        "path": "trajectory.attempts[0].inner_probe_summaries[0].affected_student_ids[0]",
+        "right": null
+      },
+      {
+        "left": true,
+        "path": "trajectory.attempts[0].inner_probe_summaries[0].candidate_found",
+        "right": false
+      },
+      {
+        "left": "7589914228652b4d6c1657823c6e370f1899f4cfdefc5bae5296fb564d770dad",
+        "path": "trajectory.attempts[0].inner_probe_summaries[0].candidate_source_decision_fingerprint",
+        "right": null
+      },
+      {
+        "left": 42672.0,
+        "path": "trajectory.attempts[0].inner_probe_summaries[0].candidate_substantive_value",
+        "right": null
+      },
+      {
+        "left": -72.0,
+        "path": "trajectory.attempts[0].inner_probe_summaries[0].component_deltas.course_category_diversity_penalty",
+        "right": null
+      },
+      {
+        "left": -342.0,
+        "path": "trajectory.attempts[0].inner_probe_summaries[0].component_deltas.difficulty_balance_penalty",
+        "right": null
+      },
+      {
+        "left": 0.0,
+        "path": "trajectory.attempts[0].inner_probe_summaries[0].component_deltas.schedule_preservation_move_penalty",
+        "right": null
+      },
+      {
+        "left": -4.0,
+        "path": "trajectory.attempts[0].inner_probe_summaries[0].component_deltas.section_utilization_balance_penalty",
+        "right": null
+      },
+      {
+        "left": 0.0,
+        "path": "trajectory.attempts[0].inner_probe_summaries[0].component_deltas.soft_sequence_preferences_satisfied",
+        "right": null
+      },
+      {
+        "left": -8.0,
+        "path": "trajectory.attempts[0].inner_probe_summaries[0].component_deltas.student_semester_balance_penalty",
+        "right": null
+      },
+      {
+        "left": "optimal",
+        "path": "trajectory.attempts[0].inner_probe_summaries[0].status",
+        "right": "unknown"
+      },
+      {
+        "left": 78.0,
+        "path": "trajectory.attempts[0].inner_probe_summaries[0].substantive_gain",
+        "right": 0.0
+      },
+      {
+        "left": "validation_unknown",
+        "path": "trajectory.attempts[0].inner_probe_summaries[0].validation_classification",
+        "right": "not_attempted"
+      },
+      {
+        "left": "optimal",
+        "path": "trajectory.attempts[0].status",
+        "right": "unknown"
+      },
+      {
+        "left": "attempt_cap_reached",
+        "path": "trajectory.attempts[0].stopping_reason",
+        "right": "unresolved_unknown"
+      },
+      {
+        "left": "validation_unknown",
+        "path": "trajectory.attempts[0].validation_classification",
+        "right": "not_attempted"
+      },
+      {
+        "left": "unknown",
+        "path": "trajectory.attempts[0].validation_solver_outcome",
+        "right": null
+      },
+      {
+        "left": "unknown",
+        "path": "trajectory.attempts[2].status",
+        "right": "validation_error"
+      },
+      {
+        "left": "shared_budget_exhausted",
+        "path": "trajectory.attempts[2].stopping_reason",
+        "right": "candidate_validation_error"
+      },
+      {
+        "left": "not_attempted",
+        "path": "trajectory.attempts[2].validation_classification",
+        "right": "validation_error"
+      }
+    ],
+    "first_divergence": {
+      "left": "7589914228652b4d6c1657823c6e370f1899f4cfdefc5bae5296fb564d770dad",
+      "path": "trajectory.attempts[0].inner_probe_summaries[0].candidate_source_decision_fingerprint",
+      "right": null
+    },
+    "parent": {
+      "attempts": [
+        {
+          "actual_target_scope": [
+            204,
+            604
+          ],
+          "adopted": false,
+          "candidate_found": false,
+          "candidate_source_decision_fingerprint": "aa49dde149fe927ff1bb8707d139d44a12a28459170b292d3da06ca5082327c4",
+          "candidate_validated": false,
+          "gain": 0.0,
+          "inner_probe_summaries": [
+            {
+              "actual_target_scope": [
+                204,
+                604
+              ],
+              "affected_section_ids": [
+                301,
+                302,
+                303,
+                304
+              ],
+              "affected_student_ids": [
+                604
+              ],
+              "candidate_complete": true,
+              "candidate_found": true,
+              "candidate_source_decision_fingerprint": "7589914228652b4d6c1657823c6e370f1899f4cfdefc5bae5296fb564d770dad",
+              "candidate_substantive_value": 42672.0,
+              "candidate_validated": false,
+              "component_deltas": {
+                "course_category_diversity_penalty": -72.0,
+                "difficulty_balance_penalty": -342.0,
+                "schedule_preservation_move_penalty": 0.0,
+                "section_utilization_balance_penalty": -4.0,
+                "soft_sequence_preferences_satisfied": 0.0,
+                "student_semester_balance_penalty": -8.0
+              },
+              "effective_radius": null,
+              "iteration": 1,
+              "model_constraint_count": 299545,
+              "model_variable_count": 168660,
+              "operator": "targeted_r4_s2",
+              "radius": 4,
+              "selected_grade": null,
+              "starting_incumbent_value": 42750,
+              "status": "optimal",
+              "stopping_reason": null,
+              "substantive_gain": 78.0,
+              "target_scope": [
+                1201,
+                106
+              ],
+              "validation_classification": "validation_unknown"
+            }
+          ],
+          "operator": "targeted_r4_s2",
+          "selected_grade": null,
+          "sequence_position": 0,
+          "status": "optimal",
+          "stopping_reason": "attempt_cap_reached",
+          "target_scope": [
+            1201,
+            106
+          ],
+          "validation_classification": "validation_unknown",
+          "validation_solver_outcome": "unknown"
+        },
+        {
+          "actual_target_scope": [
+            391,
+            571,
+            741,
+            761,
+            941,
+            961,
+            1021,
+            1241
+          ],
+          "adopted": false,
+          "candidate_found": false,
+          "candidate_source_decision_fingerprint": "aa49dde149fe927ff1bb8707d139d44a12a28459170b292d3da06ca5082327c4",
+          "candidate_validated": false,
+          "gain": 0.0,
+          "inner_probe_summaries": [
+            {
+              "actual_target_scope": [
+                391,
+                571,
+                741,
+                761,
+                941,
+                961,
+                1021,
+                1241
+              ],
+              "affected_section_ids": [],
+              "affected_student_ids": [],
+              "candidate_complete": true,
+              "candidate_found": false,
+              "candidate_source_decision_fingerprint": null,
+              "candidate_substantive_value": null,
+              "candidate_validated": false,
+              "component_deltas": {},
+              "effective_radius": null,
+              "iteration": 1,
+              "model_constraint_count": 299497,
+              "model_variable_count": 168660,
+              "operator": "targeted_utilization_r64_s8",
+              "radius": 64,
+              "selected_grade": null,
+              "starting_incumbent_value": 42750,
+              "status": "unknown",
+              "stopping_reason": null,
+              "substantive_gain": 0.0,
+              "target_scope": [
+                1392,
+                423,
+                750,
+                1025,
+                667,
+                1172,
+                1397,
+                1021
+              ],
+              "validation_classification": "not_attempted"
+            }
+          ],
+          "operator": "targeted_utilization_r64_s8",
+          "selected_grade": null,
+          "sequence_position": 1,
+          "status": "unknown",
+          "stopping_reason": "unresolved_unknown",
+          "target_scope": [
+            1392,
+            423,
+            750,
+            1025,
+            667,
+            1172,
+            1397,
+            1021
+          ],
+          "validation_classification": "not_attempted",
+          "validation_solver_outcome": null
+        },
+        {
+          "actual_target_scope": [],
+          "adopted": false,
+          "candidate_found": false,
+          "candidate_source_decision_fingerprint": "aa49dde149fe927ff1bb8707d139d44a12a28459170b292d3da06ca5082327c4",
+          "candidate_validated": false,
+          "gain": 0.0,
+          "inner_probe_summaries": [],
+          "operator": "r2",
+          "selected_grade": null,
+          "sequence_position": 2,
+          "status": "unknown",
+          "stopping_reason": "shared_budget_exhausted",
+          "target_scope": [],
+          "validation_classification": "not_attempted",
+          "validation_solver_outcome": null
+        }
+      ],
+      "final": {
+        "candidate_complete": true,
+        "execution_status": "completed",
+        "final_assignment_count": 9030,
+        "final_source_decision_fingerprint": "f5cfd15465bab1815ad21a3565236f1ff383e8ffff82a4c783ab62ff410c9fb1",
+        "final_special_commitment_count": 140,
+        "final_substantive_value": 42750.0,
+        "final_unmet_count": 0
+      },
+      "initial_substantive_value": 42750.0
+    }
+  }
+}

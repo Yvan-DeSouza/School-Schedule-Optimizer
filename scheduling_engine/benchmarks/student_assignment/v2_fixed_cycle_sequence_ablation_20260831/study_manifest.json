@@ -100,6 +100,7 @@
     "unvalidated_candidate_adoption": false,
     "worker_count": 1
   },
+  "causal_comparison_status": "PRELIMINARY_NON_PARITY_QUALIFIED",
   "created_at_utc": "2026-08-31T10:29:56.617467+00:00",
   "objective_semantics_version": "v2",
   "parent_study_id": "v2_policy_generalization_startup_aware_20260831",
@@ -291,7 +292,7 @@
   "study_id": "v2_fixed_cycle_sequence_ablation_20260831",
   "summary_artifact": {
     "path": "scheduling_engine\\benchmarks\\student_assignment\\v2_fixed_cycle_sequence_ablation_20260831\\study_summary.json",
-    "sha256": "d711ae2a343061f761614a802cc6acb8fe7aebfc381a39e412f74d5348c6aa32"
+    "sha256": "1efe2e2bf2a6a1c7fb3af129cd3d9efafa0535e4fd683aab15dd06044e62f895"
   },
   "synthetic_only": true,
   "variant_ids": [

@@ -1448,10 +1448,42 @@ The current v2 search-mechanics conclusion is therefore **directional,
 unresolved for promotion**. The existing fixed cycle remains the production
 and research reference, and no adaptive router or sequence replacement is
 authorized by this study. The current v2 endpoint should not be extended with
-another open-ended descent merely to shave the score. The next separately
-scoped research order is: principled objective normalization; one canonical
-0-10 counselor importance representation with label presets; a v2 baseline;
-revalidation of retained operators; student-targeted repair; adaptive
-allocation among retained operators; grade-bounded global escape; and only
-later any full-school unrestricted escalation. Those are roadmap items, not
-implemented behavior here.
+another open-ended descent merely to shave the score.
+
+#### Fixed-cycle positive-control parity gate
+
+The original parent fixed-cycle and child sequence-ablation artifacts were
+captured through separate wrappers. Their source inputs, source seeds,
+operator requests, first candidate fingerprints, and solver controls match,
+but the first candidate was adopted by the parent and classified as
+`validation_unknown` by the child. The existing child artifacts are therefore
+classified as **`PRELIMINARY_NON_PARITY_QUALIFIED`**: they remain useful
+observations, but must not be used as causal sequence rankings. The compact
+comparison helper normalizes schema-only differences and reports whether a
+future matched control is configuration-parity, validation-transition
+variance, or a true trajectory mismatch.
+
+The repeated-R4 hard-wall anomaly is classified as
+`host_sleep_contaminated`. Its recorded approximately 6,720-second elapsed
+time overlaps the host’s recorded sleep interval, while the supervisor’s
+awake-process hard-deadline tests pass. It is not evidence that CP-SAT proved
+R4 infeasible and is not a reason to alter the solver or validation authority.
+Fresh reference-target and special-pressure `fixed_cycle` versus
+`full_fixed_cycle` seed-101 positive controls remain the gate before causal
+sequence interpretation resumes.
+
+The active v2 research roadmap is now explicitly staged as follows:
+
+1. Restore and verify fixed-cycle positive-control parity.
+2. Rerun causal sequence ablations after parity is restored.
+3. Identify the simplest sequence that preserves the fixed-cycle advantage.
+4. Qualify any retained operator or sequence for production promotion.
+5. Pursue broader research only if the matched study remains scenario-
+   dependent or inconclusive.
+
+Objective Semantics v2 is implemented and remains frozen during this gate.
+Normalization, a canonical 0--10 counselor-importance policy, adaptive
+operator allocation, student-targeted repair, grade-bounded global escape,
+and full-school unrestricted escalation are later research topics, not
+implemented behavior here. No current v2 objective, hard constraint, solver
+authority, or production policy has changed.

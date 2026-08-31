@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timezone
 import json
+import re
 import statistics
 from pathlib import Path
 from time import perf_counter
@@ -47,6 +48,8 @@ SEQUENCE_SEEDS = STARTUP_AWARE_SEEDS
 SEQUENCE_VALIDATION_SECONDS = 180.0
 SEQUENCE_PARENT_HARD_WALL_SECONDS = STARTUP_AWARE_PARENT_HARD_WALL_SECONDS
 SEQUENCE_WORKER_COUNT = 1
+SEQUENCE_CAUSAL_STATUS_PRELIMINARY = "PRELIMINARY_NON_PARITY_QUALIFIED"
+SEQUENCE_PARITY_SCHEMA = "student_assignment_fixed_cycle_parity_diff_v1"
 
 SEQUENCE_VARIANTS = {
     "full_fixed_cycle": (
@@ -127,6 +130,11 @@ def build_sequence_ablation_manifest(
         ),
         "synthetic_only": True,
         "production_wiring": False,
+        # Existing cells were collected before the parent and ablation
+        # wrappers shared fixed-cycle request construction.  They remain
+        # useful observations, but cannot support causal sequence ranking
+        # until the positive-control gate is rerun.
+        "causal_comparison_status": SEQUENCE_CAUSAL_STATUS_PRELIMINARY,
         "objective_semantics_version": "v2",
         "profile": SEQUENCE_PROFILE,
         "scenarios": {
@@ -419,6 +427,381 @@ def _attempt_totals(attempts):
     }
 
 
+def _fixed_cycle_names(payload):
+    sequence = payload.get("sequence")
+    if sequence:
+        return tuple(sequence)
+    if payload.get("policy") == "fixed_cycle":
+        return tuple(
+            SEQUENCE_VARIANTS["full_fixed_cycle"]
+        )
+    return ()
+
+
+def _normalized_budget_contract(payload):
+    contract = payload.get("budget_contract") or {}
+    session_overrides = contract.get("session_overrides") or {}
+    selected_sessions = {
+        name: {
+            key: session_overrides.get(name, {}).get(key)
+            for key in (
+                "session_time_limit_seconds",
+                "session_max_attempts",
+                "per_attempt_cp_sat_limit_seconds",
+            )
+        }
+        for name in _fixed_cycle_names(payload)
+    }
+    return {
+        "profile": payload.get("profile") or contract.get("profile"),
+        "profile_fingerprint": payload.get("profile_fingerprint")
+        or contract.get("profile_fingerprint"),
+        "worker_count": payload.get("worker_count")
+        or contract.get("worker_count"),
+        "cp_sat_random_seed": payload.get("cp_sat_random_seed"),
+        "per_operator_maximum_seconds": contract.get(
+            "per_operator_maximum_seconds"
+        ),
+        "cumulative_seconds": contract.get(
+            "cumulative_policy_budget_seconds",
+            contract.get("cumulative_search_opportunity_seconds"),
+        ),
+        "candidate_validation_time_limit_seconds": contract.get(
+            "candidate_validation_time_limit_seconds"
+        ),
+        "candidate_validation_worker_count": contract.get(
+            "candidate_validation_worker_count"
+        ),
+        "parent_hard_wall_seconds": payload.get("hard_wall_seconds")
+        or contract.get("parent_hard_wall_seconds"),
+        "full_model_validation_required": contract.get(
+            "full_model_validation_required"
+        ),
+        "ordinary_stage2_between_iterations": contract.get(
+            "ordinary_stage2_between_iterations"
+        ),
+        "session_overrides": selected_sessions,
+    }
+
+
+def _inner_probe_projection(summary):
+    fields = (
+        "iteration",
+        "operator",
+        "radius",
+        "effective_radius",
+        "target_scope",
+        "actual_target_scope",
+        "selected_grade",
+        "affected_student_ids",
+        "affected_section_ids",
+        "candidate_found",
+        "candidate_complete",
+        "candidate_validated",
+        "candidate_source_decision_fingerprint",
+        "candidate_substantive_value",
+        "starting_incumbent_value",
+        "substantive_gain",
+        "component_deltas",
+        "validation_classification",
+        "status",
+        "stopping_reason",
+        "model_variable_count",
+        "model_constraint_count",
+    )
+    return {field: summary.get(field) for field in fields}
+
+
+def _attempt_projection(attempt, position):
+    fields = (
+        "operator",
+        "target_scope",
+        "actual_target_scope",
+        "selected_grade",
+        "candidate_found",
+        "candidate_validated",
+        "candidate_source_decision_fingerprint",
+        "gain",
+        "status",
+        "validation_classification",
+        "validation_solver_outcome",
+        "adopted",
+        "stopping_reason",
+    )
+    projection = {field: attempt.get(field) for field in fields}
+    projection["sequence_position"] = attempt.get(
+        "sequence_position", position
+    )
+    projection["inner_probe_summaries"] = [
+        _inner_probe_projection(summary)
+        for summary in tuple(attempt.get("inner_probe_summaries") or ())
+    ]
+    return projection
+
+
+def fixed_cycle_parity_projection(payload):
+    """Return comparable semantic facts from a parent or ablation trial.
+
+    Parent and child studies intentionally use different artifact schemas and
+    budget-key names.  This projection compares the contract and trajectory
+    fields that affect the positive control while excluding telemetry noise.
+    """
+
+    return {
+        "input_fingerprint": payload.get("input_fingerprint")
+        or (payload.get("source_lineage") or {}).get("input_fingerprint"),
+        "source_seed_fingerprint": payload.get("source_seed_fingerprint")
+        or (payload.get("source_lineage") or {}).get("source_seed_fingerprint"),
+        "policy": payload.get("policy"),
+        "sequence": list(_fixed_cycle_names(payload)),
+        "budget": _normalized_budget_contract(payload),
+        "initial_substantive_value": payload.get("initial_substantive_value"),
+        "initial_source_decision_fingerprint": payload.get(
+            "source_seed_fingerprint"
+        )
+        or (payload.get("source_lineage") or {}).get("source_seed_fingerprint"),
+        "attempts": [
+            _attempt_projection(attempt, position)
+            for position, attempt in enumerate(tuple(payload.get("attempts") or ()))
+        ],
+        "final": {
+            "execution_status": payload.get("execution_status")
+            or payload.get("status"),
+            "candidate_complete": payload.get("candidate_complete"),
+            "final_substantive_value": payload.get("final_substantive_value"),
+            "final_source_decision_fingerprint": payload.get(
+                "final_source_decision_fingerprint"
+            ),
+            "final_assignment_count": payload.get("final_assignment_count"),
+            "final_unmet_count": payload.get("final_unmet_count"),
+            "final_special_commitment_count": payload.get(
+                "final_special_commitment_count"
+            ),
+        },
+    }
+
+
+def _field_differences(left, right, path=""):
+    if isinstance(left, dict) and isinstance(right, dict):
+        differences = []
+        for key in sorted(set(left) | set(right)):
+            child_path = f"{path}.{key}" if path else key
+            differences.extend(
+                _field_differences(left.get(key), right.get(key), child_path)
+            )
+        return differences
+    if isinstance(left, list) and isinstance(right, list):
+        differences = []
+        for index in range(max(len(left), len(right))):
+            child_path = f"{path}[{index}]"
+            differences.extend(
+                _field_differences(
+                    left[index] if index < len(left) else None,
+                    right[index] if index < len(right) else None,
+                    child_path,
+                )
+            )
+        return differences
+    if left != right:
+        return [{"path": path, "left": left, "right": right}]
+    return []
+
+
+def _first_semantic_difference(differences):
+    """Order a diff by sequence position, then by decision significance."""
+
+    priorities = (
+        "operator",
+        "target_scope",
+        "actual_target_scope",
+        "candidate_source_decision_fingerprint",
+        "candidate_validated",
+        "validation_classification",
+        "validation_solver_outcome",
+        "adopted",
+        "final_substantive_value",
+    )
+
+    def sort_key(difference):
+        match = re.search(r"attempts\[(\d+)\]", difference["path"])
+        position = int(match.group(1)) if match else 10**9
+        priority = next(
+            (
+                index
+                for index, marker in enumerate(priorities)
+                if marker in difference["path"]
+            ),
+            len(priorities),
+        )
+        return position, priority, difference["path"]
+
+    return min(differences, key=sort_key) if differences else None
+
+
+def _control_observation(payload):
+    """Keep useful runtime/resource facts without copying source decisions."""
+
+    def scalar_mapping(value):
+        if not isinstance(value, dict):
+            return {}
+        return {
+            key: item
+            for key, item in value.items()
+            if item is None or isinstance(item, (bool, int, float, str))
+        }
+
+    resource = payload.get("resource") or {}
+    resource_keys = (
+        "available",
+        "elapsed_seconds",
+        "logical_cpu_count",
+        "peak_child_process_count",
+        "peak_pagefile_bytes",
+        "peak_thread_count",
+        "peak_tree_uss_bytes",
+        "peak_tree_working_set_bytes",
+        "peak_uss_bytes",
+        "peak_working_set_bytes",
+        "sample_count",
+        "system_memory_percent",
+    )
+
+    return {
+        "execution_status": payload.get("execution_status")
+        or payload.get("status"),
+        "candidate_complete": payload.get("candidate_complete"),
+        "initial_substantive_value": payload.get("initial_substantive_value"),
+        "final_substantive_value": payload.get("final_substantive_value"),
+        "final_assignment_count": payload.get("final_assignment_count"),
+        "final_unmet_count": payload.get("final_unmet_count"),
+        "final_special_commitment_count": payload.get(
+            "final_special_commitment_count"
+        ),
+        "cell_elapsed_seconds": payload.get("cell_elapsed_seconds"),
+        "timing": scalar_mapping(payload.get("timing")),
+        "phase_timings": scalar_mapping(payload.get("phase_timings")),
+        "policy_accounting": scalar_mapping(payload.get("policy_accounting")),
+        "supervision": scalar_mapping(payload.get("supervision")),
+        "resource": {
+            key: resource.get(key)
+            for key in resource_keys
+            if key in resource
+        },
+        "attempts": [
+            {
+                "operator": attempt.get("operator"),
+                "candidate_found": attempt.get("candidate_found"),
+                "candidate_validated": attempt.get("candidate_validated"),
+                "validation_classification": attempt.get(
+                    "validation_classification"
+                ),
+                "adopted": attempt.get("adopted"),
+                "solver_wall_time_seconds": attempt.get(
+                    "solver_wall_time_seconds"
+                ),
+                "validation_seconds": attempt.get("validation_seconds"),
+            }
+            for attempt in tuple(payload.get("attempts") or ())
+        ],
+    }
+
+
+def compare_fixed_cycle_control_payloads(parent_payload, ablation_payload):
+    """Compare matched parent/ablation controls without ranking operators."""
+
+    parent = fixed_cycle_parity_projection(parent_payload)
+    ablation = fixed_cycle_parity_projection(ablation_payload)
+    configuration_fields = (
+        "input_fingerprint",
+        "source_seed_fingerprint",
+        "policy",
+        "sequence",
+        "budget",
+    )
+    configuration_differences = []
+    for field in configuration_fields:
+        configuration_differences.extend(
+            _field_differences(
+                parent[field], ablation[field], f"configuration.{field}"
+            )
+        )
+    trajectory_differences = _field_differences(
+        {
+            "initial_substantive_value": parent["initial_substantive_value"],
+            "initial_source_decision_fingerprint": parent[
+                "initial_source_decision_fingerprint"
+            ],
+            "attempts": parent["attempts"],
+            "final": parent["final"],
+        },
+        {
+            "initial_substantive_value": ablation["initial_substantive_value"],
+            "initial_source_decision_fingerprint": ablation[
+                "initial_source_decision_fingerprint"
+            ],
+            "attempts": ablation["attempts"],
+            "final": ablation["final"],
+        },
+        "trajectory",
+    )
+    first_divergence = _first_semantic_difference(trajectory_differences)
+    if configuration_differences:
+        classification = "CONFIGURATION_NON_PARITY"
+    elif not trajectory_differences:
+        classification = "PARITY_MATCH"
+    elif any(
+        marker in (first_divergence or {}).get("path", "")
+        for marker in (
+            "candidate_validated",
+            "validation_classification",
+            "validation_solver_outcome",
+            "adopted",
+        )
+    ):
+        classification = "VALIDATION_TRANSITION_VARIANCE"
+    else:
+        classification = "TRAJECTORY_NON_PARITY"
+    return {
+        "schema": SEQUENCE_PARITY_SCHEMA,
+        "classification": classification,
+        "observations": {
+            "parent": _control_observation(parent_payload),
+            "ablation": _control_observation(ablation_payload),
+        },
+        "configuration": {
+            "parent": {field: parent[field] for field in configuration_fields},
+            "ablation": {
+                field: ablation[field] for field in configuration_fields
+            },
+            "differences": configuration_differences,
+        },
+        "trajectory": {
+            "parent": {
+                "initial_substantive_value": parent["initial_substantive_value"],
+                "attempts": parent["attempts"],
+                "final": parent["final"],
+            },
+            "ablation": {
+                "initial_substantive_value": ablation["initial_substantive_value"],
+                "attempts": ablation["attempts"],
+                "final": ablation["final"],
+            },
+            "differences": trajectory_differences,
+            "first_divergence": first_divergence,
+        },
+    }
+
+
+def write_fixed_cycle_parity_diff(parent_path, ablation_path, output_path):
+    """Write a compact, immutable positive-control comparison artifact."""
+
+    parent_payload = json.loads(Path(parent_path).read_text(encoding="utf-8"))
+    ablation_payload = json.loads(Path(ablation_path).read_text(encoding="utf-8"))
+    result = compare_fixed_cycle_control_payloads(parent_payload, ablation_payload)
+    _json_write_atomic(Path(output_path), result)
+    return result
+
+
 def summarize_sequence_ablation_study(study_directory):
     """Verify artifacts and produce compact causal-study facts."""
 
@@ -604,6 +987,10 @@ def summarize_sequence_ablation_study(study_directory):
                 "ROLE_REMAINS_ACTIONABLE or ROLE_EXHAUSTION_NOT_PROVEN is reported."
             ),
             "promotion_decision": "PENDING_SEQUENCE_ABLATION_EVIDENCE",
+            "causal_comparison_status": manifest.get(
+                "causal_comparison_status",
+                SEQUENCE_CAUSAL_STATUS_PRELIMINARY,
+            ),
         },
     }
 
@@ -628,13 +1015,38 @@ def main(argv=None):  # pragma: no cover - offline experiment entrypoint
     parser.add_argument("--study-directory", type=Path, required=True)
     parser.add_argument("--initialize", action="store_true")
     parser.add_argument("--summarize", action="store_true")
+    parser.add_argument("--compare-parent", type=Path)
+    parser.add_argument("--compare-ablation", type=Path)
+    parser.add_argument("--compare-output", type=Path)
     parser.add_argument("--scenario", choices=SEQUENCE_SCENARIOS)
     parser.add_argument("--variant", choices=tuple(SEQUENCE_VARIANTS))
     parser.add_argument("--seed", type=int)
     args = parser.parse_args(argv)
+    compare_args = (
+        args.compare_parent,
+        args.compare_ablation,
+        args.compare_output,
+    )
+    if any(value is not None for value in compare_args) and not all(
+        value is not None for value in compare_args
+    ):
+        parser.error(
+            "--compare-parent, --compare-ablation, and --compare-output "
+            "must be supplied together"
+        )
     if args.initialize and args.summarize:
         parser.error("--initialize and --summarize are mutually exclusive")
-    if args.initialize:
+    if any(value is not None for value in compare_args) and (
+        args.initialize or args.summarize or args.scenario or args.variant or args.seed
+    ):
+        parser.error("comparison arguments are mutually exclusive with study actions")
+    if args.compare_parent is not None:
+        payload = write_fixed_cycle_parity_diff(
+            args.compare_parent,
+            args.compare_ablation,
+            args.compare_output,
+        )
+    elif args.initialize:
         payload = initialize_sequence_ablation_study(args.study_directory)
     elif args.summarize:
         payload = write_sequence_ablation_summary(args.study_directory)
@@ -647,7 +1059,7 @@ def main(argv=None):  # pragma: no cover - offline experiment entrypoint
             variant=args.variant,
             seed=args.seed,
         )
-    if args.initialize or args.summarize:
+    if args.compare_parent is not None or args.initialize or args.summarize:
         print(json.dumps(payload, indent=2, sort_keys=True, default=str))
     else:
         filename = _result_filename(args.scenario, args.variant, args.seed)
@@ -684,10 +1096,15 @@ __all__ = [
     "SEQUENCE_STUDY_SCHEMA",
     "SEQUENCE_SUMMARY_SCHEMA",
     "SEQUENCE_VARIANTS",
+    "SEQUENCE_CAUSAL_STATUS_PRELIMINARY",
+    "SEQUENCE_PARITY_SCHEMA",
     "build_sequence_ablation_manifest",
+    "compare_fixed_cycle_control_payloads",
+    "fixed_cycle_parity_projection",
     "initialize_sequence_ablation_study",
     "run_sequence_ablation_cell",
     "sequence_ablation_budget_contract",
     "summarize_sequence_ablation_study",
+    "write_fixed_cycle_parity_diff",
     "write_sequence_ablation_summary",
 ]

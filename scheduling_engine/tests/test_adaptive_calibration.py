@@ -271,6 +271,23 @@ def test_calibration_controls_use_named_existing_operator_families():
     assert tuple(spec.name for spec in r8["fixed_cycle"]) == ("targeted_r8_s2",)
 
 
+def test_fixed_cycle_name_override_uses_the_same_policy_builder():
+    expected = build_calibration_policy("fixed_cycle")
+    overridden = build_calibration_policy(
+        "fixed_cycle",
+        fixed_cycle_names=CALIBRATION_FIXED_CYCLES["fixed_cycle"],
+    )
+    assert overridden["selection_policy"] == expected["selection_policy"]
+    assert tuple(spec.name for spec in overridden["fixed_cycle"]) == tuple(
+        spec.name for spec in expected["fixed_cycle"]
+    )
+    with pytest.raises(ValueError, match="only override"):
+        build_calibration_policy(
+            "adaptive",
+            fixed_cycle_names=("targeted_r4_s2",),
+        )
+
+
 def test_startup_aware_policy_contract_is_fair_and_diagnostic_only():
     contract = startup_aware_policy_budget_contract()
 

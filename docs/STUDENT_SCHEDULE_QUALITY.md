@@ -1042,6 +1042,27 @@ attempt cap after twenty validated adoptions; this is not a proof of an R2
 local optimum. The final components were `6,645` utilization, `175`
 semester balance, `35,973` difficulty, and `22,150` category diversity.
 
+An additional clean matched continuation was then run from the same temporary
+validated `65,021` branch (source fingerprint
+`36adbb29d796d75497765d5a6b5b23c9ce4928a6db2075db180e5575da8a25b9`). It
+adopted twenty-three complete, full-model-validated improvements in twenty-four
+probes and reached `64,891`:
+
+```text
+65,021 -> 65,017 -> 65,005 -> 64,999 -> 64,995 -> 64,975 -> 64,971
+        -> 64,969 -> 64,965 -> 64,959 -> 64,957 -> 64,947 -> 64,943
+        -> 64,935 -> 64,933 -> 64,929 -> 64,927 -> 64,923 -> 64,921
+        -> 64,915 -> 64,911 -> 64,905 -> 64,895 -> 64,891
+```
+
+The continuation used `3,136.75` seconds of CP-SAT wall time and
+`3,609.73` seconds of engine session time. Its final probe returned `UNKNOWN`
+and the session stopped as `unresolved_unknown`; therefore `64,891` is a
+bounded productive endpoint, not proof of an R2 local optimum. The final
+components were `6,613` utilization, `175` semester balance, `35,953`
+difficulty, and `22,150` category diversity. All retained `10,635` assignments,
+zero unmet requests, and all `310` special commitments.
+
 ### Complete escape-path comparison
 
 | Path | Direct escape | R2 endpoint | Total gain vs `65,025` | R2 adopted improvements | Approx. diagnostic runtime |
@@ -1049,13 +1070,17 @@ semester balance, `35,973` difficulty, and `22,150` category diversity.
 | R4/S2 -> R2 | `65,007` | `64,929` | `96` | `20` | escape plus `3,652.9 s` R2 session |
 | R8/S2 -> R2 (historical branch) | `65,005` | `64,981` | `44` | `7` | escape plus `3,203.6 s` R2 session |
 | R8/S2 -> R2 (current-tree branch) | `65,021` | `64,943` | `82` | `20` | escape plus `2,996.1 s` including branch setup |
+| R8/S2 -> R2 (additional clean continuation) | `65,021` | `64,891` | `134` | `23` | escape plus `3,609.7 s` R2 session |
 
-The current-tree R8/S2 branch reached `64,943`, which is `14` points weaker
-than the historical R4/S2 endpoint `64,929`. The historical R8/S2 branch
-reached `64,981`; it is retained as historical evidence but cannot be treated
-as current-tree repeatability. The measured complete-path evidence therefore
-favors R4/S2, while the current fresh R8/S2 branch still demonstrates a
-productive R2 descent. Neither path establishes a global optimum.
+The earlier current-tree R8/S2 branch reached `64,943`, which was `14` points
+weaker than the historical R4/S2 endpoint `64,929`. The additional clean
+continuation from the same `65,021` branch reached `64,891`, which is `38`
+points stronger than that historical R4/S2 endpoint and `52` points stronger
+than the earlier current-tree R8/S2 continuation. This is useful evidence that
+the R8/S2 branch can expose a productive R2 basin, but it is still one
+additional trajectory rather than a repeated matched R8/S2-to-R2 comparison.
+The historical R8/S2 branch reached `64,981` and remains historical evidence
+only. Neither path establishes a global optimum.
 
 ### v1 operator classification and closeout
 
@@ -1078,10 +1103,10 @@ therefore inconsistent, and the current-tree R8/S2 -> R2 path reached `64,943`.
   repeated in the matched bound/student matrix;
 - **R8/S1 — diagnostic/reference only:** valid but weaker direct result;
 - **R8/S2 — unresolved diagnostic candidate:** the older record had the
-  strongest direct escape, but two current-tree repeats produced `65,021`, the
-  same endpoint as current R4/S2. Its current direct-repeatability
-  classification is inconsistent, and downstream R2 from the current-tree
-  branch was weaker than R4/S2.
+  strongest direct escape, but two current-tree direct repeats produced
+  `65,021`, the same endpoint as current R4/S2. The additional R2 continuation
+  from that branch reached `64,891`, stronger than the previously measured
+  R4/S2 path, but there is not yet a repeated matched R8/S2-to-R2 comparison.
 
 The current v1 characterization is complete enough to stop open-ended endpoint
 shaving. No canonical checkpoint was changed and no current objective or
