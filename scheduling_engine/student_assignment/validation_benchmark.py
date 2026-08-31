@@ -70,6 +70,7 @@ def run_source_decision_validation_benchmark(
     time_limit_seconds=120.0,
     worker_count=1,
     collect_resource_telemetry=True,
+    collect_validation_telemetry=True,
     collect_validation_presolve_telemetry=False,
     collect_validation_search_start_telemetry=False,
 ):
@@ -138,6 +139,7 @@ def run_source_decision_validation_benchmark(
             time_limit_seconds=time_limit_seconds,
             worker_count=worker_count,
             capture_final_source_decisions=True,
+            collect_validation_telemetry=collect_validation_telemetry,
             collect_resource_telemetry=collect_resource_telemetry,
             collect_validation_presolve_telemetry=(
                 collect_validation_presolve_telemetry

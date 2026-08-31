@@ -179,6 +179,7 @@ def compare_validation_classifications(
             time_limit_seconds,
             worker_count=worker_count,
             random_seed=0,
+            collect_validation_telemetry=True,
             base_model_variable_values=witness if use_witness else None,
             expected_base_model_fingerprint=(
                 expected_model_fingerprint if use_witness else None
@@ -250,6 +251,7 @@ def run_prepared_validation_sequence(
                     time_limit_seconds,
                     worker_count=worker_count,
                     random_seed=0,
+                    collect_validation_telemetry=True,
                     prepared_context=context if prepared else None,
                 )
             finally:
@@ -318,6 +320,81 @@ def run_prepared_validation_sequence(
             right["classification"] == "validated"
             and left["classification"] != "validated"
             for left, right in zip(ordinary, prepared)
+        ),
+    }
+
+
+def run_prepared_validation_corpus(
+    model,
+    required_decision_groups,
+    candidate_source_variable_values,
+    *,
+    time_limit_seconds=5.0,
+    worker_count=1,
+    collect_resource_telemetry=False,
+):
+    """Compare ordinary and prepared validation across distinct candidates.
+
+    The corpus contains semantic source-variable maps only.  It deliberately
+    does not retain solver objects or auxiliary witnesses.  A single prepared
+    context is reused for the ordered candidate sequence, which models an
+    incumbent transition without allowing candidate-specific state to enter
+    the context.
+    """
+
+    context_started = monotonic()
+    context = prepare_validation_context(model, required_decision_groups)
+    context_creation_seconds = monotonic() - context_started
+    records = []
+    for index, source_values in enumerate(candidate_source_variable_values, 1):
+        source_values = dict(source_values)
+        results = {}
+        for label, prepared in (("ordinary", False), ("prepared", True)):
+            monitor = ProcessResourceMonitor(
+                interval_seconds=0.10,
+                enabled=collect_resource_telemetry,
+            ).start()
+            started = monotonic()
+            try:
+                outcome = validate_source_decision_candidate_with_status(
+                    model,
+                    required_decision_groups,
+                    source_values,
+                    time_limit_seconds,
+                    worker_count=worker_count,
+                    random_seed=0,
+                    collect_validation_telemetry=True,
+                    prepared_context=context if prepared else None,
+                )
+            finally:
+                resource = monitor.stop()
+            results[label] = _validation_record(
+                outcome,
+                elapsed_seconds=monotonic() - started,
+                resource=resource,
+            )
+        records.append({
+            "candidate_index": index,
+            "ordinary": results["ordinary"],
+            "prepared": results["prepared"],
+            "classification_parity": (
+                results["ordinary"]["classification"]
+                == results["prepared"]["classification"]
+            ),
+            "false_acceptance": (
+                results["prepared"]["classification"] == "validated"
+                and results["ordinary"]["classification"] != "validated"
+            ),
+        })
+    return {
+        "candidate_count": len(records),
+        "context_creation_seconds": context_creation_seconds,
+        "records": records,
+        "classification_parity": all(
+            record["classification_parity"] for record in records
+        ),
+        "false_acceptance": any(
+            record["false_acceptance"] for record in records
         ),
     }
 
@@ -397,6 +474,7 @@ def run_paired_validation_trial(
                     validation_time_limit_seconds,
                     worker_count=operator_worker_count,
                     random_seed=0,
+                    collect_validation_telemetry=True,
                     base_model_variable_values=witness if use_witness else None,
                     expected_base_model_fingerprint=(
                         base_fingerprint if use_witness else None

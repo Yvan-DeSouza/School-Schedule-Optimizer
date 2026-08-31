@@ -260,3 +260,58 @@ def test_prepared_validation_context_rejects_stale_identity_metadata():
 
     assert outcome.classification == "validation_error"
     assert "identity" in (outcome.error or "")
+
+
+def test_prepared_validation_corpus_preserves_parity_across_distinct_candidates():
+    model = cp_model.CpModel()
+    candidates = [
+        model.NewBoolVar("enroll_1_1"),
+        model.NewBoolVar("enroll_1_2"),
+        model.NewBoolVar("enroll_1_3"),
+    ]
+    groups = (tuple(candidates),)
+    report = validation_qualification.run_prepared_validation_corpus(
+        model,
+        groups,
+        (
+            {candidates[0].Index(): 1, candidates[1].Index(): 0, candidates[2].Index(): 0},
+            {candidates[0].Index(): 0, candidates[1].Index(): 1, candidates[2].Index(): 0},
+            {candidates[0].Index(): 0, candidates[1].Index(): 0, candidates[2].Index(): 1},
+        ),
+        time_limit_seconds=5,
+    )
+
+    assert report["candidate_count"] == 3
+    assert report["classification_parity"] is True
+    assert report["false_acceptance"] is False
+    assert all(
+        record["ordinary"]["classification"] == "validated"
+        and record["prepared"]["classification"] == "validated"
+        for record in report["records"]
+    )
+
+
+def test_validation_telemetry_is_opt_in_for_source_fixed_authority():
+    model = cp_model.CpModel()
+    source = model.NewBoolVar("enroll_1_1")
+    outcome = validate_source_decision_candidate_with_status(
+        model,
+        ((source,),),
+        {source.Index(): 1},
+        5,
+    )
+
+    assert outcome.classification == "validated"
+    assert outcome.telemetry["model_fingerprint_wall_time_seconds"] is None
+    assert outcome.telemetry["variable_freedom"] is None
+
+    detailed = validate_source_decision_candidate_with_status(
+        model,
+        ((source,),),
+        {source.Index(): 1},
+        5,
+        collect_validation_telemetry=True,
+    )
+    assert detailed.classification == "validated"
+    assert detailed.telemetry["model_fingerprint_wall_time_seconds"] is not None
+    assert detailed.telemetry["variable_freedom"] is not None

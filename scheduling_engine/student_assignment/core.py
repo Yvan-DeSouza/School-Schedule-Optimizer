@@ -92,6 +92,7 @@ from .solver import (
     solve_complete_hard_feasibility_seed as _solve_complete_hard_feasibility_seed,
     solve_lexicographically as _solve_lexicographically,
     validate_complete_hard_feasibility_seed as _validate_complete_hard_feasibility_seed,
+    prepare_validation_context as _prepare_validation_context,
     validate_source_decision_candidate_with_status as _validate_source_decision_candidate_with_status,
 )
 from .initial_hint import build_initial_assignment_hints as _build_initial_assignment_hints
@@ -1097,6 +1098,7 @@ def run_student_assignment_source_decision_validation_diagnostic(
     collect_validation_presolve_telemetry=False,
     collect_validation_search_start_telemetry=False,
     validation_telemetry_callback=None,
+    collect_validation_telemetry=False,
 ):
     """Validate detached semantic decisions against the current full model.
 
@@ -1135,6 +1137,7 @@ def run_student_assignment_source_decision_validation_diagnostic(
             collect_validation_search_start_telemetry
         ),
         validation_telemetry_callback=validation_telemetry_callback,
+        collect_validation_telemetry=collect_validation_telemetry,
     )
 
 
@@ -1168,6 +1171,8 @@ def run_student_assignment_operator_session_diagnostic(
     collect_validation_search_start_telemetry=False,
     capture_candidate_base_model_witness=False,
     use_candidate_base_model_witness_for_validation=False,
+    use_prepared_validation_context=False,
+    collect_validation_telemetry=False,
     candidate_capture_callback=None,
     skip_candidate_validation=False,
     timeline_max_events=128,
@@ -1211,6 +1216,8 @@ def run_student_assignment_operator_session_diagnostic(
         cp_sat_max_deterministic_time_seconds=(
             cp_sat_max_deterministic_time_seconds
         ),
+        use_prepared_validation_context=bool(use_prepared_validation_context),
+        collect_validation_telemetry=bool(collect_validation_telemetry),
     )
     if not initial_source_decisions and initial_source_variable_values is None:
         raise ValueError("initial_source_decisions is required")
@@ -1260,6 +1267,12 @@ def run_student_assignment_operator_session_diagnostic(
             "use_candidate_base_model_witness_for_validation": bool(
                 use_candidate_base_model_witness_for_validation
             ),
+            "use_prepared_validation_context": bool(
+                use_prepared_validation_context
+            ),
+            "collect_validation_telemetry": bool(
+                collect_validation_telemetry
+            ),
             "candidate_capture_callback": candidate_capture_callback,
             "skip_candidate_validation": bool(skip_candidate_validation),
             "diagnostic_parent_hard_wall_deadline_monotonic": (
@@ -1289,6 +1302,10 @@ def run_student_assignment_operator_session_diagnostic(
         capture_final_source_decisions=capture_final_source_decisions,
         collect_resource_telemetry=config.collect_resource_telemetry,
         phase_callback=phase_callback,
+        use_prepared_validation_context=(
+            config.use_prepared_validation_context
+        ),
+        collect_validation_telemetry=config.collect_validation_telemetry,
         diagnostic_cp_sat_random_seed=config.cp_sat_random_seed,
         diagnostic_cp_sat_max_deterministic_time_seconds=(
             config.cp_sat_max_deterministic_time_seconds
@@ -1561,6 +1578,8 @@ def _solve_student_assignment(
     collect_validation_presolve_telemetry=False,
     collect_validation_search_start_telemetry=False,
     validation_telemetry_callback=None,
+    use_prepared_validation_context=False,
+    collect_validation_telemetry=False,
 ):
     # This monitor covers the complete diagnostic/engine operation, including
     # input validation, model construction, Stage 1, Stage 2, extraction, and
@@ -3517,6 +3536,7 @@ def _solve_student_assignment(
                     collect_search_start_telemetry=(
                         collect_validation_search_start_telemetry
                     ),
+                    collect_validation_telemetry=collect_validation_telemetry,
                 )
             )
             stage_2_seed_solver = (
@@ -3929,6 +3949,22 @@ def _solve_student_assignment(
             # promotion decision can distinguish solver behavior from host
             # pressure without adding a runtime dependency.
             local_memory_monitor = ProcessMemoryMonitor().start()
+            prepared_validation_context = None
+            prepared_context_creation_seconds = 0.0
+            if local_config.get("use_prepared_validation_context", False):
+                prepared_context_started = monotonic()
+                prepared_validation_context = _prepare_validation_context(
+                    model,
+                    complete_required_decision_groups,
+                    input_semantic_fingerprint=input_semantic_fingerprint,
+                    objective_semantics_version=data.objective_semantics_version,
+                )
+                prepared_context_creation_seconds = (
+                    monotonic() - prepared_context_started
+                )
+                local_config["prepared_validation_context"] = (
+                    prepared_validation_context
+                )
             operator_setup_started = monotonic()
             _notify_phase(phase_callback, "operator_static_setup", "started")
             adaptive = bool(local_config.get("adaptive", False))
@@ -4056,6 +4092,12 @@ def _solve_student_assignment(
                             False,
                         )
                         else None
+                    ),
+                    prepared_context=local_config.get(
+                        "prepared_validation_context"
+                    ),
+                    collect_validation_telemetry=bool(
+                        local_config.get("collect_validation_telemetry", False)
                     ),
                 )
                 validated_source_decisions = (
@@ -4663,6 +4705,12 @@ def _solve_student_assignment(
                         else None
                     ),
                     "independent_validation_budget_enabled": separate_validation_budget,
+                    "prepared_validation_context_enabled": bool(
+                        local_config.get("prepared_validation_context")
+                    ),
+                    "prepared_context_creation_seconds": (
+                        prepared_context_creation_seconds
+                    ),
                     "time_limit_seconds": per_probe_limit,
                     "max_iterations": max_iterations,
                     "deadline_requested_time_limit_seconds": stage_2_budget_seconds,
@@ -4773,6 +4821,12 @@ def _solve_student_assignment(
                     "solver_wall_time_seconds": local_result.solver_wall_time_seconds,
                     "probe_timings": dict(local_result.timings),
                     "validation_elapsed_seconds": validation_elapsed,
+                    "prepared_validation_context_enabled": bool(
+                        local_config.get("prepared_validation_context")
+                    ),
+                    "prepared_context_creation_seconds": (
+                        prepared_context_creation_seconds
+                    ),
                     "time_limit_seconds": requested_local_time_limit,
                     "deadline_requested_time_limit_seconds": local_deadline.requested_seconds,
                     "deadline_elapsed_seconds": local_deadline.elapsed(),

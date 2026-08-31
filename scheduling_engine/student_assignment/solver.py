@@ -501,6 +501,7 @@ def validate_source_decision_candidate(
     worker_count=1,
     random_seed=0,
     max_deterministic_time=None,
+    collect_validation_telemetry=False,
 ):
     """Validate a semantic source-decision candidate against the full model.
 
@@ -520,6 +521,7 @@ def validate_source_decision_candidate(
         worker_count=worker_count,
         random_seed=random_seed,
         max_deterministic_time=max_deterministic_time,
+        collect_validation_telemetry=collect_validation_telemetry,
     )
     return outcome.solver if outcome.classification == "validated" else None
 
@@ -533,6 +535,7 @@ def validate_source_decision_candidate_with_status(
     worker_count=1,
     random_seed=0,
     max_deterministic_time=None,
+    collect_validation_telemetry=False,
     collect_presolve_telemetry=False,
     collect_search_start_telemetry=False,
     base_model_variable_values=None,
@@ -644,11 +647,19 @@ def validate_source_decision_candidate_with_status(
         else:
             telemetry["model_variable_count_before"] = len(model.Proto().variables)
             telemetry["model_constraint_count_before"] = len(model.Proto().constraints)
-            phase_started = monotonic()
-            base_model_fingerprint = model_proto_fingerprint(model)
-            telemetry["model_fingerprint_wall_time_seconds"] = (
-                monotonic() - phase_started
-            )
+            # A fingerprint is authority-critical only when a full auxiliary
+            # witness is being checked or when the caller explicitly requests
+            # diagnostic telemetry. Ordinary source-fixed validation does not
+            # need to scan the immutable model merely to classify CP-SAT's
+            # result.
+            if collect_validation_telemetry or base_model_variable_values is not None:
+                phase_started = monotonic()
+                base_model_fingerprint = model_proto_fingerprint(model)
+                telemetry["model_fingerprint_wall_time_seconds"] = (
+                    monotonic() - phase_started
+                )
+            else:
+                base_model_fingerprint = None
         telemetry["witness"]["model_fingerprint"] = base_model_fingerprint
         telemetry["witness"]["base_model_variable_count"] = (
             telemetry["model_variable_count_before"]
@@ -746,16 +757,17 @@ def validate_source_decision_candidate_with_status(
         telemetry["candidate_model_constraint_count_after_fixes"] = len(
             candidate_model.Proto().constraints
         )
-        phase_started = monotonic()
-        telemetry["variable_freedom"] = _validation_variable_freedom(
-            candidate_model,
-            required_decision_groups,
-            source_variable_values,
-            prepared_context=prepared_context,
-        )
-        telemetry["variable_freedom_accounting_wall_time_seconds"] = (
-            monotonic() - phase_started
-        )
+        if collect_validation_telemetry:
+            phase_started = monotonic()
+            telemetry["variable_freedom"] = _validation_variable_freedom(
+                candidate_model,
+                required_decision_groups,
+                source_variable_values,
+                prepared_context=prepared_context,
+            )
+            telemetry["variable_freedom_accounting_wall_time_seconds"] = (
+                monotonic() - phase_started
+            )
 
         phase_started = monotonic()
         validator = new_solver(

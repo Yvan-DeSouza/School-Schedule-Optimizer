@@ -107,6 +107,8 @@ class ContinuousOperatorSessionConfig:
     candidate_validation_time_limit_seconds: float | None = None
     cp_sat_random_seed: int | None = None
     cp_sat_max_deterministic_time_seconds: float | None = None
+    use_prepared_validation_context: bool = False
+    collect_validation_telemetry: bool = False
 
     def __post_init__(self):
         if self.operator_family not in OPERATOR_FAMILIES:

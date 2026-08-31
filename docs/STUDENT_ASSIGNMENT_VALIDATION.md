@@ -473,22 +473,95 @@ fresh-process lifetime study remains appropriate before any broader reuse.
 The target process returned below its transient peak after native work was
 released. Existing worker recycling remains required.
 
-**Classification:** `PREPARED CONTEXT PROVIDES STRONG MULTI-CANDIDATE SPEEDUP`
-for the tested same-process diagnostic sequence, with the qualification that
-the result is not a production authority change and target memory evidence is
-not yet a full promotion gate.
+**Classification:** `PREPARED CONTEXT STRONGLY QUALIFIED FOR DIAGNOSTIC
+MULTI-CANDIDATE SESSIONS`. The context passed distinct-candidate parity,
+zero-false-acceptance, incumbent-transition, and 20-repetition lifetime gates.
+This qualifies an opt-in diagnostic facility; it is not a promotion to the
+default authority path.
 
 The next validation-research direction is to retain/refine this prepared
 in-process context for diagnostic multi-candidate sessions, add explicit
 memory/lifetime and distinct-candidate parity coverage, and keep detached
 one-shot validation on the ordinary full validator.
 
+### Multi-candidate and lifetime qualification (2026-08-30)
+
+A clean target-scale `targeted_r4_s2` session from the durable Stage 1 seed
+produced three distinct complete candidates in one unchanged model lineage:
+
+| Candidate | Semantic source fingerprint | Substantive value | Changed students | Changed source decisions |
+| --- | --- | ---: | ---: | ---: |
+| 1 | `02fed7c072ddffea70900796eb19a0fcde723dcb8fb8e7f6f85c308169015a52` | 65,171 | 1 | 1 |
+| 2 | `3ca0f71435401d3d5116b00313595fecd7ce028fe405c8242ed0824a9dfa378e` | 65,169 | 1 | 1 |
+| 3 | `048e7c89f17925680661e04729deeb3e2580418b11d41552ee47477deb36927c` | 65,167 | 1 | 2 |
+
+The operator fully validated and adopted all three candidates, ending
+`complete`/`feasible` at 65,167 with 10,635 assignments, zero unmet requests,
+and all 310 special commitments fulfilled. The prepared context was created
+once from the unchanged model and required-group registry and held no
+candidate values. The initial incumbent was validated before context creation;
+the three subsequent semantic candidates were distinct source states in the
+same prepared lineage. This establishes the intended A-to-B-to-C-to-D session
+pattern operationally; the direct corpus comparison covers the three
+candidate states that entered the reusable context.
+
+The direct three-candidate differential corpus reported:
+
+| Candidate | Ordinary | Prepared | Ordinary wall | Prepared wall |
+| ---: | --- | --- | ---: | ---: |
+| 1 | validated | validated | 12.48 s | 3.20 s |
+| 2 | validated | validated | 12.55 s | 3.31 s |
+| 3 | validated | validated | 12.45 s | 3.34 s |
+
+Classification parity was true for every candidate and false acceptance was
+zero. The prepared operator path also adopted all three candidates while the
+ordinary full-model CP-SAT validator remained the authority for every
+adoption.
+
+A separate 20-repetition same-candidate sequence in a clean process reported
+ordinary validation total 243.61 s (12.18 s average) and prepared validation
+total 66.71 s (3.34 s warm average). Including the 8.37 s context creation,
+prepared amortized time was 3.75 s per validation. All 20 ordinary/prepared
+classifications matched and false acceptance was zero.
+
+Resource samples did not show monotonic prepared-context accumulation. Context
+creation peaked at approximately 619 MiB working set / 557 MiB USS in this
+sequence. Prepared validation peaked at approximately 1,075 MiB working set
+on the first sample, then approximately 774, 762, 773, and 780 MiB at samples
+5, 10, 15, and 20; the process ended below the first prepared peak. Ordinary
+validation, deliberately run first in the same process, reached approximately
+1,385 MiB at sample 10 before declining. Because this is fixed-order
+same-process evidence, it is a resource envelope rather than a cold-order
+memory A/B. It supports stable reuse for this diagnostic lifetime but does not
+remove the existing requirement for process recycling.
+
+The matched three-attempt operator A/B produced identical semantic candidate
+states and endpoint 65,167. Ordinary candidate validation totaled 15.13 s;
+prepared validation totaled 9.48 s after 7.83 s context creation. End-to-end
+operator wall time was 92.01 s ordinary and 102.95 s prepared in that pair.
+The slower prepared end-to-end result is not evidence that the context changed
+the model: probe CP-SAT search varied between runs, and the measured validation
+subphase was lower. It does mean a broader operator-level speedup has not been
+established. The context is diagnostic-session qualified on parity and warm
+validation cost, but is not entitled to replace ordinary validation by default
+or to claim a total-session performance win.
+
+The expensive telemetry audit has a separate result:
+`EXPENSIVE VALIDATION TELEMETRY SAFELY MADE OPT-IN`. Target-scale ordinary
+authority-only validation took 2.97 s of validator wall time, versus 9.64 s
+with full diagnostic telemetry. CP-SAT was approximately 1.25 s in both. The
+default path now skips the non-authoritative model fingerprint scan and
+variable-freedom accounting; benchmark and qualification helpers opt in when
+those measurements are required. Fingerprint checks remain mandatory for full
+auxiliary-witness validation and prepared-context identity checks. No
+hard-validity check was removed.
+
 ## Validation-specific backlog
 
 | Idea | Upside | Risk/complexity | Evidence required | Status |
 | --- | --- | --- | --- | --- |
 | Repeat exact-witness A/B on the same candidate with persisted source identity | Confirm native and total speedup is real | Medium | Multiple clean-process or same-lineage repetitions; exact source fingerprints; memory envelope | Completed; parity passed, total performance benefit not demonstrated |
-| Prepared in-process validation context | Reduce repeated model/index construction | Medium | Safe clone/lifetime tests and process-recycle measurements | Diagnostic path implemented; retain/refine for multi-candidate sessions |
+| Prepared in-process validation context | Reduce repeated model/index construction | Medium | Safe clone/lifetime tests and process-recycle measurements | Qualified for opt-in diagnostic multi-candidate sessions; not default authority |
 | Immutable index/model-build reuse | Reduce Python preparation overhead | Low/medium | No stale DTO or lineage state; benchmark parity | Later |
 | Differential-equivalence framework | Prevent false-positive fast acceptance | High | Randomized/adversarial candidate matrix against current validator | Small deterministic gate passed; broader corpus remains before any authority study |
 | Deterministic full-schedule shadow validator | Potentially avoid native solve | Very high | Formal coverage of every hard/shared/special rule and exhaustive differential tests | Later; not justified yet |
@@ -512,10 +585,11 @@ the full validator.
 
 ## Recommended next step
 
-The current safe performance step is to retain and refine the diagnostic
-prepared in-process context for multi-candidate local sessions, with explicit
-memory/lifetime and distinct-candidate parity coverage. The ordinary full-model
-validator remains the sole authority. Exact-witness validation remains
-diagnostic-only and is not reopened by this study. Dependency-scoped and
-deterministic validators remain deferred until prepared-context reuse and the
-broader differential corpus justify another authority study.
+The prepared context is now qualified for opt-in diagnostic multi-candidate
+sessions, but a separate production-promotion study is still required before
+making it a default validation path. That study should use more clean-process
+operator sessions and a matched end-to-end performance/resource gate. The
+ordinary full-model validator remains the sole authority. Exact-witness
+validation remains diagnostic-only and is not reopened by this study.
+Dependency-scoped and deterministic validators remain deferred; this work did
+not prove that either can safely replace the full validator.
