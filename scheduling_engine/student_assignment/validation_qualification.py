@@ -214,6 +214,7 @@ def run_prepared_validation_sequence(
     time_limit_seconds=5.0,
     worker_count=1,
     collect_resource_telemetry=False,
+    collect_validation_telemetry=False,
 ):
     """Compare repeated ordinary validation with diagnostic prepared reuse.
 
@@ -230,7 +231,11 @@ def run_prepared_validation_sequence(
     ).start()
     preparation_started = monotonic()
     try:
-        context = prepare_validation_context(model, required_decision_groups)
+        context = prepare_validation_context(
+            model,
+            required_decision_groups,
+            collect_diagnostic_metadata=collect_validation_telemetry,
+        )
     finally:
         context_resource = context_monitor.stop()
     context_creation_seconds = monotonic() - preparation_started
@@ -251,7 +256,7 @@ def run_prepared_validation_sequence(
                     time_limit_seconds,
                     worker_count=worker_count,
                     random_seed=0,
-                    collect_validation_telemetry=True,
+                    collect_validation_telemetry=collect_validation_telemetry,
                     prepared_context=context if prepared else None,
                 )
             finally:
@@ -301,6 +306,7 @@ def run_prepared_validation_sequence(
             }
     return {
         "context_creation_seconds": context_creation_seconds,
+        "context_creation_phases": dict(context.creation_phase_seconds),
         "context_resource": dict(context_resource or {}),
         "repetitions": repetitions,
         "ordinary": ordinary,
@@ -332,6 +338,7 @@ def run_prepared_validation_corpus(
     time_limit_seconds=5.0,
     worker_count=1,
     collect_resource_telemetry=False,
+    collect_validation_telemetry=False,
 ):
     """Compare ordinary and prepared validation across distinct candidates.
 
@@ -343,7 +350,11 @@ def run_prepared_validation_corpus(
     """
 
     context_started = monotonic()
-    context = prepare_validation_context(model, required_decision_groups)
+    context = prepare_validation_context(
+        model,
+        required_decision_groups,
+        collect_diagnostic_metadata=collect_validation_telemetry,
+    )
     context_creation_seconds = monotonic() - context_started
     records = []
     for index, source_values in enumerate(candidate_source_variable_values, 1):
@@ -363,7 +374,7 @@ def run_prepared_validation_corpus(
                     time_limit_seconds,
                     worker_count=worker_count,
                     random_seed=0,
-                    collect_validation_telemetry=True,
+                    collect_validation_telemetry=collect_validation_telemetry,
                     prepared_context=context if prepared else None,
                 )
             finally:
@@ -389,6 +400,7 @@ def run_prepared_validation_corpus(
     return {
         "candidate_count": len(records),
         "context_creation_seconds": context_creation_seconds,
+        "context_creation_phases": dict(context.creation_phase_seconds),
         "records": records,
         "classification_parity": all(
             record["classification_parity"] for record in records

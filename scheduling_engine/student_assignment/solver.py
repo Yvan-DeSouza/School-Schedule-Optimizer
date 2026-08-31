@@ -269,6 +269,8 @@ class PreparedValidationContext:
     model_schema_version: str | None = None
     objective_semantics_version: str | None = None
     configuration_fingerprint: str | None = None
+    creation_phase_seconds: dict = field(default_factory=dict)
+    diagnostic_metadata_complete: bool = False
 
 
 def prepare_validation_context(
@@ -279,6 +281,7 @@ def prepare_validation_context(
     model_schema_version=None,
     objective_semantics_version=None,
     configuration_fingerprint=None,
+    collect_diagnostic_metadata=False,
 ):
     """Prepare reusable validation-only model/index state for one lineage.
 
@@ -289,21 +292,53 @@ def prepare_validation_context(
     with this same in-process model object.
     """
 
+    creation_phase_seconds = {
+        "source_model_identity_verification": 0.0,
+    }
+    phase_started = monotonic()
     prepared_model = model.Clone()
+    creation_phase_seconds["model_clone"] = monotonic() - phase_started
+
+    phase_started = monotonic()
     group_indexes = tuple(
         tuple(int(variable.Index()) for variable in decision_group)
         for decision_group in required_decision_groups
     )
+    creation_phase_seconds["required_group_index_preparation"] = (
+        monotonic() - phase_started
+    )
+
+    phase_started = monotonic()
     for group in group_indexes:
         prepared_model.AddExactlyOne(
             prepared_model.GetIntVarFromProtoIndex(index) for index in group
         )
-    base_model_fingerprint = model_proto_fingerprint(model)
-    source_variable_indexes = frozenset(
-        index
-        for index, variable in enumerate(model.Proto().variables)
-        if (variable.name or "").startswith(("enroll_", "commitment_"))
+    creation_phase_seconds["completion_constraint_construction"] = (
+        monotonic() - phase_started
     )
+
+    phase_started = monotonic()
+    base_model_fingerprint = model_proto_fingerprint(model)
+    creation_phase_seconds["model_fingerprint"] = monotonic() - phase_started
+
+    source_variable_indexes = frozenset()
+    family_variable_counts = {}
+    singleton_source_variable_count = 0
+    auxiliary_variable_count = 0
+    hinted_variable_count = 0
+    empty_required_decision_group_count = 0
+    if collect_diagnostic_metadata:
+        phase_started = monotonic()
+        source_variable_indexes = frozenset(
+            index
+            for index, variable in enumerate(model.Proto().variables)
+            if (variable.name or "").startswith(("enroll_", "commitment_"))
+        )
+        creation_phase_seconds["source_variable_index_preparation"] = (
+            monotonic() - phase_started
+        )
+    else:
+        creation_phase_seconds["source_variable_index_preparation"] = 0.0
     family_prefixes = {
         "objective_related": (
             "utilization_", "semester_balance_", "difficulty_balance_",
@@ -321,13 +356,40 @@ def prepare_validation_context(
         "focus": ("focus_",),
         "co_op": ("co_op_",),
     }
-    family_variable_counts = {
-        family: sum(
-            any((variable.name or "").startswith(prefix) for prefix in prefixes)
-            for variable in model.Proto().variables
+    if collect_diagnostic_metadata:
+        phase_started = monotonic()
+        family_variable_counts = {
+            family: sum(
+                any((variable.name or "").startswith(prefix) for prefix in prefixes)
+                for variable in model.Proto().variables
+            )
+            for family, prefixes in family_prefixes.items()
+        }
+        creation_phase_seconds["static_family_accounting"] = (
+            monotonic() - phase_started
         )
-        for family, prefixes in family_prefixes.items()
-    }
+
+        phase_started = monotonic()
+        singleton_source_variable_count = sum(
+            index in source_variable_indexes
+            and len(variable.domain) == 2
+            and variable.domain[0] == variable.domain[1]
+            for index, variable in enumerate(model.Proto().variables)
+        )
+        auxiliary_variable_count = (
+            len(model.Proto().variables) - len(source_variable_indexes)
+        )
+        hinted_variable_count = len(model.Proto().solution_hint.vars)
+        empty_required_decision_group_count = sum(
+            not group for group in group_indexes
+        )
+        creation_phase_seconds["static_counts_and_hint_accounting"] = (
+            monotonic() - phase_started
+        )
+    else:
+        creation_phase_seconds["static_family_accounting"] = 0.0
+        creation_phase_seconds["static_counts_and_hint_accounting"] = 0.0
+    creation_phase_seconds["total_recorded"] = sum(creation_phase_seconds.values())
     return PreparedValidationContext(
         model=prepared_model,
         source_model=model,
@@ -337,23 +399,16 @@ def prepare_validation_context(
         required_decision_group_indexes=group_indexes,
         source_variable_indexes=source_variable_indexes,
         family_variable_counts=family_variable_counts,
-        singleton_source_variable_count=sum(
-            index in source_variable_indexes
-            and len(variable.domain) == 2
-            and variable.domain[0] == variable.domain[1]
-            for index, variable in enumerate(model.Proto().variables)
-        ),
-        auxiliary_variable_count=(
-            len(model.Proto().variables) - len(source_variable_indexes)
-        ),
-        hinted_variable_count=len(model.Proto().solution_hint.vars),
-        empty_required_decision_group_count=sum(
-            not group for group in group_indexes
-        ),
+        singleton_source_variable_count=singleton_source_variable_count,
+        auxiliary_variable_count=auxiliary_variable_count,
+        hinted_variable_count=hinted_variable_count,
+        empty_required_decision_group_count=empty_required_decision_group_count,
         input_semantic_fingerprint=input_semantic_fingerprint,
         model_schema_version=model_schema_version,
         objective_semantics_version=objective_semantics_version,
         configuration_fingerprint=configuration_fingerprint,
+        creation_phase_seconds=creation_phase_seconds,
+        diagnostic_metadata_complete=bool(collect_diagnostic_metadata),
     )
 
 
@@ -757,7 +812,10 @@ def validate_source_decision_candidate_with_status(
         telemetry["candidate_model_constraint_count_after_fixes"] = len(
             candidate_model.Proto().constraints
         )
-        if collect_validation_telemetry:
+        if collect_validation_telemetry and (
+            prepared_context is None
+            or prepared_context.diagnostic_metadata_complete
+        ):
             phase_started = monotonic()
             telemetry["variable_freedom"] = _validation_variable_freedom(
                 candidate_model,
@@ -767,6 +825,10 @@ def validate_source_decision_candidate_with_status(
             )
             telemetry["variable_freedom_accounting_wall_time_seconds"] = (
                 monotonic() - phase_started
+            )
+        elif collect_validation_telemetry:
+            telemetry["variable_freedom_unavailable_reason"] = (
+                "prepared_context_diagnostic_metadata_not_collected"
             )
 
         phase_started = monotonic()

@@ -262,6 +262,27 @@ def test_prepared_validation_context_rejects_stale_identity_metadata():
     assert "identity" in (outcome.error or "")
 
 
+def test_minimal_prepared_context_does_not_fabricate_diagnostic_accounting():
+    model = cp_model.CpModel()
+    source = model.NewBoolVar("enroll_1_1")
+    context = prepare_validation_context(model, ((source,),))
+
+    outcome = validate_source_decision_candidate_with_status(
+        model,
+        ((source,),),
+        {source.Index(): 1},
+        5,
+        prepared_context=context,
+        collect_validation_telemetry=True,
+    )
+
+    assert outcome.classification == "validated"
+    assert outcome.telemetry["variable_freedom"] is None
+    assert outcome.telemetry["variable_freedom_unavailable_reason"] == (
+        "prepared_context_diagnostic_metadata_not_collected"
+    )
+
+
 def test_prepared_validation_corpus_preserves_parity_across_distinct_candidates():
     model = cp_model.CpModel()
     candidates = [

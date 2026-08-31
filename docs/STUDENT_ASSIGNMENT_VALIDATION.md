@@ -556,12 +556,95 @@ those measurements are required. Fingerprint checks remain mandatory for full
 auxiliary-witness validation and prepared-context identity checks. No
 hard-validity check was removed.
 
+### Prepared-context break-even and lazy activation study (2026-08-30)
+
+The context-construction audit identified the following pre-minimal target-scale
+costs. The earlier implementation recorded approximately 12.09 seconds total:
+
+| Creation phase | Measured time | Classification |
+| --- | ---: | --- |
+| source-model identity verification | 0.00 s | Same-object safety is enforced during validation |
+| model clone | 0.17 s | Required to isolate the reusable validation model |
+| required-group index preparation | 0.10 s | Required for the completion registry |
+| completion-constraint construction | 0.93 s | Required for ordinary-validator equivalence |
+| model fingerprint | 1.40 s | Required for cached lineage identity |
+| source-variable index preparation | 0.47 s | Diagnostic freedom accounting only |
+| static family accounting | 7.72 s | Diagnostic model-complexity metadata only |
+| static counts/hint accounting | 1.32 s | Diagnostic metadata only |
+
+Static family/count metadata was therefore made opt-in. Minimal context
+creation retains the model clone, required-group registry, completion
+constraints, cached base fingerprint, model shape, and same-process identity
+checks. It skips only diagnostic source/family/count accounting unless full
+telemetry is requested. A post-change target-scale measurement was 1.72 seconds
+(clone 0.12 s, group indexes 0.06 s, completion constraints 0.61 s, fingerprint
+0.94 s). Every candidate still receives a fresh model clone, fresh source
+equalities, and a fresh CP-SAT solve.
+
+The authority-only break-even corpus used ten distinct complete candidates
+returned and ordinarily validated by the target-scale operator. The cumulative
+costs were:
+
+| N | Ordinary | Prepared including cold creation | Difference (ordinary - prepared) |
+| ---: | ---: | ---: | ---: |
+| 1 | 3.607 s | 5.439 s | -1.832 s |
+| 2 | 7.100 s | 8.205 s | -1.105 s |
+| 3 | 10.424 s | 11.267 s | -0.843 s |
+| 4 | 13.839 s | 14.159 s | -0.320 s |
+| 5 | 18.249 s | 17.403 s | +0.846 s |
+| 6 | 21.840 s | 20.299 s | +1.542 s |
+| 8 | 29.780 s | 26.956 s | +2.824 s |
+| 10 | 37.143 s | 32.798 s | +4.346 s |
+
+The measured break-even count is **N=5**. With measured approximate values
+`C=2.04 s`, `O=3.71 s`, and `P=3.08 s`, the explanatory model
+`ceil(C / (O-P))` predicts **N=4**. The one-count difference is timing noise
+near the boundary; the empirical curve is authoritative for this study.
+
+The diagnostic operator supports `ordinary`, `eager`,
+`after_first_validated_candidate`, and `threshold` strategies. After-first
+activation performs the first candidate validation ordinarily and creates a
+context only after that candidate is validated. Threshold activation uses only
+the configured maximum attempt count and a configured minimum threshold; it
+does not assume that every future attempt will produce a candidate. Neither
+strategy is production-enabled.
+
+On the target max-three session, ordinary validation totaled 14.22 seconds,
+after-first validation plus context creation totaled 12.09 seconds, and
+threshold-three totaled 13.42 seconds. All reached the same complete 65,167
+endpoint. Total session times were 96.58, 98.36, and 103.35 seconds
+respectively, demonstrating that probe CP-SAT variance obscures the smaller
+validation saving at the end-to-end level. A bounded no-candidate/`unknown`
+session under after-first activation created no context; it remained unresolved
+and was not treated as infeasible.
+
+The second-family smoke check used the existing six-student R2 fixture. Ordinary,
+eager, and after-first sessions each completed two sequential improvements;
+after-first used ordinary validation for the first and prepared validation for
+the second. A larger medium R2 attempt returned `unknown` without a candidate
+under its bounded budget, so it does not establish target-scale R2 performance.
+
+The 20-repetition lifetime study remained parity-preserving with zero false
+acceptance. Ordinary validation totaled 243.61 seconds; prepared validation
+totaled 66.71 seconds plus 8.37 seconds creation. Prepared memory showed no
+monotonic accumulation: its sampled working-set peaks were approximately 1,075,
+774, 762, 773, and 780 MiB at samples 1, 5, 10, 15, and 20. The fixed-order
+same-process study is a resource envelope, not proof of cross-process reuse.
+
+**Eager-versus-lazy classification:** `PREPARE ONLY FOR LONG/HIGH-ATTEMPT
+SESSIONS`. The evidence favors after-first activation when candidate production
+is uncertain and prepared reuse only once multiple validated candidates are
+likely. **Production-promotion gate:** `MORE DIAGNOSTIC OPTIMIZATION REQUIRED
+BEFORE PROMOTION`. A future promotion study needs more clean-process matched
+operator observations and an end-to-end resource/performance gate. The ordinary
+full-model validator remains the sole authority.
+
 ## Validation-specific backlog
 
 | Idea | Upside | Risk/complexity | Evidence required | Status |
 | --- | --- | --- | --- | --- |
 | Repeat exact-witness A/B on the same candidate with persisted source identity | Confirm native and total speedup is real | Medium | Multiple clean-process or same-lineage repetitions; exact source fingerprints; memory envelope | Completed; parity passed, total performance benefit not demonstrated |
-| Prepared in-process validation context | Reduce repeated model/index construction | Medium | Safe clone/lifetime tests and process-recycle measurements | Qualified for opt-in diagnostic multi-candidate sessions; not default authority |
+| Prepared in-process validation context | Reduce repeated model/index construction | Medium | Safe clone/lifetime tests and process-recycle measurements | Minimal context and after-first strategy qualified for opt-in diagnostic multi-candidate sessions; not default authority |
 | Immutable index/model-build reuse | Reduce Python preparation overhead | Low/medium | No stale DTO or lineage state; benchmark parity | Later |
 | Differential-equivalence framework | Prevent false-positive fast acceptance | High | Randomized/adversarial candidate matrix against current validator | Small deterministic gate passed; broader corpus remains before any authority study |
 | Deterministic full-schedule shadow validator | Potentially avoid native solve | Very high | Formal coverage of every hard/shared/special rule and exhaustive differential tests | Later; not justified yet |

@@ -1173,6 +1173,8 @@ def run_student_assignment_operator_session_diagnostic(
     use_candidate_base_model_witness_for_validation=False,
     use_prepared_validation_context=False,
     collect_validation_telemetry=False,
+    prepared_validation_strategy=None,
+    prepared_validation_threshold=3,
     candidate_capture_callback=None,
     skip_candidate_validation=False,
     timeline_max_events=128,
@@ -1189,6 +1191,10 @@ def run_student_assignment_operator_session_diagnostic(
 
     from .operator_session import ContinuousOperatorSessionConfig
 
+    if prepared_validation_strategy is None:
+        prepared_validation_strategy = (
+            "eager" if use_prepared_validation_context else "ordinary"
+        )
     config = ContinuousOperatorSessionConfig(
         operator_family=operator_family,
         total_time_limit_seconds=total_time_limit_seconds,
@@ -1218,6 +1224,8 @@ def run_student_assignment_operator_session_diagnostic(
         ),
         use_prepared_validation_context=bool(use_prepared_validation_context),
         collect_validation_telemetry=bool(collect_validation_telemetry),
+        prepared_validation_strategy=prepared_validation_strategy,
+        prepared_validation_threshold=int(prepared_validation_threshold),
     )
     if not initial_source_decisions and initial_source_variable_values is None:
         raise ValueError("initial_source_decisions is required")
@@ -1273,6 +1281,8 @@ def run_student_assignment_operator_session_diagnostic(
             "collect_validation_telemetry": bool(
                 collect_validation_telemetry
             ),
+            "prepared_validation_strategy": config.prepared_validation_strategy,
+            "prepared_validation_threshold": config.prepared_validation_threshold,
             "candidate_capture_callback": candidate_capture_callback,
             "skip_candidate_validation": bool(skip_candidate_validation),
             "diagnostic_parent_hard_wall_deadline_monotonic": (
@@ -3951,20 +3961,58 @@ def _solve_student_assignment(
             local_memory_monitor = ProcessMemoryMonitor().start()
             prepared_validation_context = None
             prepared_context_creation_seconds = 0.0
-            if local_config.get("use_prepared_validation_context", False):
+            prepared_context_activation_count = 0
+            prepared_validation_strategy = local_config.get(
+                "prepared_validation_strategy",
+                "eager"
+                if local_config.get("use_prepared_validation_context", False)
+                else "ordinary",
+            )
+            prepared_validation_threshold = max(
+                1,
+                int(local_config.get("prepared_validation_threshold", 3)),
+            )
+
+            def _activate_prepared_validation_context():
+                nonlocal prepared_validation_context
+                nonlocal prepared_context_creation_seconds
+                nonlocal prepared_context_activation_count
+                if prepared_validation_context is not None:
+                    return False
                 prepared_context_started = monotonic()
                 prepared_validation_context = _prepare_validation_context(
                     model,
                     complete_required_decision_groups,
                     input_semantic_fingerprint=input_semantic_fingerprint,
                     objective_semantics_version=data.objective_semantics_version,
+                    collect_diagnostic_metadata=bool(
+                        local_config.get("collect_validation_telemetry", False)
+                    ),
                 )
                 prepared_context_creation_seconds = (
                     monotonic() - prepared_context_started
                 )
+                prepared_context_activation_count += 1
                 local_config["prepared_validation_context"] = (
                     prepared_validation_context
                 )
+                return True
+
+            configured_attempts = max(
+                1,
+                int(local_config.get(
+                    "max_iterations",
+                    local_config.get("max_attempts", 1),
+                )),
+            )
+            if (
+                prepared_validation_strategy == "eager"
+                or (
+                    prepared_validation_strategy == "threshold"
+                    and configured_attempts >= prepared_validation_threshold
+                )
+            ):
+                _activate_prepared_validation_context()
             operator_setup_started = monotonic()
             _notify_phase(phase_callback, "operator_static_setup", "started")
             adaptive = bool(local_config.get("adaptive", False))
@@ -4100,6 +4148,13 @@ def _solve_student_assignment(
                         local_config.get("collect_validation_telemetry", False)
                     ),
                 )
+                validation_elapsed = monotonic() - started
+                if (
+                    validation_outcome.classification == "validated"
+                    and prepared_validation_strategy
+                    == "after_first_validated_candidate"
+                ):
+                    _activate_prepared_validation_context()
                 validated_source_decisions = (
                     tuple(_source_decision_fingerprint(validation_outcome.solver))
                     if validation_outcome.solver is not None
@@ -4110,7 +4165,7 @@ def _solve_student_assignment(
                 )
                 return (
                     validation_outcome.solver,
-                    monotonic() - started,
+                    validation_elapsed,
                     {
                         "classification": validation_outcome.classification,
                         "solver_outcome": validation_outcome.solver_outcome,
@@ -4711,6 +4766,13 @@ def _solve_student_assignment(
                     "prepared_context_creation_seconds": (
                         prepared_context_creation_seconds
                     ),
+                    "prepared_context_activation_count": (
+                        prepared_context_activation_count
+                    ),
+                    "prepared_validation_strategy": prepared_validation_strategy,
+                    "prepared_context_creation_phases": dict(
+                        prepared_validation_context.creation_phase_seconds
+                    ) if prepared_validation_context is not None else {},
                     "time_limit_seconds": per_probe_limit,
                     "max_iterations": max_iterations,
                     "deadline_requested_time_limit_seconds": stage_2_budget_seconds,
@@ -4827,6 +4889,13 @@ def _solve_student_assignment(
                     "prepared_context_creation_seconds": (
                         prepared_context_creation_seconds
                     ),
+                    "prepared_context_activation_count": (
+                        prepared_context_activation_count
+                    ),
+                    "prepared_validation_strategy": prepared_validation_strategy,
+                    "prepared_context_creation_phases": dict(
+                        prepared_validation_context.creation_phase_seconds
+                    ) if prepared_validation_context is not None else {},
                     "time_limit_seconds": requested_local_time_limit,
                     "deadline_requested_time_limit_seconds": local_deadline.requested_seconds,
                     "deadline_elapsed_seconds": local_deadline.elapsed(),

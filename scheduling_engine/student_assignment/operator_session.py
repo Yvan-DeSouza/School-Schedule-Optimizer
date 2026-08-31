@@ -34,6 +34,12 @@ OPERATOR_FAMILIES = (
     "grade_bounded_g12",
 )
 TARGET_POLICIES = ("dynamic", "fixed")
+PREPARED_VALIDATION_STRATEGIES = (
+    "ordinary",
+    "eager",
+    "after_first_validated_candidate",
+    "threshold",
+)
 
 
 def operator_session_target_count(operator_family):
@@ -109,6 +115,8 @@ class ContinuousOperatorSessionConfig:
     cp_sat_max_deterministic_time_seconds: float | None = None
     use_prepared_validation_context: bool = False
     collect_validation_telemetry: bool = False
+    prepared_validation_strategy: str = "ordinary"
+    prepared_validation_threshold: int = 3
 
     def __post_init__(self):
         if self.operator_family not in OPERATOR_FAMILIES:
@@ -123,6 +131,13 @@ class ContinuousOperatorSessionConfig:
             raise ValueError("per_attempt_time_limit_seconds must be positive")
         if self.worker_count <= 0:
             raise ValueError("worker_count must be positive")
+        if self.prepared_validation_strategy not in PREPARED_VALIDATION_STRATEGIES:
+            raise ValueError(
+                "Unsupported prepared validation strategy: "
+                f"{self.prepared_validation_strategy}"
+            )
+        if self.prepared_validation_threshold <= 0:
+            raise ValueError("prepared_validation_threshold must be positive")
         if self.minimum_next_attempt_seconds < 0:
             raise ValueError("minimum_next_attempt_seconds cannot be negative")
         if (

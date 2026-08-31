@@ -1685,3 +1685,58 @@ def test_operator_session_keeps_unknown_distinct_from_proven_scope_exhaustion():
     assert infeasible.status == "complete"
     assert infeasible_facts["iterations"][0]["status"] == "infeasible"
     assert infeasible_facts["stopping_reason"] == "proven_scope_exhausted"
+
+
+def test_lazy_prepared_context_does_not_activate_without_a_candidate():
+    data, source = _multi_attempt_operator_fixture((1, 2))
+    result = run_student_assignment_operator_session_diagnostic(
+        data,
+        operator_family="targeted_r8_s1",
+        initial_source_decisions=source,
+        total_time_limit_seconds=4,
+        max_attempts=1,
+        per_attempt_time_limit_seconds=0.001,
+        worker_count=1,
+        target_policy="fixed",
+        selected_student_ids=(1,),
+        hard_feasibility_validation_time_limit_seconds=1,
+        hard_feasibility_validation_worker_count=1,
+        prepared_validation_strategy="after_first_validated_candidate",
+        collect_resource_telemetry=False,
+    )
+
+    facts = result.optimization_facts["stage_2_local_bootstrap"]
+    assert facts["candidate_validated"] is False
+    assert facts["prepared_validation_strategy"] == (
+        "after_first_validated_candidate"
+    )
+    assert facts["prepared_context_activation_count"] == 0
+    assert facts["prepared_context_creation_seconds"] == 0.0
+
+
+def test_lazy_prepared_context_activates_after_first_validated_candidate():
+    data, source = _multi_attempt_operator_fixture((1, 2, 3))
+    result = run_student_assignment_operator_session_diagnostic(
+        data,
+        operator_family="r2",
+        initial_source_decisions=source,
+        total_time_limit_seconds=8,
+        max_attempts=2,
+        per_attempt_time_limit_seconds=2,
+        worker_count=1,
+        hard_feasibility_validation_time_limit_seconds=2,
+        hard_feasibility_validation_worker_count=1,
+        prepared_validation_strategy="after_first_validated_candidate",
+        collect_resource_telemetry=False,
+    )
+
+    facts = result.optimization_facts["stage_2_local_bootstrap"]
+    assert facts["prepared_validation_strategy"] == (
+        "after_first_validated_candidate"
+    )
+    assert facts["prepared_context_activation_count"] == 1
+    assert facts["prepared_context_creation_seconds"] > 0
+    iterations = facts["iterations"]
+    assert iterations[0]["validation_telemetry"]["prepared_context"]["used"] is False
+    if len(iterations) > 1:
+        assert iterations[1]["validation_telemetry"]["prepared_context"]["used"] is True
