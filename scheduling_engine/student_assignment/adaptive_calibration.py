@@ -160,6 +160,39 @@ CALIBRATION_FIXED_CYCLES = {
     ),
 }
 
+# Startup-aware target-policy comparison settings.  These are diagnostic
+# protocol values only; ordinary Stage 2 and the production policy remain
+# unchanged.  One selected operator may receive up to 300 seconds, while the
+# matched policy families share the same 900-second outer policy opportunity.
+STARTUP_AWARE_PROTOCOL_VERSION = "adaptive-policy-generalization-startup-aware-v1"
+STARTUP_AWARE_MAX_OPERATOR_SECONDS = 300.0
+STARTUP_AWARE_TOTAL_POLICY_SECONDS = 900.0
+STARTUP_AWARE_SESSION_OVERRIDES = {
+    name: {
+        "session_time_limit_seconds": STARTUP_AWARE_MAX_OPERATOR_SECONDS,
+        "session_max_attempts": 1,
+        "per_attempt_cp_sat_limit_seconds": STARTUP_AWARE_MAX_OPERATOR_SECONDS,
+    }
+    for name in (
+        "r2",
+        "targeted_r4_s1",
+        "targeted_r8_s1",
+        "targeted_r4_s2",
+        "targeted_r8_s2",
+        "targeted_utilization_r16_s2",
+        "targeted_utilization_r16_s4",
+        "targeted_utilization_r32_s4",
+        "targeted_utilization_r32_s6",
+        "targeted_utilization_r64_s6",
+        "targeted_utilization_r64_s8",
+        "targeted_utilization_r64_s10",
+        "grade_bounded_g9",
+        "grade_bounded_g10",
+        "grade_bounded_g11",
+        "grade_bounded_g12",
+    )
+}
+
 
 def profile_fingerprint(profile_name):
     """Return a stable identity for one pre-registered score profile."""
@@ -272,6 +305,7 @@ def run_matched_calibration_trial(
     worker_count=8,
     portfolio=DEFAULT_ADAPTIVE_OPERATOR_PORTFOLIO,
     session_overrides=CALIBRATION_SESSION_OVERRIDES,
+    candidate_validation_time_limit_seconds=None,
     collect_resource_telemetry=True,
     cp_sat_random_seed=None,
     cp_sat_max_deterministic_time_seconds=None,
@@ -299,6 +333,9 @@ def run_matched_calibration_trial(
         cp_sat_random_seed=cp_sat_random_seed,
         cp_sat_max_deterministic_time_seconds=(
             cp_sat_max_deterministic_time_seconds
+        ),
+        candidate_validation_time_limit_seconds=(
+            candidate_validation_time_limit_seconds
         ),
         selection_policy=policy_config["selection_policy"],
         fixed_cycle=policy_config["fixed_cycle"],
@@ -422,6 +459,10 @@ __all__ = [
     "CALIBRATION_FIXED_CYCLES",
     "CALIBRATION_PROFILES",
     "CALIBRATION_PROTOCOL_VERSION",
+    "STARTUP_AWARE_MAX_OPERATOR_SECONDS",
+    "STARTUP_AWARE_PROTOCOL_VERSION",
+    "STARTUP_AWARE_SESSION_OVERRIDES",
+    "STARTUP_AWARE_TOTAL_POLICY_SECONDS",
     "AdaptiveCalibrationTrialRecord",
     "apply_calibration_profile",
     "build_calibration_policy",

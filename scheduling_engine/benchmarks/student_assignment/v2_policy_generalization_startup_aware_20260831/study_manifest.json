@@ -1,0 +1,303 @@
+{
+  "budget_contract": {
+    "candidate_validation_time_limit_seconds": 180.0,
+    "candidate_validation_worker_count": 1,
+    "cp_sat_random_seeds": [
+      101,
+      202,
+      303
+    ],
+    "cumulative_policy_budget_seconds": 900.0,
+    "full_model_validation_required": true,
+    "ordinary_stage2_between_iterations": false,
+    "parent_hard_wall_seconds": 1800.0,
+    "per_operator_maximum_seconds": 300.0,
+    "production_policy_wiring": false,
+    "profile": "balanced",
+    "profile_fingerprint": "d1eb7b0501db1b8fd6a2cf0598f4788a6864e4eb11ced45617f102f6f6b628da",
+    "protocol_version": "adaptive-policy-generalization-startup-aware-v1",
+    "session_overrides": {
+      "grade_bounded_g10": {
+        "per_attempt_cp_sat_limit_seconds": 300.0,
+        "session_max_attempts": 1,
+        "session_time_limit_seconds": 300.0
+      },
+      "grade_bounded_g11": {
+        "per_attempt_cp_sat_limit_seconds": 300.0,
+        "session_max_attempts": 1,
+        "session_time_limit_seconds": 300.0
+      },
+      "grade_bounded_g12": {
+        "per_attempt_cp_sat_limit_seconds": 300.0,
+        "session_max_attempts": 1,
+        "session_time_limit_seconds": 300.0
+      },
+      "grade_bounded_g9": {
+        "per_attempt_cp_sat_limit_seconds": 300.0,
+        "session_max_attempts": 1,
+        "session_time_limit_seconds": 300.0
+      },
+      "r2": {
+        "per_attempt_cp_sat_limit_seconds": 300.0,
+        "session_max_attempts": 1,
+        "session_time_limit_seconds": 300.0
+      },
+      "targeted_r4_s1": {
+        "per_attempt_cp_sat_limit_seconds": 300.0,
+        "session_max_attempts": 1,
+        "session_time_limit_seconds": 300.0
+      },
+      "targeted_r4_s2": {
+        "per_attempt_cp_sat_limit_seconds": 300.0,
+        "session_max_attempts": 1,
+        "session_time_limit_seconds": 300.0
+      },
+      "targeted_r8_s1": {
+        "per_attempt_cp_sat_limit_seconds": 300.0,
+        "session_max_attempts": 1,
+        "session_time_limit_seconds": 300.0
+      },
+      "targeted_r8_s2": {
+        "per_attempt_cp_sat_limit_seconds": 300.0,
+        "session_max_attempts": 1,
+        "session_time_limit_seconds": 300.0
+      },
+      "targeted_utilization_r16_s2": {
+        "per_attempt_cp_sat_limit_seconds": 300.0,
+        "session_max_attempts": 1,
+        "session_time_limit_seconds": 300.0
+      },
+      "targeted_utilization_r16_s4": {
+        "per_attempt_cp_sat_limit_seconds": 300.0,
+        "session_max_attempts": 1,
+        "session_time_limit_seconds": 300.0
+      },
+      "targeted_utilization_r32_s4": {
+        "per_attempt_cp_sat_limit_seconds": 300.0,
+        "session_max_attempts": 1,
+        "session_time_limit_seconds": 300.0
+      },
+      "targeted_utilization_r32_s6": {
+        "per_attempt_cp_sat_limit_seconds": 300.0,
+        "session_max_attempts": 1,
+        "session_time_limit_seconds": 300.0
+      },
+      "targeted_utilization_r64_s10": {
+        "per_attempt_cp_sat_limit_seconds": 300.0,
+        "session_max_attempts": 1,
+        "session_time_limit_seconds": 300.0
+      },
+      "targeted_utilization_r64_s6": {
+        "per_attempt_cp_sat_limit_seconds": 300.0,
+        "session_max_attempts": 1,
+        "session_time_limit_seconds": 300.0
+      },
+      "targeted_utilization_r64_s8": {
+        "per_attempt_cp_sat_limit_seconds": 300.0,
+        "session_max_attempts": 1,
+        "session_time_limit_seconds": 300.0
+      }
+    },
+    "unvalidated_candidate_adoption": false,
+    "worker_count": 1
+  },
+  "created_at_utc": "2026-08-31T03:24:54.944272+00:00",
+  "objective_semantics_version": "v2",
+  "policies": [
+    "adaptive",
+    "stateless_role",
+    "fixed_cycle"
+  ],
+  "production_wiring": false,
+  "purpose": "Startup-aware target-scale comparison of existing adaptive, stateless-role, and fixed-cycle policy selectors.",
+  "results": {
+    "reference_target_adaptive_seed101.json": {
+      "candidate_complete": true,
+      "final_substantive_value": 42678.0,
+      "path": "scheduling_engine\\benchmarks\\student_assignment\\v2_policy_generalization_startup_aware_20260831\\results\\reference_target_adaptive_seed101.json",
+      "sha256": "07c1295e77d41012820f7ccda2a23a0d8b7923ac057ae8dea717c7eb6e8b1b87",
+      "status": "completed"
+    },
+    "reference_target_adaptive_seed202.json": {
+      "candidate_complete": true,
+      "final_substantive_value": 42666.0,
+      "path": "scheduling_engine\\benchmarks\\student_assignment\\v2_policy_generalization_startup_aware_20260831\\results\\reference_target_adaptive_seed202.json",
+      "sha256": "0a4222c36a6d028fddb4632edc2f3869e559dd69ceaa971265a891cd1be49732",
+      "status": "completed"
+    },
+    "reference_target_adaptive_seed303.json": {
+      "candidate_complete": true,
+      "final_substantive_value": 42666.0,
+      "path": "scheduling_engine\\benchmarks\\student_assignment\\v2_policy_generalization_startup_aware_20260831\\results\\reference_target_adaptive_seed303.json",
+      "sha256": "48b4c822494efcab764619638b9fe57799fb4d6aff1438e64286614b75fc1f75",
+      "status": "completed"
+    },
+    "reference_target_fixed_cycle_seed101.json": {
+      "candidate_complete": true,
+      "final_substantive_value": 42654.0,
+      "path": "scheduling_engine\\benchmarks\\student_assignment\\v2_policy_generalization_startup_aware_20260831\\results\\reference_target_fixed_cycle_seed101.json",
+      "sha256": "24d0b90f2da5245297a586cbd506cf9b7bd841500f8d7c792a67eff0959540c5",
+      "status": "completed"
+    },
+    "reference_target_fixed_cycle_seed202.json": {
+      "candidate_complete": true,
+      "final_substantive_value": 42654.0,
+      "path": "scheduling_engine\\benchmarks\\student_assignment\\v2_policy_generalization_startup_aware_20260831\\results\\reference_target_fixed_cycle_seed202.json",
+      "sha256": "1eaffdedc84af8b860f05e9c5d1e6f83228bdd09f59c0ccfed05947b181fad17",
+      "status": "completed"
+    },
+    "reference_target_fixed_cycle_seed303.json": {
+      "candidate_complete": true,
+      "final_substantive_value": 42654.0,
+      "path": "scheduling_engine\\benchmarks\\student_assignment\\v2_policy_generalization_startup_aware_20260831\\results\\reference_target_fixed_cycle_seed303.json",
+      "sha256": "a0bd26c7c5554ae632ff4ddac739defd7b3bdbf2b02cc44f875a893290bdc8a5",
+      "status": "completed"
+    },
+    "reference_target_stateless_role_seed101.json": {
+      "candidate_complete": true,
+      "final_substantive_value": 42666.0,
+      "path": "scheduling_engine\\benchmarks\\student_assignment\\v2_policy_generalization_startup_aware_20260831\\results\\reference_target_stateless_role_seed101.json",
+      "sha256": "e6cb8572cc4bb0728ca54a3e6ceef0b18965fd8a8653363357eb9bb596bdd596",
+      "status": "completed"
+    },
+    "reference_target_stateless_role_seed202.json": {
+      "candidate_complete": true,
+      "final_substantive_value": 42666.0,
+      "path": "scheduling_engine\\benchmarks\\student_assignment\\v2_policy_generalization_startup_aware_20260831\\results\\reference_target_stateless_role_seed202.json",
+      "sha256": "82ca381a39cf6b1855f170400bc923b155fb359977fd2dafa57b20a75881e2e7",
+      "status": "completed"
+    },
+    "reference_target_stateless_role_seed303.json": {
+      "candidate_complete": true,
+      "final_substantive_value": 42678.0,
+      "path": "scheduling_engine\\benchmarks\\student_assignment\\v2_policy_generalization_startup_aware_20260831\\results\\reference_target_stateless_role_seed303.json",
+      "sha256": "3b327dd3227d1dec0101cc479efc90eef1b177466b765045dc581ac0f77633b5",
+      "status": "completed"
+    },
+    "special_commitment_pressure_target_adaptive_seed101.json": {
+      "candidate_complete": true,
+      "final_substantive_value": 43536.0,
+      "path": "scheduling_engine\\benchmarks\\student_assignment\\v2_policy_generalization_startup_aware_20260831\\results\\special_commitment_pressure_target_adaptive_seed101.json",
+      "sha256": "e3eca74b5fa32ffda1a24bbec2639215b33aee44520349ba3725fb1ed5d9da86",
+      "status": "completed"
+    },
+    "special_commitment_pressure_target_adaptive_seed202.json": {
+      "candidate_complete": true,
+      "final_substantive_value": 43536.0,
+      "path": "scheduling_engine\\benchmarks\\student_assignment\\v2_policy_generalization_startup_aware_20260831\\results\\special_commitment_pressure_target_adaptive_seed202.json",
+      "sha256": "514b9b0d1ea3ea2c80780b6458c570e796b9c68dc6077f5233f114366bbe70d7",
+      "status": "completed"
+    },
+    "special_commitment_pressure_target_adaptive_seed303.json": {
+      "candidate_complete": true,
+      "final_substantive_value": 43536.0,
+      "path": "scheduling_engine\\benchmarks\\student_assignment\\v2_policy_generalization_startup_aware_20260831\\results\\special_commitment_pressure_target_adaptive_seed303.json",
+      "sha256": "e9839050bea8c435c996b54c079c273845ec8827e91c50ff46d83be392920f5a",
+      "status": "completed"
+    },
+    "special_commitment_pressure_target_fixed_cycle_seed101.json": {
+      "candidate_complete": true,
+      "final_substantive_value": 43458.0,
+      "path": "scheduling_engine\\benchmarks\\student_assignment\\v2_policy_generalization_startup_aware_20260831\\results\\special_commitment_pressure_target_fixed_cycle_seed101.json",
+      "sha256": "d019ae484d3fca60acf422bd5eca41d71dfeb37982b704a90777ba2b74c82963",
+      "status": "completed"
+    },
+    "special_commitment_pressure_target_fixed_cycle_seed202.json": {
+      "candidate_complete": true,
+      "final_substantive_value": 43458.0,
+      "path": "scheduling_engine\\benchmarks\\student_assignment\\v2_policy_generalization_startup_aware_20260831\\results\\special_commitment_pressure_target_fixed_cycle_seed202.json",
+      "sha256": "f2282e6648ae1479a393fd6a4b04a93689e45618270735d95a79aab648bb56cc",
+      "status": "completed"
+    },
+    "special_commitment_pressure_target_fixed_cycle_seed303.json": {
+      "candidate_complete": true,
+      "final_substantive_value": 43464.0,
+      "path": "scheduling_engine\\benchmarks\\student_assignment\\v2_policy_generalization_startup_aware_20260831\\results\\special_commitment_pressure_target_fixed_cycle_seed303.json",
+      "sha256": "ad060f4e09603a590b48612b94e368565ff127486752d3a94e9225dd4d642b9c",
+      "status": "completed"
+    },
+    "special_commitment_pressure_target_stateless_role_seed101.json": {
+      "candidate_complete": true,
+      "final_substantive_value": 43536.0,
+      "path": "scheduling_engine\\benchmarks\\student_assignment\\v2_policy_generalization_startup_aware_20260831\\results\\special_commitment_pressure_target_stateless_role_seed101.json",
+      "sha256": "fcb4c051974e374c3d592c384c85256b198d9df9233484e8f6c5449d90c46f53",
+      "status": "completed"
+    },
+    "special_commitment_pressure_target_stateless_role_seed202.json": {
+      "candidate_complete": true,
+      "final_substantive_value": 43536.0,
+      "path": "scheduling_engine\\benchmarks\\student_assignment\\v2_policy_generalization_startup_aware_20260831\\results\\special_commitment_pressure_target_stateless_role_seed202.json",
+      "sha256": "132200b3827b143c60ddc0c995e502262292dd085fccb5c39214cd30e4de9333",
+      "status": "completed"
+    },
+    "special_commitment_pressure_target_stateless_role_seed303.json": {
+      "candidate_complete": true,
+      "final_substantive_value": 43536.0,
+      "path": "scheduling_engine\\benchmarks\\student_assignment\\v2_policy_generalization_startup_aware_20260831\\results\\special_commitment_pressure_target_stateless_role_seed303.json",
+      "sha256": "bb2144ddf677283479734069c49fccd3b4292cfda832993ba69ebca4e8901a34",
+      "status": "completed"
+    }
+  },
+  "scenario_ids": [
+    "reference_target",
+    "special_commitment_pressure_target"
+  ],
+  "scenarios": {
+    "reference_target": {
+      "artifact_hashes": {
+        "input": "a69b071e60ee67e031cccf30f2ad3e41aeb941755589d587ee106708c982a046",
+        "stage1_seed": "54c8bc6fd765dd92704a50ef94140f6de6dc2af73e4e5c9f800f1779e6a8ebf2"
+      },
+      "benchmark_directory": "scheduling_engine\\benchmarks\\student_assignment\\v2_policy_generalization_suite_20260829\\reference_target",
+      "counts": {
+        "normal_section_count": 304,
+        "online_supervision_session_count": 4,
+        "request_count": 9072,
+        "required_source_decision_group_count": 9170,
+        "special_commitment_count": 140,
+        "special_commitment_request_count": 98,
+        "student_assignment_section_record_count": 308,
+        "student_count": 1400
+      },
+      "input_fingerprint": "f56b5c0d5b745d919a57281a2f1e49959b4b23d8feb9486eda3c81afd8bb7906",
+      "objective_semantics_version": "v2",
+      "scenario_id": "reference_target",
+      "source_seed_fingerprint": "f5cfd15465bab1815ad21a3565236f1ff383e8ffff82a4c783ab62ff410c9fb1"
+    },
+    "special_commitment_pressure_target": {
+      "artifact_hashes": {
+        "input": "cb798c61e985245b4c72b1180d77aec674bd04600e1ce0fe15efccfd0ecc7b70",
+        "stage1_seed": "63687e1008c655225298f6f82b2888957945d842133b42d840b985aeaa778006"
+      },
+      "benchmark_directory": "scheduling_engine\\benchmarks\\student_assignment\\v2_policy_generalization_suite_20260829\\special_commitment_pressure_target",
+      "counts": {
+        "normal_section_count": 304,
+        "online_supervision_session_count": 4,
+        "request_count": 8344,
+        "required_source_decision_group_count": 8540,
+        "special_commitment_count": 280,
+        "special_commitment_request_count": 196,
+        "student_assignment_section_record_count": 308,
+        "student_count": 1400
+      },
+      "input_fingerprint": "93d4bdf208027d50e51842290d77b7f77c6a92af724a7bd99ce6b78519bc0ca5",
+      "objective_semantics_version": "v2",
+      "scenario_id": "special_commitment_pressure_target",
+      "source_seed_fingerprint": "1866d7dca8dddb65a93f7eb1eb6935a329098c49da17c7897edc4a027c72cd46"
+    }
+  },
+  "schema": "student_assignment_policy_generalization_study_v1",
+  "seeds": [
+    101,
+    202,
+    303
+  ],
+  "source_lineage": "v2_policy_generalization_suite_20260829",
+  "study_directory": "scheduling_engine\\benchmarks\\student_assignment\\v2_policy_generalization_startup_aware_20260831",
+  "study_id": "v2_policy_generalization_startup_aware_20260831",
+  "summary_artifact": {
+    "path": "scheduling_engine\\benchmarks\\student_assignment\\v2_policy_generalization_startup_aware_20260831\\study_summary.json",
+    "sha256": "ab7c0686264be87b5af29e75943a121b24927eb231b60a368174e95ffd27215d"
+  },
+  "synthetic_only": true
+}

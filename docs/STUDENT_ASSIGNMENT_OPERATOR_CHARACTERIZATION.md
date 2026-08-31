@@ -1281,3 +1281,80 @@ productive when it receives a genuine search window and a separate validation
 window. A full target-scale policy-generalization restudy may therefore be
 justified, but it is a separate future experiment; this study does not launch
 that restudy or wire the diagnostic configuration into production.
+
+#### Startup-aware policy generalization study (Objective Semantics v2, 2026-08-31)
+
+The current v1 search-mechanics study is closed by a separate, diagnostic-only
+startup-aware policy comparison. The study artifact is
+`scheduling_engine/benchmarks/student_assignment/v2_policy_generalization_startup_aware_20260831/`.
+It is a child of `v2_policy_generalization_suite_20260829`; it does not mutate
+that source suite, the canonical production-scale checkpoint, or production
+policy wiring.
+
+The study uses the same detached semantic source inputs, validated Stage 1
+source decisions, Objective Semantics v2 profile (`balanced`), and one CP-SAT
+worker for every policy/seed cell. Each policy receives the same fair
+startup-aware contract: a 300-second maximum per operator, a 900-second
+cumulative policy budget, an independent 180-second candidate-validation
+allowance, and a 1,800-second supervised parent wall. Every candidate still
+requires unchanged full-model validation before adoption. The independent
+validation allowance is a diagnostic-runner control; it is not production
+configuration.
+
+The evaluated policies are the existing `adaptive`, `stateless_role`, and
+`fixed_cycle` selectors. The evaluated CP-SAT seeds are 101, 202, and 303.
+The reference target has 1,400 students, 9,072 requests, 9,170 required
+source groups, 308 staffing records, 4 online-supervision sessions, and 140
+special commitments. The special-commitment-pressure target has 1,400
+students, 8,344 requests, 8,540 required source groups, 308 staffing records,
+4 online-supervision sessions, and 280 special commitments. Their input and
+Stage 1 fingerprints are recorded in `study_manifest.json`; result hashes are
+verified by `study_summary.json`.
+
+The study's policy results are summarized below. Every completed cell retained
+a complete assignment, zero unmet requests, and all special commitments. The
+reported medians are over the three fixed seeds; the full cell records retain
+the exact attempt trajectories, source fingerprints, CP-SAT/validation timing,
+and resource facts.
+
+| Scenario | Policy | Final substantive values by seed | Median | Adopted attempts by seed |
+| --- | --- | --- | ---: | --- |
+| reference target | adaptive | 42,678 / 42,666 / 42,666 | 42,666 | 4 / 5 / 5 |
+| reference target | stateless_role | 42,666 / 42,666 / 42,678 | 42,666 | 5 / 5 / 4 |
+| reference target | fixed_cycle | 42,654 / 42,654 / 42,654 | 42,654 | 3 / 3 / 3 |
+| special-pressure target | adaptive | 43,536 / 43,536 / 43,536 | 43,536 | 6 / 6 / 6 |
+| special-pressure target | stateless_role | 43,536 / 43,536 / 43,536 | 43,536 | 6 / 6 / 6 |
+| special-pressure target | fixed_cycle | 43,458 / 43,458 / 43,464 | 43,458 | 4 / 4 / 4 |
+
+The exact endpoint and direct-gain result is strongly repeatable for
+`fixed_cycle` in the reference target and directionally repeatable in the
+special-pressure target. In the reference target it is 12 points
+better than the adaptive/stateless median and 24 points better than the
+adaptive/stateless worst cell. In the special-pressure target it is 78 points
+better than the other two policies at the median and in two of three seeds.
+The fixed-cycle reference
+trajectory reached `targeted_r4_s2`, then a utilization repair, then `r2`; its
+fixed-cycle sequencing is observable in each result artifact. The policies'
+wall times are close enough that quality, rather than a material runtime
+advantage, is the current differentiator. The large majority of elapsed time
+is the bounded CP-SAT/operator and unchanged candidate-validation work;
+policy selection and quality-summary overhead are small by comparison.
+
+This is evidence that `fixed_cycle` is the strongest diagnostic policy in the
+two completed target scenarios under this startup-aware contract. It is not a
+production-promotion decision: no production workflow is wired to select it,
+and a separate production-promotion study remains required. `adaptive` and
+`stateless_role` remain useful research/reference policies for understanding
+policy generalization; they are not declared incorrect. The study does not
+prove global optimality, does not compare worker counts, and does not justify
+further open-ended v1 endpoint shaving.
+
+The historical 30-second policy comparison remains valid only as a
+short-budget/startup-confounded experiment. These startup-aware results are
+the current fair-budget evidence for policy generalization. The next research
+line is Objective Semantics v2 policy work: first principled normalization,
+then one canonical counselor importance score from 0 through 10 and label
+presets over that score, followed by revalidation of retained operators,
+student-targeted repair, adaptive operator allocation, and only later
+grade-bounded global escape. None of those future changes are implemented by
+this study.

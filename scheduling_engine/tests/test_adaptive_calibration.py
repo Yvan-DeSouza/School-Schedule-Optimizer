@@ -21,10 +21,20 @@ from scheduling_engine.student_assignment.adaptive_calibration import (
     CALIBRATION_FIXED_CYCLES,
     CALIBRATION_PROFILES,
     CALIBRATION_SESSION_OVERRIDES,
+    STARTUP_AWARE_MAX_OPERATOR_SECONDS,
+    STARTUP_AWARE_SESSION_OVERRIDES,
+    STARTUP_AWARE_TOTAL_POLICY_SECONDS,
     apply_calibration_profile,
     build_calibration_trial_record,
     build_calibration_policy,
     profile_fingerprint,
+)
+from scheduling_engine.benchmark_policy_generalization import (
+    STARTUP_AWARE_POLICIES,
+    STARTUP_AWARE_SEEDS,
+    _sha256_file,
+    summarize_startup_aware_study,
+    startup_aware_policy_budget_contract,
 )
 from scheduling_engine.student_assignment.adaptive_search import AdaptiveOperatorSpec
 from scheduling_engine.student_assignment.core import run_substantive_soft_tier_probe
@@ -259,6 +269,103 @@ def test_calibration_controls_use_named_existing_operator_families():
     r8 = build_calibration_policy("student_repair_r8_only")
     assert r8["selection_policy"] == "fixed_cycle"
     assert tuple(spec.name for spec in r8["fixed_cycle"]) == ("targeted_r8_s2",)
+
+
+def test_startup_aware_policy_contract_is_fair_and_diagnostic_only():
+    contract = startup_aware_policy_budget_contract()
+
+    assert STARTUP_AWARE_POLICIES == ("adaptive", "stateless_role", "fixed_cycle")
+    assert STARTUP_AWARE_SEEDS == (101, 202, 303)
+    assert contract["worker_count"] == 1
+    assert contract["per_operator_maximum_seconds"] == (
+        STARTUP_AWARE_MAX_OPERATOR_SECONDS
+    )
+    assert contract["cumulative_policy_budget_seconds"] == (
+        STARTUP_AWARE_TOTAL_POLICY_SECONDS
+    )
+    assert contract["full_model_validation_required"] is True
+    assert contract["unvalidated_candidate_adoption"] is False
+    assert contract["production_policy_wiring"] is False
+    assert set(STARTUP_AWARE_SESSION_OVERRIDES) == set(
+        CALIBRATION_SESSION_OVERRIDES
+    )
+    assert all(
+        override["session_max_attempts"] == 1
+        and override["session_time_limit_seconds"] == 300.0
+        and override["per_attempt_cp_sat_limit_seconds"] == 300.0
+        for override in STARTUP_AWARE_SESSION_OVERRIDES.values()
+    )
+
+
+def test_startup_aware_summary_verifies_artifacts_and_ranks_completed_cells(
+    tmp_path,
+):
+    result_path = tmp_path / "results" / "reference_target_fixed_cycle_seed101.json"
+    payload = {
+        "scenario_id": "reference_target",
+        "policy": "fixed_cycle",
+        "seed": 101,
+        "execution_status": "completed",
+        "candidate_complete": True,
+        "final_unmet_count": 0,
+        "initial_substantive_value": 20,
+        "final_substantive_value": 18,
+        "final_components": {},
+        "final_objective_vector": [],
+        "final_assignment_count": 10,
+        "final_special_commitment_count": 2,
+        "final_source_decision_fingerprint": "terminal",
+        "cell_elapsed_seconds": 4.0,
+        "phase_timings": {"policy": {"total": 3.0}},
+        "timing": {"total_elapsed_seconds": 3.0},
+        "policy_accounting": {
+            "cumulative_cp_sat_seconds": 1.0,
+            "cumulative_validation_seconds": 0.5,
+        },
+        "resource": {"peak_tree_working_set_bytes": 100},
+        "preparation": {
+            "parent_branch_validation": {"full_model_validation": True}
+        },
+        "attempts": [],
+    }
+    result_path.parent.mkdir()
+    result_path.write_text(json.dumps(payload), encoding="utf-8")
+    manifest = {
+        "study_id": "test-study",
+        "source_lineage": "test-lineage",
+        "budget_contract": {"protocol_version": "test"},
+        "scenario_ids": ["reference_target"],
+        "scenarios": {
+            "reference_target": {
+                "input_fingerprint": "input",
+                "source_seed_fingerprint": "seed",
+            }
+        },
+        "results": {
+            result_path.name: {
+                "path": str(result_path),
+                "sha256": _sha256_file(result_path),
+            }
+        },
+    }
+    (tmp_path / "study_manifest.json").write_text(
+        json.dumps(manifest),
+        encoding="utf-8",
+    )
+
+    summary = summarize_startup_aware_study(tmp_path)
+
+    assert summary["artifact_integrity"] == {
+        "manifest_result_count": 1,
+        "loaded_result_count": 1,
+        "all_result_hashes_verified": True,
+    }
+    assert summary["scenario_winners"]["reference_target"]["policy"] == (
+        "fixed_cycle"
+    )
+    assert summary["policy_summary"]["reference_target:fixed_cycle"][
+        "best_final_value"
+    ] == 18.0
 
 
 def test_operator_result_forwards_specified_continuous_session(monkeypatch):

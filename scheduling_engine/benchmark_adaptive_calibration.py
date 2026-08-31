@@ -24,6 +24,7 @@ from .realistic_student_assignment_validation import (
 )
 from .student_assignment.adaptive_calibration import (
     CALIBRATION_PROFILES,
+    STARTUP_AWARE_SESSION_OVERRIDES,
     apply_calibration_profile,
     profile_fingerprint,
     run_matched_calibration_trial,
@@ -568,6 +569,16 @@ def _run_supervised_worker(args):
         total_time_limit_seconds=float(args.total_seconds),
         per_operator_time_limit_seconds=float(args.per_operator_seconds),
         worker_count=int(args.workers),
+        session_overrides=(
+            STARTUP_AWARE_SESSION_OVERRIDES
+            if getattr(args, "startup_aware", False)
+            else None
+        ),
+        candidate_validation_time_limit_seconds=(
+            _calibration_validation_time_limit(
+                data, getattr(args, "validation_seconds", None)
+            )
+        ),
         hard_feasibility_validation_time_limit_seconds=(
             _calibration_validation_time_limit(
                 data, getattr(args, "validation_seconds", None)
@@ -799,6 +810,7 @@ def run_supervised_calibration_trial(
     validated_branch_output=None,
     cp_sat_random_seed=None,
     cp_sat_max_deterministic_time_seconds=None,
+    startup_aware=False,
 ):
     """Run one detached calibration trial under a true parent-side deadline."""
 
@@ -933,6 +945,8 @@ def run_supervised_calibration_trial(
                     "--cp-sat-max-deterministic-time-seconds",
                     str(float(cp_sat_max_deterministic_time_seconds)),
                 ])
+            if startup_aware:
+                command.append("--startup-aware")
             if validated_branch_output:
                 command.extend(
                     [
@@ -1273,6 +1287,11 @@ def main(argv=None):  # pragma: no cover - clean-process experiment surface
     parser.add_argument("--validated-branch-output", type=Path)
     parser.add_argument("--cp-sat-random-seed", type=int)
     parser.add_argument("--cp-sat-max-deterministic-time-seconds", type=float)
+    parser.add_argument(
+        "--startup-aware",
+        action="store_true",
+        help="Use the diagnostic startup-aware policy comparison budget.",
+    )
     args = parser.parse_args(argv)
     if args.worker:
         if not args.worker_output or not args.worker_status:
@@ -1300,6 +1319,7 @@ def main(argv=None):  # pragma: no cover - clean-process experiment surface
             cp_sat_max_deterministic_time_seconds=(
                 args.cp_sat_max_deterministic_time_seconds
             ),
+            startup_aware=args.startup_aware,
         )
     else:
         payload = run_calibration_trial(

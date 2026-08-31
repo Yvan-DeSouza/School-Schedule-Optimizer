@@ -175,6 +175,7 @@ def _operator_result(data, spec, *, selected_student_ids, current_source_decisio
                     hard_feasibility_validation_time_limit_seconds=None,
                     hard_feasibility_worker_count=None,
                     hard_feasibility_validation_worker_count=None,
+                    candidate_validation_time_limit_seconds=None,
                     cp_sat_random_seed=None,
                     cp_sat_max_deterministic_time_seconds=None,
                     phase_callback=None):
@@ -230,6 +231,9 @@ def _operator_result(data, spec, *, selected_student_ids, current_source_decisio
         hard_feasibility_validation_worker_count=(
             hard_feasibility_validation_worker_count
         ),
+        candidate_validation_time_limit_seconds=(
+            candidate_validation_time_limit_seconds
+        ),
         cp_sat_random_seed=cp_sat_random_seed,
         cp_sat_max_deterministic_time_seconds=(
             cp_sat_max_deterministic_time_seconds
@@ -256,6 +260,7 @@ def run_adaptive_local_search_diagnostic(
     hard_feasibility_validation_time_limit_seconds=None,
     hard_feasibility_worker_count=None,
     hard_feasibility_validation_worker_count=None,
+    candidate_validation_time_limit_seconds=None,
     cp_sat_random_seed=None,
     cp_sat_max_deterministic_time_seconds=None,
     session_id=None,
@@ -488,6 +493,9 @@ def run_adaptive_local_search_diagnostic(
                 hard_feasibility_worker_count=hard_feasibility_worker_count,
                 hard_feasibility_validation_worker_count=(
                     hard_feasibility_validation_worker_count
+                ),
+                candidate_validation_time_limit_seconds=(
+                    candidate_validation_time_limit_seconds
                 ),
                 cp_sat_random_seed=cp_sat_random_seed,
                 cp_sat_max_deterministic_time_seconds=(
