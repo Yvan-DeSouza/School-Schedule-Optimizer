@@ -136,7 +136,10 @@ from .objective_semantics import (
 from .search_guidance import rank_students_by_quality_pressure
 from .utilization_guidance import select_utilization_cluster_targets
 from .grade_guidance import build_grade_opportunity_facts
-from .operator_session import select_operator_session_targets
+from .operator_session import (
+    measured_lazy_prepared_context_decision,
+    select_operator_session_targets,
+)
 
 
 def _soft_tier_importance_level(data):
@@ -1175,6 +1178,9 @@ def run_student_assignment_operator_session_diagnostic(
     collect_validation_telemetry=False,
     prepared_validation_strategy=None,
     prepared_validation_threshold=3,
+    prepared_validation_estimate_seconds=None,
+    prepared_context_creation_estimate_seconds=None,
+    prepared_validation_safety_factor=1.25,
     candidate_capture_callback=None,
     skip_candidate_validation=False,
     timeline_max_events=128,
@@ -1226,6 +1232,15 @@ def run_student_assignment_operator_session_diagnostic(
         collect_validation_telemetry=bool(collect_validation_telemetry),
         prepared_validation_strategy=prepared_validation_strategy,
         prepared_validation_threshold=int(prepared_validation_threshold),
+        prepared_validation_estimate_seconds=(
+            prepared_validation_estimate_seconds
+        ),
+        prepared_context_creation_estimate_seconds=(
+            prepared_context_creation_estimate_seconds
+        ),
+        prepared_validation_safety_factor=float(
+            prepared_validation_safety_factor
+        ),
     )
     if not initial_source_decisions and initial_source_variable_values is None:
         raise ValueError("initial_source_decisions is required")
@@ -1283,6 +1298,15 @@ def run_student_assignment_operator_session_diagnostic(
             ),
             "prepared_validation_strategy": config.prepared_validation_strategy,
             "prepared_validation_threshold": config.prepared_validation_threshold,
+            "prepared_validation_estimate_seconds": (
+                config.prepared_validation_estimate_seconds
+            ),
+            "prepared_context_creation_estimate_seconds": (
+                config.prepared_context_creation_estimate_seconds
+            ),
+            "prepared_validation_safety_factor": (
+                config.prepared_validation_safety_factor
+            ),
             "candidate_capture_callback": candidate_capture_callback,
             "skip_candidate_validation": bool(skip_candidate_validation),
             "diagnostic_parent_hard_wall_deadline_monotonic": (
@@ -4021,6 +4045,12 @@ def _solve_student_assignment(
             current_seed_value = None
             last_result = None
             any_candidate_validated = False
+            validated_candidate_count = 0
+            ordinary_validation_elapsed_seconds = 0.0
+            ordinary_validation_count = 0
+            prepared_validation_elapsed_seconds = 0.0
+            prepared_validation_count = 0
+            prepared_context_activation_decisions = []
             any_improvement_adopted = False
             variable_neighborhood = bool(
                 local_config.get("variable_neighborhood", False)
@@ -4482,6 +4512,18 @@ def _solve_student_assignment(
                     candidate_validated = local_validator is not None
                     if candidate_validated:
                         any_candidate_validated = True
+                        validated_candidate_count += 1
+                        prepared_context_used = bool(
+                            (validation_facts.get("validation_telemetry") or {})
+                            .get("prepared_context", {})
+                            .get("used", False)
+                        )
+                        if prepared_context_used:
+                            prepared_validation_elapsed_seconds += validation_elapsed
+                            prepared_validation_count += 1
+                        else:
+                            ordinary_validation_elapsed_seconds += validation_elapsed
+                            ordinary_validation_count += 1
                     adopted = bool(
                         candidate_validated
                         and candidate_before_validation is not None
@@ -4654,6 +4696,56 @@ def _solve_student_assignment(
                         "memory": local_memory_monitor.sample(),
                     })
                     iteration_count += 1
+                    if (
+                        prepared_validation_strategy == "measured_lazy"
+                        and prepared_validation_context is None
+                    ):
+                        ordinary_estimate = (
+                            ordinary_validation_elapsed_seconds
+                            / ordinary_validation_count
+                            if ordinary_validation_count
+                            else None
+                        )
+                        activation_decision = (
+                            measured_lazy_prepared_context_decision(
+                                completed_attempts=iteration_count,
+                                validated_candidates=validated_candidate_count,
+                                remaining_attempts=max(
+                                    0, max_iterations - iteration_count
+                                ),
+                                ordinary_validation_estimate_seconds=(
+                                    ordinary_estimate
+                                ),
+                                prepared_validation_estimate_seconds=(
+                                    local_config.get(
+                                        "prepared_validation_estimate_seconds"
+                                    )
+                                ),
+                                context_creation_estimate_seconds=(
+                                    local_config.get(
+                                        "prepared_context_creation_estimate_seconds"
+                                    )
+                                ),
+                                remaining_time_seconds=(
+                                    _remaining_stage2_budget()
+                                ),
+                                safety_factor=float(
+                                    local_config.get(
+                                        "prepared_validation_safety_factor",
+                                        1.25,
+                                    )
+                                ),
+                            )
+                        )
+                        if activation_decision["activated"]:
+                            _activate_prepared_validation_context()
+                        activation_decision["context_created"] = bool(
+                            activation_decision["activated"]
+                            and prepared_validation_context is not None
+                        )
+                        prepared_context_activation_decisions.append(
+                            activation_decision
+                        )
                     if adopted:
                         iterations[-1]["transition_reason"] = "adopted_restart_radius_two"
                         radius_index = 0
@@ -4773,6 +4865,36 @@ def _solve_student_assignment(
                     "prepared_context_creation_phases": dict(
                         prepared_validation_context.creation_phase_seconds
                     ) if prepared_validation_context is not None else {},
+                    "prepared_context_activation_decisions": tuple(
+                        prepared_context_activation_decisions
+                    ),
+                    "validated_candidate_count": validated_candidate_count,
+                    "ordinary_validation_count": ordinary_validation_count,
+                    "ordinary_validation_elapsed_seconds": (
+                        ordinary_validation_elapsed_seconds
+                    ),
+                    "prepared_validation_count": prepared_validation_count,
+                    "prepared_validation_elapsed_seconds": (
+                        prepared_validation_elapsed_seconds
+                    ),
+                    "prepared_validation_average_seconds": (
+                        prepared_validation_elapsed_seconds
+                        / prepared_validation_count
+                        if prepared_validation_count
+                        else None
+                    ),
+                    "prepared_validation_realized_savings_seconds": (
+                        (
+                            (
+                                ordinary_validation_elapsed_seconds
+                                / ordinary_validation_count
+                            )
+                            * prepared_validation_count
+                        )
+                        - prepared_validation_elapsed_seconds
+                        if ordinary_validation_count and prepared_validation_count
+                        else None
+                    ),
                     "time_limit_seconds": per_probe_limit,
                     "max_iterations": max_iterations,
                     "deadline_requested_time_limit_seconds": stage_2_budget_seconds,

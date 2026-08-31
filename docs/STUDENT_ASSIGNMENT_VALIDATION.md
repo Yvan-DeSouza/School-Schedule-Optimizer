@@ -602,12 +602,36 @@ The measured break-even count is **N=5**. With measured approximate values
 near the boundary; the empirical curve is authoritative for this study.
 
 The diagnostic operator supports `ordinary`, `eager`,
-`after_first_validated_candidate`, and `threshold` strategies. After-first
+`after_first_validated_candidate`, `threshold`, and the opt-in
+`measured_lazy` strategy. After-first
 activation performs the first candidate validation ordinarily and creates a
 context only after that candidate is validated. Threshold activation uses only
 the configured maximum attempt count and a configured minimum threshold; it
 does not assume that every future attempt will produce a candidate. Neither
-strategy is production-enabled.
+strategies are production-enabled.
+
+Measured-lazy is deliberately conservative. After each completed attempt,
+before a context exists, it computes:
+
+```
+observed_candidate_rate = validated_candidates / completed_attempts
+estimated_remaining_validations = remaining_attempts * observed_candidate_rate
+per_validation_savings = max(0, ordinary_estimate - prepared_estimate)
+expected_savings = estimated_remaining_validations * per_validation_savings
+activation_threshold = context_creation_estimate * safety_factor
+```
+
+It activates only when timing estimates are supplied from prior measured
+observations, at least one validated candidate has been observed, there are
+remaining attempts and enough remaining session time to pay the estimated cold
+cost, and `expected_savings >= activation_threshold`. Missing estimates,
+zero observed candidate rate, no remaining attempts, or insufficient remaining
+time all avoid activation. The default safety factor is `1.25`; the estimates
+and factor are diagnostic-session inputs, not production solver configuration.
+The strategy records the prediction, activation decision, and observed
+ordinary/prepared validation totals so activation can be classified as
+beneficial, unnecessary, missed, or correctly avoided. It never changes
+candidate authority: every candidate still uses the same full validator.
 
 On the target max-three session, ordinary validation totaled 14.22 seconds,
 after-first validation plus context creation totaled 12.09 seconds, and
@@ -631,6 +655,43 @@ monotonic accumulation: its sampled working-set peaks were approximately 1,075,
 774, 762, 773, and 780 MiB at samples 1, 5, 10, 15, and 20. The fixed-order
 same-process study is a resource envelope, not proof of cross-process reuse.
 
+The first measured-lazy clean-process observations used the durable medium
+pressure fixture and the 1,400-student production-scale-v1 fixture with
+three bounded targeted attempts. The medium run produced no validated
+candidate, so measured-lazy correctly recorded a zero candidate rate and did
+not create a context. The target run produced a candidate but exhausted its
+shared budget before validation completed; measured-lazy likewise did not
+activate because no validated candidate had been observed. These observations
+verify conservative no-candidate/insufficient-budget behavior, but they do
+not establish a long-session saving. The available special-commitment-pressure
+target artifact also failed current full-model validation before an operator
+attempt, so it was correctly excluded from authority evidence rather than
+treated as a reusable seed.
+
+The exact clean-process observations were:
+
+| Fixture / session | Attempts | Validated candidates | Context activations | Context time | Validation time | Session time | Result |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| small six-student R2 smoke | 6 | 6 | 1 | 0.006 s | 0.072 s | 1.100 s | complete; 5 prepared validations |
+| medium special-pressure, targeted R4/S2 | 1 | 0 | 0 | 0.000 s | 4.278 s | 34.177 s | complete incumbent; no candidate |
+| production-scale-v1, targeted R4/S2 | 1 | 0 | 0 | 0.000 s | 10.202 s | 128.427 s | complete incumbent; candidate unvalidated at shared-budget exhaustion |
+
+A longer production-scale-v1 observation (configured for six attempts and a
+300-second session budget) also stopped after one candidate-valued probe:
+`153.887 s` session time, zero validated candidates, zero context activations,
+and `11.125 s` validation time. The measured-lazy decision again recorded a
+zero observed candidate rate. This is consistent with the strategy contract,
+but it is not evidence that the prepared context saves time on a target-scale
+validated-candidate sequence.
+
+The small smoke run activated after its first validated candidate: five
+attempts remained, the observed candidate rate was 1.0, predicted savings were
+0.026 s against a 0.00125 s safe threshold, and five subsequent validations
+used the prepared context. The medium and target runs correctly avoided
+activation because their observed validated-candidate rate was zero. These
+results validate the policy's decision quality at the observed boundaries but
+are not a claim of target-scale speedup.
+
 **Eager-versus-lazy classification:** `PREPARE ONLY FOR LONG/HIGH-ATTEMPT
 SESSIONS`. The evidence favors after-first activation when candidate production
 is uncertain and prepared reuse only once multiple validated candidates are
@@ -639,12 +700,22 @@ BEFORE PROMOTION`. A future promotion study needs more clean-process matched
 operator observations and an end-to-end resource/performance gate. The ordinary
 full-model validator remains the sole authority.
 
+**Measured-lazy promotion classification:** `MORE VALIDATION RESEARCH
+REQUIRED`. The policy is implemented and its activation arithmetic is covered
+by deterministic tests, but the available clean-process target observations
+did not produce enough validated candidates to measure a beneficial activation,
+and the special-pressure target seed is not valid under the current authority
+validator. Validation-performance research should therefore continue only
+with a corrected, independently validated pressure fixture and a session that
+actually reaches the measured break-even population; no production wiring is
+authorized by this study.
+
 ## Validation-specific backlog
 
 | Idea | Upside | Risk/complexity | Evidence required | Status |
 | --- | --- | --- | --- | --- |
 | Repeat exact-witness A/B on the same candidate with persisted source identity | Confirm native and total speedup is real | Medium | Multiple clean-process or same-lineage repetitions; exact source fingerprints; memory envelope | Completed; parity passed, total performance benefit not demonstrated |
-| Prepared in-process validation context | Reduce repeated model/index construction | Medium | Safe clone/lifetime tests and process-recycle measurements | Minimal context and after-first strategy qualified for opt-in diagnostic multi-candidate sessions; not default authority |
+| Prepared in-process validation context | Reduce repeated model/index construction | Medium | Safe clone/lifetime tests and process-recycle measurements | Minimal context, after-first, and measured-lazy strategies qualified for opt-in diagnostic sessions; measured-lazy promotion remains unresolved and not default authority |
 | Immutable index/model-build reuse | Reduce Python preparation overhead | Low/medium | No stale DTO or lineage state; benchmark parity | Later |
 | Differential-equivalence framework | Prevent false-positive fast acceptance | High | Randomized/adversarial candidate matrix against current validator | Small deterministic gate passed; broader corpus remains before any authority study |
 | Deterministic full-schedule shadow validator | Potentially avoid native solve | Very high | Formal coverage of every hard/shared/special rule and exhaustive differential tests | Later; not justified yet |

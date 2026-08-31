@@ -41,6 +41,7 @@ from scheduling_engine.student_assignment.core import (
 from scheduling_engine.student_assignment.operator_session import (
     ContinuousOperatorSessionConfig,
     build_continuous_operator_session_record,
+    measured_lazy_prepared_context_decision,
     operator_session_target_count,
     select_operator_session_targets,
 )
@@ -1714,6 +1715,34 @@ def test_lazy_prepared_context_does_not_activate_without_a_candidate():
     assert facts["prepared_context_creation_seconds"] == 0.0
 
 
+def test_measured_lazy_prepared_context_does_not_activate_without_a_candidate():
+    data, source = _multi_attempt_operator_fixture((1, 2))
+    result = run_student_assignment_operator_session_diagnostic(
+        data,
+        operator_family="targeted_r8_s1",
+        initial_source_decisions=source,
+        total_time_limit_seconds=4,
+        max_attempts=1,
+        per_attempt_time_limit_seconds=0.001,
+        worker_count=1,
+        target_policy="fixed",
+        selected_student_ids=(1,),
+        hard_feasibility_validation_time_limit_seconds=1,
+        hard_feasibility_validation_worker_count=1,
+        prepared_validation_strategy="measured_lazy",
+        prepared_validation_estimate_seconds=0.5,
+        prepared_context_creation_estimate_seconds=0.1,
+        collect_resource_telemetry=False,
+    )
+
+    facts = result.optimization_facts["stage_2_local_bootstrap"]
+    assert facts["prepared_context_activation_count"] == 0
+    assert facts["prepared_context_creation_seconds"] == 0.0
+    assert facts["prepared_context_activation_decisions"][0]["reason"] == (
+        "zero_observed_candidate_rate"
+    )
+
+
 def test_lazy_prepared_context_activates_after_first_validated_candidate():
     data, source = _multi_attempt_operator_fixture((1, 2, 3))
     result = run_student_assignment_operator_session_diagnostic(
@@ -1740,3 +1769,82 @@ def test_lazy_prepared_context_activates_after_first_validated_candidate():
     assert iterations[0]["validation_telemetry"]["prepared_context"]["used"] is False
     if len(iterations) > 1:
         assert iterations[1]["validation_telemetry"]["prepared_context"]["used"] is True
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "activated", "reason"),
+    (
+        (
+            {
+                "completed_attempts": 1,
+                "validated_candidates": 1,
+                "remaining_attempts": 4,
+                "ordinary_validation_estimate_seconds": 4.0,
+                "prepared_validation_estimate_seconds": 1.0,
+                "context_creation_estimate_seconds": 2.0,
+                "remaining_time_seconds": 30.0,
+            },
+            True,
+            "predicted_savings_exceed_safe_break_even",
+        ),
+        (
+            {
+                "completed_attempts": 1,
+                "validated_candidates": 1,
+                "remaining_attempts": 1,
+                "ordinary_validation_estimate_seconds": 3.0,
+                "prepared_validation_estimate_seconds": 2.5,
+                "context_creation_estimate_seconds": 2.0,
+                "remaining_time_seconds": 30.0,
+            },
+            False,
+            "predicted_savings_below_safe_break_even",
+        ),
+        (
+            {
+                "completed_attempts": 2,
+                "validated_candidates": 0,
+                "remaining_attempts": 4,
+                "ordinary_validation_estimate_seconds": 4.0,
+                "prepared_validation_estimate_seconds": 1.0,
+                "context_creation_estimate_seconds": 2.0,
+                "remaining_time_seconds": 30.0,
+            },
+            False,
+            "zero_observed_candidate_rate",
+        ),
+    ),
+)
+def test_measured_lazy_prepared_context_decision_is_conservative(
+    kwargs, activated, reason
+):
+    decision = measured_lazy_prepared_context_decision(**kwargs)
+    assert decision["activated"] is activated
+    assert decision["reason"] == reason
+
+
+def test_measured_lazy_prepared_context_requires_timing_estimates():
+    decision = measured_lazy_prepared_context_decision(
+        completed_attempts=1,
+        validated_candidates=1,
+        remaining_attempts=10,
+        ordinary_validation_estimate_seconds=4.0,
+        prepared_validation_estimate_seconds=None,
+        context_creation_estimate_seconds=2.0,
+    )
+    assert decision["activated"] is False
+    assert decision["reason"] == "missing_timing_estimate"
+
+
+def test_measured_lazy_prepared_context_respects_remaining_time():
+    decision = measured_lazy_prepared_context_decision(
+        completed_attempts=1,
+        validated_candidates=1,
+        remaining_attempts=10,
+        ordinary_validation_estimate_seconds=4.0,
+        prepared_validation_estimate_seconds=1.0,
+        context_creation_estimate_seconds=2.0,
+        remaining_time_seconds=1.0,
+    )
+    assert decision["activated"] is False
+    assert decision["reason"] == "insufficient_remaining_time_for_context"

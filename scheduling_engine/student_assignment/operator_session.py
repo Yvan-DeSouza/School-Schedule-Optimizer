@@ -39,7 +39,105 @@ PREPARED_VALIDATION_STRATEGIES = (
     "eager",
     "after_first_validated_candidate",
     "threshold",
+    "measured_lazy",
 )
+
+
+def measured_lazy_prepared_context_decision(
+    *,
+    completed_attempts,
+    validated_candidates,
+    remaining_attempts,
+    ordinary_validation_estimate_seconds,
+    prepared_validation_estimate_seconds,
+    context_creation_estimate_seconds,
+    remaining_time_seconds=None,
+    safety_factor=1.25,
+    context_already_active=False,
+):
+    """Decide whether measured evidence justifies preparing a context.
+
+    This is a diagnostic policy only.  It estimates future candidate
+    validations from the observed validated-candidate rate and activates only
+    when the expected warm-validation savings clear the estimated cold cost by
+    the configured safety factor.  Missing estimates deliberately produce a
+    conservative no-activation decision.
+    """
+
+    completed_attempts = max(0, int(completed_attempts))
+    validated_candidates = max(0, int(validated_candidates))
+    remaining_attempts = max(0, int(remaining_attempts))
+    ordinary = (
+        float(ordinary_validation_estimate_seconds)
+        if ordinary_validation_estimate_seconds is not None
+        else None
+    )
+    prepared = (
+        float(prepared_validation_estimate_seconds)
+        if prepared_validation_estimate_seconds is not None
+        else None
+    )
+    creation = (
+        float(context_creation_estimate_seconds)
+        if context_creation_estimate_seconds is not None
+        else None
+    )
+    safety_factor = float(safety_factor)
+    candidate_rate = (
+        validated_candidates / completed_attempts
+        if completed_attempts
+        else 0.0
+    )
+    estimated_remaining_validations = remaining_attempts * candidate_rate
+    per_validation_savings = max(0.0, (ordinary or 0.0) - (prepared or 0.0))
+    expected_savings = estimated_remaining_validations * per_validation_savings
+    activation_threshold = (
+        creation * safety_factor if creation is not None else None
+    )
+
+    decision = {
+        "completed_attempts": completed_attempts,
+        "validated_candidates": validated_candidates,
+        "remaining_attempts": remaining_attempts,
+        "observed_candidate_rate": candidate_rate,
+        "estimated_remaining_validations": estimated_remaining_validations,
+        "ordinary_validation_estimate_seconds": ordinary,
+        "prepared_validation_estimate_seconds": prepared,
+        "context_creation_estimate_seconds": creation,
+        "per_validation_savings_seconds": per_validation_savings,
+        "expected_savings_seconds": expected_savings,
+        "safety_factor": safety_factor,
+        "activation_threshold_seconds": activation_threshold,
+        "remaining_time_seconds": (
+            float(remaining_time_seconds)
+            if remaining_time_seconds is not None
+            else None
+        ),
+        "activated": False,
+        "reason": None,
+    }
+    if context_already_active:
+        decision["reason"] = "context_already_active"
+    elif completed_attempts <= 0:
+        decision["reason"] = "bootstrap_observation_required"
+    elif validated_candidates <= 0:
+        decision["reason"] = "zero_observed_candidate_rate"
+    elif remaining_attempts <= 0:
+        decision["reason"] = "no_remaining_attempts"
+    elif ordinary is None or prepared is None or creation is None:
+        decision["reason"] = "missing_timing_estimate"
+    elif ordinary <= 0 or prepared < 0 or creation <= 0:
+        decision["reason"] = "invalid_timing_estimate"
+    elif safety_factor <= 0:
+        decision["reason"] = "invalid_safety_factor"
+    elif remaining_time_seconds is not None and float(remaining_time_seconds) < creation:
+        decision["reason"] = "insufficient_remaining_time_for_context"
+    elif expected_savings < activation_threshold:
+        decision["reason"] = "predicted_savings_below_safe_break_even"
+    else:
+        decision["activated"] = True
+        decision["reason"] = "predicted_savings_exceed_safe_break_even"
+    return decision
 
 
 def operator_session_target_count(operator_family):
@@ -117,6 +215,9 @@ class ContinuousOperatorSessionConfig:
     collect_validation_telemetry: bool = False
     prepared_validation_strategy: str = "ordinary"
     prepared_validation_threshold: int = 3
+    prepared_validation_estimate_seconds: float | None = None
+    prepared_context_creation_estimate_seconds: float | None = None
+    prepared_validation_safety_factor: float = 1.25
 
     def __post_init__(self):
         if self.operator_family not in OPERATOR_FAMILIES:
@@ -138,6 +239,15 @@ class ContinuousOperatorSessionConfig:
             )
         if self.prepared_validation_threshold <= 0:
             raise ValueError("prepared_validation_threshold must be positive")
+        for field_name in (
+            "prepared_validation_estimate_seconds",
+            "prepared_context_creation_estimate_seconds",
+        ):
+            value = getattr(self, field_name)
+            if value is not None and value <= 0:
+                raise ValueError(f"{field_name} must be positive")
+        if self.prepared_validation_safety_factor <= 0:
+            raise ValueError("prepared_validation_safety_factor must be positive")
         if self.minimum_next_attempt_seconds < 0:
             raise ValueError("minimum_next_attempt_seconds cannot be negative")
         if (
@@ -360,4 +470,5 @@ __all__ = [
     "TARGET_POLICIES",
     "operator_session_target_count",
     "select_operator_session_targets",
+    "measured_lazy_prepared_context_decision",
 ]
