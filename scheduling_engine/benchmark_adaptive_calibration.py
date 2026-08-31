@@ -589,6 +589,7 @@ def _run_supervised_worker(args):
         cp_sat_max_deterministic_time_seconds=(
             getattr(args, "cp_sat_max_deterministic_time_seconds", None)
         ),
+        fixed_cycle_names=getattr(args, "fixed_cycle_names", None),
         phase_callback=_worker_phase_callback,
     )
     phase_timings["policy_trial_seconds"] = perf_counter() - phase_started
@@ -811,6 +812,7 @@ def run_supervised_calibration_trial(
     cp_sat_random_seed=None,
     cp_sat_max_deterministic_time_seconds=None,
     startup_aware=False,
+    fixed_cycle_names=None,
 ):
     """Run one detached calibration trial under a true parent-side deadline."""
 
@@ -947,6 +949,8 @@ def run_supervised_calibration_trial(
                 ])
             if startup_aware:
                 command.append("--startup-aware")
+            if fixed_cycle_names is not None:
+                command.extend(["--fixed-cycle-names", *tuple(fixed_cycle_names)])
             if validated_branch_output:
                 command.extend(
                     [
@@ -1292,6 +1296,11 @@ def main(argv=None):  # pragma: no cover - clean-process experiment surface
         action="store_true",
         help="Use the diagnostic startup-aware policy comparison budget.",
     )
+    parser.add_argument(
+        "--fixed-cycle-names",
+        nargs="+",
+        help="Diagnostic override for the existing fixed-cycle operator tuple.",
+    )
     args = parser.parse_args(argv)
     if args.worker:
         if not args.worker_output or not args.worker_status:
@@ -1320,6 +1329,7 @@ def main(argv=None):  # pragma: no cover - clean-process experiment surface
                 args.cp_sat_max_deterministic_time_seconds
             ),
             startup_aware=args.startup_aware,
+            fixed_cycle_names=args.fixed_cycle_names,
         )
     else:
         payload = run_calibration_trial(

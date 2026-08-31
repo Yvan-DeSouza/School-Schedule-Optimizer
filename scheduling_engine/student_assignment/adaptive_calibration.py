@@ -309,6 +309,7 @@ def run_matched_calibration_trial(
     collect_resource_telemetry=True,
     cp_sat_random_seed=None,
     cp_sat_max_deterministic_time_seconds=None,
+    fixed_cycle_names=None,
     **kwargs,
 ):
     """Run one policy from one complete incumbent under a shared budget."""
@@ -320,6 +321,16 @@ def run_matched_calibration_trial(
     if not source_decisions:
         raise ValueError("Calibration requires semantic source decisions")
     policy_config = build_calibration_policy(policy, portfolio=portfolio)
+    if fixed_cycle_names is not None:
+        fixed_cycle = tuple(
+            _operator_by_name(name, portfolio) for name in fixed_cycle_names
+        )
+        if not fixed_cycle:
+            raise ValueError("fixed_cycle_names must contain an operator")
+        policy_config = {
+            "selection_policy": "fixed_cycle",
+            "fixed_cycle": fixed_cycle,
+        }
     result = run_adaptive_local_search_diagnostic(
         data,
         initial_result=initial_result,

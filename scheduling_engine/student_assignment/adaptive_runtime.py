@@ -21,6 +21,7 @@ from .adaptive_search import (
     choose_adaptive_operator,
     select_fixed_cycle_operator,
     select_stateless_role_operator,
+    _role_signals,
 )
 from .core import (
     run_student_assignment_operator_session_diagnostic,
@@ -50,6 +51,75 @@ def _quality_report(data, result):
         solver_objective_components=result.objective_components,
         include_entity_metrics=True,
     )
+
+
+def _role_pressure_facts(state, ranked_students, selected_student_ids=(), *, role_signals=None):
+    """Capture existing opportunity signals without creating a new metric."""
+
+    selected = set(int(student_id) for student_id in selected_student_ids)
+    selected_pressure = {
+        str(item.student_id): {
+            "weighted_current_penalty": item.weighted_current_penalty,
+            "opportunity_signal": item.opportunity_signal,
+            "nonzero_component_count": item.nonzero_component_count,
+            "sequence_opportunity_count": item.sequence_opportunity_count,
+            "sequence_unsatisfied_count": item.sequence_unsatisfied_count,
+        }
+        for item in ranked_students
+        if item.student_id in selected
+    }
+    return {
+        "student_local_weighted_total": state.student_local_weighted_total,
+        "highest_student_pressure": state.highest_student_pressure,
+        "top_k_pressure": dict(state.top_k_pressure),
+        "nonzero_pressure_student_count": state.nonzero_pressure_student_count,
+        "student_local_weighted_share": state.student_local_weighted_share,
+        "student_pressure_components": dict(state.student_pressure_components),
+        "selected_student_ids": tuple(sorted(selected)),
+        "selected_student_pressure": selected_pressure,
+        "utilization_raw_penalty": state.utilization_raw_penalty,
+        "utilization_normalized_value": state.utilization_normalized_value,
+        "utilization_weighted_value": state.utilization_weighted_value,
+        "global_utilization_weighted_share": state.global_utilization_weighted_share,
+        "pressured_delivery_group_count": state.pressured_delivery_group_count,
+        "top_utilization_group_share": state.top_utilization_group_share,
+        "top_three_utilization_group_share": state.top_three_utilization_group_share,
+        "top_five_utilization_group_share": state.top_five_utilization_group_share,
+        "optimistic_utilization_leverage": state.optimistic_utilization_leverage,
+        "useful_utilization_student_count": state.useful_utilization_student_count,
+        "utilization_ranked_student_ids": tuple(state.utilization_ranked_student_ids),
+        "role_signals": dict(role_signals or {}),
+    }
+
+
+def _attempt_exhaustion_classification(*, status, candidate_found, candidate_validated,
+                                       validation_classification, stopping_reason,
+                                       adopted):
+    """Use only evidence exposed by the existing bounded probe."""
+
+    if adopted:
+        return "PRODUCTIVE"
+    if (
+        status == "unknown"
+        or validation_classification in {"validation_unknown", "validation_error"}
+        or (candidate_found and not candidate_validated)
+    ):
+        return "OPERATOR_UNRESOLVED"
+    if status == "infeasible" or stopping_reason in {
+        "proven_infeasible",
+        "proven_scope_exhausted",
+    }:
+        return "EXACT_SCOPE_EXHAUSTED"
+    return "OPERATOR_NON_IMPROVING"
+
+
+def _role_exhaustion_classification(role_pressure):
+    """Avoid inferring role exhaustion from one failed operator."""
+
+    signals = role_pressure.get("role_signals", {})
+    if any(float(value or 0) > 0 for value in signals.values()):
+        return "ROLE_REMAINS_ACTIONABLE"
+    return "ROLE_EXHAUSTION_NOT_PROVEN"
 
 
 def _weighted_substantive_value(result):
@@ -450,6 +520,16 @@ def run_adaptive_local_search_diagnostic(
                 cp_sat_max_deterministic_time_seconds
             ),
         )
+        role_pressure_before = _role_pressure_facts(
+            state,
+            ranked,
+            selected,
+            role_signals={
+                **_role_signals(state),
+                **dict(decision.signal_values.get("role_signals", {}) or {}),
+            },
+        )
+        sequence_position = decision.signal_values.get("cycle_index")
         # Preserve the factual policy explanation in the live phase stream as
         # well as in the eventual result payload. A supervised worker can be
         # stopped before its final JSON is returned, so this compact event is
@@ -558,6 +638,33 @@ def run_adaptive_local_search_diagnostic(
             current_source_decisions = candidate_source
             current_value = candidate_value
             stopping_reason = "validated_improvement_adopted"
+            after_state = build_adaptive_search_state(
+                data,
+                candidate_quality,
+                elapsed_seconds=monotonic() - started,
+                remaining_seconds=max(
+                    0.0,
+                    configured_budget - (monotonic() - started),
+                ),
+                history=tuple(history),
+                source_decisions=current_source_decisions,
+                recent_memory_peak_bytes=int(
+                    (result.optimization_facts or {})
+                    .get("operation_resource_monitor", {})
+                    .get("peak_working_set_bytes", 0)
+                    or 0
+                ),
+            )
+            role_pressure_after = _role_pressure_facts(
+                after_state,
+                rank_students_by_quality_pressure(data, candidate_quality),
+                selected,
+                role_signals=_role_signals(after_state),
+            )
+            role_pressure_after["state_changed"] = True
+        else:
+            role_pressure_after = dict(role_pressure_before)
+            role_pressure_after["state_changed"] = False
         _record_phase("candidate_processing", phase_started)
         stage_2_facts = dict((result.optimization_facts or {}).get("stage_2") or {})
         # These facts are observational breadcrumbs for the supervised
@@ -595,6 +702,20 @@ def run_adaptive_local_search_diagnostic(
             ),
         )
         status = str(local.get("status") or result.solver_outcome or "unknown")
+        validation_classification = str(
+            local.get("validation_classification", "not_attempted")
+        )
+        exhaustion_classification = _attempt_exhaustion_classification(
+            status=status,
+            candidate_found=candidate_found,
+            candidate_validated=candidate_validated,
+            validation_classification=validation_classification,
+            stopping_reason=local.get("stopping_reason"),
+            adopted=adopted,
+        )
+        role_exhaustion_classification = _role_exhaustion_classification(
+            role_pressure_before
+        )
         history.append(
             AdaptiveOperatorAttempt(
                 operator=decision.operator.name,
@@ -617,9 +738,7 @@ def run_adaptive_local_search_diagnostic(
                 infeasible=status == "infeasible",
                 stopping_reason=local.get("stopping_reason"),
                 role_specific_gain=float(local.get("role_specific_gain", gain) or 0),
-                validation_classification=str(
-                    local.get("validation_classification", "not_attempted")
-                ),
+                validation_classification=validation_classification,
                 validation_solver_outcome=local.get("validation_solver_outcome"),
                 validation_error=local.get("validation_error"),
                 target_scope=selected,
@@ -666,6 +785,15 @@ def run_adaptive_local_search_diagnostic(
                         candidate_complete=hard_complete,
                     )
                     for item in tuple(local.get("iterations", ()) or ())
+                ),
+                role_pressure_before=role_pressure_before,
+                role_pressure_after=role_pressure_after,
+                exhaustion_classification=exhaustion_classification,
+                role_exhaustion_classification=role_exhaustion_classification,
+                sequence_position=(
+                    int(sequence_position)
+                    if sequence_position is not None
+                    else None
                 ),
             )
         )

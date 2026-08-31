@@ -1351,10 +1351,107 @@ further open-ended v1 endpoint shaving.
 
 The historical 30-second policy comparison remains valid only as a
 short-budget/startup-confounded experiment. These startup-aware results are
-the current fair-budget evidence for policy generalization. The next research
-line is Objective Semantics v2 policy work: first principled normalization,
-then one canonical counselor importance score from 0 through 10 and label
-presets over that score, followed by revalidation of retained operators,
-student-targeted repair, adaptive operator allocation, and only later
-grade-bounded global escape. None of those future changes are implemented by
-this study.
+the current fair-budget evidence for policy generalization. Objective
+Semantics v2 is now implemented and its current search policy is being
+characterized separately. The next research boundary is the fixed-cycle
+sequence ablation documented below; no sequence is promoted to production by
+that diagnostic study. Objective normalization, adaptive operator allocation,
+student-targeted repair, and grade-bounded global escape remain later,
+separately authorized research increments.
+
+#### Fixed-cycle sequence ablation (Objective Semantics v2, 2026-08-31)
+
+This diagnostic child study is stored under
+`scheduling_engine/benchmarks/student_assignment/v2_fixed_cycle_sequence_ablation_20260831/`.
+It is derived from the startup-aware policy-generalization suite and uses the
+same detached reference and special-pressure inputs. It does not mutate the
+parent suite, any canonical benchmark/checkpoint, production policy wiring,
+or persisted scheduling state. Result hashes are recorded in
+`study_manifest.json` and verified when `study_summary.json` is generated.
+
+The preregistered comparison used one CP-SAT worker, a 300-second maximum per
+operator, a 900-second cumulative policy opportunity, an independent
+180-second candidate-validation allowance, and a 1,800-second supervised
+parent wall. Every adopted transition still required the existing full-model
+candidate validation. No unvalidated candidate was adopted, and no ordinary
+Stage 2 run occurred between diagnostic iterations.
+
+The six sequence variants were:
+
+| Variant | Existing operator sequence |
+| --- | --- |
+| `full_fixed_cycle` | R4/S2 -> utilization R64/S8 -> R2 |
+| `r4_s2_only` | repeated R4/S2 |
+| `no_r2` | R4/S2 -> utilization R64/S8 |
+| `no_utilization` | R4/S2 -> R2 |
+| `reversed_role_order` | utilization R64/S8 -> R4/S2 -> R2 |
+| `r4_utilization_r4` | R4/S2 -> utilization R64/S8 -> R4/S2 |
+
+The reference seed-101 gate completed for all six variants except that the
+repeated-R4 control was externally terminated while a later repeated attempt
+was in mature-seed validation. That termination is recorded as unresolved
+harness/process evidence, not as proof of R4 infeasibility. The completed
+reference cells all retained complete, unmet-free schedules. Their observed
+results were:
+
+| Variant | Initial | Final | Direct gain | Cell result |
+| --- | ---: | ---: | ---: | --- |
+| `full_fixed_cycle` | 42,750 | 42,750 | 0 | complete |
+| `r4_s2_only` | 42,750 | 42,750 | 0 | hard-deadline terminated / unresolved |
+| `no_r2` seed 101 | 42,750 | 42,732 | 18 | complete, validated adoption |
+| `no_r2` seed 202 | 42,750 | 42,750 | 0 | complete |
+| `no_r2` seed 303 | 42,750 | 42,750 | 0 | complete |
+| `no_utilization` | 42,750 | 42,750 | 0 | complete |
+| `reversed_role_order` | 42,750 | 42,750 | 0 | complete |
+| `r4_utilization_r4` | 42,750 | 42,750 | 0 | complete |
+
+The special-pressure seed-101 controls were also complete and unmet-free:
+
+| Variant | Initial | Final | Direct gain | Cell result |
+| --- | ---: | ---: | ---: | --- |
+| `full_fixed_cycle` | 43,626 | 43,626 | 0 | complete |
+| `no_r2` | 43,626 | 43,536 | 90 | two validated adoptions |
+| `no_utilization` | 43,626 | 43,470 | 156 | two validated R4 adoptions |
+| `reversed_role_order` | 43,626 | 43,518 | 108 | three validated adoptions |
+
+The study therefore provides directional evidence that the utilization role
+can be productive without the R2 follow-on under these fresh cells, but it
+does not establish a universally superior sequence. In the reference target,
+the no-R2 gain occurred in one of three seeds; the other two seeds found no
+adopted gain. In the special-pressure target, all three tested role shapes
+were productive, but their endpoints differ: no-utilization was strongest,
+reversed order was intermediate, and no-R2 was weaker. These are one-seed
+special-pressure observations, not a policy ranking. Because several candidate
+probes also returned validation `unknown`,
+operator non-productivity and role exhaustion cannot be treated as proven.
+The new attempt telemetry consequently distinguishes `PRODUCTIVE`,
+`OPERATOR_UNRESOLVED`, `OPERATOR_NON_IMPROVING`, and
+`EXACT_SCOPE_EXHAUSTED`; role pressure is independently labeled
+`ROLE_REMAINS_ACTIONABLE` or `ROLE_EXHAUSTION_NOT_PROVEN`. One failed operator
+never proves global role exhaustion.
+
+The diagnostic runner also detects an observed complementarity event only when
+the same lineage contains a nonproductive R4 attempt, an adopted different
+role, and a later adopted R4 attempt. No such event was established by the
+completed fresh cells above. This is intentionally conservative: the study
+does not infer complementarity from a hypothetical or unvalidated candidate.
+
+The reference seed-101 artifacts were captured immediately before the final
+role-signal-source correction in the diagnostic telemetry path. Their
+sequence outcomes and authority classifications remain valid, but their
+role-signal fields should be treated as incomplete. The subsequently captured
+special-pressure artifacts include the corrected role-pressure telemetry and
+consistently report `ROLE_REMAINS_ACTIONABLE`; they do not prove role
+exhaustion either.
+
+The current v2 search-mechanics conclusion is therefore **directional,
+unresolved for promotion**. The existing fixed cycle remains the production
+and research reference, and no adaptive router or sequence replacement is
+authorized by this study. The current v2 endpoint should not be extended with
+another open-ended descent merely to shave the score. The next separately
+scoped research order is: principled objective normalization; one canonical
+0-10 counselor importance representation with label presets; a v2 baseline;
+revalidation of retained operators; student-targeted repair; adaptive
+allocation among retained operators; grade-bounded global escape; and only
+later any full-school unrestricted escalation. Those are roadmap items, not
+implemented behavior here.

@@ -1,0 +1,305 @@
+{
+  "budget_contract": {
+    "candidate_validation_time_limit_seconds": 180.0,
+    "candidate_validation_worker_count": 1,
+    "cumulative_search_opportunity_seconds": 900.0,
+    "full_model_validation_required": true,
+    "ordinary_stage2_between_iterations": false,
+    "parent_hard_wall_seconds": 1800.0,
+    "per_operator_maximum_seconds": 300.0,
+    "production_policy_wiring": false,
+    "profile": "balanced",
+    "protocol_version": "fixed-cycle-sequence-ablation-v1",
+    "seeds": [
+      101,
+      202,
+      303
+    ],
+    "session_overrides": {
+      "grade_bounded_g10": {
+        "per_attempt_cp_sat_limit_seconds": 300.0,
+        "session_max_attempts": 1,
+        "session_time_limit_seconds": 300.0
+      },
+      "grade_bounded_g11": {
+        "per_attempt_cp_sat_limit_seconds": 300.0,
+        "session_max_attempts": 1,
+        "session_time_limit_seconds": 300.0
+      },
+      "grade_bounded_g12": {
+        "per_attempt_cp_sat_limit_seconds": 300.0,
+        "session_max_attempts": 1,
+        "session_time_limit_seconds": 300.0
+      },
+      "grade_bounded_g9": {
+        "per_attempt_cp_sat_limit_seconds": 300.0,
+        "session_max_attempts": 1,
+        "session_time_limit_seconds": 300.0
+      },
+      "r2": {
+        "per_attempt_cp_sat_limit_seconds": 300.0,
+        "session_max_attempts": 1,
+        "session_time_limit_seconds": 300.0
+      },
+      "targeted_r4_s1": {
+        "per_attempt_cp_sat_limit_seconds": 300.0,
+        "session_max_attempts": 1,
+        "session_time_limit_seconds": 300.0
+      },
+      "targeted_r4_s2": {
+        "per_attempt_cp_sat_limit_seconds": 300.0,
+        "session_max_attempts": 1,
+        "session_time_limit_seconds": 300.0
+      },
+      "targeted_r8_s1": {
+        "per_attempt_cp_sat_limit_seconds": 300.0,
+        "session_max_attempts": 1,
+        "session_time_limit_seconds": 300.0
+      },
+      "targeted_r8_s2": {
+        "per_attempt_cp_sat_limit_seconds": 300.0,
+        "session_max_attempts": 1,
+        "session_time_limit_seconds": 300.0
+      },
+      "targeted_utilization_r16_s2": {
+        "per_attempt_cp_sat_limit_seconds": 300.0,
+        "session_max_attempts": 1,
+        "session_time_limit_seconds": 300.0
+      },
+      "targeted_utilization_r16_s4": {
+        "per_attempt_cp_sat_limit_seconds": 300.0,
+        "session_max_attempts": 1,
+        "session_time_limit_seconds": 300.0
+      },
+      "targeted_utilization_r32_s4": {
+        "per_attempt_cp_sat_limit_seconds": 300.0,
+        "session_max_attempts": 1,
+        "session_time_limit_seconds": 300.0
+      },
+      "targeted_utilization_r32_s6": {
+        "per_attempt_cp_sat_limit_seconds": 300.0,
+        "session_max_attempts": 1,
+        "session_time_limit_seconds": 300.0
+      },
+      "targeted_utilization_r64_s10": {
+        "per_attempt_cp_sat_limit_seconds": 300.0,
+        "session_max_attempts": 1,
+        "session_time_limit_seconds": 300.0
+      },
+      "targeted_utilization_r64_s6": {
+        "per_attempt_cp_sat_limit_seconds": 300.0,
+        "session_max_attempts": 1,
+        "session_time_limit_seconds": 300.0
+      },
+      "targeted_utilization_r64_s8": {
+        "per_attempt_cp_sat_limit_seconds": 300.0,
+        "session_max_attempts": 1,
+        "session_time_limit_seconds": 300.0
+      }
+    },
+    "unvalidated_candidate_adoption": false,
+    "worker_count": 1
+  },
+  "created_at_utc": "2026-08-31T10:29:56.617467+00:00",
+  "objective_semantics_version": "v2",
+  "parent_study_id": "v2_policy_generalization_startup_aware_20260831",
+  "production_wiring": false,
+  "profile": "balanced",
+  "purpose": "Causal ablation of the existing fixed-cycle sequence and solver-neutral role-exhaustion characterization.",
+  "question": "Determine whether R4/S2, utilization follow-on, R2, repeated R4/S2, or role ordering explains the fixed-cycle advantage.",
+  "replication_gate": {
+    "reference_seed_101_first": true,
+    "replicate_when_discriminating": true,
+    "special_pressure_after_reference_gate": true
+  },
+  "resource_rules": {
+    "minimum_available_memory_gib": 4.0,
+    "one_target_cell_at_a_time": true,
+    "preferred_available_memory_gib": 4.5,
+    "process_recycling_required": true,
+    "sleep_contamination_excluded_from_runtime_ranking": true
+  },
+  "results": {
+    "reference_target_full_fixed_cycle_seed101.json": {
+      "candidate_complete": true,
+      "final_substantive_value": 42750.0,
+      "path": "scheduling_engine\\benchmarks\\student_assignment\\v2_fixed_cycle_sequence_ablation_20260831\\results\\reference_target_full_fixed_cycle_seed101.json",
+      "sha256": "08a45773186a68e353bd20a1efa09d5792e69e2e17362837d2181402a6780cd8",
+      "status": "completed"
+    },
+    "reference_target_no_r2_seed101.json": {
+      "candidate_complete": true,
+      "final_substantive_value": 42732.0,
+      "path": "scheduling_engine\\benchmarks\\student_assignment\\v2_fixed_cycle_sequence_ablation_20260831\\results\\reference_target_no_r2_seed101.json",
+      "sha256": "7a8c4cbc151d6e73d6e4f22bb341ce9937a3e646d0fc2bbc4dcd3b0ccd887861",
+      "status": "completed"
+    },
+    "reference_target_no_r2_seed202.json": {
+      "candidate_complete": true,
+      "final_substantive_value": 42750.0,
+      "path": "scheduling_engine\\benchmarks\\student_assignment\\v2_fixed_cycle_sequence_ablation_20260831\\results\\reference_target_no_r2_seed202.json",
+      "sha256": "2fec0d4546a42f669b0c2fd617ccbfbeec5500c06e6d13d3da82013b41da48cd",
+      "status": "completed"
+    },
+    "reference_target_no_r2_seed303.json": {
+      "candidate_complete": true,
+      "final_substantive_value": 42750.0,
+      "path": "scheduling_engine\\benchmarks\\student_assignment\\v2_fixed_cycle_sequence_ablation_20260831\\results\\reference_target_no_r2_seed303.json",
+      "sha256": "23944031764dc61e95fc234691d842eb788ad33b2333b94403e616a5ec06a9de",
+      "status": "completed"
+    },
+    "reference_target_no_utilization_seed101.json": {
+      "candidate_complete": true,
+      "final_substantive_value": 42750.0,
+      "path": "scheduling_engine\\benchmarks\\student_assignment\\v2_fixed_cycle_sequence_ablation_20260831\\results\\reference_target_no_utilization_seed101.json",
+      "sha256": "53789e7f29b1e9361390020c1caf0a8108b837e0d21d257e71d1ca3ce5b90dc5",
+      "status": "completed"
+    },
+    "reference_target_r4_s2_only_seed101.json": {
+      "candidate_complete": false,
+      "final_substantive_value": 42750.0,
+      "path": "scheduling_engine\\benchmarks\\student_assignment\\v2_fixed_cycle_sequence_ablation_20260831\\results\\reference_target_r4_s2_only_seed101.json",
+      "sha256": "6bbcfcc30a64427e270ec564a25dcfe7581c1dcd1512bf28ed3f07b6d47fb90f",
+      "status": "hard_deadline_terminated"
+    },
+    "reference_target_r4_utilization_r4_seed101.json": {
+      "candidate_complete": true,
+      "final_substantive_value": 42750.0,
+      "path": "scheduling_engine\\benchmarks\\student_assignment\\v2_fixed_cycle_sequence_ablation_20260831\\results\\reference_target_r4_utilization_r4_seed101.json",
+      "sha256": "5b5ddc361968c51b4b71ac0d237afcf8b40217f2ba83dd5b1f31160e8e84c713",
+      "status": "completed"
+    },
+    "reference_target_reversed_role_order_seed101.json": {
+      "candidate_complete": true,
+      "final_substantive_value": 42750.0,
+      "path": "scheduling_engine\\benchmarks\\student_assignment\\v2_fixed_cycle_sequence_ablation_20260831\\results\\reference_target_reversed_role_order_seed101.json",
+      "sha256": "8dabf98721d13525c8450913e25ef43f2d1c3604226ef74c5e1fe5f9fb6c72b9",
+      "status": "completed"
+    },
+    "special_commitment_pressure_target_full_fixed_cycle_seed101.json": {
+      "candidate_complete": true,
+      "final_substantive_value": 43626.0,
+      "path": "scheduling_engine\\benchmarks\\student_assignment\\v2_fixed_cycle_sequence_ablation_20260831\\results\\special_commitment_pressure_target_full_fixed_cycle_seed101.json",
+      "sha256": "e126ee0134d0d08727ddaee3d4357dc0d6b8da676c89a49993714722fd739195",
+      "status": "completed"
+    },
+    "special_commitment_pressure_target_no_r2_seed101.json": {
+      "candidate_complete": true,
+      "final_substantive_value": 43536.0,
+      "path": "scheduling_engine\\benchmarks\\student_assignment\\v2_fixed_cycle_sequence_ablation_20260831\\results\\special_commitment_pressure_target_no_r2_seed101.json",
+      "sha256": "ce2149887831188a63cea7bcf8475218f99b7321725224fa79e7c32d1d73a824",
+      "status": "completed"
+    },
+    "special_commitment_pressure_target_no_utilization_seed101.json": {
+      "candidate_complete": true,
+      "final_substantive_value": 43470.0,
+      "path": "scheduling_engine\\benchmarks\\student_assignment\\v2_fixed_cycle_sequence_ablation_20260831\\results\\special_commitment_pressure_target_no_utilization_seed101.json",
+      "sha256": "25deef901db71b318e206f2c8d77a38b280246f5f258dd322810bbbbae933446",
+      "status": "completed"
+    },
+    "special_commitment_pressure_target_reversed_role_order_seed101.json": {
+      "candidate_complete": true,
+      "final_substantive_value": 43518.0,
+      "path": "scheduling_engine\\benchmarks\\student_assignment\\v2_fixed_cycle_sequence_ablation_20260831\\results\\special_commitment_pressure_target_reversed_role_order_seed101.json",
+      "sha256": "d2b545eedb730b5aa64fbe3c4231a363c1d4c7f984e8cd97990a1c3d382a2e23",
+      "status": "completed"
+    }
+  },
+  "scenario_ids": [
+    "reference_target",
+    "special_commitment_pressure_target"
+  ],
+  "scenarios": {
+    "reference_target": {
+      "artifact_hashes": {
+        "input": "a69b071e60ee67e031cccf30f2ad3e41aeb941755589d587ee106708c982a046",
+        "stage1_seed": "54c8bc6fd765dd92704a50ef94140f6de6dc2af73e4e5c9f800f1779e6a8ebf2"
+      },
+      "benchmark_directory": "scheduling_engine\\benchmarks\\student_assignment\\v2_policy_generalization_suite_20260829\\reference_target",
+      "counts": {
+        "normal_section_count": 304,
+        "online_supervision_session_count": 4,
+        "request_count": 9072,
+        "required_source_decision_group_count": 9170,
+        "special_commitment_count": 140,
+        "special_commitment_request_count": 98,
+        "student_assignment_section_record_count": 308,
+        "student_count": 1400
+      },
+      "input_fingerprint": "f56b5c0d5b745d919a57281a2f1e49959b4b23d8feb9486eda3c81afd8bb7906",
+      "objective_semantics_version": "v2",
+      "scenario_id": "reference_target",
+      "source_seed_fingerprint": "f5cfd15465bab1815ad21a3565236f1ff383e8ffff82a4c783ab62ff410c9fb1"
+    },
+    "special_commitment_pressure_target": {
+      "artifact_hashes": {
+        "input": "cb798c61e985245b4c72b1180d77aec674bd04600e1ce0fe15efccfd0ecc7b70",
+        "stage1_seed": "63687e1008c655225298f6f82b2888957945d842133b42d840b985aeaa778006"
+      },
+      "benchmark_directory": "scheduling_engine\\benchmarks\\student_assignment\\v2_policy_generalization_suite_20260829\\special_commitment_pressure_target",
+      "counts": {
+        "normal_section_count": 304,
+        "online_supervision_session_count": 4,
+        "request_count": 8344,
+        "required_source_decision_group_count": 8540,
+        "special_commitment_count": 280,
+        "special_commitment_request_count": 196,
+        "student_assignment_section_record_count": 308,
+        "student_count": 1400
+      },
+      "input_fingerprint": "93d4bdf208027d50e51842290d77b7f77c6a92af724a7bd99ce6b78519bc0ca5",
+      "objective_semantics_version": "v2",
+      "scenario_id": "special_commitment_pressure_target",
+      "source_seed_fingerprint": "1866d7dca8dddb65a93f7eb1eb6935a329098c49da17c7897edc4a027c72cd46"
+    }
+  },
+  "schema": "student_assignment_sequence_ablation_study_v1",
+  "seeds": [
+    101,
+    202,
+    303
+  ],
+  "sequence_variants": {
+    "full_fixed_cycle": [
+      "targeted_r4_s2",
+      "targeted_utilization_r64_s8",
+      "r2"
+    ],
+    "no_r2": [
+      "targeted_r4_s2",
+      "targeted_utilization_r64_s8"
+    ],
+    "no_utilization": [
+      "targeted_r4_s2",
+      "r2"
+    ],
+    "r4_s2_only": [
+      "targeted_r4_s2"
+    ],
+    "r4_utilization_r4": [
+      "targeted_r4_s2",
+      "targeted_utilization_r64_s8",
+      "targeted_r4_s2"
+    ],
+    "reversed_role_order": [
+      "targeted_utilization_r64_s8",
+      "targeted_r4_s2",
+      "r2"
+    ]
+  },
+  "study_directory": "scheduling_engine\\benchmarks\\student_assignment\\v2_fixed_cycle_sequence_ablation_20260831",
+  "study_id": "v2_fixed_cycle_sequence_ablation_20260831",
+  "summary_artifact": {
+    "path": "scheduling_engine\\benchmarks\\student_assignment\\v2_fixed_cycle_sequence_ablation_20260831\\study_summary.json",
+    "sha256": "d711ae2a343061f761614a802cc6acb8fe7aebfc381a39e412f74d5348c6aa32"
+  },
+  "synthetic_only": true,
+  "variant_ids": [
+    "full_fixed_cycle",
+    "r4_s2_only",
+    "no_r2",
+    "no_utilization",
+    "reversed_role_order",
+    "r4_utilization_r4"
+  ]
+}

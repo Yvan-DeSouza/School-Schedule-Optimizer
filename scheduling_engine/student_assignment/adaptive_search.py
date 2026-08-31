@@ -102,6 +102,14 @@ class AdaptiveOperatorAttempt:
     # session.  This is diagnostic telemetry only; the outer attempt remains
     # the policy-level record and candidate authority is unchanged.
     inner_probe_summaries: tuple[dict, ...] = ()
+    # Existing solver-neutral policy state captured around this attempt. These
+    # fields explain opportunity/exhaustion; they never affect selection or
+    # candidate authority.
+    role_pressure_before: dict = field(default_factory=dict)
+    role_pressure_after: dict = field(default_factory=dict)
+    exhaustion_classification: str = "OPERATOR_UNRESOLVED"
+    role_exhaustion_classification: str = "ROLE_EXHAUSTION_NOT_PROVEN"
+    sequence_position: int | None = None
 
     @property
     def gain_per_minute(self):
