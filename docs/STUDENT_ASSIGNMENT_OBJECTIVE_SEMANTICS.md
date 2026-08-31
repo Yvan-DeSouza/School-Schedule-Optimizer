@@ -1,5 +1,9 @@
 # Student Assignment Objective Semantics
 
+This document is the canonical owner of the mathematical definitions and
+version-compatibility rules for student-assignment objectives. Search-policy
+experiments and quality-measurement reporting are documented separately.
+
 This document is the implementation contract for the versioned student-
 assignment soft-objective semantics. The hard assignment model, fulfillment
 priorities, special-commitment rules, approval workflow, and immutable snapshot

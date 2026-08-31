@@ -1,5 +1,9 @@
 # Student Assignment Utilization-Cluster Search
 
+This document owns the utilization-cluster diagnostic operator's scope and
+evidence. General student-assignment search policy remains in the linked search
+strategy document.
+
 ## Status and boundary
 
 This document records the diagnostic utilization-cluster study against the

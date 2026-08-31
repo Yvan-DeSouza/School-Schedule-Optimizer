@@ -1,5 +1,9 @@
 # Scheduling Workers
 
+This is the canonical operational owner for the Celery scheduling-worker
+boundary and queue behavior. Resource metrics are owned by the linked
+observability document.
+
 This document describes the asynchronous scheduling execution architecture
 implemented in the repository. It is intentionally operational documentation,
 not an aspirational deployment diagram.

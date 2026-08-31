@@ -1,5 +1,9 @@
 # Architecture & Development Rules
 
+This document owns cross-layer engineering rules. It does not replace the
+accepted stage decision records or the specialized student-assignment
+objective, validation, quality, worker, and search documents.
+
 This project is a counselor-controlled school scheduling system. The codebase is
 allowed to grow, but new work should keep the current boundaries explicit so
 future scheduling stages do not reimplement the same rules in different places.
@@ -26,6 +30,9 @@ future scheduling stages do not reimplement the same rules in different places.
 - Qualification values live under `backend.apps.constraints`.
 - Planning, roster, backup, and section-lifecycle values live under
   `backend.apps.scheduling`.
+- Shared Django-free engine vocabulary and solver constants live in
+  `scheduling_engine/constants.py`; stable engine diagnostic codes live in
+  `scheduling_engine/diagnostics.py`.
 - `backend.apps.common.constants` remains a compatibility export for older
   imports, but new code should import from the domain that owns the value.
 

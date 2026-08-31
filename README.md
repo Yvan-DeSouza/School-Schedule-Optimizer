@@ -1,10 +1,14 @@
 # School-Schedule-Optimizer
 
-## Backend Data Layer Setup
+## Project Overview and Backend Setup
 
-This project currently focuses on stabilizing the Django/PostgreSQL data layer for
-the Intelligent School Timetabling System. The Software Design Document in
-`docs/Software_Design_Document.md` is the architectural source of truth.
+This repository implements a counselor-controlled, review-first school
+scheduling pipeline. It includes demand and offering decisions, section
+planning, staffing-feasible semester/A–D placement, named teacher assignment,
+student assignment, special commitments, controlled reruns, and immutable
+approval history. The high-level architecture is owned by
+`docs/Software_Design_Document.md`; accepted stage behavior is owned by the
+decision records in `docs/decisions/`.
 
 ### Install Dependencies
 
@@ -408,8 +412,11 @@ Map it as legally required for a Grade 11 or 12 course with
 ## Scheduling Engine Foundation
 
 `scheduling_engine/` is a Django-independent package for demand analysis,
-section-count recommendations, and solver-ready constraint compilation. It does
-not access the ORM or persist recommendations. Run its isolated tests with:
+constraint compilation, section planning, semester/A–D placement, named teacher
+assignment, and student assignment. Student assignment also contains the
+special-commitment, controlled-rerun, Objective Semantics v2, validation, and
+diagnostic search modules. It does not access the ORM or persist
+recommendations. Run its isolated tests with:
 
 ```bash
 python -m pytest -c scheduling_engine/pytest.ini scheduling_engine/tests
@@ -499,6 +506,25 @@ and `{"academic_year": 1}`. Poll the execution endpoint, then use
 `POST /approval-preview/` or `POST /approve/` with a nonblank reason. Only a
 complete, unchanged run is approvable; approval writes `Section.teacher` and
 immutable assignment provenance, never a room or enrollment.
+
+## Student Assignment API
+
+Student assignment runs consume accepted placement and named-teacher context;
+they do not move sections, change teachers, or assign rooms. The stage supports
+normal course requests, Study, Focus, Co-op, online-supervision seats,
+configured half-semester pairs, active versus historical enrollments, audited
+locks, scoped reruns, and review-only what-if checks. Create a run with
+`POST /api/planning/student-assignment-runs/`, poll its durable execution, then
+review and approve the immutable result through the corresponding review,
+approval-preview, or approve action. Only complete, unchanged results can be
+approved; historical records are preserved.
+
+Objective Semantics v2 and the R2/R4/R8, utilization-cluster, grade-bounded,
+and adaptive search modules are opt-in diagnostic research. They are not the
+ordinary production assignment policy. See
+`docs/STUDENT_ASSIGNMENT_OBJECTIVE_SEMANTICS.md`,
+`docs/STUDENT_ASSIGNMENT_VALIDATION.md`, and
+`docs/STUDENT_ASSIGNMENT_SEARCH_STRATEGY.md` for canonical details.
 
 ## Local Schema Rebuild
 

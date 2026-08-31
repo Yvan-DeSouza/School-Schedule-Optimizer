@@ -1,5 +1,9 @@
 # API Contract Strategy
 
+This document owns the backend transport-contract policy. Concrete request and
+response shapes remain authoritative in serializers, routes, and endpoint
+tests; stage behavior belongs to the accepted decision records.
+
 The backend API contract currently lives in DRF serializers, view routes, and
 endpoint tests. That is acceptable while the project is backend-only, but before
 the frontend becomes a major consumer the project needs a published, tested

@@ -1,5 +1,9 @@
 # Scheduling Observability and Monitoring
 
+This document is the canonical owner of scheduling telemetry meanings,
+sampling, and resource-monitoring boundaries. It does not define solver
+authority, scheduling constraints, or production objectives.
+
 This document defines the diagnostic observability contract for expensive
 scheduling operations. It describes measurements and their authority boundary;
 it does not change scheduling constraints, objectives, solver status, or

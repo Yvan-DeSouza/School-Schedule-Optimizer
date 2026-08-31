@@ -1,6 +1,12 @@
 # Project State Summary
 
-Snapshot date: 2026-08-26
+Snapshot date: 2026-08-31
+
+This is the canonical current-state index. Detailed ownership remains with the
+specialized documents linked below: the SDD owns high-level architecture, the
+decision records own accepted stage contracts, the objective document owns
+student-assignment mathematics, the validation document owns candidate
+authority, and the quality document owns measurement and research evidence.
 
 This document is a repository-backed orientation snapshot. It is based on the
 actual code, tests, and docs in this checkout, not on prior chat memory.
@@ -15,7 +21,7 @@ actual code, tests, and docs in this checkout, not on prior chat memory.
 | Section budgeting and staffing-feasible physical counts | Implemented | `backend/apps/scheduling/services/section_budget_planning.py`, `backend/apps/scheduling/services/staffing_planning.py`, `backend/tests/test_upstream_planning_workflow.py` |
 | Semester/A-D placement with staffing feasibility | Implemented | `backend/apps/scheduling/services/section_placement.py`, `scheduling_engine/section_placement.py`, including shared online-supervision placement and sequential paired half-semester sections |
 | Named teacher assignment | Implemented | `backend/apps/scheduling/services/teacher_assignment.py`, `scheduling_engine/teacher_assignment.py`, including workload-safe online supervision without subject qualification |
-| Student assignment, special commitments, controlled reruns, and diagnostic operator sessions | Implemented; target-scale continuous R2/R4/R8 sessions qualified diagnostically, adaptive production execution remains disabled | `backend/apps/scheduling/services/student_assignment.py`, `backend/apps/scheduling/services/student_special_commitment_locks.py`, `backend/apps/scheduling/services/online_supervision.py`, `scheduling_engine/student_assignment/`, `backend/tests/test_special_student_schedule_commitments.py`, `scheduling_engine/tests/test_student_assignment.py`, `scheduling_engine/tests/test_adaptive_search.py`, `docs/STUDENT_ASSIGNMENT_SEARCH_STRATEGY.md` |
+| Student assignment, special commitments, controlled reruns, and diagnostic operator sessions | Implemented for ordinary reviewed runs and controlled reruns; Objective Semantics v2 and R2/R4/R8/adaptive-search machinery are implemented as opt-in diagnostic research, not production policy | `backend/apps/scheduling/services/student_assignment.py`, `backend/apps/scheduling/services/student_special_commitment_locks.py`, `backend/apps/scheduling/services/online_supervision.py`, `scheduling_engine/student_assignment/`, `backend/tests/test_special_student_schedule_commitments.py`, `scheduling_engine/tests/test_student_assignment.py`, `scheduling_engine/tests/test_adaptive_search.py`, `docs/STUDENT_ASSIGNMENT_SEARCH_STRATEGY.md`, `docs/STUDENT_ASSIGNMENT_OPERATOR_CHARACTERIZATION.md` |
 | Room assignment | Not implemented | Deferred by the placement and teacher-assignment decisions |
 | Frontend | Not started | `docs/Implementation_Roadmap.md` phase 6, no frontend directory in repo |
 
@@ -505,8 +511,9 @@ Where the workflow stops today:
   snapshot. Historical v1 label tiers remain compatible; explicit v2 runs use
   engine-owned input-derived normalization and one canonical counselor score
   from 0 through 10, while retaining raw objective facts for review and
-  measurement. This does not change hard feasibility or approval semantics;
-  the v2 target-scale baseline remains a separate validation task.
+  measurement. This does not change hard feasibility or approval semantics.
+  v2 search studies and operator sessions remain diagnostic-only; they do not
+  change ordinary production allocation or approval.
 - section cancellation with active enrollments fails closed with the affected
   student IDs until a reviewed rerun resolves those enrollments; historical
   enrollments then remain audit evidence while reconciliation may retire the
@@ -515,16 +522,17 @@ Where the workflow stops today:
 - no composed timetable, personal schedule endpoint, conflict analyzer, or
   general enrollment override workflow yet;
 - no frontend application yet;
-- the approximately 1,400-student / 300-section benchmark has 9,800 required
-  requests and 10,500 usable seats, with no course-specific seat shortage. The
-  original one-worker lexicographic pass timed out as `unknown` before finding
-  a candidate. Step 9 added deterministic CP-SAT-validated initial guidance,
-  empty-tier skipping, and valid-incumbent retention; the unchanged fixture now
-  completes all 9,800 assignments with no unmet request in 135.126 seconds.
-  Two additional one-worker/seed-0 runs produced identical assignment and
-  section-load hashes in 136.781 and 134.538 seconds. This is
-  representative-fixture evidence, not yet a production qualification for
-  real-school data or deployment request limits.
+- the authoritative detached `production_scale_v1` benchmark contains 1,400
+  students, 10,760 requests, 10,945 required source groups, 10,635 final
+  assignments, 0 unmet required requests, and 310 special commitments. Its
+  durable v1 checkpoint lineage and Objective Semantics v1/v2 research records
+  are maintained in the benchmark directory and
+  `docs/STUDENT_ASSIGNMENT_OPERATOR_CHARACTERIZATION.md`. This is
+  representative synthetic evidence, not a qualification for every real
+  school or deployment request limit.
+- the older 9,800-request results below remain useful isolated benchmark
+  history. They are not the same input as the mixed production-scale v1
+  benchmark and must not be presented as its current scale result.
 - a separate realistic-condition validation fixture now covers uneven demand
   and capacities, approved backups, missing offerings, prerequisites, A-D
   collision safety, historical/protected enrollments, locks, preservation, and
@@ -534,18 +542,23 @@ Where the workflow stops today:
   optional-request category; transcript completion remains deliberately
   assumed.
 
-## 9. Known Divergences Between the SDD/Roadmap and Actual Code
+## 9. Documentation Ownership and Resolved Drift
 
-| Source | What it says | What the code actually does today | Governing truth |
+| Subject | Canonical document | Supporting material |
 | --- | --- | --- | --- |
-| `docs/Software_Design_Document.md` | Several historical sections implied a queue-first or older room-coupled workflow | Expensive downstream API solves now use durable Celery execution while review/approval remains explicit; room assignment remains deferred out of semester/A-D placement and named-teacher assignment | Current code, `docs/SCHEDULING_WORKERS.md`, and accepted decision docs |
-| `docs/Implementation_Roadmap.md` | Older wording still refers to Phase 2 as "A-D block and room placement" | The accepted decision is semester/A-D placement with staffing feasibility, and rooms are not part of that stage | `docs/decisions/semester-placement-and-staffing-feasibility.md` |
-| `README.md` | Still describes `backend/apps/common/constants.py` as the single source of truth for reusable values | `backend/apps/common/constants.py` is now a compatibility export; owning modules are `school_values`, `people.constants`, `courses.constants`, `constraints.constants`, and `scheduling.constants` | Current code and `docs/Architecture_Development_Rules.md` |
-| `README.md` and roadmap text | Older descriptions mention section-count and staffing workflows but not the newer placement and named-teacher stages | Those newer stages are implemented and documented in the decision records | Current code and decision docs |
-| `backend/tests/test_upstream_planning_workflow.py::test_combined_delivery_moves_from_ready_roster_to_one_physical_section` | Assumes a ready roster can confirm with only semester capacity rows | Current roster confirmation also requires an annual capacity row for each roster teacher | Current code |
+| High-level architecture and layer boundaries | `docs/Software_Design_Document.md` | `docs/Architecture_Development_Rules.md` |
+| Current implementation status and roadmap | `docs/Implementation_Roadmap.md` | this document and the accepted decisions |
+| Accepted stage contracts | `docs/decisions/*.md` | stage services, adapters, and tests |
+| API shape and stable-code policy | `docs/API_Contract_Strategy.md` | serializers, routes, and API tests |
+| Student objective mathematics | `docs/STUDENT_ASSIGNMENT_OBJECTIVE_SEMANTICS.md` | `scheduling_engine/student_assignment/objective_semantics.py` |
+| Student validation authority | `docs/STUDENT_ASSIGNMENT_VALIDATION.md` | `scheduling_engine/student_assignment/validation.py`, `validation_benchmark.py`, and `validation_qualification.py` |
+| Student quality measurement | `docs/STUDENT_SCHEDULE_QUALITY.md` | `scheduling_engine/student_assignment/quality.py` |
+| Student search policy and operator evidence | `docs/STUDENT_ASSIGNMENT_SEARCH_STRATEGY.md`, `docs/STUDENT_ASSIGNMENT_ADAPTIVE_SEARCH.md`, and `docs/STUDENT_ASSIGNMENT_OPERATOR_CHARACTERIZATION.md` | the remaining operator-specific documents linked from those pages |
+| Worker operations and resource telemetry | `docs/SCHEDULING_WORKERS.md` and `docs/OBSERVABILITY_AND_MONITORING.md` | Celery tasks, runtime telemetry, and settings |
 
-The practical rule is simple: when docs and code disagree, the code and the
-accepted decision records govern.
+Older benchmark measurements and superseded implementation descriptions remain
+in their source documents as historical evidence. They are labeled by date,
+fixture, objective version, or status; they are not current defaults.
 
 ## 10. Invariants and Rules Future Work Must Not Break
 
@@ -586,28 +599,31 @@ Commands run in this checkout:
 .\.venv\Scripts\python.exe -m pytest --collect-only -q backend/tests
 ```
 
-Current results:
+Current results recorded during this audit:
 
 | Command | Result |
 | --- | --- |
 | `backend\manage.py check` | `System check identified no issues (0 silenced).` |
-| `pytest -q scheduling_engine/tests` | `44 passed in 2.23s` |
-| `pytest --collect-only -q scheduling_engine/tests` | `44 tests collected` |
-| `pytest -q backend/tests` | `123 passed, 1 failed in 5m42s` |
-| `pytest --collect-only -q backend/tests` | `124 tests collected in 1.01s` |
+| `pytest -q scheduling_engine/tests` | Not rerun in this documentation-only audit; `pytest --collect-only -q scheduling_engine/tests` reports 351 tests |
+| `pytest --collect-only -q scheduling_engine/tests` | 351 tests collected in 2.12s |
+| `pytest -q backend/tests` | Not rerun in this documentation-only audit; the last recorded full result is historical |
+| `pytest --collect-only -q backend/tests` | 177 tests collected in 2.33s |
 
-The one failing backend test is
+The last recorded full-backend result included one known failing test,
 `backend/tests/test_upstream_planning_workflow.py::test_combined_delivery_moves_from_ready_roster_to_one_physical_section`.
 It still expects roster confirmation without the newly required annual capacity
 row. The current implementation requires annual capacity for each ready-roster
-teacher.
+teacher. This remains a known pre-existing test/contract mismatch and was not
+changed by this documentation audit.
 
 ## 12. Recommended Next Phase
 
-The next student-scheduling increment should be a read-only conflict analyzer,
-not another mutation workflow. It should explain incomplete student schedules,
-unmet requests, capacity and timing issues from accepted state without moving
-sections, teachers, or enrollments.
+The next product-hardening work should close the remaining operational and
+visibility gaps in the staged pipeline: a read-only conflict analyzer, separate
+room assignment, general audited overrides/scoped re-solving, published API
+contract, deployment/CI hardening, and eventual frontend work. Diagnostic v2
+search-policy studies remain offline research and should not be treated as the
+next production mutation workflow.
 
 Before transcript/SIS completion evidence is introduced, the implemented
 student stage deliberately assumes prior prerequisite completion and enforces

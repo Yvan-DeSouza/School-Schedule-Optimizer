@@ -5,6 +5,12 @@ This package is deliberately independent of Django and the ORM. It accepts
 persistence, and HTTP endpoints remain in the Django adapter and application
 service layers outside this package.
 
+The stage-specific contracts are maintained in
+`docs/decisions/`. Implementation status is maintained in
+`docs/Implementation_Roadmap.md`; student-assignment objective, validation,
+quality, and diagnostic-search evidence have their own canonical documents in
+`docs/`.
+
 `section_planner.py` produces a demand baseline, a staffing-feasible annual
 plan, and a Semester 1/2 split. Its result includes stable structured
 diagnostics for infeasible scenario constraints, qualification gaps, staffing

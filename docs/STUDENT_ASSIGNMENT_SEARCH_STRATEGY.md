@@ -1,5 +1,10 @@
 # Student Assignment Search Strategy
 
+This document owns the overall distinction between production student
+assignment and opt-in diagnostic search guidance. Objective definitions,
+validation authority, and quality metrics are maintained in their specialized
+documents.
+
 ## Current status
 
 Objective Semantics v2 is the current quality contract for the diagnostic

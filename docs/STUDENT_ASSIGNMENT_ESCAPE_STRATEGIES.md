@@ -1,6 +1,8 @@
 # Student Assignment Escape Strategies
 
-This document defines the diagnostic search vocabulary for leaving a mature
+This document owns the conceptual taxonomy and authority boundaries for
+diagnostic escape operators. Empirical results belong in the operator
+characterization document. It defines the diagnostic search vocabulary for leaving a mature
 student-assignment basin. It does not enable a production optimizer.
 
 ## Strategy boundaries

@@ -1,5 +1,8 @@
 # Student Assignment Grade-Bounded Escape (Diagnostic)
 
+This document owns the grade-bounded diagnostic operator's scope semantics and
+promotion boundary. It does not enable grade-bounded search in production.
+
 ## Status
 
 Grade-bounded escape is an opt-in, diagnostic-only operator. It is not called

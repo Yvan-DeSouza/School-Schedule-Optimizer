@@ -1,5 +1,9 @@
 # Student Assignment Validation
 
+This document owns candidate-authority, validation-boundary, and validation
+performance evidence. It does not redefine hard constraints or objective
+mathematics.
+
 This document is the canonical source of truth for the student-assignment
 validation architecture, candidate-authority rules, validation performance
 evidence, and validation-specific research history. Future material changes or

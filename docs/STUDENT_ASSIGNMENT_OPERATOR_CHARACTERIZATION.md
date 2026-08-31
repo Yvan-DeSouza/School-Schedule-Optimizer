@@ -1,5 +1,9 @@
 # Student Assignment Operator Characterization
 
+This document owns the empirical evidence catalog and capability
+classification for diagnostic search operators. It must not be read as a
+production optimization policy.
+
 ## Status and evidence boundary
 
 This document is the evidence catalog for diagnostic student-assignment search
@@ -594,8 +598,11 @@ The classification below reflects evidence strength, not implementation status:
 
 ## Adaptive-calibration decision
 
-**Diagnostic adaptive calibration is now in progress; production promotion
-remains NO-GO.**
+**Diagnostic adaptive calibration remains an open research track; production
+promotion is NO-GO.** The current active gate is fixed-cycle positive-control
+parity: the 2026-08-31 sequence-ablation records are classified
+`PRELIMINARY_NON_PARITY_QUALIFIED` because configuration parity is observed but
+transition variance prevents a causal sequence claim.
 
 The portfolio is implemented and the offline policy can select among current
 student-pressure, utilization-cluster, local, and grade-escape diagnostics.
@@ -604,11 +611,11 @@ trials, role-specific target-scale metrics, full grade-opportunity correlation,
 and downstream return-to-local evidence are still required. Calibration must
 not mix v1 and v2 totals or memorize a benchmark-winning operator.
 
-The current evidence gate is to run matched static controls and adaptive policy
-replays first on medium detached states, then promote only informative policy
-comparisons to target scale. Grade escape must return to local search before
-further allocation is judged. Only after those records are complete should an
-adaptive policy enter a separate production-promotion study.
+The current evidence gate is to restore parity, rerun causal sequence
+ablations, and then use matched static controls and adaptive-policy replays on
+detached states. Grade escape must return to local search before further
+allocation is judged. Only after those records are complete should an adaptive
+policy enter a separate production-promotion study.
 
 The diagnostic runtime now executes adaptive, stateless-role, and caller-
 supplied fixed-cycle selections through the same operator-session boundary.

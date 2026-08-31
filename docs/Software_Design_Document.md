@@ -4,9 +4,10 @@
 **Document type:** Current-state Software Design Document
 **Version:** 2.0
 **Status:** Repository-backed architecture reference
-**Snapshot:** 2026-08-09
-**Target scale:** approximately 1,400 students, 80 teachers, and 250-350
-course sections per academic year
+**Snapshot:** 2026-08-31
+**Representative scale:** the repository includes mixed synthetic fixtures with
+approximately 1,400 students and 300+ sections; teacher deployment scale and
+real-school performance remain to be measured.
 
 This document describes the system that is actually implemented in this
 repository, together with the boundaries of the next stages. It is not a
@@ -77,6 +78,7 @@ course requests
   -> section approval and reconciliation
   -> semester/A-D placement with anonymous staffing feasibility
   -> named teacher assignment
+  -> student assignment and controlled reruns
 ```
 
 Section counting, section lifecycle/reconciliation, semester/A-D placement,
@@ -112,7 +114,7 @@ The design goals are:
 | Safe authorization | Resource and action policies fail closed, and policy filtering occurs before client query filtering. |
 | Explainable failure | Stable diagnostic and workflow codes accompany human-readable messages. |
 | Maintainable engine boundary | Django owns persistence and orchestration; the pure engine consumes immutable DTOs and returns plain result data. |
-| Appropriate scale | The current target is a single school at approximately 1,400 students, 80 teachers, and 250-350 sections. The 1,400-student/300-section fixture has 9,800 required requests and 10,500 usable seats; Stage 1 and Stage 2 use bounded CP-SAT searches and must return complete, hard-valid results. Independent parallel runs may differ; objective facts and persisted invariants are the quality evidence. Real-school and deployment measurements remain required. |
+| Appropriate scale | The repository uses representative single-school fixtures, including a mixed 1,400-student/300+ section benchmark. Stage 1 and Stage 2 use bounded CP-SAT searches and must return complete, hard-valid results; independent diagnostic parallel runs may differ, while objective facts and persisted invariants remain the quality evidence. Real-school and deployment measurements remain required. |
 
 The project also preserves a migrationless pre-production schema workflow:
 project apps do not contain migration files, and an authorized local schema
@@ -582,9 +584,9 @@ The actual solver modules are top-level package files.
 
 The implemented decomposition preserves independent review checkpoints and
 keeps the engine boundary small. Section counts can be approved before timing;
-timing can be accepted before named teacher assignment; and a future student
-stage can consume accepted section timing without requiring room assignment or
-teacher identity.
+timing can be accepted before named teacher assignment; and the implemented
+student stage consumes accepted section timing without requiring room
+assignment or changing teacher identity.
 
 The trade-off is that the current pipeline is not a single globally optimal
 joint solve. This is intentional and accepted: counselor review, stable
@@ -1187,14 +1189,17 @@ deployment measurement.
 - Expensive API submissions persist a queued execution and return immediately;
   the worker executes the existing service outside the HTTP request. Direct
   service calls remain synchronous for tests and non-HTTP callers.
-- The approximately 1,400-student/300-section fixture has 9,800 required
-  requests, 10,500 usable seats, no course-specific seat shortage, and a
-  complete independent capacity/timeslot feasibility assignment. Step 9 uses
-  a CP-SAT-validated complete seed, skips empty objective tiers, and retains a
-  valid higher-priority candidate through a lower-priority timeout. Persisted
-  result facts record the Stage-1 seed vector, Stage-2 vector, worker count,
-  and whether the final vector improved the seed. Independent runs may produce
-  different request-to-section assignments when parallel search is used.
+- The authoritative detached `production_scale_v1` fixture contains 1,400
+  students, 10,760 requests, 10,945 required source groups, 10,635 final
+  assignments, 0 unmet required requests, and 310 special commitments. It is
+  synthetic representative evidence, not proof of every real-school or
+  deployment workload. Persisted result facts record the Stage-1 seed vector,
+  Stage-2 vector, worker count, and whether the final vector improved the seed.
+  Independent diagnostic runs may produce different request-to-section
+  assignments when parallel search is used.
+- The older 9,800-request runs remain isolated benchmark history and are kept
+  in the student-assignment decision records; they are not the current mixed
+  production-scale benchmark.
 - Complete student-assignment candidates are also evaluated by the pure,
   solver-aligned quality measurement layer. Its compact Stage-1/Stage-2
   facts and per-pass timings are available in the result payload without

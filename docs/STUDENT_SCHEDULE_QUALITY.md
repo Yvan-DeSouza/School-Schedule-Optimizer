@@ -1,5 +1,9 @@
 # Student Schedule Quality Measurement
 
+This document owns measurement and research evidence for student schedule
+quality. It does not own solver mathematics, candidate authority, or production
+search policy; those responsibilities belong to the linked canonical documents.
+
 This document describes the measurement-only quality evaluator in
 `scheduling_engine.student_assignment.quality`. It does not add constraints,
 objectives, hints, or search behavior. CP-SAT remains the authority for the

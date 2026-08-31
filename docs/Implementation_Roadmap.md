@@ -3,9 +3,15 @@
 
 **Document type:** Master implementation roadmap
 
-**Re-baselined:** 2026-08-08
+**Re-baselined:** 2026-08-31
 
-**Primary evidence:** current repository code, tests, README, and Software Design Document (SDD)
+This document owns current implementation status and sequencing. Accepted
+behavioral contracts remain in `docs/decisions/`; detailed student objective,
+validation, quality, search, worker, and observability evidence is owned by the
+specialized documents linked from this roadmap.
+
+**Primary evidence:** current repository code, tests, accepted decision
+records, README, and Software Design Document (SDD)
 
 **Project context:** solo-developer, long-duration portfolio project
 
@@ -158,8 +164,8 @@ These areas contain useful foundations but are not complete Version 1 capabiliti
 | Planning input management | Student/teacher/course models, year-specific teacher rosters, readiness confirmation, two-semester capacity enforcement, and teacher/qualification management APIs | Historical-demand management API and one consolidated cross-stage readiness dashboard |
 | Staffing reporting | Per-run available/planned/unused capacity, course eligibility counts, and structured shortage diagnostics | The SDD's standalone staffing summary by subject/qualification pool and a stable API intended for cross-run operational reporting |
 | Section lifecycle | Draft sections, physical delivery identity, planning provenance, safe refusal to overwrite, and audited reconciliation with retirement/reactivation | A physical-delivery reconciliation path for changing an already-materialized combined group; late combination remains intentionally blocked |
-| Timetable data | `TimeSlot`, permanent A–D rotation, `Room`, `SectionSchedule`, room requirements, course conflicts, and section locks | No solver or review workflow assigns a block or room |
-| Teacher scheduling foundation | Normalized qualifications, compiled eligibility, availability, preferences, current-course history, workload fields, and planning capacity | No named-teacher assignment solver, recommendation run, approval, or assignment diagnostics |
+| Timetable data | `TimeSlot`, permanent A–D rotation, `Room`, `SectionSchedule`, room requirements, course conflicts, and section locks | Semester/A–D placement is implemented; room assignment remains outside the placement stage |
+| Teacher scheduling foundation | Normalized qualifications, compiled eligibility, availability, preferences, current-course history, workload fields, planning capacity, named assignment, review, approval, and diagnostics | Further cross-stage override/reporting integration remains future work |
 | Student assignment and controlled reruns | Immutable first-release and replacement runs/approvals; active/historical normal and special commitments; six audited normal-enrollment locks; Study/online/Co-op/Focus exact/exclusion locks; full/scoped runs, priorities, preservation, what-if checks, cancellation/reconciliation bridge, deterministic initial-solution/incumbent-retention solving, normal/online/Co-op/Study/Focus occupancy, paired half-semester behavior, and explicit Objective Semantics v2 normalization/canonical importance metadata | No transcript/SIS completion workflow or import API, student-specific eligibility or optional-request model, same-online-course grouping preference, general manual overrides, personal timetables, or conflict analyzer; representative real-school data and deployment request limits still need measurement |
 | Special-course scheduling | Explicit delivery kind, duration, credits, online-supervision capacity runs, Study/Focus requests, Co-op commitments, and narrowly paired half-semester normal courses | No generalized partial-duration framework, automatic unused-half resolution, online grouping soft preference, or external-program detail beyond student availability |
 | Manual controls | `SectionLock`, `Section.is_locked`, `ManualOverride` model, admin registration, and future action-policy names | No enforced synchronization invariant between lock row/flag; no override application service/API, typed action workflow, optimistic concurrency, override history endpoint, or scoped re-solve |
@@ -171,9 +177,7 @@ These areas contain useful foundations but are not complete Version 1 capabiliti
 
 ### Not Yet Implemented
 
-- Automated section placement into A–D blocks.
 - Automated room assignment.
-- Named teacher-to-section assignment.
 - Post-solve conflict and issue analysis across the completed timetable.
 - General manual override application and immutable history APIs.
 - Persistent execution/status tracking for downstream placement, named-teacher,
@@ -187,14 +191,11 @@ Models, DTO fields, policy names, or SDD descriptions for these areas are founda
 
 ### Verification Baseline
 
-The current checkout was verified non-destructively during this re-baseline on 2026-08-08:
-
-- `python backend/manage.py check` — no issues.
-- Isolated `scheduling_engine` suite — 26 tests passed without Django.
-- Django backend suite — 100 tests passed.
-- Combined verified total — 126 tests passed.
-
-These numbers describe the current baseline, not a permanent completion target. Every future phase must add tests for its own contracts while keeping this existing suite green.
+The historical 2026-08-08 counts above are retained in repository history, but
+they are not the current suite size. The 2026-08-31 audit collected 351 pure
+engine tests and 177 backend tests. Current checks and any full-suite results
+must be recorded from the commands run for the current checkout; benchmark and
+diagnostic evidence is maintained separately from this roadmap.
 
 ---
 
@@ -354,21 +355,26 @@ If lifecycle state belongs on `Section`, add it deliberately to `backend/apps/co
 
 ---
 
-## Phase 2 — Counselor-Reviewed A–D Block and Room Placement
+## Phase 2 — Counselor-Reviewed Semester and A–D Placement
 
-**Current Status:** **Partially complete foundation.** Section, room, timeslot, room-requirement, conflict, lock, DTO, compiler, and `SectionSchedule` structures exist. No placement solver or placement-run API exists.
+**Current Status:** **Completed for semester/A–D placement; room assignment remains deferred.** The pure placement solver, anonymous staffing-feasibility witness, immutable run/review/approval workflow, annual/fixed-semester modes, locks, reconciliation handoff, and adapter/API coverage are implemented. Rooms are intentionally not assigned by this stage.
 
-**Goal:** Produce an inspectable candidate assignment of every active draft section to one semester-consistent A–D block and compatible room, then let a counselor approve that candidate into `SectionSchedule` records.
+**Goal:** Produce an inspectable candidate assignment of every in-scope section to a semester-consistent A–D block, prove anonymous staffing feasibility, and let a counselor approve that timing into `SectionSchedule` records. Room assignment is a separate future stage.
 
-**Why It Comes Next:** Once the active section set has explicit lifecycle rules, block and room placement is the next dependency for both teacher availability checks and student conflict checks. It advances the product from “how many sections?” to “when and where can they run?” without yet conflating teacher or student assignment.
+**Why It Comes Next:** Once the active section set has explicit lifecycle rules,
+semester/A–D timing is the dependency for teacher availability and student
+conflict checks. It advances the product from “how many sections?” to “when can
+they run?” without conflating placement with teacher, room, or student
+assignment.
 
-**Dependencies:** Phase 1; current A–D constants and `TimeSlot`; rooms and room requirements; active sections; section locks; co-request conflict evidence; pure constraint compiler.
+**Dependencies:** Phase 1; current A–D constants and `TimeSlot`; active
+sections; section locks; co-request conflict evidence; pure constraint compiler.
 
 **Deliverables:**
 
 - A pure `section_placement` CP-SAT module with input/result DTOs and no Django imports.
 - Immutable placement-run input snapshots, candidate results, solver status, objective data, and counselor-readable diagnostics.
-- Hard enforcement of academic year, semester, available A–D blocks, room compatibility, room/slot exclusivity, and locked timeslot/room context.
+- Hard enforcement of academic year, semester, available A–D blocks, slot exclusivity, and locked timing context. Rooms remain outside this stage.
 - Soft optimization using counselor-reviewed course-conflict weights and distribution of multiple sections of a course across blocks.
 - A review/preview/approval workflow that writes `SectionSchedule` atomically and never overwrites accepted placements implicitly.
 - An explicit API workflow to review generated co-request conflict recommendations before they update `CourseConflict`; no silent automatic upsert.
@@ -383,10 +389,13 @@ If lifecycle state belongs on `Section`, add it deliberately to `backend/apps/co
 1. Define placement DTOs and a stable result/diagnostic contract before writing CP-SAT variables.
 2. Load only active sections as decision candidates while loading locked or out-of-scope placements as fixed context.
 3. Model the four recurring blocks correctly; do not expand A–D into unrelated daily timeslots.
-4. Generate feasible room/block candidates from semester, availability, room requirements, and the adopted room-capacity rule.
-5. Enforce room/block uniqueness and all locked values as hard constraints.
+4. Generate feasible semester/block candidates from semester restrictions,
+   availability, and timing locks.
+5. Enforce block uniqueness and all locked timing values as hard constraints.
 6. Minimize weighted co-request collisions and avoid concentrating every section of the same course in one block.
-7. Return actionable diagnostics for sections with no compatible room, unavailable semester blocks, contradictory locks, and aggregate room shortages.
+7. Return actionable diagnostics for sections with no compatible timing,
+   unavailable semester blocks, contradictory locks, and aggregate timing
+   shortages.
 8. Persist an immutable recommendation first; require explicit approval before changing `SectionSchedule`.
 9. Add a time limit and report optimal, feasible/suboptimal, infeasible, and failed outcomes distinctly.
 10. Benchmark a realistic fixture. Introduce a worker/broker only if the measured API execution contract requires one, behind the scheduling service boundary.
@@ -395,8 +404,7 @@ If lifecycle state belongs on `Section`, add it deliberately to `backend/apps/co
 
 ```text
 scheduling_engine/
-  solvers/
-    section_placement.py
+  section_placement.py
   dto.py
 backend/apps/scheduling/
   models.py                         # placement run/approval audit records
@@ -428,8 +436,10 @@ Prefer a stage-specific run model unless concrete duplication justifies a carefu
 **Definition of Done:**
 
 - A counselor can run, inspect, and approve a placement candidate for active draft sections.
-- Approved sections have at most one current `SectionSchedule` and no room/block collision.
-- Semester restrictions, room rules, available blocks, and locks are respected.
+- Approved sections have at most one current `SectionSchedule` and no timing
+  collision.
+- Semester restrictions, available blocks, staffing feasibility, and locks are
+  respected; rooms remain nullable and unassigned.
 - Infeasible inputs produce structured, course/section-level diagnostics.
 - A failed approval writes no partial placements.
 - The pure solver passes without Django, and a representative benchmark records runtime and solve quality.
@@ -438,7 +448,7 @@ Prefer a stage-specific run model unless concrete duplication justifies a carefu
 
 ## Phase 3 — Counselor-Reviewed Named Teacher Assignment
 
-**Current Status:** **Not implemented; data and policy foundations exist.** Qualifications, eligibility, availability, preferences, workload fields, planning capacities, and `Section`/`SectionSchedule`/lock model structures are available.
+**Current Status:** **Completed.** The pure named-teacher solver, final-staffing modes, qualification/availability/workload/lock rules, candidate evidence, immutable run/review/approval workflow, adapter, API, and regression coverage are implemented. It consumes accepted placement and does not move timing or assign rooms/students.
 
 **Goal:** Recommend a named teacher for each eligible placed section while respecting legal qualifications, availability, timetable conflicts, workload limits, accepted locks, and explicit soft preferences.
 
@@ -475,7 +485,7 @@ Prefer a stage-specific run model unless concrete duplication justifies a carefu
 **Suggested Folder/Module Structure:**
 
 ```text
-scheduling_engine/solvers/
+scheduling_engine/
   teacher_assignment.py
 backend/apps/scheduling/services/
   teacher_assignment.py
@@ -728,7 +738,7 @@ frontend/
 
 **Deliverables:**
 
-- A deterministic realistic fixture or approved anonymized dataset representing roughly 1,400 students, 80 teachers, and 250–350 sections.
+- A deterministic realistic fixture or approved anonymized dataset representing the repository's measured mixed scale (currently 1,400 students and 300+ sections); teacher-count and deployment limits must be measured rather than assumed.
 - Performance profiles and bounded solve-time targets for every CP-SAT stage.
 - A final execution decision for long-running solvers. If background processing is justified, a minimal reliable worker/status implementation with idempotency and persistent run state.
 - Continuous integration for checks, pure-engine tests, Django tests, and frontend tests.
@@ -818,48 +828,36 @@ These are not excuses to leave Version 1 gaps unresolved. They are boundaries pr
 
 ## Recommended Immediate Next Phase
 
-> **Superseded implementation update (2026-08-08):** Phase 2 is now
-> **Counselor-Reviewed Semester and A-D Placement With Staffing Feasibility**.
-> See `docs/decisions/semester-placement-and-staffing-feasibility.md` for the
-> accepted contract. It remains review-first; API submissions are dispatched
-> asynchronously through the current scheduling worker, while direct service
-> calls remain synchronous.
-> It places timing only, proves anonymous staffing feasibility, and explicitly
-> defers rooms, named teacher assignments, and student assignments. Any older
-> paragraph in this roadmap that says Phase 2 assigns rooms or requires a queue
-> is historical planning context, not the current implementation contract.
+> **Current-state update (2026-08-31):** Phases 2, 3, and the student-assignment
+> portion of Phase 4 are implemented. Their accepted contracts live in
+> `docs/decisions/`; this roadmap records status and sequencing only. Placement
+> assigns semester/A–D timing and proves anonymous staffing feasibility, named
+> teacher assignment follows accepted timing, and student assignment consumes
+> accepted sections through reviewed immutable runs. Rooms, general overrides,
+> conflict analysis, frontend work, and deployment hardening remain separate
+> future capabilities.
 
-> **Superseded implementation update (2026-08-08):** Phase 3 is now
-> **Counselor-Reviewed Named Teacher Assignment**. See
-> `docs/decisions/named-teacher-assignment.md`. It runs after
-> accepted timing, respects qualifications, availability, annual/semester load,
-> locks, and counselor course rules, and writes named teachers only after
-> approval. Rooms and students remain separate later stages.
+The immediate roadmap is now a hardening and product-completion sequence:
 
-Begin **Phase 2 — Counselor-Reviewed A–D Block and Room Placement** after final integration review of the completed core reconciliation workflow.
+- preserve and qualify the implemented reviewed pipeline and its immutable
+  run/approval boundaries;
+- add read-only conflict analysis;
+- implement room assignment as a separate reviewed stage;
+- design general audited overrides and genuine scoped re-solving;
+- publish a tested API contract, then build the role-based frontend; and
+- complete CI, deployment, structured operational logging, and real-school
+  scale evidence.
 
-The system now makes staffing-aware section recommendations, records immutable runs, creates traceable drafts after approval, and safely reconciles later plans without deleting operational history. Counselors can see the exact keep/move/create/retire/reactivate consequences before applying them, while protected sections remain fixed.
-
-The next product step can therefore use the stable active section set to decide when and where each section runs. That work should retain the same immutable run, preview, approval, and conflict-protection pattern established here.
-
-Reconciliation has unlocked the next scheduling stage cleanly: the placement solver can operate on a well-defined set of active sections and attach `SectionSchedule` and room/block decisions without relying on ambiguous replacement semantics.
-
-Other plausible phases should wait:
-
-- **A–D block/room placement** is now the recommended next implementation phase because section identity and retirement rules are stable.
-- **Named teacher assignment** depends on placed blocks for availability and overlap checks.
-- **Student assignment** depends on placed sections and a prerequisite-evidence decision.
-- **General scoped re-solving** needs real downstream solver stages and accepted outputs to scope.
-- **Frontend work** will have much less API churn after reconciliation and downstream review contracts are defined.
-- **Cross-listing** is not a safe automatic escape hatch for low demand and requires a separate domain design.
-
-The immediate implementation boundary is now counselor-reviewed A–D block and room placement. Historical-demand readiness, lock-model consolidation, and cross-listing remain separate deliberate increments.
+Diagnostic Objective Semantics v2 search-policy work is an offline research
+track. It may inform later promotion decisions, but it is not ordinary
+production scheduling behavior and is not a substitute for the roadmap's
+missing product capabilities.
 
 ---
 
 *End of Implementation Roadmap.*
 
-## Current diagnostic-search update (2026-08-26)
+## Current diagnostic-search update (2026-08-31)
 
 Objective Semantics v2 and the reusable continuous student-assignment
 operator-session boundary are implemented as pure-engine diagnostics. The
@@ -870,10 +868,11 @@ ordinary production scheduling.
 
 The characterization study is complete enough to expose the implemented
 student-pressure, utilization-cluster, and actual-grade-bounded operator
-families to an offline adaptive allocator. Its evidence catalog, capability
-cards, limitations, and prior adaptive-calibration gate are recorded in
-`docs/STUDENT_ASSIGNMENT_OPERATOR_CHARACTERIZATION.md`; escape semantics are
-recorded in `docs/STUDENT_ASSIGNMENT_ESCAPE_STRATEGIES.md`. The current
-increment calibrates adaptive allocation against matched static controls only.
-It remains diagnostic-only; full-school escape and production promotion remain
-deferred until repeatable resource/quality evidence justifies them.
+families to an offline adaptive allocator. The fixed-cycle sequence-ablation
+study has a preliminary non-parity-qualified result: current controls match
+configuration, but transition variance prevents a production-policy claim.
+Its evidence catalog, capability cards, limitations, and adaptive-calibration
+records are maintained in `docs/STUDENT_ASSIGNMENT_OPERATOR_CHARACTERIZATION.md`;
+escape semantics are in `docs/STUDENT_ASSIGNMENT_ESCAPE_STRATEGIES.md`.
+Everything in this track remains diagnostic-only; adaptive production
+allocation, full-school escape, and production promotion remain deferred.

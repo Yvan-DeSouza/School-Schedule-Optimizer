@@ -1,5 +1,9 @@
 # Student Assignment Adaptive Search (Objective Semantics v2)
 
+This document owns the diagnostic adaptive-policy state machine and promotion
+boundary. It is not the owner of the underlying operator definitions or the
+production student-assignment contract.
+
 ## Status
 
 The v2 adaptive allocator is implemented as a diagnostic-only, offline
@@ -11,6 +15,11 @@ for producing every candidate, and the existing full-model validator remains
 responsible for deciding whether a candidate is safe to adopt. A candidate
 that is partial, `UNKNOWN`, unvalidated, or not strictly better is never
 allowed to replace the current complete incumbent.
+
+The current 2026-08-31 fixed-cycle sequence-ablation positive control is
+preliminary and non-parity-qualified: the controls match configuration, but
+transition variance prevents a causal sequence or production-policy claim.
+That evidence is maintained in the operator-characterization document.
 
 This document is intentionally separate from the historical v1 adaptive
 bootstrap/VNS experiments. Those older experiments used a bounded radius
