@@ -229,9 +229,13 @@ def test_parallel_study_expands_only_after_a_qualified_batch(monkeypatch, tmp_pa
     manifest_path = tmp_path / "study_manifest.json"
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     requested = []
+    qualification_flags = []
 
     def fake_batch(**kwargs):
         requested.append(kwargs["max_parallel_trials"])
+        qualification_flags.append(
+            kwargs["qualified_for_requested_parallelism"]
+        )
         payloads = [
             {
                 "scenario_id": cell["scenario_id"],
@@ -268,7 +272,70 @@ def test_parallel_study_expands_only_after_a_qualified_batch(monkeypatch, tmp_pa
     )
 
     assert requested == [2, 3]
+    assert qualification_flags == [True, True]
     assert result["concurrency_history"] == [
         {"completed_parallel_trials": 2, "qualified_for_next_slot": True, "reasons": []},
+        {"completed_parallel_trials": 3, "qualified_for_next_slot": False, "reasons": ["test_stop"]},
+    ]
+    assert requested[-1] == 3
+
+
+def test_parallel_study_returns_to_last_qualified_level_after_failed_expansion(
+    monkeypatch, tmp_path
+):
+    manifest = _manifest(
+        policies=policy_study.PARALLEL_POLICY_STUDY_POLICIES,
+        seeds=(101, 202, 303),
+    )
+    manifest_path = tmp_path / "study_manifest.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    requested = []
+    qualification_flags = []
+
+    def fake_batch(**kwargs):
+        requested.append(kwargs["max_parallel_trials"])
+        qualification_flags.append(
+            kwargs["qualified_for_requested_parallelism"]
+        )
+        payloads = [
+            {
+                "scenario_id": cell["scenario_id"],
+                "policy": cell["policy"],
+                "seed": cell["seed"],
+                "execution_status": "completed",
+                "candidate_complete": True,
+            }
+            for cell in kwargs["cells"]
+        ]
+        call_number = len(requested)
+        return {
+            "payloads": payloads,
+            "resource": {},
+            "qualification": {
+                "qualified": call_number <= 2,
+                "reasons": [] if call_number <= 2 else ["test_stop"],
+            },
+        }
+
+    monkeypatch.setattr(policy_study, "run_parallel_policy_batch", fake_batch)
+    monkeypatch.setattr(
+        policy_study,
+        "_persist_parallel_policy_result",
+        lambda _directory, value, payload: value["results"].update({
+            policy_study._result_filename(
+                payload["scenario_id"], payload["policy"], payload["seed"]
+            ): {"status": "completed"}
+        }) or {"filename": "test.json"},
+    )
+
+    result = policy_study.run_parallel_policy_study(
+        tmp_path,
+        max_parallel_trials=4,
+    )
+
+    assert requested == [2, 3, 4, 3]
+    assert qualification_flags == [True, True, True, True]
+    assert result["concurrency_history"][-2:] == [
+        {"completed_parallel_trials": 4, "qualified_for_next_slot": False, "reasons": ["test_stop"]},
         {"completed_parallel_trials": 3, "qualified_for_next_slot": False, "reasons": ["test_stop"]},
     ]

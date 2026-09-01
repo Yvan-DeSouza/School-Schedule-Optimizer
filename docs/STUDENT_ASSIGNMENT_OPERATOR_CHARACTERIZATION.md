@@ -1494,3 +1494,90 @@ operator allocation, student-targeted repair, grade-bounded global escape,
 and full-school unrestricted escalation are later research topics, not
 implemented behavior here. No current v2 objective, hard constraint, solver
 authority, or production policy has changed.
+
+#### Progressive parallel policy study (Objective Semantics v2, 2026-09-01)
+
+The four-policy study requested after the adaptive-policy design work was
+completed as a separate, diagnostic-only study. Its artifacts are stored
+outside the repository under
+`C:\Users\desou\research_runs\parallel_policy_study_20260831\`. The study
+used the detached `v2_policy_generalization_suite_20260829` inputs; it did not
+mutate the canonical production benchmark, any approval state, or production
+policy wiring. The study manifest and every result artifact are independently
+hashed, and all 24 result hashes verified.
+
+The study compared the existing balanced adaptive selector, two bounded role-
+allocation variants, and the existing fixed cycle:
+
+| Policy | Allocation change |
+| --- | --- |
+| `adaptive_balanced` | Existing adaptive role selection, unchanged |
+| `adaptive_student_pressure_biased` | A bounded 0.25 multiplier applied only to the targeted-repair role signal |
+| `adaptive_utilization_biased` | A bounded 0.25 multiplier applied only to the utilization-repair role signal |
+| `fixed_cycle` | Existing fixed-cycle operator sequence |
+
+All four policies used the same Objective Semantics v2 `balanced` profile,
+the same source-seed lineage per scenario, one CP-SAT worker per trial, a
+300-second per-operator limit, a 900-second cumulative policy budget, an
+independent 180-second candidate-validation allowance, and a 1,800-second
+supervised parent wall. Every candidate was required to be complete and pass
+the unchanged full-model validator before adoption. `stateless_role` was not
+part of this study.
+
+The matrix was 4 policies x 2 scenarios x 3 seeds. Both scenarios had 1,400
+students and 304 normal sections plus 4 online-supervision sessions. The
+`reference_target` contained 9,072 requests, 9,170 required source groups, and
+140 special commitments. The `special_commitment_pressure_target` contained
+8,344 requests, 8,540 required source groups, and 280 special commitments.
+All 24 cells completed with complete assignments, zero unmet requests, and
+all scenario special commitments fulfilled.
+
+| Scenario | Policy | Final substantive values for seeds 101 / 202 / 303 | Median | Median cell seconds | Adopted attempts |
+| --- | --- | ---: | ---: | ---: | ---: |
+| reference | `adaptive_balanced` | 42,690 / 42,690 / 42,690 | 42,690 | 934.4 | 3 / 3 / 3 |
+| reference | `adaptive_student_pressure_biased` | 42,690 / 42,750 / 42,750 | 42,750 | 920.7 | 3 / 0 / 0 |
+| reference | `adaptive_utilization_biased` | 42,750 / 42,750 / 42,750 | 42,750 | 943.6 | 0 / 0 / 0 |
+| reference | `fixed_cycle` | 42,750 / 42,750 / 42,750 | 42,750 | 942.8 | 0 / 0 / 0 |
+| special pressure | `adaptive_balanced` | 43,620 / 43,620 / 43,620 | 43,620 | 925.7 | 1 / 1 / 1 |
+| special pressure | `adaptive_student_pressure_biased` | 43,620 / 43,620 / 43,620 | 43,620 | 925.5 | 1 / 1 / 1 |
+| special pressure | `adaptive_utilization_biased` | 43,620 / 43,620 / 43,608 | 43,620 | 924.9 | 1 / 1 / 2 |
+| special pressure | `fixed_cycle` | 43,548 / 43,548 / 43,464 | 43,548 | 934.6 | 1 / 1 / 3 |
+
+The result is scenario-dependent. On the reference scenario, balanced
+adaptive reached the same 42,690 endpoint in all three seeds; the student-
+pressure variant improved in only one seed, and the utilization-biased and
+fixed-cycle policies made no adopted improvement. On the special-pressure
+scenario, fixed-cycle had the strongest median and best endpoint, while the
+utilization-biased policy produced one 43,608 result but had a 43,620 median.
+The two biased variants therefore produced observable policy divergence, but
+neither established a general advantage over the balanced selector.
+
+The substantive component facts remained honest v2 measurements. On the
+reference scenario, the balanced endpoint components were utilization 9,174,
+semester balance 9,288, difficulty 11,334, and category diversity 12,894.
+The adopted balanced improvement was a utilization improvement; the other
+three components were unchanged. On the special-pressure scenario, fixed-cycle
+also improved the overall substantive value through the existing component
+objective, while all candidates retained complete fulfillment and special-
+commitment validity. The study did not change objective definitions, counselor
+importance semantics, weights, or objective ordering.
+
+Concurrency was progressively qualified rather than assumed. The first two
+trial batches ran at 2 concurrent processes, then measured evidence qualified
+3 and then 4. Four-trial batches reached a largest observed trial RSS of about
+0.79--0.94 GiB and remained free of cleanup errors and abnormal paging, but
+the final 4-trial resource check projected only about 1.83 GiB available after
+one more trial, below the required 2 GiB reserve. The coordinator therefore
+returned to the safe two-trial level for the final remaining cell. This is
+research throughput evidence only; parallel wall time must not be used as a
+fair policy-runtime ranking. Sequential confirmation is required for any
+promotion decision.
+
+The study closes the four-policy comparison at the current v2 search-policy
+research boundary. It does not prove global optimality, does not establish a
+production winner, and does not justify changing the current production
+operator policy. The strongest next step is a separately authorized
+sequential confirmation of any candidate policy or sequence that is still
+worth promoting, using the same source lineage and full validation boundary.
+The study artifacts remain the reproducible research record; no Git commit or
+canonical benchmark mutation was made by the study run.

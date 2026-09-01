@@ -922,11 +922,20 @@ def run_parallel_policy_study(
     current_parallelism = PARALLEL_POLICY_STUDY_DEFAULT_PARALLEL_TRIALS
     while pending:
         batch_cells = tuple(pending[:current_parallelism])
+        qualified_levels = {
+            int(item.get("completed_parallel_trials"))
+            for item in manifest.get("concurrency_history") or ()
+            if item.get("qualified_for_next_slot")
+            and item.get("completed_parallel_trials") is not None
+        }
         batch = run_parallel_policy_batch(
             manifest=manifest,
             max_parallel_trials=current_parallelism,
             cells=batch_cells,
-            qualified_for_requested_parallelism=current_parallelism <= 2,
+            qualified_for_requested_parallelism=(
+                current_parallelism <= 2
+                or max(qualified_levels, default=0) >= current_parallelism - 1
+            ),
         )
         persisted = []
         for payload in batch["payloads"]:
@@ -954,6 +963,11 @@ def run_parallel_policy_study(
             and current_parallelism < max_parallel_trials
         ):
             current_parallelism += 1
+        elif (
+            not batch["qualification"].get("qualified")
+            and current_parallelism > PARALLEL_POLICY_STUDY_DEFAULT_PARALLEL_TRIALS
+        ):
+            current_parallelism -= 1
         pending = pending[len(batch_cells):]
     return manifest
 
