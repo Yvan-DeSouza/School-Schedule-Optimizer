@@ -327,6 +327,7 @@ def supervise_json_worker(
     cwd=None,
     env=None,
     cancel_requested=None,
+    worker_started_callback=None,
 ):
     """Run one JSON worker under a hard wall and optional resource guard."""
 
@@ -345,6 +346,13 @@ def supervise_json_worker(
     started = time.monotonic()
     process = _launch_worker(command, cwd=cwd, env=env)
     worker_pid = int(process.pid)
+    if worker_started_callback is not None:
+        try:
+            worker_started_callback(worker_pid)
+        except Exception:
+            # Resource telemetry is observational and must never prevent a
+            # supervised worker from running.
+            pass
     resource_guard_facts = {}
     last_snapshot = {}
     execution_status = None

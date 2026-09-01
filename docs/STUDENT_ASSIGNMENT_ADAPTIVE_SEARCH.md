@@ -21,6 +21,43 @@ preliminary and non-parity-qualified: the controls match configuration, but
 transition variance prevents a causal sequence or production-policy claim.
 That evidence is maintained in the operator-characterization document.
 
+The current research comparison also defines three named adaptive allocator
+variants. `adaptive_balanced` is the neutral reference and is equivalent to
+the current `adaptive` selector. `adaptive_student_pressure_biased` and
+`adaptive_utilization_biased` use the same raw role signals and the same
+operator portfolio, history, budget, eligibility, fallback, grade-return, and
+stable tie-break logic. They differ only in the role gate before concrete
+operator scoring:
+
+```text
+balanced:
+  adjusted(role) = raw(role)
+
+student-pressure-biased:
+  adjusted(targeted_repair) = raw(targeted_repair)
+                              + 0.25 * raw(targeted_repair)
+
+utilization-biased:
+  adjusted(utilization_repair) = raw(utilization_repair)
+                                + 0.25 * raw(utilization_repair)
+```
+
+All other role scores remain unchanged. Because the raw signals are bounded,
+the bonus is bounded and a nonzero signal is not an automatic selection: a
+stronger competing role can still win, and the existing scope-eligibility and
+post-grade-escape rules still apply. The `0.25` value is a diagnostic
+allocation multiplier, not a counselor importance score, objective weight, or
+new scheduling preference. Decision records retain the variant, raw signals,
+adjusted signals, and applied role bias so the policy difference is auditable.
+
+The four-policy comparison uses these three named adaptive variants plus
+`fixed_cycle`, with the same balanced Objective Semantics v2 profile. It does
+not use the historical `student_quality_heavy` or `utilization_heavy` profiles,
+because those change counselor-score inputs and would confound objective
+semantics with search-policy allocation. The study is research-only and is not
+called by ordinary student assignment, Celery scheduling, approval, or
+persistence.
+
 This document is intentionally separate from the historical v1 adaptive
 bootstrap/VNS experiments. Those older experiments used a bounded radius
 sequence inside one solver call. The v2 allocator is a policy layer over

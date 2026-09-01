@@ -193,6 +193,15 @@ STARTUP_AWARE_SESSION_OVERRIDES = {
     )
 }
 
+# These names are diagnostic policy-allocation variants.  They intentionally
+# share the balanced Objective Semantics v2 profile; the variant changes only
+# the adaptive role gate, never a counselor score or a solver objective.
+ADAPTIVE_POLICY_VARIANT_POLICIES = {
+    "adaptive_balanced": "balanced",
+    "adaptive_student_pressure_biased": "student_pressure_biased",
+    "adaptive_utilization_biased": "utilization_biased",
+}
+
 
 def profile_fingerprint(profile_name):
     """Return a stable identity for one pre-registered score profile."""
@@ -248,18 +257,36 @@ def build_calibration_policy(
             raise ValueError("fixed_cycle_names must contain an operator")
         return {
             "selection_policy": "fixed_cycle",
+            "adaptive_policy_variant": "balanced",
             "fixed_cycle": tuple(
                 _operator_by_name(name, portfolio) for name in names
             ),
         }
 
     if policy_name == "adaptive":
-        return {"selection_policy": "adaptive", "fixed_cycle": ()}
+        return {
+            "selection_policy": "adaptive",
+            "adaptive_policy_variant": "balanced",
+            "fixed_cycle": (),
+        }
+    if policy_name in ADAPTIVE_POLICY_VARIANT_POLICIES:
+        return {
+            "selection_policy": "adaptive",
+            "adaptive_policy_variant": ADAPTIVE_POLICY_VARIANT_POLICIES[
+                policy_name
+            ],
+            "fixed_cycle": (),
+        }
     if policy_name == "stateless_role":
-        return {"selection_policy": "stateless_role", "fixed_cycle": ()}
+        return {
+            "selection_policy": "stateless_role",
+            "adaptive_policy_variant": "balanced",
+            "fixed_cycle": (),
+        }
     if policy_name in CALIBRATION_FIXED_CYCLES:
         return {
             "selection_policy": "fixed_cycle",
+            "adaptive_policy_variant": "balanced",
             "fixed_cycle": tuple(
                 _operator_by_name(name, portfolio)
                 for name in CALIBRATION_FIXED_CYCLES[policy_name]
@@ -301,6 +328,7 @@ class AdaptiveCalibrationTrialRecord:
     # cannot safely reconstruct the final state from the parent checkpoint.
     final_objective_vector: tuple = ()
     final_source_decisions: tuple = ()
+    adaptive_policy_variant: str = "balanced"
 
     def to_dict(self):
         return asdict(self)
@@ -360,6 +388,7 @@ def run_matched_calibration_trial(
         ),
         selection_policy=policy_config["selection_policy"],
         fixed_cycle=policy_config["fixed_cycle"],
+        adaptive_policy_variant=policy_config["adaptive_policy_variant"],
         **kwargs,
     )
     return build_calibration_trial_record(
@@ -376,6 +405,7 @@ def run_matched_calibration_trial(
         cp_sat_max_deterministic_time_seconds=(
             cp_sat_max_deterministic_time_seconds
         ),
+        adaptive_policy_variant=policy_config["adaptive_policy_variant"],
     )
 
 
@@ -410,6 +440,7 @@ def build_calibration_trial_record(
     worker_count,
     cp_sat_random_seed=None,
     cp_sat_max_deterministic_time_seconds=None,
+    adaptive_policy_variant=None,
 ):
     """Translate a runtime result into a bounded calibration record."""
 
@@ -460,6 +491,11 @@ def build_calibration_trial_record(
             getattr(record, "final_objective_vector", ()) or ()
         ),
         final_source_decisions=tuple(result.source_decisions or ()),
+        adaptive_policy_variant=(
+            adaptive_policy_variant
+            if adaptive_policy_variant is not None
+            else build_calibration_policy(policy)["adaptive_policy_variant"]
+        ),
         attempts=tuple(record.attempts),
         decisions=tuple(record.decisions),
         timing={
@@ -477,6 +513,7 @@ def build_calibration_trial_record(
 
 __all__ = [
     "CALIBRATION_SESSION_OVERRIDES",
+    "ADAPTIVE_POLICY_VARIANT_POLICIES",
     "CALIBRATION_FIXED_CYCLES",
     "CALIBRATION_PROFILES",
     "CALIBRATION_PROTOCOL_VERSION",

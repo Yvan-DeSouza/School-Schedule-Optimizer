@@ -18,6 +18,7 @@ from scheduling_engine.realistic_student_assignment_validation import (
     build_realistic_quality_tradeoff_fixture,
 )
 from scheduling_engine.student_assignment.adaptive_calibration import (
+    ADAPTIVE_POLICY_VARIANT_POLICIES,
     CALIBRATION_FIXED_CYCLES,
     CALIBRATION_PROFILES,
     CALIBRATION_SESSION_OVERRIDES,
@@ -269,6 +270,28 @@ def test_calibration_controls_use_named_existing_operator_families():
     r8 = build_calibration_policy("student_repair_r8_only")
     assert r8["selection_policy"] == "fixed_cycle"
     assert tuple(spec.name for spec in r8["fixed_cycle"]) == ("targeted_r8_s2",)
+
+
+def test_parallel_study_policies_share_balanced_objective_and_encode_variants():
+    assert ADAPTIVE_POLICY_VARIANT_POLICIES == {
+        "adaptive_balanced": "balanced",
+        "adaptive_student_pressure_biased": "student_pressure_biased",
+        "adaptive_utilization_biased": "utilization_biased",
+    }
+    assert build_calibration_policy("adaptive_balanced") == {
+        "selection_policy": "adaptive",
+        "adaptive_policy_variant": "balanced",
+        "fixed_cycle": (),
+    }
+    assert build_calibration_policy("adaptive_student_pressure_biased")[
+        "adaptive_policy_variant"
+    ] == "student_pressure_biased"
+    assert build_calibration_policy("adaptive_utilization_biased")[
+        "adaptive_policy_variant"
+    ] == "utilization_biased"
+    assert build_calibration_policy("fixed_cycle")["adaptive_policy_variant"] == (
+        "balanced"
+    )
 
 
 def test_fixed_cycle_name_override_uses_the_same_policy_builder():

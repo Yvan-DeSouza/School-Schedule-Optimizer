@@ -21,6 +21,8 @@ from scheduling_engine.student_assignment.search_experiments import (
     source_decision_fingerprint,
 )
 from scheduling_engine.student_assignment.adaptive_search import (
+    ADAPTIVE_ROLE_BIAS_MULTIPLIER,
+    ADAPTIVE_POLICY_VARIANTS,
     AdaptiveOperatorAttempt,
     AdaptiveOperatorSpec,
     AdaptivePolicyDecision,
@@ -548,6 +550,61 @@ def test_policy_prefers_ordinary_operator_when_global_utilization_dominates():
     )
     assert decision.operator.portfolio_role == "utilization_repair"
     assert decision.selected_student_ids == (7, 8, 9, 10)
+
+
+def test_adaptive_policy_variants_are_bounded_role_gate_biases():
+    assert ADAPTIVE_ROLE_BIAS_MULTIPLIER == 0.25
+    assert ADAPTIVE_POLICY_VARIANTS == (
+        "balanced",
+        "student_pressure_biased",
+        "utilization_biased",
+    )
+    balanced = choose_adaptive_operator(
+        _state(local_share=0.4, utilization_share=0.46),
+        ranked_students=(SimpleNamespace(student_id=7), SimpleNamespace(student_id=8)),
+    )
+    student_biased = choose_adaptive_operator(
+        _state(local_share=0.4, utilization_share=0.46),
+        ranked_students=(SimpleNamespace(student_id=7), SimpleNamespace(student_id=8)),
+        adaptive_policy_variant="student_pressure_biased",
+    )
+    utilization_biased = choose_adaptive_operator(
+        _state(local_share=0.46, utilization_share=0.4),
+        ranked_students=(SimpleNamespace(student_id=7), SimpleNamespace(student_id=8)),
+        adaptive_policy_variant="utilization_biased",
+    )
+
+    assert balanced.operator.portfolio_role == "utilization_repair"
+    assert student_biased.operator.portfolio_role == "targeted_repair"
+    assert utilization_biased.operator.portfolio_role == "utilization_repair"
+    assert student_biased.signal_values["role_signals"]["targeted_repair"] == 0.4
+    assert student_biased.signal_values["adjusted_role_signals"]["targeted_repair"] == 0.5
+    assert utilization_biased.signal_values["role_biases"]["utilization_repair"] == 0.1
+
+
+def test_adaptive_bias_does_not_turn_a_nonzero_signal_into_an_automatic_role():
+    decision = choose_adaptive_operator(
+        _state(local_share=0.2, utilization_share=0.3),
+        ranked_students=(SimpleNamespace(student_id=7), SimpleNamespace(student_id=8)),
+        adaptive_policy_variant="student_pressure_biased",
+    )
+    assert decision.operator.portfolio_role == "utilization_repair"
+    assert decision.signal_values["role_signals"]["targeted_repair"] > 0
+    assert decision.signal_values["adjusted_role_signals"]["targeted_repair"] < (
+        decision.signal_values["adjusted_role_signals"]["utilization_repair"]
+    )
+
+
+def test_balanced_adaptive_variant_is_backward_compatible():
+    state = _state(local_share=0.8, utilization_share=0.2)
+    ranked = (SimpleNamespace(student_id=7), SimpleNamespace(student_id=8))
+    historical = choose_adaptive_operator(state, ranked_students=ranked)
+    explicit = choose_adaptive_operator(
+        state,
+        ranked_students=ranked,
+        adaptive_policy_variant="balanced",
+    )
+    assert historical.to_dict() == explicit.to_dict()
 
 
 def test_role_signals_bound_rounding_inflated_student_share():

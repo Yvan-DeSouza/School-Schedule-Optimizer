@@ -1,15 +1,17 @@
-"""Startup-aware, clean-process Objective Semantics v2 policy study.
+"""Clean-process Objective Semantics v2 policy-study runners.
 
-This is an offline research runner.  It compares the existing adaptive,
-stateless-role, and fixed-cycle selectors through the existing supervised
-calibration boundary.  It does not participate in ordinary scheduling and
-does not alter constraints, objectives, validation authority, or persisted
-application state.
+The historical startup-aware runner compares the existing adaptive,
+stateless-role, and fixed-cycle selectors.  The separate progressive runner
+compares three named adaptive variants with fixed-cycle through the same
+supervised calibration boundary.  These are offline research surfaces only;
+they do not participate in ordinary scheduling or alter constraints,
+objectives, validation authority, or persisted application state.
 """
 
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -17,16 +19,22 @@ import os
 from pathlib import Path
 import statistics
 from time import perf_counter
+import threading
+import time
 
 from .benchmark_adaptive_calibration import run_supervised_calibration_trial
 from .student_assignment.adaptive_calibration import (
+    ADAPTIVE_POLICY_VARIANT_POLICIES,
     CALIBRATION_PROFILES,
     STARTUP_AWARE_MAX_OPERATOR_SECONDS,
     STARTUP_AWARE_PROTOCOL_VERSION,
     STARTUP_AWARE_SESSION_OVERRIDES,
     STARTUP_AWARE_TOTAL_POLICY_SECONDS,
+    build_calibration_policy,
     profile_fingerprint,
 )
+from .student_assignment.adaptive_search import ADAPTIVE_ROLE_BIAS_MULTIPLIER
+from .student_assignment.calibration_supervisor import process_tree_snapshot
 from .student_assignment.stage2_benchmark import read_durable_stage2_benchmark
 
 
@@ -39,6 +47,26 @@ STARTUP_AWARE_PROFILE = "balanced"
 STARTUP_AWARE_VALIDATION_SECONDS = 180.0
 STARTUP_AWARE_PARENT_HARD_WALL_SECONDS = 1800.0
 STARTUP_AWARE_WORKER_COUNT = 1
+
+# This is a separate, research-only study.  Historical startup-aware results
+# intentionally keep their original policy set (including stateless_role).
+PARALLEL_POLICY_STUDY_ID = "v2_policy_parallel_biased_adaptive_20260831"
+PARALLEL_POLICY_STUDY_SCHEMA = "student_assignment_parallel_policy_study_v1"
+PARALLEL_POLICY_RESULT_SCHEMA = "student_assignment_parallel_policy_result_v1"
+PARALLEL_POLICY_PROTOCOL_VERSION = "adaptive-policy-parallel-study-v1"
+PARALLEL_POLICY_STUDY_POLICIES = (
+    "adaptive_balanced",
+    "adaptive_student_pressure_biased",
+    "adaptive_utilization_biased",
+    "fixed_cycle",
+)
+PARALLEL_POLICY_STUDY_SEEDS = (101, 202, 303)
+PARALLEL_POLICY_STUDY_PROFILE = "balanced"
+PARALLEL_POLICY_STUDY_WORKER_COUNT = 1
+PARALLEL_POLICY_STUDY_MAX_PARALLEL_TRIALS = 4
+PARALLEL_POLICY_STUDY_DEFAULT_PARALLEL_TRIALS = 2
+PARALLEL_POLICY_MEMORY_RESERVE_BYTES = 2 * 1024**3
+PARALLEL_POLICY_MAX_SWAP_GROWTH_BYTES = 256 * 1024**2
 
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 _BENCHMARK_ROOT = (
@@ -80,6 +108,310 @@ def _relative_path(path):
         return str(Path(path).resolve().relative_to(_REPOSITORY_ROOT))
     except ValueError:
         return str(Path(path))
+
+
+def parallel_policy_fingerprint(policy, *, profile=PARALLEL_POLICY_STUDY_PROFILE):
+    """Return the immutable policy identity used by the parallel study."""
+
+    if policy not in PARALLEL_POLICY_STUDY_POLICIES:
+        raise ValueError(f"Unknown parallel-study policy: {policy}")
+    if profile not in CALIBRATION_PROFILES:
+        raise ValueError(f"Unknown calibration profile: {profile}")
+    config = build_calibration_policy(policy)
+    payload = {
+        "protocol_version": PARALLEL_POLICY_PROTOCOL_VERSION,
+        "policy": policy,
+        "profile": profile,
+        "profile_fingerprint": profile_fingerprint(profile),
+        "selection_policy": config["selection_policy"],
+        "adaptive_policy_variant": config["adaptive_policy_variant"],
+        "role_bias_multiplier": ADAPTIVE_ROLE_BIAS_MULTIPLIER,
+        "fixed_cycle": [item.name for item in config["fixed_cycle"]],
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode(
+            "utf-8"
+        )
+    ).hexdigest()
+
+
+def parallel_policy_budget_contract():
+    """Return the fixed, diagnostic-only contract for the four-policy study."""
+
+    return {
+        "protocol_version": PARALLEL_POLICY_PROTOCOL_VERSION,
+        "profile": PARALLEL_POLICY_STUDY_PROFILE,
+        "profile_fingerprint": profile_fingerprint(
+            PARALLEL_POLICY_STUDY_PROFILE
+        ),
+        "policies": list(PARALLEL_POLICY_STUDY_POLICIES),
+        "policy_fingerprints": {
+            policy: parallel_policy_fingerprint(policy)
+            for policy in PARALLEL_POLICY_STUDY_POLICIES
+        },
+        "cp_sat_workers_per_trial": PARALLEL_POLICY_STUDY_WORKER_COUNT,
+        "cp_sat_random_seeds": list(PARALLEL_POLICY_STUDY_SEEDS),
+        "per_operator_maximum_seconds": STARTUP_AWARE_MAX_OPERATOR_SECONDS,
+        "cumulative_policy_budget_seconds": STARTUP_AWARE_TOTAL_POLICY_SECONDS,
+        "candidate_validation_time_limit_seconds": STARTUP_AWARE_VALIDATION_SECONDS,
+        "parent_hard_wall_seconds": STARTUP_AWARE_PARENT_HARD_WALL_SECONDS,
+        "full_model_validation_required": True,
+        "unvalidated_candidate_adoption": False,
+        "ordinary_stage2_between_iterations": False,
+        "production_policy_wiring": False,
+        "default_max_parallel_trials": PARALLEL_POLICY_STUDY_DEFAULT_PARALLEL_TRIALS,
+        "maximum_parallel_trials": PARALLEL_POLICY_STUDY_MAX_PARALLEL_TRIALS,
+        "memory_reserve_bytes": PARALLEL_POLICY_MEMORY_RESERVE_BYTES,
+        "progressive_concurrency": [2, 3, 4],
+    }
+
+
+def build_parallel_policy_study_manifest(
+    *,
+    study_directory,
+    scenario_ids=("reference_target", "special_commitment_pressure_target"),
+):
+    """Build a manifest for the new four-policy research study."""
+
+    unknown = set(scenario_ids) - set(TARGET_SCENARIO_DIRECTORIES)
+    if unknown:
+        raise ValueError(f"Unknown target scenarios: {sorted(unknown)}")
+    return {
+        "schema": PARALLEL_POLICY_STUDY_SCHEMA,
+        "study_id": PARALLEL_POLICY_STUDY_ID,
+        "study_kind": "progressive_parallel_policy_comparison",
+        "purpose": (
+            "Research-only comparison of balanced adaptive, two bounded "
+            "adaptive biases, and the existing fixed-cycle control."
+        ),
+        "synthetic_only": True,
+        "production_wiring": False,
+        "objective_semantics_version": "v2",
+        "source_lineage": "v2_policy_generalization_suite_20260829",
+        "policies": list(PARALLEL_POLICY_STUDY_POLICIES),
+        "policy_fingerprints": {
+            policy: parallel_policy_fingerprint(policy)
+            for policy in PARALLEL_POLICY_STUDY_POLICIES
+        },
+        "seeds": list(PARALLEL_POLICY_STUDY_SEEDS),
+        "scenario_ids": list(scenario_ids),
+        "budget_contract": parallel_policy_budget_contract(),
+        "scenarios": {
+            scenario_id: _scenario_manifest(scenario_id)
+            for scenario_id in scenario_ids
+        },
+        "results": {},
+        "batches": [],
+        "concurrency_history": [],
+        "created_at_utc": datetime.now(timezone.utc).isoformat(),
+        "study_directory": _relative_path(study_directory),
+    }
+
+
+def initialize_parallel_policy_study(study_directory, *, scenario_ids=None):
+    """Create the parallel-study manifest without overwriting existing state."""
+
+    study_directory = Path(study_directory)
+    manifest_path = study_directory / "study_manifest.json"
+    if manifest_path.exists():
+        raise FileExistsError(f"Study manifest already exists: {manifest_path}")
+    manifest = build_parallel_policy_study_manifest(
+        study_directory=study_directory,
+        scenario_ids=(
+            tuple(scenario_ids)
+            if scenario_ids is not None
+            else tuple(TARGET_SCENARIO_DIRECTORIES)
+        ),
+    )
+    _json_write_atomic(manifest_path, manifest)
+    return manifest
+
+
+def _parallel_resource_snapshot(active_workers):
+    """Capture aggregate resource facts for the currently running trial roots."""
+
+    per_trial = {}
+    for cell_key, pid in sorted(active_workers.items()):
+        per_trial[cell_key] = process_tree_snapshot(pid)
+    snapshots = tuple(per_trial.values())
+    available_values = [
+        item.get("system_available_memory_bytes")
+        for item in snapshots
+        if item.get("system_available_memory_bytes") is not None
+    ]
+    try:
+        import psutil
+
+        cpu_percent = float(psutil.cpu_percent(interval=None))
+        logical_cpu_count = psutil.cpu_count(logical=True)
+        swap_used = int(psutil.swap_memory().used)
+    except (ImportError, AttributeError, OSError, ValueError):
+        cpu_percent = None
+        logical_cpu_count = None
+        swap_used = None
+    if not available_values:
+        try:
+            import psutil
+
+            available_values = [int(psutil.virtual_memory().available)]
+        except (ImportError, AttributeError, OSError, ValueError):
+            available_values = []
+    return {
+        "active_trial_count": len(active_workers),
+        "per_trial": per_trial,
+        "aggregate_tree_rss_bytes": sum(
+            int(item.get("tree_rss_bytes") or 0) for item in snapshots
+        ),
+        "aggregate_tree_uss_bytes": sum(
+            int(item.get("tree_uss_bytes") or 0) for item in snapshots
+        ),
+        "minimum_system_available_memory_bytes": (
+            min(available_values) if available_values else None
+        ),
+        "cpu_percent": cpu_percent,
+        "logical_cpu_count": logical_cpu_count,
+        "swap_used_bytes": swap_used,
+    }
+
+
+def _parallel_resource_monitor(active_workers, active_lock, stop_event, state):
+    """Sample active trial trees until the parent completes the batch."""
+
+    while not stop_event.is_set():
+        with active_lock:
+            active = dict(active_workers)
+        snapshot = _parallel_resource_snapshot(active)
+        with active_lock:
+            state["samples"].append(snapshot)
+            state["samples"] = state["samples"][-512:]
+        stop_event.wait(0.25)
+
+
+def _parallel_resource_summary(state, *, initial_available_memory_bytes=None):
+    samples = tuple(state.get("samples") or ())
+    per_trial_peak = {}
+    per_trial_peak_uss = {}
+    for sample in samples:
+        for cell_key, facts in (sample.get("per_trial") or {}).items():
+            per_trial_peak[cell_key] = max(
+                int(per_trial_peak.get(cell_key, 0)),
+                int(facts.get("tree_rss_bytes") or 0),
+            )
+            per_trial_peak_uss[cell_key] = max(
+                int(per_trial_peak_uss.get(cell_key, 0)),
+                int(facts.get("tree_uss_bytes") or 0),
+            )
+    available = [
+        item.get("minimum_system_available_memory_bytes")
+        for item in samples
+        if item.get("minimum_system_available_memory_bytes") is not None
+    ]
+    cpu = [item.get("cpu_percent") for item in samples if item.get("cpu_percent") is not None]
+    swap = [item.get("swap_used_bytes") for item in samples if item.get("swap_used_bytes") is not None]
+    return {
+        "sample_count": len(samples),
+        "initial_available_memory_bytes": initial_available_memory_bytes,
+        "minimum_available_memory_bytes": min(available) if available else None,
+        "aggregate_peak_tree_rss_bytes": max(
+            (int(item.get("aggregate_tree_rss_bytes") or 0) for item in samples),
+            default=0,
+        ),
+        "aggregate_peak_tree_uss_bytes": max(
+            (int(item.get("aggregate_tree_uss_bytes") or 0) for item in samples),
+            default=0,
+        ),
+        "per_trial_peak_tree_rss_bytes": per_trial_peak,
+        "per_trial_peak_tree_uss_bytes": per_trial_peak_uss,
+        "max_cpu_percent": max(cpu, default=None),
+        "mean_cpu_percent": (
+            sum(cpu) / len(cpu) if cpu else None
+        ),
+        "logical_cpu_count": next(
+            (item.get("logical_cpu_count") for item in reversed(samples)
+             if item.get("logical_cpu_count") is not None),
+            None,
+        ),
+        "initial_swap_used_bytes": min(swap) if swap else None,
+        "peak_swap_used_bytes": max(swap) if swap else None,
+        "swap_growth_bytes": (
+            max(swap) - min(swap) if swap else None
+        ),
+    }
+
+
+def qualify_parallel_concurrency(
+    resource_summary,
+    *,
+    completed_payloads=(),
+    reserve_bytes=PARALLEL_POLICY_MEMORY_RESERVE_BYTES,
+):
+    """Decide whether one more concurrent trial is safe from measured facts."""
+
+    peak_by_trial = dict(
+        resource_summary.get("per_trial_peak_tree_rss_bytes") or {}
+    )
+    largest_peak = max(peak_by_trial.values(), default=0)
+    minimum_available = resource_summary.get("minimum_available_memory_bytes")
+    projected_available = (
+        minimum_available - largest_peak
+        if minimum_available is not None and largest_peak
+        else None
+    )
+    payloads = tuple(completed_payloads)
+    statuses = [
+        str(item.get("execution_status") or item.get("status") or "")
+        for item in payloads
+    ]
+    cleanups = [
+        (item.get("supervision") or {}).get("cleanup") or {}
+        for item in payloads
+    ]
+    resource_limited = any(
+        status in {
+            "resource_guard_terminated",
+            "hard_deadline_terminated",
+            "parent_cancelled",
+        }
+        for status in statuses
+    )
+    cleanup_clean = bool(cleanups) and all(
+        cleanup.get("descendants_clean") is True for cleanup in cleanups
+    )
+    swap_growth = resource_summary.get("swap_growth_bytes")
+    swap_ok = swap_growth is None or swap_growth <= PARALLEL_POLICY_MAX_SWAP_GROWTH_BYTES
+    logical_cpu_count = resource_summary.get("logical_cpu_count")
+    max_cpu = resource_summary.get("max_cpu_percent")
+    cpu_contention = bool(
+        logical_cpu_count
+        and max_cpu is not None
+        and max_cpu >= 98.0
+        and len(payloads) >= int(logical_cpu_count)
+    )
+    reasons = []
+    if not largest_peak:
+        reasons.append("no_per_trial_peak_observed")
+    if projected_available is None or projected_available < reserve_bytes:
+        reasons.append("projected_memory_reserve_below_2_gib")
+    if resource_limited:
+        reasons.append("resource_limited_or_abnormal_completion")
+    if not cleanup_clean:
+        reasons.append("child_cleanup_not_proven")
+    if not swap_ok:
+        reasons.append("pagefile_growth_exceeded_guard")
+    if cpu_contention:
+        reasons.append("cpu_contention_observed")
+    return {
+        "qualified": not reasons,
+        "reasons": reasons,
+        "largest_observed_trial_peak_rss_bytes": largest_peak,
+        "minimum_observed_available_memory_bytes": minimum_available,
+        "projected_available_after_one_more_trial_bytes": projected_available,
+        "reserve_bytes": reserve_bytes,
+        "resource_limited": resource_limited,
+        "cleanup_clean": cleanup_clean,
+        "swap_growth_bytes": swap_growth,
+        "cpu_contention": cpu_contention,
+    }
 
 
 def startup_aware_policy_budget_contract():
@@ -320,6 +652,312 @@ def run_startup_aware_policy_cell(
     return payload
 
 
+def _parallel_cell_key(cell):
+    return f"{cell['scenario_id']}:{cell['policy']}:{int(cell['seed'])}"
+
+
+def execute_parallel_policy_cell(
+    *,
+    manifest,
+    scenario_id,
+    policy,
+    seed,
+    worker_started_callback=None,
+    cancel_requested=None,
+):
+    """Execute one new-study cell without writing shared study state.
+
+    The function is deliberately persistence-free so it can run in parallel
+    threads in the coordinator.  The actual CP-SAT work still happens in the
+    existing supervised child process, and the parent remains the only owner
+    of result/manifest publication.
+    """
+
+    if scenario_id not in manifest.get("scenarios", {}):
+        raise ValueError(f"Unknown parallel-study scenario: {scenario_id}")
+    if policy not in PARALLEL_POLICY_STUDY_POLICIES:
+        raise ValueError(f"Unknown parallel-study policy: {policy}")
+    if int(seed) not in PARALLEL_POLICY_STUDY_SEEDS:
+        raise ValueError(f"Seed is not preregistered: {seed}")
+    scenario = manifest["scenarios"][scenario_id]
+    benchmark_directory = _REPOSITORY_ROOT / scenario["benchmark_directory"]
+    started = perf_counter()
+    try:
+        payload = run_supervised_calibration_trial(
+            policy=policy,
+            profile=PARALLEL_POLICY_STUDY_PROFILE,
+            benchmark_directory=benchmark_directory,
+            total_time_limit_seconds=STARTUP_AWARE_TOTAL_POLICY_SECONDS,
+            per_operator_time_limit_seconds=STARTUP_AWARE_MAX_OPERATOR_SECONDS,
+            worker_count=PARALLEL_POLICY_STUDY_WORKER_COUNT,
+            validation_time_limit_seconds=STARTUP_AWARE_VALIDATION_SECONDS,
+            hard_wall_seconds=STARTUP_AWARE_PARENT_HARD_WALL_SECONDS,
+            startup_aware=True,
+            cp_sat_random_seed=int(seed),
+            cancel_requested=cancel_requested,
+            worker_started_callback=worker_started_callback,
+        )
+        payload = dict(payload)
+        payload.update({
+            "schema": PARALLEL_POLICY_RESULT_SCHEMA,
+            "study_id": manifest["study_id"],
+            "scenario_id": scenario_id,
+            "policy": policy,
+            "seed": int(seed),
+            "profile": PARALLEL_POLICY_STUDY_PROFILE,
+            "adaptive_policy_variant": build_calibration_policy(policy)[
+                "adaptive_policy_variant"
+            ],
+            "policy_fingerprint": manifest["policy_fingerprints"][policy],
+            "source_lineage": {
+                "input_fingerprint": scenario["input_fingerprint"],
+                "source_seed_fingerprint": scenario["source_seed_fingerprint"],
+            },
+            "budget_contract": manifest["budget_contract"],
+            "cell_elapsed_seconds": perf_counter() - started,
+        })
+        return payload
+    except Exception as error:
+        return {
+            "schema": PARALLEL_POLICY_RESULT_SCHEMA,
+            "study_id": manifest["study_id"],
+            "scenario_id": scenario_id,
+            "policy": policy,
+            "seed": int(seed),
+            "profile": PARALLEL_POLICY_STUDY_PROFILE,
+            "adaptive_policy_variant": build_calibration_policy(policy)[
+                "adaptive_policy_variant"
+            ],
+            "policy_fingerprint": manifest["policy_fingerprints"][policy],
+            "status": "source_or_runner_error",
+            "error_type": type(error).__name__,
+            "error": str(error),
+            "source_lineage": {
+                "input_fingerprint": scenario["input_fingerprint"],
+                "source_seed_fingerprint": scenario["source_seed_fingerprint"],
+            },
+            "budget_contract": manifest["budget_contract"],
+            "cell_elapsed_seconds": perf_counter() - started,
+        }
+
+
+def _persist_parallel_policy_result(study_directory, manifest, payload):
+    """Publish one result and its hash; called only by the coordinator."""
+
+    result_path = Path(study_directory) / "results" / _result_filename(
+        payload["scenario_id"], payload["policy"], payload["seed"]
+    )
+    if result_path.exists():
+        raise FileExistsError(f"Result artifact already exists: {result_path}")
+    _json_write_atomic(result_path, payload)
+    artifact_hash = _sha256_file(result_path)
+    filename = result_path.name
+    manifest["results"][filename] = {
+        "path": _relative_path(result_path),
+        "sha256": artifact_hash,
+        "status": payload.get("execution_status") or payload.get("status"),
+        "final_substantive_value": payload.get("final_substantive_value"),
+        "candidate_complete": payload.get("candidate_complete"),
+    }
+    return {
+        "filename": filename,
+        "path": _relative_path(result_path),
+        "sha256": artifact_hash,
+    }
+
+
+def run_parallel_policy_batch(
+    *,
+    manifest,
+    max_parallel_trials=PARALLEL_POLICY_STUDY_DEFAULT_PARALLEL_TRIALS,
+    cells,
+    qualified_for_requested_parallelism=False,
+    cancel_requested=None,
+):
+    """Run one parent-coordinated batch of independent policy cells."""
+
+    max_parallel_trials = int(max_parallel_trials)
+    if not 1 <= max_parallel_trials <= PARALLEL_POLICY_STUDY_MAX_PARALLEL_TRIALS:
+        raise ValueError(
+            "max_parallel_trials must be between 1 and "
+            f"{PARALLEL_POLICY_STUDY_MAX_PARALLEL_TRIALS}"
+        )
+    if max_parallel_trials > PARALLEL_POLICY_STUDY_DEFAULT_PARALLEL_TRIALS and not qualified_for_requested_parallelism:
+        raise ValueError(
+            "parallelism above two requires a prior measured qualification"
+        )
+    cells = tuple(cells)
+    if not cells:
+        return {
+            "payloads": (),
+            "resource": {},
+            "qualification": {
+                "qualified": False,
+                "reasons": ["empty_batch"],
+            },
+        }
+
+    active_workers = {}
+    active_lock = threading.Lock()
+    monitor_stop = threading.Event()
+    monitor_state = {"samples": []}
+    initial_resource = _parallel_resource_snapshot({})
+    initial_available = initial_resource.get("system_available_memory_bytes")
+    monitor = threading.Thread(
+        target=_parallel_resource_monitor,
+        args=(active_workers, active_lock, monitor_stop, monitor_state),
+        name="parallel-policy-resource-monitor",
+        daemon=True,
+    )
+    monitor.start()
+    cancellation = threading.Event()
+
+    def _cancel_requested():
+        if cancellation.is_set():
+            return True
+        if cancel_requested is None:
+            return False
+        try:
+            return bool(cancel_requested())
+        except Exception:
+            return False
+
+    def _run(cell):
+        key = _parallel_cell_key(cell)
+
+        def _started(pid):
+            with active_lock:
+                active_workers[key] = int(pid)
+
+        try:
+            return execute_parallel_policy_cell(
+                manifest=manifest,
+                scenario_id=cell["scenario_id"],
+                policy=cell["policy"],
+                seed=cell["seed"],
+                worker_started_callback=_started,
+                cancel_requested=_cancel_requested,
+            )
+        finally:
+            with active_lock:
+                active_workers.pop(key, None)
+
+    results_by_key = {}
+    with ThreadPoolExecutor(max_workers=min(max_parallel_trials, len(cells))) as executor:
+        future_by_key = {
+            executor.submit(_run, cell): _parallel_cell_key(cell)
+            for cell in cells
+        }
+        for future in as_completed(future_by_key):
+            key = future_by_key[future]
+            try:
+                results_by_key[key] = future.result()
+            except Exception as error:  # pragma: no cover - defensive boundary
+                cancellation.set()
+                results_by_key[key] = {
+                    "schema": PARALLEL_POLICY_RESULT_SCHEMA,
+                    "study_id": manifest["study_id"],
+                    "status": "parallel_coordinator_error",
+                    "error_type": type(error).__name__,
+                    "error": str(error),
+                }
+    monitor_stop.set()
+    monitor.join(timeout=5.0)
+    resource = _parallel_resource_summary(
+        monitor_state,
+        initial_available_memory_bytes=initial_available,
+    )
+    payloads = tuple(results_by_key[_parallel_cell_key(cell)] for cell in cells)
+    qualification = qualify_parallel_concurrency(
+        resource,
+        completed_payloads=payloads,
+    )
+    for payload in payloads:
+        payload["parallel_execution"] = {
+            "batch_concurrency": max_parallel_trials,
+            "parent_owned_manifest": True,
+            "resource_qualification": qualification,
+        }
+    return {
+        "payloads": payloads,
+        "resource": resource,
+        "qualification": qualification,
+    }
+
+
+def run_parallel_policy_study(
+    study_directory,
+    *,
+    max_parallel_trials=PARALLEL_POLICY_STUDY_MAX_PARALLEL_TRIALS,
+):
+    """Run the four-policy matrix with measured 2 -> 3 -> 4 expansion."""
+
+    max_parallel_trials = int(max_parallel_trials)
+    if not 2 <= max_parallel_trials <= PARALLEL_POLICY_STUDY_MAX_PARALLEL_TRIALS:
+        raise ValueError(
+            "max_parallel_trials must be between 2 and "
+            f"{PARALLEL_POLICY_STUDY_MAX_PARALLEL_TRIALS}"
+        )
+    study_directory = Path(study_directory)
+    manifest_path = study_directory / "study_manifest.json"
+    if not manifest_path.exists():
+        raise FileNotFoundError(
+            "Initialize the parallel policy study before running it"
+        )
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if manifest.get("schema") != PARALLEL_POLICY_STUDY_SCHEMA:
+        raise ValueError("Study manifest is not a parallel-policy study")
+    pending = [
+        {
+            "scenario_id": scenario_id,
+            "policy": policy,
+            "seed": int(seed),
+        }
+        for scenario_id in manifest["scenario_ids"]
+        for policy in manifest["policies"]
+        for seed in manifest["seeds"]
+        if _result_filename(scenario_id, policy, seed)
+        not in manifest.get("results", {})
+    ]
+    current_parallelism = PARALLEL_POLICY_STUDY_DEFAULT_PARALLEL_TRIALS
+    while pending:
+        batch_cells = tuple(pending[:current_parallelism])
+        batch = run_parallel_policy_batch(
+            manifest=manifest,
+            max_parallel_trials=current_parallelism,
+            cells=batch_cells,
+            qualified_for_requested_parallelism=current_parallelism <= 2,
+        )
+        persisted = []
+        for payload in batch["payloads"]:
+            persisted.append(_persist_parallel_policy_result(
+                study_directory,
+                manifest,
+                payload,
+            ))
+        manifest["batches"].append({
+            "batch_number": len(manifest["batches"]) + 1,
+            "requested_parallel_trials": current_parallelism,
+            "cells": list(batch_cells),
+            "persisted_results": persisted,
+            "resource": batch["resource"],
+            "qualification": batch["qualification"],
+        })
+        manifest["concurrency_history"].append({
+            "completed_parallel_trials": current_parallelism,
+            "qualified_for_next_slot": bool(batch["qualification"]["qualified"]),
+            "reasons": list(batch["qualification"].get("reasons") or ()),
+        })
+        _json_write_atomic(manifest_path, manifest)
+        if (
+            batch["qualification"].get("qualified")
+            and current_parallelism < max_parallel_trials
+        ):
+            current_parallelism += 1
+        pending = pending[len(batch_cells):]
+    return manifest
+
+
 def _load_startup_aware_results(study_directory):
     """Load and integrity-check the immutable result artifacts for a study."""
 
@@ -393,6 +1031,8 @@ def _cell_summary(filename, payload, manifest):
         "final_substantive_value": payload.get("final_substantive_value"),
         "final_components": payload.get("final_components"),
         "final_objective_vector": payload.get("final_objective_vector"),
+        "adaptive_policy_variant": payload.get("adaptive_policy_variant"),
+        "policy_fingerprint": payload.get("policy_fingerprint"),
         "final_assignment_count": payload.get("final_assignment_count"),
         "final_special_commitment_count": payload.get(
             "final_special_commitment_count"
@@ -413,6 +1053,7 @@ def _cell_summary(filename, payload, manifest):
             ((payload.get("preparation") or {}).get("parent_branch_validation") or {})
             .get("full_model_validation")
         ),
+        "parallel_execution": payload.get("parallel_execution"),
     }
 
 
@@ -433,37 +1074,51 @@ def summarize_startup_aware_study(study_directory):
 
     policy_summary = {}
     for (scenario_id, policy), group in sorted(grouped.items()):
-        values = [float(cell["final_substantive_value"]) for cell in group]
+        values = [
+            float(cell["final_substantive_value"])
+            for cell in group
+            if cell.get("final_substantive_value") is not None
+        ]
         policy_summary[f"{scenario_id}:{policy}"] = {
             "scenario_id": scenario_id,
             "policy": policy,
             "seeds": [cell["seed"] for cell in group],
             "final_values": values,
-            "median_final_value": statistics.median(values),
-            "best_final_value": min(values),
-            "worst_final_value": max(values),
+            "median_final_value": statistics.median(values) if values else None,
+            "best_final_value": min(values) if values else None,
+            "worst_final_value": max(values) if values else None,
             "direct_gains": [
                 float(cell["initial_substantive_value"])
                 - float(cell["final_substantive_value"])
                 for cell in group
+                if cell.get("initial_substantive_value") is not None
+                and cell.get("final_substantive_value") is not None
             ],
-            "all_complete": all(cell["candidate_complete"] for cell in group),
-            "all_unmet_free": all(cell["final_unmet_count"] == 0 for cell in group),
+            "all_complete": bool(group) and all(
+                cell.get("candidate_complete") is True for cell in group
+            ),
+            "all_unmet_free": bool(group) and all(
+                cell.get("final_unmet_count") == 0 for cell in group
+            ),
             "all_source_branches_revalidated": all(
                 cell["branch_revalidated"] for cell in group
             ),
             "median_cell_seconds": statistics.median(
                 float(cell["cell_seconds"]) for cell in group
-            ),
+                if cell.get("cell_seconds") is not None
+            ) if any(cell.get("cell_seconds") is not None for cell in group) else None,
             "median_policy_seconds": statistics.median(
                 float(cell["policy_seconds"]) for cell in group
-            ),
+                if cell.get("policy_seconds") is not None
+            ) if any(cell.get("policy_seconds") is not None for cell in group) else None,
             "median_cp_sat_seconds": statistics.median(
                 float(cell["cp_sat_seconds"]) for cell in group
-            ),
+                if cell.get("cp_sat_seconds") is not None
+            ) if any(cell.get("cp_sat_seconds") is not None for cell in group) else None,
             "median_validation_seconds": statistics.median(
                 float(cell["validation_seconds"]) for cell in group
-            ),
+                if cell.get("validation_seconds") is not None
+            ) if any(cell.get("validation_seconds") is not None for cell in group) else None,
             "peak_working_set_bytes": max(
                 int(cell["peak_tree_working_set_bytes"] or 0) for cell in group
             ),
@@ -474,6 +1129,7 @@ def summarize_startup_aware_study(study_directory):
         candidates = [
             item for key, item in policy_summary.items()
             if item["scenario_id"] == scenario_id
+            and item["median_final_value"] is not None
         ]
         if candidates:
             winner = min(candidates, key=lambda item: item["median_final_value"])
@@ -483,8 +1139,15 @@ def summarize_startup_aware_study(study_directory):
                 "reason": "lowest median final substantive value in this diagnostic study",
             }
 
+    is_parallel_study = manifest.get("study_kind") == (
+        "progressive_parallel_policy_comparison"
+    )
     return {
-        "schema": "student_assignment_policy_generalization_summary_v1",
+        "schema": (
+            "student_assignment_parallel_policy_summary_v1"
+            if is_parallel_study
+            else "student_assignment_policy_generalization_summary_v1"
+        ),
         "study_id": manifest["study_id"],
         "protocol_version": manifest["budget_contract"]["protocol_version"],
         "source_lineage": manifest["source_lineage"],
@@ -508,8 +1171,13 @@ def summarize_startup_aware_study(study_directory):
                 "separate_production_promotion_study_required"
             ),
             "interpretation": (
-                "Fixed-cycle is the strongest diagnostic policy in the completed "
-                "startup-aware scenarios; this study does not wire it into production."
+                (
+                    "This progressive parallel study is diagnostic only; policy "
+                    "conclusions require sequential confirmation."
+                    if is_parallel_study
+                    else "Fixed-cycle is the strongest diagnostic policy in the completed "
+                    "startup-aware scenarios; this study does not wire it into production."
+                )
             ),
         },
     }
@@ -546,6 +1214,22 @@ def main(argv=None):  # pragma: no cover - offline experiment entrypoint
         help="Verify result artifacts and write a compact study summary.",
     )
     parser.add_argument(
+        "--initialize-parallel",
+        action="store_true",
+        help="Create the four-policy progressive-parallel study manifest.",
+    )
+    parser.add_argument(
+        "--run-parallel",
+        action="store_true",
+        help="Run the four-policy study with measured concurrency expansion.",
+    )
+    parser.add_argument(
+        "--max-parallel-trials",
+        type=int,
+        default=PARALLEL_POLICY_STUDY_MAX_PARALLEL_TRIALS,
+        help="Maximum qualified research trial slots (2 through 4).",
+    )
+    parser.add_argument(
         "--scenario",
         choices=tuple(TARGET_SCENARIO_DIRECTORIES),
     )
@@ -555,10 +1239,23 @@ def main(argv=None):  # pragma: no cover - offline experiment entrypoint
     )
     parser.add_argument("--seed", type=int)
     args = parser.parse_args(argv)
-    if args.initialize and args.summarize:
-        parser.error("--initialize and --summarize are mutually exclusive")
+    selected_modes = sum(bool(value) for value in (
+        args.initialize,
+        args.summarize,
+        args.initialize_parallel,
+        args.run_parallel,
+    ))
+    if selected_modes > 1:
+        parser.error("study action flags are mutually exclusive")
     if args.initialize:
         payload = initialize_startup_aware_study(args.study_directory)
+    elif args.initialize_parallel:
+        payload = initialize_parallel_policy_study(args.study_directory)
+    elif args.run_parallel:
+        payload = run_parallel_policy_study(
+            args.study_directory,
+            max_parallel_trials=args.max_parallel_trials,
+        )
     elif args.summarize:
         payload = write_startup_aware_study_summary(args.study_directory)
     else:
@@ -570,7 +1267,7 @@ def main(argv=None):  # pragma: no cover - offline experiment entrypoint
             policy=args.policy,
             seed=args.seed,
         )
-    if args.initialize or args.summarize:
+    if args.initialize or args.summarize or args.initialize_parallel or args.run_parallel:
         print(json.dumps(payload, indent=2, sort_keys=True, default=str))
     else:
         print(json.dumps({
@@ -602,6 +1299,18 @@ if __name__ == "__main__":
 
 
 __all__ = [
+    "PARALLEL_POLICY_MEMORY_RESERVE_BYTES",
+    "PARALLEL_POLICY_MAX_SWAP_GROWTH_BYTES",
+    "PARALLEL_POLICY_PROTOCOL_VERSION",
+    "PARALLEL_POLICY_RESULT_SCHEMA",
+    "PARALLEL_POLICY_STUDY_DEFAULT_PARALLEL_TRIALS",
+    "PARALLEL_POLICY_STUDY_ID",
+    "PARALLEL_POLICY_STUDY_MAX_PARALLEL_TRIALS",
+    "PARALLEL_POLICY_STUDY_POLICIES",
+    "PARALLEL_POLICY_STUDY_PROFILE",
+    "PARALLEL_POLICY_STUDY_SCHEMA",
+    "PARALLEL_POLICY_STUDY_SEEDS",
+    "PARALLEL_POLICY_STUDY_WORKER_COUNT",
     "STARTUP_AWARE_POLICIES",
     "STARTUP_AWARE_PROFILE",
     "STARTUP_AWARE_RESULT_SCHEMA",
@@ -610,7 +1319,15 @@ __all__ = [
     "STARTUP_AWARE_STUDY_SCHEMA",
     "TARGET_SCENARIO_DIRECTORIES",
     "build_startup_aware_study_manifest",
+    "build_parallel_policy_study_manifest",
+    "execute_parallel_policy_cell",
     "initialize_startup_aware_study",
+    "initialize_parallel_policy_study",
+    "parallel_policy_budget_contract",
+    "parallel_policy_fingerprint",
+    "qualify_parallel_concurrency",
+    "run_parallel_policy_batch",
+    "run_parallel_policy_study",
     "run_startup_aware_policy_cell",
     "summarize_startup_aware_study",
     "startup_aware_policy_budget_contract",

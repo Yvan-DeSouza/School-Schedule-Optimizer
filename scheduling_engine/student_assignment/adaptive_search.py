@@ -19,6 +19,16 @@ from .utilization_guidance import build_utilization_cluster_guidance
 
 ADAPTIVE_POLICY_VERSION = "v2-local-allocator-diagnostic-2"
 
+# These variants alter diagnostic operator allocation only.  They do not
+# change Objective Semantics v2, counselor scores, candidate authority, or the
+# set of operators that may be executed.
+ADAPTIVE_POLICY_VARIANTS = (
+    "balanced",
+    "student_pressure_biased",
+    "utilization_biased",
+)
+ADAPTIVE_ROLE_BIAS_MULTIPLIER = 0.25
+
 
 @dataclass(frozen=True)
 class AdaptiveOperatorSpec:
@@ -244,19 +254,60 @@ def _role_signals(state):
     }
 
 
-def select_adaptive_role(state):
-    """Select the opportunity role before choosing a concrete operator."""
+def _role_selection_facts(state, adaptive_policy_variant="balanced"):
+    """Return raw and variant-adjusted role signals for one policy decision.
 
-    signals = _role_signals(state)
-    return max(
-        signals,
-        key=lambda role: (signals[role], {
+    The biased variants deliberately adjust only the role gate.  Concrete
+    operator scoring, eligibility, history effects, and tie-breaking remain
+    the existing behavior in ``choose_adaptive_operator``.
+    """
+
+    if adaptive_policy_variant not in ADAPTIVE_POLICY_VARIANTS:
+        raise ValueError(
+            "adaptive_policy_variant must be balanced, "
+            "student_pressure_biased, or utilization_biased"
+        )
+    raw_signals = _role_signals(state)
+    adjusted_signals = dict(raw_signals)
+    role_biases = {role: 0.0 for role in raw_signals}
+    if adaptive_policy_variant == "student_pressure_biased":
+        role_biases["targeted_repair"] = (
+            raw_signals["targeted_repair"] * ADAPTIVE_ROLE_BIAS_MULTIPLIER
+        )
+        adjusted_signals["targeted_repair"] += role_biases[
+            "targeted_repair"
+        ]
+    elif adaptive_policy_variant == "utilization_biased":
+        role_biases["utilization_repair"] = (
+            raw_signals["utilization_repair"] * ADAPTIVE_ROLE_BIAS_MULTIPLIER
+        )
+        adjusted_signals["utilization_repair"] += role_biases[
+            "utilization_repair"
+        ]
+    selected_role = max(
+        adjusted_signals,
+        key=lambda role: (adjusted_signals[role], {
             "basin_escape": 3,
             "utilization_repair": 2,
             "targeted_repair": 1,
             "local_descent": 0,
         }[role]),
     )
+    return {
+        "raw_signals": raw_signals,
+        "adjusted_signals": adjusted_signals,
+        "role_biases": role_biases,
+        "selected_role": selected_role,
+    }
+
+
+def select_adaptive_role(state, *, adaptive_policy_variant="balanced"):
+    """Select the opportunity role before choosing a concrete operator."""
+
+    return _role_selection_facts(
+        state,
+        adaptive_policy_variant=adaptive_policy_variant,
+    )["selected_role"]
 
 
 @dataclass(frozen=True)
@@ -283,6 +334,7 @@ class AdaptiveSessionRecord:
     final_special_commitment_count: int
     resource: dict = field(default_factory=dict)
     selection_policy: str = "adaptive"
+    adaptive_policy_variant: str = "balanced"
     policy_selection_seconds: float = 0.0
     operator_execution_seconds: float = 0.0
     finalization_seconds: float = 0.0
@@ -544,12 +596,17 @@ def choose_adaptive_operator(
     *,
     portfolio=DEFAULT_ADAPTIVE_OPERATOR_PORTFOLIO,
     ranked_students=(),
+    adaptive_policy_variant="balanced",
 ):
     """Choose one operator deterministically and explain the policy signals."""
 
     if state.remaining_seconds <= 0 or not portfolio:
         return None
-    selected_role = select_adaptive_role(state)
+    role_selection = _role_selection_facts(
+        state,
+        adaptive_policy_variant=adaptive_policy_variant,
+    )
+    selected_role = role_selection["selected_role"]
     return_to_local = bool(
         state.operator_history
         and state.operator_history[-1].adopted
@@ -639,7 +696,12 @@ def choose_adaptive_operator(
                     "remaining_seconds": state.remaining_seconds,
                     "attempt_count": len(history),
                     "selected_role": selected_role,
-                    "role_signals": _role_signals(state),
+                    "adaptive_policy_variant": adaptive_policy_variant,
+                    "role_signals": role_selection["raw_signals"],
+                    "adjusted_role_signals": role_selection[
+                        "adjusted_signals"
+                    ],
+                    "role_biases": role_selection["role_biases"],
                     "portfolio_role": spec.portfolio_role,
                     "student_pressure_components": dict(state.student_pressure_components),
                     "utilization_weighted_value": state.utilization_weighted_value,
@@ -922,6 +984,8 @@ def select_fixed_cycle_operator(
 
 __all__ = [
     "ADAPTIVE_POLICY_VERSION",
+    "ADAPTIVE_POLICY_VARIANTS",
+    "ADAPTIVE_ROLE_BIAS_MULTIPLIER",
     "AdaptiveOperatorAttempt",
     "AdaptiveOperatorSpec",
     "AdaptivePolicyDecision",

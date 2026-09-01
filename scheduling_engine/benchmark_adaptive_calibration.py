@@ -813,6 +813,8 @@ def run_supervised_calibration_trial(
     cp_sat_max_deterministic_time_seconds=None,
     startup_aware=False,
     fixed_cycle_names=None,
+    cancel_requested=None,
+    worker_started_callback=None,
 ):
     """Run one detached calibration trial under a true parent-side deadline."""
 
@@ -971,6 +973,8 @@ def run_supervised_calibration_trial(
                 status_path=worker_status,
                 execution_profile=profile_config,
                 cwd=str(Path.cwd()),
+                cancel_requested=cancel_requested,
+                worker_started_callback=worker_started_callback,
             )
             if supervision.execution_status == EXECUTION_COMPLETED:
                 payload = dict(supervision.payload or {})
@@ -1260,6 +1264,9 @@ def main(argv=None):  # pragma: no cover - clean-process experiment surface
         "--policy",
         choices=(
             "adaptive",
+            "adaptive_balanced",
+            "adaptive_student_pressure_biased",
+            "adaptive_utilization_biased",
             "stateless_role",
             "r2_only",
             "student_repair_only",

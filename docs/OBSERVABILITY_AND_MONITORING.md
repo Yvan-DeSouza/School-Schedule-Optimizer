@@ -154,6 +154,33 @@ and parent cancellation. Worker phase files are operational breadcrumbs rather
 than scheduling evidence. Output paths are cleared before each launch so a
 stale successful payload cannot be mistaken for the current trial.
 
+For the research-only progressive policy runner, the coordinator additionally
+records aggregate and per-trial process-tree facts for each concurrent batch:
+
+- active trial count and each trial root's tree RSS/USS;
+- aggregate tree RSS/USS across independent trial roots;
+- minimum available host memory observed during the batch;
+- logical CPU count and sampled host CPU utilization;
+- pagefile/swap usage and observed growth;
+- largest per-trial peak RSS used for the next-slot projection;
+- child cleanup and resource-qualification decisions.
+
+The qualification calculation projects one more trial using the largest
+observed per-trial peak and requires at least `2 GiB` of available-memory
+reserve after that projection. It also rejects expansion when a child hit a
+resource/deadline guard, cleanup was not proven, pagefile growth exceeded the
+study's bounded `256 MiB` diagnostic threshold, or CPU contention was observed.
+Missing psutil facts are inconclusive rather than permission to expand. These
+facts control only future research launches; they never authorize a candidate
+or alter production Celery concurrency. Parallel batches begin at two slots
+and can progress to three and four only through recorded successful gates.
+
+The parallel result payload labels parent-owned manifest publication and
+includes the batch resource-qualification facts. A resource-limited or
+terminated cell is reported as an execution/resource outcome, not as evidence
+that its policy lost. Sequential clean-process reruns remain the authoritative
+comparison for policy runtime and quality.
+
 For calibration workers, the parent’s full-model branch validation is the
 authoritative check and is performed once per trial. A prepared-incumbent JSON
 artifact transfers only the validated result facts needed by the isolated

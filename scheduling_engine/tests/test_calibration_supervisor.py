@@ -108,6 +108,29 @@ def test_supervisor_accepts_complete_worker_protocol(tmp_path):
     assert result.worker_exit_code == 0
 
 
+def test_supervisor_reports_worker_pid_to_parent_callback(tmp_path):
+    output = tmp_path / "result.json"
+    started = []
+    command = _python_worker(
+        "import json, pathlib, sys; "
+        "pathlib.Path(sys.argv[1]).write_text(json.dumps({'output_protocol_complete': True}), encoding='utf-8')",
+        output,
+    )
+
+    result = supervise_json_worker(
+        command,
+        output_path=output,
+        execution_profile=CalibrationExecutionProfile(
+            hard_wall_seconds=2,
+            poll_interval_seconds=0.02,
+        ),
+        worker_started_callback=started.append,
+    )
+
+    assert result.execution_status == EXECUTION_COMPLETED
+    assert started == [result.worker_pid]
+
+
 def test_supervisor_hard_deadline_terminates_worker_and_descendant(tmp_path):
     output = tmp_path / "result.json"
     child_pid = tmp_path / "child.pid"

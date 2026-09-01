@@ -187,6 +187,64 @@ Increasing Celery concurrency without a memory/CPU capacity review would run
 multiple large CP-SAT models simultaneously and is intentionally not the
 default.
 
+## Research-only parallel policy trials
+
+The offline policy-study runner is a separate process arrangement and must not
+be confused with production Celery concurrency:
+
+| Layer | Meaning in the research study |
+| --- | --- |
+| Celery concurrency | Remains `1` for production scheduling tasks. It is not changed by this study. |
+| Research trial slots | The number of independently supervised policy processes launched by the study coordinator. |
+| CP-SAT workers per trial | Exactly `1`, so a trial does not internally multiply CPU usage. |
+
+The four-cell comparison consists of `adaptive_balanced`,
+`adaptive_student_pressure_biased`, `adaptive_utilization_biased`, and the
+existing `fixed_cycle` control. It is diagnostic-only, uses the detached v2
+benchmark inputs and complete source-seed fingerprints, and never writes
+canonical checkpoints, Django rows, approvals, or production policy settings.
+The two biased names change only adaptive role allocation; all four cells use
+the same balanced Objective Semantics v2 profile, operator portfolio, hard
+constraints, full-model validation, and bounded trial budgets.
+
+The coordinator starts with two independent one-worker supervised trials. It
+may qualify a third and then a fourth slot only after a completed batch has
+provided measured evidence. One additional slot is permitted only when the
+lowest observed available memory, less the largest observed per-trial process
+tree RSS, leaves at least `2 GiB`, and the batch also proves clean child
+cleanup, no resource-guard/deadline termination, no abnormal pagefile growth,
+and no material CPU contention. If those facts are not available or the gate
+fails, the coordinator remains at the previous safe concurrency. It never
+silently starts above two without a recorded qualification decision.
+
+Each result has a unique scenario/policy/seed path. Trial execution is
+performed by supervised child processes; only the parent coordinator publishes
+result JSON and updates the study manifest. This parent-owned write rule is
+required because the historical single-cell runner appends a shared manifest
+and is not safe to call concurrently.
+
+From the repository root, a reproducible research run is:
+
+```bash
+python -m scheduling_engine.benchmark_policy_generalization \
+  --study-directory scheduling_engine/benchmarks/student_assignment/parallel_policy_study \
+  --initialize-parallel
+python -m scheduling_engine.benchmark_policy_generalization \
+  --study-directory scheduling_engine/benchmarks/student_assignment/parallel_policy_study \
+  --run-parallel --max-parallel-trials 4
+python -m scheduling_engine.benchmark_policy_generalization \
+  --study-directory scheduling_engine/benchmarks/student_assignment/parallel_policy_study \
+  --summarize
+```
+
+The first command creates the immutable study manifest. The second runs the
+24-cell matrix in progressively qualified batches; `4` is a ceiling, not an
+instruction to launch four processes immediately. The summary command only
+verifies artifacts and reports results. Parallel wall time is throughput
+evidence, not a fair per-policy runtime ranking; repeatable sequential
+confirmation is required before comparing policy speed or considering any
+policy for promotion.
+
 The student-assignment diagnostic paths expose compact operation and local
 probe resource facts when measurement is enabled. These facts can include RSS,
 USS/private memory where supported, VMS, CPU, thread/process-tree, and host

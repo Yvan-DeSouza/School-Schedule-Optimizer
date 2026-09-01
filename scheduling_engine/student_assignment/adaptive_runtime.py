@@ -13,6 +13,7 @@ from time import monotonic
 from uuid import uuid4
 
 from .adaptive_search import (
+    ADAPTIVE_POLICY_VARIANTS,
     AdaptiveOperatorAttempt,
     AdaptiveSessionRecord,
     DEFAULT_ADAPTIVE_OPERATOR_PORTFOLIO,
@@ -336,6 +337,7 @@ def run_adaptive_local_search_diagnostic(
     session_id=None,
     selection_policy="adaptive",
     fixed_cycle=(),
+    adaptive_policy_variant="balanced",
     phase_callback=None,
 ):
     """Run a diagnostic v2 operator session inside one shared wall-clock budget.
@@ -355,6 +357,11 @@ def run_adaptive_local_search_diagnostic(
     if selection_policy not in {"adaptive", "stateless_role", "fixed_cycle"}:
         raise ValueError(
             "selection_policy must be adaptive, stateless_role, or fixed_cycle"
+        )
+    if selection_policy == "adaptive" and adaptive_policy_variant not in ADAPTIVE_POLICY_VARIANTS:
+        raise ValueError(
+            "adaptive_policy_variant must be balanced, "
+            "student_pressure_biased, or utilization_biased"
         )
     if selection_policy == "fixed_cycle" and not tuple(fixed_cycle):
         raise ValueError("fixed_cycle selection requires at least one operator")
@@ -457,6 +464,7 @@ def run_adaptive_local_search_diagnostic(
                 state,
                 portfolio=portfolio,
                 ranked_students=ranked,
+                adaptive_policy_variant=adaptive_policy_variant,
             )
         elif selection_policy == "stateless_role":
             decision = select_stateless_role_operator(
@@ -487,6 +495,9 @@ def run_adaptive_local_search_diagnostic(
             break
         decision_payload = decision.to_dict()
         decision_payload["selection_policy"] = selection_policy
+        decision_payload["adaptive_policy_variant"] = (
+            adaptive_policy_variant if selection_policy == "adaptive" else "balanced"
+        )
         selected = tuple(decision.selected_student_ids)
         operation_limit = min(per_operator, remaining)
         effective_spec = replace(
@@ -540,6 +551,9 @@ def run_adaptive_local_search_diagnostic(
             "completed",
             iteration=len(history) + 1,
             selection_policy=selection_policy,
+            adaptive_policy_variant=(
+                adaptive_policy_variant if selection_policy == "adaptive" else "balanced"
+            ),
             selected_role=decision.operator.portfolio_role,
             selected_operator=decision.operator.name,
             selected_student_ids=selected,
@@ -848,6 +862,9 @@ def run_adaptive_local_search_diagnostic(
             (current_result.optimization_facts or {}).get("operation_resource_monitor") or {}
         ),
         selection_policy=selection_policy,
+        adaptive_policy_variant=(
+            adaptive_policy_variant if selection_policy == "adaptive" else "balanced"
+        ),
         policy_selection_seconds=policy_selection_seconds,
         operator_execution_seconds=operator_execution_seconds,
         finalization_seconds=finalization_seconds,
