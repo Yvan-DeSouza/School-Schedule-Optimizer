@@ -28,6 +28,7 @@ from scheduling_engine.student_assignment.adaptive_calibration import (
     apply_calibration_profile,
     build_calibration_trial_record,
     build_calibration_policy,
+    fixed_cycle_control_request,
     profile_fingerprint,
 )
 from scheduling_engine.benchmark_policy_generalization import (
@@ -99,9 +100,53 @@ def test_calibration_profiles_are_explicit_and_fingerprinted():
         "sequence_heavy",
     }
     assert len(profile_fingerprint("balanced")) == 64
-    assert profile_fingerprint("balanced") != profile_fingerprint("utilization_heavy")
+    assert profile_fingerprint("balanced") != profile_fingerprint(
+        "utilization_heavy"
+    )
     with pytest.raises(ValueError, match="Unknown calibration profile"):
         profile_fingerprint("not-a-profile")
+
+
+def test_fixed_cycle_control_request_resolves_shared_effective_contract():
+    request = fixed_cycle_control_request(
+        profile="balanced",
+        benchmark_directory="detached-input",
+        input_fingerprint="input-fingerprint",
+        source_seed_fingerprint="source-fingerprint",
+        cp_sat_random_seed=101,
+    )
+
+    assert request["request"]["fixed_cycle"] == [
+        "targeted_r4_s2",
+        "targeted_utilization_r64_s8",
+        "r2",
+    ]
+    assert request["request"]["worker_count"] == 1
+    assert request["request"]["cp_sat_random_seed"] == 101
+    assert request["request"]["candidate_validation_time_limit_seconds"] == 180.0
+    assert request["request"]["parent_hard_wall_seconds"] == 1800.0
+    assert request["run_kwargs"]["fixed_cycle_names"] == tuple(
+        request["request"]["fixed_cycle"]
+    )
+    assert request["request_fingerprint"]
+
+
+def test_fixed_cycle_request_fingerprint_is_lineage_and_config_sensitive():
+    common = {
+        "profile": "balanced",
+        "benchmark_directory": "detached-input",
+        "input_fingerprint": "input-fingerprint",
+        "source_seed_fingerprint": "source-fingerprint",
+        "cp_sat_random_seed": 101,
+    }
+    first = fixed_cycle_control_request(**common)
+    second = fixed_cycle_control_request(
+        **{**common, "benchmark_directory": "another-detached-copy"}
+    )
+    third = fixed_cycle_control_request(**{**common, "cp_sat_random_seed": 202})
+
+    assert first["request_fingerprint"] == second["request_fingerprint"]
+    assert first["request_fingerprint"] != third["request_fingerprint"]
 
 
 def test_calibration_trial_record_preserves_solver_configuration_metadata():

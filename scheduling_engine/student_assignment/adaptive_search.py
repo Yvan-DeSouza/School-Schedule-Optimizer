@@ -97,6 +97,7 @@ class AdaptiveOperatorAttempt:
     # Diagnostic identity of the candidate source decisions returned by the
     # operator. This is deliberately metadata only; candidate authority still
     # comes from the existing full-model validation boundary.
+    source_fingerprint_before: str | None = None
     candidate_source_decision_fingerprint: str | None = None
     selected_grade: int | None = None
     utilization_cluster: tuple = ()

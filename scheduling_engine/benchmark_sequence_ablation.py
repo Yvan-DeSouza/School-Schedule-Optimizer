@@ -9,10 +9,12 @@ authorities for every candidate and no sequence is wired into production.
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
+import os
 import re
 import statistics
+import subprocess
 from pathlib import Path
 from time import perf_counter
 
@@ -33,6 +35,7 @@ from .student_assignment.adaptive_calibration import (
     STARTUP_AWARE_MAX_OPERATOR_SECONDS,
     STARTUP_AWARE_SESSION_OVERRIDES,
     STARTUP_AWARE_TOTAL_POLICY_SECONDS,
+    fixed_cycle_control_request,
 )
 from .student_assignment.adaptive_search import (
     DEFAULT_ADAPTIVE_OPERATOR_PORTFOLIO,
@@ -50,6 +53,27 @@ SEQUENCE_PARENT_HARD_WALL_SECONDS = STARTUP_AWARE_PARENT_HARD_WALL_SECONDS
 SEQUENCE_WORKER_COUNT = 1
 SEQUENCE_CAUSAL_STATUS_PRELIMINARY = "PRELIMINARY_NON_PARITY_QUALIFIED"
 SEQUENCE_PARITY_SCHEMA = "student_assignment_fixed_cycle_parity_diff_v1"
+
+# The parity qualification is a separate, external diagnostic study.  It is
+# intentionally not a continuation of either existing study and never writes
+# to their manifests or checkpoint lineage.
+PARITY_STUDY_ID = "fixed_cycle_parity_qualification_20260901"
+PARITY_STUDY_SCHEMA = "student_assignment_fixed_cycle_parity_study_v1"
+PARITY_RESULT_SCHEMA = "student_assignment_fixed_cycle_parity_result_v1"
+PARITY_SUMMARY_SCHEMA = "student_assignment_fixed_cycle_parity_summary_v1"
+PARITY_ORIGINS = (
+    "startup_aware_parent",
+    "sequence_ablation",
+    "parallel_policy",
+)
+PARITY_SEEDS = (101, 202, 303)
+PARITY_GLOBAL_WALL_SECONDS = 5.5 * 60.0 * 60.0
+PARITY_MIN_CELL_RESERVE_SECONDS = 35.0 * 60.0
+PARITY_ORIGIN_LABELS = {
+    "startup_aware_parent": "startup-aware policy runner",
+    "sequence_ablation": "sequence-ablation full_fixed_cycle control",
+    "parallel_policy": "progressive-parallel-study fixed_cycle control",
+}
 
 SEQUENCE_VARIANTS = {
     "full_fixed_cycle": (
@@ -221,18 +245,21 @@ def run_sequence_ablation_cell(
 
     started = perf_counter()
     try:
-        payload = run_supervised_calibration_trial(
-            policy="fixed_cycle",
+        control_request = fixed_cycle_control_request(
             profile=profile,
             benchmark_directory=benchmark_directory,
+            input_fingerprint=scenario["input_fingerprint"],
+            source_seed_fingerprint=scenario["source_seed_fingerprint"],
+            cp_sat_random_seed=int(seed),
             total_time_limit_seconds=STARTUP_AWARE_TOTAL_POLICY_SECONDS,
             per_operator_time_limit_seconds=STARTUP_AWARE_MAX_OPERATOR_SECONDS,
             worker_count=SEQUENCE_WORKER_COUNT,
             validation_time_limit_seconds=SEQUENCE_VALIDATION_SECONDS,
-            hard_wall_seconds=SEQUENCE_PARENT_HARD_WALL_SECONDS,
-            startup_aware=True,
+            parent_hard_wall_seconds=SEQUENCE_PARENT_HARD_WALL_SECONDS,
             fixed_cycle_names=SEQUENCE_VARIANTS[variant],
-            cp_sat_random_seed=int(seed),
+        )
+        payload = run_supervised_calibration_trial(
+            **control_request["run_kwargs"]
         )
         payload = dict(payload)
         payload.update({
@@ -250,6 +277,13 @@ def run_sequence_ablation_cell(
             },
             "budget_contract": sequence_ablation_budget_contract(),
             "cell_elapsed_seconds": perf_counter() - started,
+        })
+        payload.update({
+            "origin": "sequence_ablation",
+            "fixed_cycle_request": control_request["request"],
+            "fixed_cycle_request_fingerprint": control_request[
+                "request_fingerprint"
+            ],
         })
     except Exception as error:
         payload = {
@@ -271,6 +305,26 @@ def run_sequence_ablation_cell(
             "budget_contract": sequence_ablation_budget_contract(),
             "cell_elapsed_seconds": perf_counter() - started,
         }
+        control_request = fixed_cycle_control_request(
+            profile=profile,
+            benchmark_directory=benchmark_directory,
+            input_fingerprint=scenario["input_fingerprint"],
+            source_seed_fingerprint=scenario["source_seed_fingerprint"],
+            cp_sat_random_seed=int(seed),
+            total_time_limit_seconds=STARTUP_AWARE_TOTAL_POLICY_SECONDS,
+            per_operator_time_limit_seconds=STARTUP_AWARE_MAX_OPERATOR_SECONDS,
+            worker_count=SEQUENCE_WORKER_COUNT,
+            validation_time_limit_seconds=SEQUENCE_VALIDATION_SECONDS,
+            parent_hard_wall_seconds=SEQUENCE_PARENT_HARD_WALL_SECONDS,
+            fixed_cycle_names=SEQUENCE_VARIANTS[variant],
+        )
+        payload.update({
+            "origin": "sequence_ablation",
+            "fixed_cycle_request": control_request["request"],
+            "fixed_cycle_request_fingerprint": control_request[
+                "request_fingerprint"
+            ],
+        })
 
     _json_write_atomic(result_path, payload)
     manifest["results"][filename] = {
@@ -431,6 +485,9 @@ def _fixed_cycle_names(payload):
     sequence = payload.get("sequence")
     if sequence:
         return tuple(sequence)
+    request = payload.get("fixed_cycle_request") or {}
+    if request.get("fixed_cycle"):
+        return tuple(request["fixed_cycle"])
     if payload.get("policy") == "fixed_cycle":
         return tuple(
             SEQUENCE_VARIANTS["full_fixed_cycle"]
@@ -440,10 +497,12 @@ def _fixed_cycle_names(payload):
 
 def _normalized_budget_contract(payload):
     contract = payload.get("budget_contract") or {}
+    request = payload.get("fixed_cycle_request") or {}
     session_overrides = contract.get("session_overrides") or {}
+    request_overrides = request.get("session_overrides") or {}
     selected_sessions = {
         name: {
-            key: session_overrides.get(name, {}).get(key)
+            key: (request_overrides or session_overrides).get(name, {}).get(key)
             for key in (
                 "session_time_limit_seconds",
                 "session_max_attempts",
@@ -453,32 +512,47 @@ def _normalized_budget_contract(payload):
         for name in _fixed_cycle_names(payload)
     }
     return {
-        "profile": payload.get("profile") or contract.get("profile"),
-        "profile_fingerprint": payload.get("profile_fingerprint")
+        "profile": request.get("profile") or payload.get("profile") or contract.get("profile"),
+        "profile_fingerprint": request.get("profile_fingerprint")
+        or payload.get("profile_fingerprint")
         or contract.get("profile_fingerprint"),
-        "worker_count": payload.get("worker_count")
+        "worker_count": request.get("worker_count")
+        or payload.get("worker_count")
         or contract.get("worker_count"),
-        "cp_sat_random_seed": payload.get("cp_sat_random_seed"),
-        "per_operator_maximum_seconds": contract.get(
-            "per_operator_maximum_seconds"
+        "cp_sat_random_seed": request.get("cp_sat_random_seed")
+        if request
+        else payload.get("cp_sat_random_seed"),
+        "per_operator_maximum_seconds": request.get(
+            "per_operator_maximum_seconds",
+            contract.get("per_operator_maximum_seconds"),
         ),
-        "cumulative_seconds": contract.get(
+        "cumulative_seconds": request.get(
             "cumulative_policy_budget_seconds",
-            contract.get("cumulative_search_opportunity_seconds"),
+            contract.get(
+                "cumulative_policy_budget_seconds",
+                contract.get("cumulative_search_opportunity_seconds"),
+            ),
         ),
-        "candidate_validation_time_limit_seconds": contract.get(
-            "candidate_validation_time_limit_seconds"
+        "candidate_validation_time_limit_seconds": request.get(
+            "candidate_validation_time_limit_seconds",
+            contract.get("candidate_validation_time_limit_seconds"),
         ),
-        "candidate_validation_worker_count": contract.get(
-            "candidate_validation_worker_count"
+        "candidate_validation_worker_count": request.get(
+            "candidate_validation_worker_count",
+            contract.get("candidate_validation_worker_count"),
         ),
-        "parent_hard_wall_seconds": payload.get("hard_wall_seconds")
-        or contract.get("parent_hard_wall_seconds"),
-        "full_model_validation_required": contract.get(
-            "full_model_validation_required"
+        "parent_hard_wall_seconds": request.get(
+            "parent_hard_wall_seconds",
+            payload.get("hard_wall_seconds")
+            or contract.get("parent_hard_wall_seconds"),
         ),
-        "ordinary_stage2_between_iterations": contract.get(
-            "ordinary_stage2_between_iterations"
+        "full_model_validation_required": request.get(
+            "full_model_validation_required",
+            contract.get("full_model_validation_required"),
+        ),
+        "ordinary_stage2_between_iterations": request.get(
+            "ordinary_stage2_between_iterations",
+            contract.get("ordinary_stage2_between_iterations"),
         ),
         "session_overrides": selected_sessions,
     }
@@ -490,6 +564,7 @@ def _inner_probe_projection(summary):
         "operator",
         "radius",
         "effective_radius",
+        "effective_neighborhood_radius",
         "target_scope",
         "actual_target_scope",
         "selected_grade",
@@ -499,6 +574,8 @@ def _inner_probe_projection(summary):
         "candidate_complete",
         "candidate_validated",
         "candidate_source_decision_fingerprint",
+        "candidate_components",
+        "component_values",
         "candidate_substantive_value",
         "starting_incumbent_value",
         "substantive_gain",
@@ -518,13 +595,26 @@ def _attempt_projection(attempt, position):
         "target_scope",
         "actual_target_scope",
         "selected_grade",
+        "source_fingerprint_before",
         "candidate_found",
+        "candidate_complete",
         "candidate_validated",
         "candidate_source_decision_fingerprint",
+        "candidate_components",
+        "component_values",
+        "changed_source_decision_count",
+        "changed_student_count",
         "gain",
         "status",
         "validation_classification",
         "validation_solver_outcome",
+        "cp_sat_random_seed",
+        "cp_sat_max_deterministic_time_seconds",
+        "solver_wall_time_seconds",
+        "validation_seconds",
+        "branches",
+        "conflicts",
+        "best_bound",
         "adopted",
         "stopping_reason",
     )
@@ -548,6 +638,9 @@ def fixed_cycle_parity_projection(payload):
     """
 
     return {
+        "origin": payload.get("origin"),
+        "request_fingerprint": payload.get("fixed_cycle_request_fingerprint"),
+        "fixed_cycle_request": payload.get("fixed_cycle_request"),
         "input_fingerprint": payload.get("input_fingerprint")
         or (payload.get("source_lineage") or {}).get("input_fingerprint"),
         "source_seed_fingerprint": payload.get("source_seed_fingerprint")
@@ -577,6 +670,16 @@ def fixed_cycle_parity_projection(payload):
             "final_special_commitment_count": payload.get(
                 "final_special_commitment_count"
             ),
+            "final_components": payload.get("final_components") or {},
+            "final_objective_vector": payload.get("final_objective_vector") or (),
+            "completeness": {
+                "candidate_complete": payload.get("candidate_complete"),
+                "final_unmet_count": payload.get("final_unmet_count"),
+                "final_assignment_count": payload.get("final_assignment_count"),
+                "final_special_commitment_count": payload.get(
+                    "final_special_commitment_count"
+                ),
+            },
         },
     }
 
@@ -636,6 +739,38 @@ def _first_semantic_difference(differences):
         return position, priority, difference["path"]
 
     return min(differences, key=sort_key) if differences else None
+
+
+_PARITY_TELEMETRY_FIELDS = frozenset({
+    "solver_wall_time_seconds",
+    "validation_seconds",
+    "branches",
+    "conflicts",
+    "best_bound",
+})
+
+
+def _semantic_parity_projection(projection):
+    """Remove nondeterministic search telemetry from parity classification.
+
+    Runtime, branch, conflict, and bound values remain in the observations and
+    result artifacts for reporting.  They are not part of positive-control
+    semantic parity: equivalent controls may legitimately produce different
+    wall times or solver-internal counters on separate processes.  Candidate
+    status, validation classification, adoption, source fingerprints, and
+    final schedule facts remain compared.
+    """
+
+    semantic = dict(projection)
+    semantic["attempts"] = []
+    for attempt in projection.get("attempts") or ():
+        semantic_attempt = {
+            key: value
+            for key, value in attempt.items()
+            if key not in _PARITY_TELEMETRY_FIELDS
+        }
+        semantic["attempts"].append(semantic_attempt)
+    return semantic
 
 
 def _control_observation(payload):
@@ -712,6 +847,7 @@ def compare_fixed_cycle_control_payloads(parent_payload, ablation_payload):
     parent = fixed_cycle_parity_projection(parent_payload)
     ablation = fixed_cycle_parity_projection(ablation_payload)
     configuration_fields = (
+        "request_fingerprint",
         "input_fingerprint",
         "source_seed_fingerprint",
         "policy",
@@ -725,23 +861,25 @@ def compare_fixed_cycle_control_payloads(parent_payload, ablation_payload):
                 parent[field], ablation[field], f"configuration.{field}"
             )
         )
+    parent_trajectory = _semantic_parity_projection({
+        "initial_substantive_value": parent["initial_substantive_value"],
+        "initial_source_decision_fingerprint": parent[
+            "initial_source_decision_fingerprint"
+        ],
+        "attempts": parent["attempts"],
+        "final": parent["final"],
+    })
+    ablation_trajectory = _semantic_parity_projection({
+        "initial_substantive_value": ablation["initial_substantive_value"],
+        "initial_source_decision_fingerprint": ablation[
+            "initial_source_decision_fingerprint"
+        ],
+        "attempts": ablation["attempts"],
+        "final": ablation["final"],
+    })
     trajectory_differences = _field_differences(
-        {
-            "initial_substantive_value": parent["initial_substantive_value"],
-            "initial_source_decision_fingerprint": parent[
-                "initial_source_decision_fingerprint"
-            ],
-            "attempts": parent["attempts"],
-            "final": parent["final"],
-        },
-        {
-            "initial_substantive_value": ablation["initial_substantive_value"],
-            "initial_source_decision_fingerprint": ablation[
-                "initial_source_decision_fingerprint"
-            ],
-            "attempts": ablation["attempts"],
-            "final": ablation["final"],
-        },
+        parent_trajectory,
+        ablation_trajectory,
         "trajectory",
     )
     first_divergence = _first_semantic_difference(trajectory_differences)
@@ -800,6 +938,531 @@ def write_fixed_cycle_parity_diff(parent_path, ablation_path, output_path):
     result = compare_fixed_cycle_control_payloads(parent_payload, ablation_payload)
     _json_write_atomic(Path(output_path), result)
     return result
+
+
+def _parity_result_filename(scenario_id, origin, seed, repeat=0):
+    suffix = f"_repeat{int(repeat)}" if int(repeat) else ""
+    return f"{scenario_id}_{origin}_seed{int(seed)}{suffix}.json"
+
+
+def _parity_cell_key(scenario_id, origin, seed, repeat=0):
+    return ":".join(
+        (scenario_id, origin, str(int(seed)), str(int(repeat)))
+    )
+
+
+def _utc_now():
+    return datetime.now(timezone.utc)
+
+
+def _utc_timestamp(value):
+    return value.isoformat()
+
+
+def _parse_utc(value):
+    if not value:
+        return None
+    return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+
+
+def build_fixed_cycle_parity_manifest(*, study_directory):
+    """Build the external, immutable-input parity qualification manifest."""
+
+    study_directory = Path(study_directory)
+    scenarios = {
+        scenario_id: _scenario_manifest(scenario_id)
+        for scenario_id in SEQUENCE_SCENARIOS
+    }
+    started = _utc_now()
+    return {
+        "schema": PARITY_STUDY_SCHEMA,
+        "study_id": PARITY_STUDY_ID,
+        "purpose": (
+            "Research-only cross-harness qualification of the fixed-cycle "
+            "positive control. No application state or canonical benchmark "
+            "is mutated."
+        ),
+        "production_wiring": False,
+        "objective_semantics_version": "v2",
+        "profile": SEQUENCE_PROFILE,
+        "sequence": list(SEQUENCE_VARIANTS["full_fixed_cycle"]),
+        "origins": list(PARITY_ORIGINS),
+        "origin_labels": dict(PARITY_ORIGIN_LABELS),
+        "scenario_ids": list(SEQUENCE_SCENARIOS),
+        "scenarios": scenarios,
+        "seeds": list(PARITY_SEEDS),
+        "budget_contract": sequence_ablation_budget_contract(),
+        "gating": {
+            "cohort_a_seed": 101,
+            "replication_seeds": [202, 303],
+            "requires_seed_101_pairwise_parity": True,
+            "repeat_count_after_transition_mismatch": 2,
+            "one_target_cell_at_a_time": True,
+            "ordinary_stage2_between_attempts": False,
+        },
+        "global_wall_seconds": PARITY_GLOBAL_WALL_SECONDS,
+        "minimum_remaining_seconds_to_start_cell": PARITY_MIN_CELL_RESERVE_SECONDS,
+        "started_at_utc": _utc_timestamp(started),
+        "global_cutoff_at_utc": _utc_timestamp(
+            started + timedelta(seconds=PARITY_GLOBAL_WALL_SECONDS)
+        ),
+        "host_preflight": None,
+        "results": {},
+        "comparisons": {},
+        "status": "NOT_STARTED",
+        "conclusion": None,
+        "study_directory": str(study_directory),
+        "created_at_utc": _utc_timestamp(started),
+    }
+
+
+def initialize_fixed_cycle_parity_study(study_directory):
+    """Create a new external parity study without overwriting one."""
+
+    study_directory = Path(study_directory)
+    manifest_path = study_directory / "study_manifest.json"
+    if manifest_path.exists():
+        raise FileExistsError(f"Parity-study manifest already exists: {manifest_path}")
+    manifest = build_fixed_cycle_parity_manifest(
+        study_directory=study_directory
+    )
+    _json_write_atomic(manifest_path, manifest)
+    return manifest
+
+
+def _parity_preflight():
+    """Capture the required host preconditions without solver-side effects."""
+
+    try:
+        git = subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=no"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        git_tree_clean = not git.stdout.strip()
+        git_error = git.stderr.strip() or None
+    except (OSError, subprocess.SubprocessError) as error:
+        git_tree_clean = None
+        git_error = str(error)
+
+    sibling_processes = []
+    try:
+        import psutil
+    except ImportError:
+        sibling_processes = None
+    else:
+        try:
+            current_pid = os.getpid()
+            for process in psutil.process_iter(("pid", "name", "cmdline")):
+                if process.pid == current_pid:
+                    continue
+                name = str(process.info.get("name") or "").lower()
+                command_line = " ".join(process.info.get("cmdline") or [])
+                if "python" in name or "pytest" in command_line.lower():
+                    sibling_processes.append({
+                        "pid": process.pid,
+                        "name": process.info.get("name"),
+                        "cmdline": command_line,
+                    })
+        except (OSError, psutil.Error):
+            sibling_processes = None
+
+    return {
+        "checked_at_utc": _utc_timestamp(_utc_now()),
+        "git_tree_clean": git_tree_clean,
+        "git_error": git_error,
+        "sibling_python_or_pytest_processes": sibling_processes,
+        "no_active_sibling_processes": sibling_processes == [],
+        "power_source": "not_recorded_by_cross_platform_runner",
+        "sleep_wake_audit": (
+            "Review host power/system event logs after the run; the runner "
+            "does not infer sleep contamination from solver wall time."
+        ),
+    }
+
+
+def _parity_load_manifest(study_directory):
+    study_directory = Path(study_directory)
+    return json.loads(
+        (study_directory / "study_manifest.json").read_text(encoding="utf-8")
+    )
+
+
+def _parity_load_payloads(study_directory, manifest=None):
+    study_directory = Path(study_directory)
+    manifest = manifest or _parity_load_manifest(study_directory)
+    payloads = {}
+    for filename, metadata in sorted((manifest.get("results") or {}).items()):
+        path = Path(metadata["path"])
+        if not path.is_absolute():
+            path = study_directory / path
+        if not path.exists():
+            raise ValueError(f"Missing parity result artifact: {filename}")
+        actual_hash = _sha256_file(path)
+        if actual_hash != metadata.get("sha256"):
+            raise ValueError(f"Parity result hash mismatch: {filename}")
+        payloads[filename] = json.loads(path.read_text(encoding="utf-8"))
+    return payloads
+
+
+def _parity_request_for_cell(manifest, scenario_id, seed, origin):
+    scenario = manifest["scenarios"][scenario_id]
+    names = SEQUENCE_VARIANTS["full_fixed_cycle"]
+    # The sequence-ablation origin explicitly supplies the canonical tuple;
+    # the other two origins use the builder's canonical default. Both must
+    # resolve to the same request fingerprint.
+    return fixed_cycle_control_request(
+        profile=manifest["profile"],
+        benchmark_directory=_REPOSITORY_ROOT / scenario["benchmark_directory"],
+        input_fingerprint=scenario["input_fingerprint"],
+        source_seed_fingerprint=scenario["source_seed_fingerprint"],
+        cp_sat_random_seed=int(seed),
+        total_time_limit_seconds=STARTUP_AWARE_TOTAL_POLICY_SECONDS,
+        per_operator_time_limit_seconds=STARTUP_AWARE_MAX_OPERATOR_SECONDS,
+        worker_count=SEQUENCE_WORKER_COUNT,
+        validation_time_limit_seconds=SEQUENCE_VALIDATION_SECONDS,
+        parent_hard_wall_seconds=SEQUENCE_PARENT_HARD_WALL_SECONDS,
+        fixed_cycle_names=(names if origin == "sequence_ablation" else None),
+    )
+
+
+def run_fixed_cycle_parity_cell(
+    *, study_directory, scenario_id, origin, seed, repeat=0
+):
+    """Run one origin's control and publish only its external result artifact."""
+
+    if scenario_id not in SEQUENCE_SCENARIOS:
+        raise ValueError(f"Unknown parity scenario: {scenario_id}")
+    if origin not in PARITY_ORIGINS:
+        raise ValueError(f"Unknown parity origin: {origin}")
+    if int(seed) not in PARITY_SEEDS:
+        raise ValueError(f"Seed is not preregistered: {seed}")
+    manifest = _parity_load_manifest(study_directory)
+    scenario = manifest["scenarios"][scenario_id]
+    filename = _parity_result_filename(scenario_id, origin, seed, repeat)
+    result_path = Path(study_directory) / "results" / filename
+    if filename in manifest.get("results", {}) or result_path.exists():
+        raise FileExistsError(f"Parity result artifact already exists: {result_path}")
+
+    started = perf_counter()
+    request = _parity_request_for_cell(manifest, scenario_id, seed, origin)
+    try:
+        payload = dict(
+            run_supervised_calibration_trial(**request["run_kwargs"])
+        )
+        payload.update({
+            "schema": PARITY_RESULT_SCHEMA,
+            "study_id": manifest["study_id"],
+            "scenario_id": scenario_id,
+            "origin": origin,
+            "origin_label": PARITY_ORIGIN_LABELS[origin],
+            "seed": int(seed),
+            "repeat": int(repeat),
+            "source_lineage": {
+                "input_fingerprint": scenario["input_fingerprint"],
+                "source_seed_fingerprint": scenario["source_seed_fingerprint"],
+            },
+            "sequence": list(SEQUENCE_VARIANTS["full_fixed_cycle"]),
+            "fixed_cycle_request": request["request"],
+            "fixed_cycle_request_fingerprint": request[
+                "request_fingerprint"
+            ],
+            "parity_cell_key": _parity_cell_key(
+                scenario_id, origin, seed, repeat
+            ),
+            "cell_elapsed_seconds": perf_counter() - started,
+        })
+    except Exception as error:
+        payload = {
+            "schema": PARITY_RESULT_SCHEMA,
+            "study_id": manifest["study_id"],
+            "scenario_id": scenario_id,
+            "origin": origin,
+            "origin_label": PARITY_ORIGIN_LABELS[origin],
+            "seed": int(seed),
+            "repeat": int(repeat),
+            "status": "source_or_runner_error",
+            "error_type": type(error).__name__,
+            "error": str(error),
+            "source_lineage": {
+                "input_fingerprint": scenario["input_fingerprint"],
+                "source_seed_fingerprint": scenario["source_seed_fingerprint"],
+            },
+            "sequence": list(SEQUENCE_VARIANTS["full_fixed_cycle"]),
+            "fixed_cycle_request": request["request"],
+            "fixed_cycle_request_fingerprint": request["request_fingerprint"],
+            "parity_cell_key": _parity_cell_key(
+                scenario_id, origin, seed, repeat
+            ),
+            "cell_elapsed_seconds": perf_counter() - started,
+        }
+
+    _json_write_atomic(result_path, payload)
+    manifest["results"][filename] = {
+        "path": str(result_path),
+        "sha256": _sha256_file(result_path),
+        "origin": origin,
+        "scenario_id": scenario_id,
+        "seed": int(seed),
+        "repeat": int(repeat),
+        "status": payload.get("execution_status") or payload.get("status"),
+    }
+    _json_write_atomic(Path(study_directory) / "study_manifest.json", manifest)
+    return payload
+
+
+def _parity_compare_cohort(manifest, payloads, seed, repeat=0):
+    comparisons = {}
+    for scenario_id in SEQUENCE_SCENARIOS:
+        selected = {}
+        for origin in PARITY_ORIGINS:
+            filename = _parity_result_filename(
+                scenario_id, origin, seed, repeat
+            )
+            if filename in payloads:
+                selected[origin] = payloads[filename]
+        if len(selected) != len(PARITY_ORIGINS):
+            continue
+        for right_origin in ("sequence_ablation", "parallel_policy"):
+            result = compare_fixed_cycle_control_payloads(
+                selected["startup_aware_parent"], selected[right_origin]
+            )
+            result.update({
+                "left_origin": "startup_aware_parent",
+                "right_origin": right_origin,
+                "scenario_id": scenario_id,
+                "seed": int(seed),
+                "repeat": int(repeat),
+            })
+            key = (
+                f"seed{int(seed)}:{scenario_id}:"
+                f"startup_aware_parent-vs-{right_origin}:repeat{int(repeat)}"
+            )
+            comparisons[key] = result
+    return comparisons
+
+
+def _parity_hard_wall_payload(payload):
+    status = str(payload.get("execution_status") or payload.get("status") or "")
+    return status in {
+        "hard_deadline_terminated",
+        "resource_guard_terminated",
+        "parent_cancelled",
+    }
+
+
+def _parity_cohort_classification(comparisons, seed, repeat=0):
+    cohort = {
+        key: value
+        for key, value in comparisons.items()
+        if value.get("seed") == int(seed)
+        and value.get("repeat") == int(repeat)
+    }
+    if len(cohort) != len(SEQUENCE_SCENARIOS) * 2:
+        return "INCOMPLETE_COHORT"
+    classes = {item.get("classification") for item in cohort.values()}
+    if "CONFIGURATION_NON_PARITY" in classes:
+        return "CONFIGURATION_NON_PARITY"
+    if "PARITY_MATCH" in classes and len(classes) == 1:
+        return "PARITY_MATCH"
+    if "VALIDATION_TRANSITION_VARIANCE" in classes:
+        return "VALIDATION_TRANSITION_VARIANCE"
+    return "TRAJECTORY_NON_PARITY"
+
+
+def _parity_conclusion(manifest):
+    status = manifest.get("status")
+    if status == "PARITY_QUALIFIED":
+        return "ABLATION HARNESS PARITY RESTORED — CAUSAL SEQUENCE STUDY MAY RESUME"
+    if status == "SOLVER_TRANSITION_VARIANCE":
+        return "CONFIGURATION PARITY RESTORED BUT SOLVER TRANSITION VARIANCE REQUIRES CONTROLLED REPLICATION"
+    if status == "CONFIGURATION_NON_PARITY":
+        return "ABLATON/PARALLEL HARNESS REMAINS NON-PARITY — DO NOT USE FOR CAUSAL POLICY RANKING"
+    if status == "SUPERVISION_BLOCKED":
+        return "SUPERVISION/HARD-WALL DEFECT BLOCKS FURTHER TARGET ABLATION"
+    return None
+
+
+def _parity_persist_manifest(study_directory, manifest):
+    manifest["conclusion"] = _parity_conclusion(manifest)
+    _json_write_atomic(Path(study_directory) / "study_manifest.json", manifest)
+    return manifest
+
+
+def run_fixed_cycle_parity_study(study_directory, *, enforce_preconditions=True):
+    """Run the gated, sequential parity qualification study.
+
+    A single call may resume an incomplete external manifest.  It never
+    writes an existing startup-aware, sequence-ablation, or parallel-study
+    artifact.  Tests may explicitly disable ``enforce_preconditions`` when
+    exercising the queue with mocked trials.
+    """
+
+    study_directory = Path(study_directory)
+    manifest = _parity_load_manifest(study_directory)
+    if manifest.get("status") in {
+        "PARITY_QUALIFIED",
+        "SOLVER_TRANSITION_VARIANCE",
+        "CONFIGURATION_NON_PARITY",
+        "SUPERVISION_BLOCKED",
+    }:
+        return _parity_persist_manifest(study_directory, manifest)
+    preflight = _parity_preflight()
+    manifest["host_preflight"] = preflight
+    if enforce_preconditions and (
+        preflight.get("git_tree_clean") is not True
+        or preflight.get("no_active_sibling_processes") is not True
+    ):
+        manifest["status"] = "PRECONDITION_BLOCKED"
+        return _parity_persist_manifest(study_directory, manifest)
+
+    cutoff = _parse_utc(manifest.get("global_cutoff_at_utc"))
+    if cutoff is None:
+        raise ValueError("Parity manifest has no global cutoff")
+    payloads = _parity_load_payloads(study_directory, manifest)
+    manifest["status"] = "RUNNING"
+    _parity_persist_manifest(study_directory, manifest)
+
+    def run_cells(cells):
+        nonlocal manifest, payloads
+        for scenario_id, origin, seed, repeat in cells:
+            if _utc_now().timestamp() + PARITY_MIN_CELL_RESERVE_SECONDS >= cutoff.timestamp():
+                manifest["status"] = "CUTOFF_REACHED"
+                _parity_persist_manifest(study_directory, manifest)
+                return False
+            filename = _parity_result_filename(
+                scenario_id, origin, seed, repeat
+            )
+            if filename in payloads:
+                continue
+            payload = run_fixed_cycle_parity_cell(
+                study_directory=study_directory,
+                scenario_id=scenario_id,
+                origin=origin,
+                seed=seed,
+                repeat=repeat,
+            )
+            manifest = _parity_load_manifest(study_directory)
+            payloads[filename] = payload
+            if _parity_hard_wall_payload(payload):
+                manifest["status"] = "SUPERVISION_BLOCKED"
+                _parity_persist_manifest(study_directory, manifest)
+                return False
+        return True
+
+    for seed in PARITY_SEEDS:
+        initial_cells = tuple(
+            (scenario_id, origin, seed, 0)
+            for scenario_id in SEQUENCE_SCENARIOS
+            for origin in PARITY_ORIGINS
+        )
+        if seed != PARITY_SEEDS[0]:
+            previous = _parity_cohort_classification(
+                manifest.get("comparisons", {}), PARITY_SEEDS[0], 0
+            )
+            if previous != "PARITY_MATCH":
+                break
+        if not run_cells(initial_cells):
+            break
+        manifest = _parity_load_manifest(study_directory)
+        payloads = _parity_load_payloads(study_directory, manifest)
+        cohort_comparisons = _parity_compare_cohort(
+            manifest, payloads, seed, 0
+        )
+        manifest["comparisons"].update(cohort_comparisons)
+        classification = _parity_cohort_classification(
+            manifest["comparisons"], seed, 0
+        )
+        if classification == "CONFIGURATION_NON_PARITY":
+            manifest["status"] = "CONFIGURATION_NON_PARITY"
+            break
+        if classification in {
+            "VALIDATION_TRANSITION_VARIANCE",
+            "TRAJECTORY_NON_PARITY",
+        }:
+            affected_scenarios = {
+                result["scenario_id"]
+                for result in cohort_comparisons.values()
+                if result.get("classification") != "PARITY_MATCH"
+            }
+            for repeat in (1, 2):
+                repeat_cells = tuple(
+                    (scenario_id, origin, seed, repeat)
+                    for scenario_id in sorted(affected_scenarios)
+                    for origin in PARITY_ORIGINS
+                )
+                if not run_cells(repeat_cells):
+                    break
+            manifest = _parity_load_manifest(study_directory)
+            if manifest.get("status") in {"CUTOFF_REACHED", "SUPERVISION_BLOCKED"}:
+                break
+            payloads = _parity_load_payloads(study_directory, manifest)
+            for repeat in (1, 2):
+                manifest["comparisons"].update(
+                    _parity_compare_cohort(manifest, payloads, seed, repeat)
+                )
+            manifest["status"] = "SOLVER_TRANSITION_VARIANCE"
+            break
+        _parity_persist_manifest(study_directory, manifest)
+    else:
+        manifest["status"] = "PARITY_QUALIFIED"
+
+    return _parity_persist_manifest(study_directory, manifest)
+
+
+def summarize_fixed_cycle_parity_study(study_directory):
+    """Verify external result hashes and return a compact parity summary."""
+
+    manifest = _parity_load_manifest(study_directory)
+    payloads = _parity_load_payloads(study_directory, manifest)
+    comparisons = dict(manifest.get("comparisons") or {})
+    for seed in PARITY_SEEDS:
+        for repeat in (0, 1, 2):
+            comparisons.update(
+                _parity_compare_cohort(manifest, payloads, seed, repeat)
+            )
+    classifications = [
+        item.get("classification") for item in comparisons.values()
+    ]
+    return {
+        "schema": PARITY_SUMMARY_SCHEMA,
+        "study_id": manifest["study_id"],
+        "status": manifest.get("status"),
+        "conclusion": manifest.get("conclusion") or _parity_conclusion(manifest),
+        "artifact_integrity": {
+            "manifest_result_count": len(manifest.get("results") or {}),
+            "loaded_result_count": len(payloads),
+            "all_result_hashes_verified": True,
+        },
+        "cohort_classifications": {
+            f"seed{seed}:repeat{repeat}": _parity_cohort_classification(
+                comparisons, seed, repeat
+            )
+            for seed in PARITY_SEEDS
+            for repeat in (0, 1, 2)
+        },
+        "classification_counts": {
+            value: classifications.count(value)
+            for value in sorted(set(classifications))
+        },
+        "comparisons": comparisons,
+        "host_preflight": manifest.get("host_preflight"),
+    }
+
+
+def write_fixed_cycle_parity_summary(study_directory):
+    study_directory = Path(study_directory)
+    summary = summarize_fixed_cycle_parity_study(study_directory)
+    summary_path = study_directory / "study_summary.json"
+    _json_write_atomic(summary_path, summary)
+    manifest = _parity_load_manifest(study_directory)
+    manifest["summary_artifact"] = {
+        "path": str(summary_path),
+        "sha256": _sha256_file(summary_path),
+    }
+    _json_write_atomic(study_directory / "study_manifest.json", manifest)
+    return summary
 
 
 def summarize_sequence_ablation_study(study_directory):
@@ -1015,6 +1678,29 @@ def main(argv=None):  # pragma: no cover - offline experiment entrypoint
     parser.add_argument("--study-directory", type=Path, required=True)
     parser.add_argument("--initialize", action="store_true")
     parser.add_argument("--summarize", action="store_true")
+    parser.add_argument(
+        "--initialize-parity",
+        action="store_true",
+        help="Create an external fixed-cycle cross-harness parity study.",
+    )
+    parser.add_argument(
+        "--run-parity",
+        action="store_true",
+        help="Run the next gated sequential parity cohort.",
+    )
+    parser.add_argument(
+        "--allow-dirty-preflight",
+        action="store_true",
+        help=(
+            "Run with the expected implementation tree changes recorded "
+            "instead of enforcing the clean-tree precondition."
+        ),
+    )
+    parser.add_argument(
+        "--summarize-parity",
+        action="store_true",
+        help="Verify parity artifacts and write a compact summary.",
+    )
     parser.add_argument("--compare-parent", type=Path)
     parser.add_argument("--compare-ablation", type=Path)
     parser.add_argument("--compare-output", type=Path)
@@ -1034,10 +1720,19 @@ def main(argv=None):  # pragma: no cover - offline experiment entrypoint
             "--compare-parent, --compare-ablation, and --compare-output "
             "must be supplied together"
         )
-    if args.initialize and args.summarize:
-        parser.error("--initialize and --summarize are mutually exclusive")
+    action_flags = (
+        args.initialize,
+        args.summarize,
+        args.initialize_parity,
+        args.run_parity,
+        args.summarize_parity,
+    )
+    if sum(bool(value) for value in action_flags) > 1:
+        parser.error("study action flags are mutually exclusive")
+    if args.allow_dirty_preflight and not args.run_parity:
+        parser.error("--allow-dirty-preflight requires --run-parity")
     if any(value is not None for value in compare_args) and (
-        args.initialize or args.summarize or args.scenario or args.variant or args.seed
+        any(action_flags) or args.scenario or args.variant or args.seed
     ):
         parser.error("comparison arguments are mutually exclusive with study actions")
     if args.compare_parent is not None:
@@ -1050,6 +1745,15 @@ def main(argv=None):  # pragma: no cover - offline experiment entrypoint
         payload = initialize_sequence_ablation_study(args.study_directory)
     elif args.summarize:
         payload = write_sequence_ablation_summary(args.study_directory)
+    elif args.initialize_parity:
+        payload = initialize_fixed_cycle_parity_study(args.study_directory)
+    elif args.run_parity:
+        payload = run_fixed_cycle_parity_study(
+            args.study_directory,
+            enforce_preconditions=not args.allow_dirty_preflight,
+        )
+    elif args.summarize_parity:
+        payload = write_fixed_cycle_parity_summary(args.study_directory)
     else:
         if args.scenario is None or args.variant is None or args.seed is None:
             parser.error("--scenario, --variant, and --seed are required")
@@ -1059,7 +1763,10 @@ def main(argv=None):  # pragma: no cover - offline experiment entrypoint
             variant=args.variant,
             seed=args.seed,
         )
-    if args.compare_parent is not None or args.initialize or args.summarize:
+    if (
+        args.compare_parent is not None
+        or any(action_flags)
+    ):
         print(json.dumps(payload, indent=2, sort_keys=True, default=str))
     else:
         filename = _result_filename(args.scenario, args.variant, args.seed)
@@ -1098,13 +1805,26 @@ __all__ = [
     "SEQUENCE_VARIANTS",
     "SEQUENCE_CAUSAL_STATUS_PRELIMINARY",
     "SEQUENCE_PARITY_SCHEMA",
+    "PARITY_GLOBAL_WALL_SECONDS",
+    "PARITY_MIN_CELL_RESERVE_SECONDS",
+    "PARITY_ORIGINS",
+    "PARITY_RESULT_SCHEMA",
+    "PARITY_STUDY_ID",
+    "PARITY_STUDY_SCHEMA",
+    "PARITY_SUMMARY_SCHEMA",
+    "build_fixed_cycle_parity_manifest",
     "build_sequence_ablation_manifest",
     "compare_fixed_cycle_control_payloads",
     "fixed_cycle_parity_projection",
+    "initialize_fixed_cycle_parity_study",
     "initialize_sequence_ablation_study",
+    "run_fixed_cycle_parity_cell",
+    "run_fixed_cycle_parity_study",
     "run_sequence_ablation_cell",
     "sequence_ablation_budget_contract",
+    "summarize_fixed_cycle_parity_study",
     "summarize_sequence_ablation_study",
     "write_fixed_cycle_parity_diff",
+    "write_fixed_cycle_parity_summary",
     "write_sequence_ablation_summary",
 ]

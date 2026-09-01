@@ -31,6 +31,7 @@ from .student_assignment.adaptive_calibration import (
     STARTUP_AWARE_SESSION_OVERRIDES,
     STARTUP_AWARE_TOTAL_POLICY_SECONDS,
     build_calibration_policy,
+    fixed_cycle_control_request,
     profile_fingerprint,
 )
 from .student_assignment.adaptive_search import ADAPTIVE_ROLE_BIAS_MULTIPLIER
@@ -589,18 +590,36 @@ def run_startup_aware_policy_cell(
 
     started = perf_counter()
     try:
-        payload = run_supervised_calibration_trial(
-            policy=policy,
-            profile=profile,
-            benchmark_directory=benchmark_directory,
-            total_time_limit_seconds=STARTUP_AWARE_TOTAL_POLICY_SECONDS,
-            per_operator_time_limit_seconds=STARTUP_AWARE_MAX_OPERATOR_SECONDS,
-            worker_count=STARTUP_AWARE_WORKER_COUNT,
-            validation_time_limit_seconds=STARTUP_AWARE_VALIDATION_SECONDS,
-            hard_wall_seconds=STARTUP_AWARE_PARENT_HARD_WALL_SECONDS,
-            startup_aware=True,
-            cp_sat_random_seed=int(seed),
-        )
+        fixed_cycle_request = None
+        if policy == "fixed_cycle":
+            fixed_cycle_request = fixed_cycle_control_request(
+                profile=profile,
+                benchmark_directory=benchmark_directory,
+                input_fingerprint=scenario["input_fingerprint"],
+                source_seed_fingerprint=scenario["source_seed_fingerprint"],
+                cp_sat_random_seed=int(seed),
+                total_time_limit_seconds=STARTUP_AWARE_TOTAL_POLICY_SECONDS,
+                per_operator_time_limit_seconds=STARTUP_AWARE_MAX_OPERATOR_SECONDS,
+                worker_count=STARTUP_AWARE_WORKER_COUNT,
+                validation_time_limit_seconds=STARTUP_AWARE_VALIDATION_SECONDS,
+                parent_hard_wall_seconds=STARTUP_AWARE_PARENT_HARD_WALL_SECONDS,
+            )
+            payload = run_supervised_calibration_trial(
+                **fixed_cycle_request["run_kwargs"]
+            )
+        else:
+            payload = run_supervised_calibration_trial(
+                policy=policy,
+                profile=profile,
+                benchmark_directory=benchmark_directory,
+                total_time_limit_seconds=STARTUP_AWARE_TOTAL_POLICY_SECONDS,
+                per_operator_time_limit_seconds=STARTUP_AWARE_MAX_OPERATOR_SECONDS,
+                worker_count=STARTUP_AWARE_WORKER_COUNT,
+                validation_time_limit_seconds=STARTUP_AWARE_VALIDATION_SECONDS,
+                hard_wall_seconds=STARTUP_AWARE_PARENT_HARD_WALL_SECONDS,
+                startup_aware=True,
+                cp_sat_random_seed=int(seed),
+            )
         payload = dict(payload)
         payload.update({
             "schema": STARTUP_AWARE_RESULT_SCHEMA,
@@ -617,6 +636,14 @@ def run_startup_aware_policy_cell(
             "policy_accounting": _policy_accounting(payload),
             "cell_elapsed_seconds": perf_counter() - started,
         })
+        if fixed_cycle_request is not None:
+            payload.update({
+                "origin": "startup_aware_parent",
+                "fixed_cycle_request": fixed_cycle_request["request"],
+                "fixed_cycle_request_fingerprint": fixed_cycle_request[
+                    "request_fingerprint"
+                ],
+            })
     except Exception as error:
         # Preserve a machine-readable blocked/error result without implying a
         # schedule was produced.  In particular, a rejected stale source
@@ -638,6 +665,26 @@ def run_startup_aware_policy_cell(
             "budget_contract": startup_aware_policy_budget_contract(),
             "cell_elapsed_seconds": perf_counter() - started,
         }
+        if policy == "fixed_cycle":
+            fixed_cycle_request = fixed_cycle_control_request(
+                profile=profile,
+                benchmark_directory=benchmark_directory,
+                input_fingerprint=scenario["input_fingerprint"],
+                source_seed_fingerprint=scenario["source_seed_fingerprint"],
+                cp_sat_random_seed=int(seed),
+                total_time_limit_seconds=STARTUP_AWARE_TOTAL_POLICY_SECONDS,
+                per_operator_time_limit_seconds=STARTUP_AWARE_MAX_OPERATOR_SECONDS,
+                worker_count=STARTUP_AWARE_WORKER_COUNT,
+                validation_time_limit_seconds=STARTUP_AWARE_VALIDATION_SECONDS,
+                parent_hard_wall_seconds=STARTUP_AWARE_PARENT_HARD_WALL_SECONDS,
+            )
+            payload.update({
+                "origin": "startup_aware_parent",
+                "fixed_cycle_request": fixed_cycle_request["request"],
+                "fixed_cycle_request_fingerprint": fixed_cycle_request[
+                    "request_fingerprint"
+                ],
+            })
 
     _json_write_atomic(result_path, payload)
     artifact_hash = _sha256_file(result_path)
@@ -683,20 +730,39 @@ def execute_parallel_policy_cell(
     benchmark_directory = _REPOSITORY_ROOT / scenario["benchmark_directory"]
     started = perf_counter()
     try:
-        payload = run_supervised_calibration_trial(
-            policy=policy,
-            profile=PARALLEL_POLICY_STUDY_PROFILE,
-            benchmark_directory=benchmark_directory,
-            total_time_limit_seconds=STARTUP_AWARE_TOTAL_POLICY_SECONDS,
-            per_operator_time_limit_seconds=STARTUP_AWARE_MAX_OPERATOR_SECONDS,
-            worker_count=PARALLEL_POLICY_STUDY_WORKER_COUNT,
-            validation_time_limit_seconds=STARTUP_AWARE_VALIDATION_SECONDS,
-            hard_wall_seconds=STARTUP_AWARE_PARENT_HARD_WALL_SECONDS,
-            startup_aware=True,
-            cp_sat_random_seed=int(seed),
-            cancel_requested=cancel_requested,
-            worker_started_callback=worker_started_callback,
-        )
+        fixed_cycle_request = None
+        if policy == "fixed_cycle":
+            fixed_cycle_request = fixed_cycle_control_request(
+                profile=PARALLEL_POLICY_STUDY_PROFILE,
+                benchmark_directory=benchmark_directory,
+                input_fingerprint=scenario["input_fingerprint"],
+                source_seed_fingerprint=scenario["source_seed_fingerprint"],
+                cp_sat_random_seed=int(seed),
+                total_time_limit_seconds=STARTUP_AWARE_TOTAL_POLICY_SECONDS,
+                per_operator_time_limit_seconds=STARTUP_AWARE_MAX_OPERATOR_SECONDS,
+                worker_count=PARALLEL_POLICY_STUDY_WORKER_COUNT,
+                validation_time_limit_seconds=STARTUP_AWARE_VALIDATION_SECONDS,
+                parent_hard_wall_seconds=STARTUP_AWARE_PARENT_HARD_WALL_SECONDS,
+            )
+            run_kwargs = dict(fixed_cycle_request["run_kwargs"])
+        else:
+            run_kwargs = {
+                "policy": policy,
+                "profile": PARALLEL_POLICY_STUDY_PROFILE,
+                "benchmark_directory": benchmark_directory,
+                "total_time_limit_seconds": STARTUP_AWARE_TOTAL_POLICY_SECONDS,
+                "per_operator_time_limit_seconds": STARTUP_AWARE_MAX_OPERATOR_SECONDS,
+                "worker_count": PARALLEL_POLICY_STUDY_WORKER_COUNT,
+                "validation_time_limit_seconds": STARTUP_AWARE_VALIDATION_SECONDS,
+                "hard_wall_seconds": STARTUP_AWARE_PARENT_HARD_WALL_SECONDS,
+                "startup_aware": True,
+                "cp_sat_random_seed": int(seed),
+            }
+        run_kwargs.update({
+            "cancel_requested": cancel_requested,
+            "worker_started_callback": worker_started_callback,
+        })
+        payload = run_supervised_calibration_trial(**run_kwargs)
         payload = dict(payload)
         payload.update({
             "schema": PARALLEL_POLICY_RESULT_SCHEMA,
@@ -716,9 +782,17 @@ def execute_parallel_policy_cell(
             "budget_contract": manifest["budget_contract"],
             "cell_elapsed_seconds": perf_counter() - started,
         })
+        if fixed_cycle_request is not None:
+            payload.update({
+                "origin": "parallel_policy_study",
+                "fixed_cycle_request": fixed_cycle_request["request"],
+                "fixed_cycle_request_fingerprint": fixed_cycle_request[
+                    "request_fingerprint"
+                ],
+            })
         return payload
     except Exception as error:
-        return {
+        payload = {
             "schema": PARALLEL_POLICY_RESULT_SCHEMA,
             "study_id": manifest["study_id"],
             "scenario_id": scenario_id,
@@ -739,6 +813,27 @@ def execute_parallel_policy_cell(
             "budget_contract": manifest["budget_contract"],
             "cell_elapsed_seconds": perf_counter() - started,
         }
+        if policy == "fixed_cycle":
+            fixed_cycle_request = fixed_cycle_control_request(
+                profile=PARALLEL_POLICY_STUDY_PROFILE,
+                benchmark_directory=benchmark_directory,
+                input_fingerprint=scenario["input_fingerprint"],
+                source_seed_fingerprint=scenario["source_seed_fingerprint"],
+                cp_sat_random_seed=int(seed),
+                total_time_limit_seconds=STARTUP_AWARE_TOTAL_POLICY_SECONDS,
+                per_operator_time_limit_seconds=STARTUP_AWARE_MAX_OPERATOR_SECONDS,
+                worker_count=PARALLEL_POLICY_STUDY_WORKER_COUNT,
+                validation_time_limit_seconds=STARTUP_AWARE_VALIDATION_SECONDS,
+                parent_hard_wall_seconds=STARTUP_AWARE_PARENT_HARD_WALL_SECONDS,
+            )
+            payload.update({
+                "origin": "parallel_policy_study",
+                "fixed_cycle_request": fixed_cycle_request["request"],
+                "fixed_cycle_request_fingerprint": fixed_cycle_request[
+                    "request_fingerprint"
+                ],
+            })
+        return payload
 
 
 def _persist_parallel_policy_result(study_directory, manifest, payload):

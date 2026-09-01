@@ -218,6 +218,103 @@ def profile_fingerprint(profile_name):
     return hashlib.sha256(payload).hexdigest()
 
 
+def fixed_cycle_control_request(
+    *,
+    profile="balanced",
+    benchmark_directory,
+    input_fingerprint=None,
+    source_seed_fingerprint=None,
+    cp_sat_random_seed,
+    total_time_limit_seconds=STARTUP_AWARE_TOTAL_POLICY_SECONDS,
+    per_operator_time_limit_seconds=STARTUP_AWARE_MAX_OPERATOR_SECONDS,
+    worker_count=1,
+    validation_time_limit_seconds=180.0,
+    parent_hard_wall_seconds=1800.0,
+    fixed_cycle_names=None,
+):
+    """Build one fully resolved fixed-cycle calibration request.
+
+    This is a diagnostic boundary contract, not a scheduling configuration.
+    The three research harnesses use it to ensure that their fixed-cycle
+    positive controls send the same effective request to the supervised
+    worker.  Absolute benchmark paths are retained in ``run_kwargs`` for
+    execution but deliberately excluded from the request fingerprint so
+    equivalent detached copies compare by semantics rather than location.
+    """
+
+    if profile not in CALIBRATION_PROFILES:
+        raise ValueError(f"Unknown calibration profile: {profile}")
+    if not benchmark_directory:
+        raise ValueError("benchmark_directory is required")
+    if cp_sat_random_seed is None:
+        raise ValueError("cp_sat_random_seed is required for parity controls")
+    names = tuple(
+        fixed_cycle_names
+        if fixed_cycle_names is not None
+        else CALIBRATION_FIXED_CYCLES["fixed_cycle"]
+    )
+    # Resolve through the canonical portfolio before publishing the request;
+    # this rejects a typo or a sequence that is not executable by the runtime.
+    build_calibration_policy("fixed_cycle", fixed_cycle_names=names)
+    session_overrides = {
+        name: dict(STARTUP_AWARE_SESSION_OVERRIDES.get(name, {}))
+        for name in names
+    }
+    request = {
+        "protocol_version": "fixed-cycle-control-v1",
+        "policy": "fixed_cycle",
+        "profile": profile,
+        "profile_fingerprint": profile_fingerprint(profile),
+        "input_fingerprint": input_fingerprint,
+        "source_seed_fingerprint": source_seed_fingerprint,
+        "fixed_cycle": list(names),
+        "worker_count": int(worker_count),
+        "cp_sat_random_seed": int(cp_sat_random_seed),
+        "per_operator_maximum_seconds": float(
+            per_operator_time_limit_seconds
+        ),
+        "cumulative_policy_budget_seconds": float(
+            total_time_limit_seconds
+        ),
+        "candidate_validation_time_limit_seconds": float(
+            validation_time_limit_seconds
+        ),
+        "candidate_validation_worker_count": 1,
+        "parent_hard_wall_seconds": float(parent_hard_wall_seconds),
+        "startup_aware": True,
+        "full_model_validation_required": True,
+        "unvalidated_candidate_adoption": False,
+        "ordinary_stage2_between_iterations": False,
+        "session_overrides": session_overrides,
+    }
+    request_fingerprint = hashlib.sha256(
+        json.dumps(request, sort_keys=True, separators=(",", ":")).encode(
+            "utf-8"
+        )
+    ).hexdigest()
+    return {
+        "request": request,
+        "request_fingerprint": request_fingerprint,
+        "run_kwargs": {
+            "policy": "fixed_cycle",
+            "profile": profile,
+            "benchmark_directory": benchmark_directory,
+            "total_time_limit_seconds": float(total_time_limit_seconds),
+            "per_operator_time_limit_seconds": float(
+                per_operator_time_limit_seconds
+            ),
+            "worker_count": int(worker_count),
+            "validation_time_limit_seconds": float(
+                validation_time_limit_seconds
+            ),
+            "hard_wall_seconds": float(parent_hard_wall_seconds),
+            "startup_aware": True,
+            "fixed_cycle_names": names,
+            "cp_sat_random_seed": int(cp_sat_random_seed),
+        },
+    }
+
+
 def apply_calibration_profile(data, profile_name):
     """Return a DTO with one explicit v2 score profile applied."""
 
@@ -525,6 +622,7 @@ __all__ = [
     "apply_calibration_profile",
     "build_calibration_policy",
     "build_calibration_trial_record",
+    "fixed_cycle_control_request",
     "profile_fingerprint",
     "run_matched_calibration_trial",
 ]

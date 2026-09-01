@@ -1581,3 +1581,80 @@ sequential confirmation of any candidate policy or sequence that is still
 worth promoting, using the same source lineage and full validation boundary.
 The study artifacts remain the reproducible research record; no Git commit or
 canonical benchmark mutation was made by the study run.
+
+#### Cross-harness fixed-cycle parity qualification (2026-09-01)
+
+The cross-harness positive-control study was run as a separate external
+artifact under
+`C:\Users\desou\research_runs\fixed_cycle_parity_qualification_20260901_retry1\`.
+It used the immutable `v2_policy_generalization_suite_20260829` inputs and
+the three origins below, one supervised target process at a time:
+
+| Origin | Control surface |
+| --- | --- |
+| `startup_aware_parent` | startup-aware policy runner |
+| `sequence_ablation` | `full_fixed_cycle` sequence-ablation control |
+| `parallel_policy` | progressive-parallel-study `fixed_cycle` control |
+
+The shared resolved request was the exact fixed-cycle sequence
+`targeted_r4_s2 -> targeted_utilization_r64_s8 -> r2`, with the balanced v2
+profile, one CP-SAT worker, the per-operator 300-second limit, 900-second
+cumulative policy budget, independent 180-second validation allowance, and
+1,800-second supervised parent wall. Every origin used the same input and
+source-seed fingerprint within each scenario/seed cell. Full-model validation
+remained mandatory, and no unvalidated candidate or canonical checkpoint was
+adopted.
+
+The initial attempt in the parent study directory is retained as historical
+forensics but is not authority: its comparator incorrectly treated solver
+timing/search telemetry as semantic trajectory. The comparator was corrected
+to ignore only runtime/search observations for semantic parity, while keeping
+those observations in the result artifacts, and the authoritative rerun was
+started in the `retry1` directory. The rerun's result hashes and summary hash
+were verified.
+
+Seed 101 and seed 202 both passed the planned gate. For each seed, both
+scenarios produced exact `PARITY_MATCH` comparisons between the startup-aware
+parent and each other origin. The completed cells retained complete schedules,
+zero unmet requests, and all special commitments:
+
+| Seed | Scenario | Cells completed | Pairwise comparisons | Result |
+| ---: | --- | ---: | ---: | --- |
+| 101 | `reference_target` | 3/3 | 2 | `PARITY_MATCH` |
+| 101 | `special_commitment_pressure_target` | 3/3 | 2 | `PARITY_MATCH` |
+| 202 | `reference_target` | 3/3 | 2 | `PARITY_MATCH` |
+| 202 | `special_commitment_pressure_target` | 3/3 | 2 | `PARITY_MATCH` |
+
+The seed-303 reference-target cells completed but did not reproduce one
+another's semantic trajectory: the startup-aware parent finished at 42,654,
+the sequence-ablation control at 42,660, and the parallel-policy control at
+42,750. The comparator reported two `TRAJECTORY_NON_PARITY` classifications
+with identical request configuration, so this is transition variance, not a
+configuration mismatch. The planned paired repeats could not be started
+because the later special-pressure cell encountered a hard-wall termination.
+
+The seed-303 special-pressure sequence-ablation cell was terminated after an
+internally reported approximately 6,823-second deadline interval despite its
+1,800-second configured wall. Windows System events record the host entering
+sleep at 11:01:37Z and waking at 12:40:34Z during that interval. The runtime is
+therefore classified as `host_sleep_contaminated`; it is not evidence of
+infeasibility or of a CP-SAT failure while the host was awake. The study
+stopped with 17/18 artifacts and did not launch the remaining parallel-policy
+cell. The manifest's required terminal conclusion is:
+
+**`SUPERVISION/HARD-WALL DEFECT BLOCKS FURTHER TARGET ABLATION`**
+
+Here “blocks” describes the incomplete qualification run; the measured cause
+of the overrun was host sleep, not a proven software supervision defect. The
+preflight found no active sibling Python/pytest processes, but the Git tree
+was intentionally dirty because the parity implementation was under review;
+the run used the explicit diagnostic `--allow-dirty-preflight` override.
+
+This study therefore does not qualify the three harnesses for causal policy
+ranking. It establishes exact configuration/semantic parity for seeds 101 and
+202, while leaving seed-303 transition repeatability unresolved and the
+special-pressure cohort incomplete. No fixed cycle, adaptive policy, or
+sequence is promoted by this result. A future rerun must first use an awake,
+power-stable host and repair or independently verify the supervision boundary,
+then complete the prescribed seed-303 paired replication before causal
+sequence ablations resume.

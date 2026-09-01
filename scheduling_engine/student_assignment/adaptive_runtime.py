@@ -220,6 +220,11 @@ def _compact_inner_probe_summary(
         "candidate_source_decision_fingerprint": iteration.get(
             "candidate_source_decision_fingerprint"
         ),
+        "candidate_components": dict(
+            iteration.get("component_values")
+            or iteration.get("candidate_components")
+            or {}
+        ),
         "elapsed_seconds": iteration.get("elapsed_seconds"),
         "solver_wall_time_seconds": iteration.get("solver_wall_time_seconds"),
         "validation_elapsed_seconds": iteration.get("validation_elapsed_seconds"),
@@ -758,6 +763,9 @@ def run_adaptive_local_search_diagnostic(
                 target_scope=selected,
                 actual_target_scope=tuple(
                     local.get("selected_student_ids") or selected
+                ),
+                source_fingerprint_before=source_decision_fingerprint(
+                    current_source_decisions
                 ),
                 candidate_source_decision_fingerprint=(
                     source_decision_fingerprint(candidate_source)
