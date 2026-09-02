@@ -459,3 +459,67 @@ def test_fixed_cycle_parity_seed_gate_runs_replication_cohorts_only_after_seed_1
     assert calls.count(202) == 6
     assert calls.count(303) == 6
     assert len(result["results"]) == 18
+
+
+def test_seed303_replication_inherits_only_clean_reference_artifacts(
+    monkeypatch, tmp_path
+):
+    parent_directory = tmp_path / "parent"
+    continuation_directory = tmp_path / "continuation"
+    parent = _parity_manifest(parent_directory)
+    parent["study_id"] = sequence_study.PARITY_STUDY_ID
+    parent_payloads = {}
+    for origin in sequence_study.PARITY_ORIGINS:
+        filename = sequence_study._parity_result_filename(
+            "reference_target", origin, 303, 0
+        )
+        parent["results"][filename] = {
+            "path": str(parent_directory / "results" / filename),
+            "sha256": f"hash-{origin}",
+            "origin": origin,
+            "scenario_id": "reference_target",
+            "seed": 303,
+            "repeat": 0,
+            "status": "completed",
+        }
+        parent_payloads[filename] = {
+            "execution_status": "completed",
+            "candidate_complete": True,
+            "final_unmet_count": 0,
+        }
+
+    monkeypatch.setattr(
+        sequence_study, "_parity_load_manifest", lambda _path: parent
+    )
+    monkeypatch.setattr(
+        sequence_study,
+        "_parity_load_payloads",
+        lambda _path, _manifest=None: parent_payloads,
+    )
+
+    result = sequence_study.initialize_seed303_replication_study(
+        continuation_directory,
+        parent_study_directory=parent_directory,
+    )
+
+    assert result["seeds"] == [303]
+    assert result["parent_study_id"] == sequence_study.PARITY_STUDY_ID
+    assert result["gating"]["requires_seed_101_pairwise_parity"] is False
+    assert result["gating"]["fresh_special_pressure_seed303_cohort"] is True
+    assert len(result["results"]) == 3
+    assert all(
+        item["inherited"] is True
+        for item in result["results"].values()
+    )
+
+
+def test_host_sleep_contamination_is_not_reported_as_supervision_defect():
+    assert (
+        sequence_study._parity_conclusion(
+            {
+                "status": "SUPERVISION_BLOCKED",
+                "host_sleep_contaminated": True,
+            }
+        )
+        == "CONTROLLED SEED-303 QUALIFICATION REMAINS INCONCLUSIVE"
+    )

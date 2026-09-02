@@ -61,6 +61,9 @@ PARITY_STUDY_ID = "fixed_cycle_parity_qualification_20260901"
 PARITY_STUDY_SCHEMA = "student_assignment_fixed_cycle_parity_study_v1"
 PARITY_RESULT_SCHEMA = "student_assignment_fixed_cycle_parity_result_v1"
 PARITY_SUMMARY_SCHEMA = "student_assignment_fixed_cycle_parity_summary_v1"
+SEED303_REPLICATION_STUDY_ID = "fixed_cycle_parity_seed303_replication_20260901"
+SEED303_REPLICATION_SCHEMA = "student_assignment_fixed_cycle_seed303_replication_v1"
+SEED303_REPLICATION_SUMMARY_SCHEMA = "student_assignment_fixed_cycle_seed303_replication_summary_v1"
 PARITY_ORIGINS = (
     "startup_aware_parent",
     "sequence_ablation",
@@ -1030,6 +1033,95 @@ def initialize_fixed_cycle_parity_study(study_directory):
     return manifest
 
 
+def initialize_seed303_replication_study(
+    study_directory, *, parent_study_directory
+):
+    """Create a seed-303 continuation without rerunning seeds 101/202.
+
+    The clean reference-target seed-303 artifacts from the completed parent
+    study are inherited by reference as replicate zero.  The contaminated
+    special-pressure sequence artifact is deliberately never inherited; its
+    three-origin cohort is run fresh by the continuation.
+    """
+
+    study_directory = Path(study_directory)
+    manifest_path = study_directory / "study_manifest.json"
+    if manifest_path.exists():
+        raise FileExistsError(f"Seed-303 manifest already exists: {manifest_path}")
+    parent_study_directory = Path(parent_study_directory)
+    parent_manifest = _parity_load_manifest(parent_study_directory)
+    parent_payloads = _parity_load_payloads(
+        parent_study_directory, parent_manifest
+    )
+    inherited = {}
+    for origin in PARITY_ORIGINS:
+        filename = _parity_result_filename(
+            "reference_target", origin, 303, 0
+        )
+        metadata = (parent_manifest.get("results") or {}).get(filename)
+        payload = parent_payloads.get(filename)
+        if not metadata or not payload:
+            raise ValueError(
+                "Parent study is missing clean reference seed-303 artifact: "
+                f"{filename}"
+            )
+        if payload.get("execution_status") != "completed":
+            raise ValueError(
+                f"Parent seed-303 artifact is not complete: {filename}"
+            )
+        if not payload.get("candidate_complete") or int(
+            payload.get("final_unmet_count", 0) or 0
+        ) != 0:
+            raise ValueError(
+                f"Parent seed-303 artifact is not unmet-free: {filename}"
+            )
+        inherited[filename] = {
+            **metadata,
+            "inherited_from_study": str(parent_study_directory),
+            "inherited": True,
+        }
+
+    manifest = build_fixed_cycle_parity_manifest(
+        study_directory=study_directory
+    )
+    manifest.update({
+        "schema": SEED303_REPLICATION_SCHEMA,
+        "study_id": SEED303_REPLICATION_STUDY_ID,
+        "parent_study_id": parent_manifest.get("study_id"),
+        "parent_study_directory": str(parent_study_directory),
+        "purpose": (
+            "Clean seed-303 distributional replication of the fixed-cycle "
+            "cross-harness positive control."
+        ),
+        "seeds": [303],
+        "gating": {
+            "requires_seed_101_pairwise_parity": False,
+            "inherited_reference_seed303_repeat0": True,
+            "fresh_special_pressure_seed303_cohort": True,
+            "repeat_count_after_transition_mismatch": 2,
+            "one_target_cell_at_a_time": True,
+            "ordinary_stage2_between_attempts": False,
+        },
+        "results": inherited,
+        "comparisons": {},
+        "status": "NOT_STARTED",
+        "conclusion": None,
+        "study_directory": str(study_directory),
+        "created_at_utc": _utc_timestamp(_utc_now()),
+        "replication_protocol": {
+            "seed": 303,
+            "parent_reference_replicate": "reference_target repeat0",
+            "special_pressure_repeat0_is_fresh": True,
+            "contamination_rule": (
+                "Any cell overlapping host sleep is host_sleep_contaminated "
+                "and excluded from runtime/parity conclusions."
+            ),
+        },
+    })
+    _json_write_atomic(manifest_path, manifest)
+    return manifest
+
+
 def _parity_preflight():
     """Capture the required host preconditions without solver-side effects."""
 
@@ -1280,6 +1372,8 @@ def _parity_conclusion(manifest):
     if status == "CONFIGURATION_NON_PARITY":
         return "ABLATON/PARALLEL HARNESS REMAINS NON-PARITY — DO NOT USE FOR CAUSAL POLICY RANKING"
     if status == "SUPERVISION_BLOCKED":
+        if manifest.get("host_sleep_contaminated"):
+            return "CONTROLLED SEED-303 QUALIFICATION REMAINS INCONCLUSIVE"
         return "SUPERVISION/HARD-WALL DEFECT BLOCKS FURTHER TARGET ABLATION"
     return None
 
@@ -1351,15 +1445,23 @@ def run_fixed_cycle_parity_study(study_directory, *, enforce_preconditions=True)
                 return False
         return True
 
-    for seed in PARITY_SEEDS:
+    study_seeds = tuple(
+        int(seed) for seed in (manifest.get("seeds") or PARITY_SEEDS)
+    )
+    requires_seed_gate = bool(
+        (manifest.get("gating") or {}).get(
+            "requires_seed_101_pairwise_parity", True
+        )
+    )
+    for seed_index, seed in enumerate(study_seeds):
         initial_cells = tuple(
             (scenario_id, origin, seed, 0)
             for scenario_id in SEQUENCE_SCENARIOS
             for origin in PARITY_ORIGINS
         )
-        if seed != PARITY_SEEDS[0]:
+        if requires_seed_gate and seed_index > 0:
             previous = _parity_cohort_classification(
-                manifest.get("comparisons", {}), PARITY_SEEDS[0], 0
+                manifest.get("comparisons", {}), study_seeds[0], 0
             )
             if previous != "PARITY_MATCH":
                 break
@@ -1417,7 +1519,10 @@ def summarize_fixed_cycle_parity_study(study_directory):
     manifest = _parity_load_manifest(study_directory)
     payloads = _parity_load_payloads(study_directory, manifest)
     comparisons = dict(manifest.get("comparisons") or {})
-    for seed in PARITY_SEEDS:
+    study_seeds = tuple(
+        int(seed) for seed in (manifest.get("seeds") or PARITY_SEEDS)
+    )
+    for seed in study_seeds:
         for repeat in (0, 1, 2):
             comparisons.update(
                 _parity_compare_cohort(manifest, payloads, seed, repeat)
@@ -1439,7 +1544,7 @@ def summarize_fixed_cycle_parity_study(study_directory):
             f"seed{seed}:repeat{repeat}": _parity_cohort_classification(
                 comparisons, seed, repeat
             )
-            for seed in PARITY_SEEDS
+            for seed in study_seeds
             for repeat in (0, 1, 2)
         },
         "classification_counts": {
@@ -1701,6 +1806,16 @@ def main(argv=None):  # pragma: no cover - offline experiment entrypoint
         action="store_true",
         help="Verify parity artifacts and write a compact summary.",
     )
+    parser.add_argument(
+        "--initialize-seed303-replication",
+        action="store_true",
+        help="Create a separate seed-303 parity continuation study.",
+    )
+    parser.add_argument(
+        "--parent-study-directory",
+        type=Path,
+        help="Existing parity study used as the seed-303 continuation parent.",
+    )
     parser.add_argument("--compare-parent", type=Path)
     parser.add_argument("--compare-ablation", type=Path)
     parser.add_argument("--compare-output", type=Path)
@@ -1726,11 +1841,22 @@ def main(argv=None):  # pragma: no cover - offline experiment entrypoint
         args.initialize_parity,
         args.run_parity,
         args.summarize_parity,
+        args.initialize_seed303_replication,
     )
     if sum(bool(value) for value in action_flags) > 1:
         parser.error("study action flags are mutually exclusive")
     if args.allow_dirty_preflight and not args.run_parity:
         parser.error("--allow-dirty-preflight requires --run-parity")
+    if args.initialize_seed303_replication and not args.parent_study_directory:
+        parser.error(
+            "--initialize-seed303-replication requires "
+            "--parent-study-directory"
+        )
+    if args.parent_study_directory and not args.initialize_seed303_replication:
+        parser.error(
+            "--parent-study-directory requires "
+            "--initialize-seed303-replication"
+        )
     if any(value is not None for value in compare_args) and (
         any(action_flags) or args.scenario or args.variant or args.seed
     ):
@@ -1747,6 +1873,11 @@ def main(argv=None):  # pragma: no cover - offline experiment entrypoint
         payload = write_sequence_ablation_summary(args.study_directory)
     elif args.initialize_parity:
         payload = initialize_fixed_cycle_parity_study(args.study_directory)
+    elif args.initialize_seed303_replication:
+        payload = initialize_seed303_replication_study(
+            args.study_directory,
+            parent_study_directory=args.parent_study_directory,
+        )
     elif args.run_parity:
         payload = run_fixed_cycle_parity_study(
             args.study_directory,
@@ -1817,6 +1948,7 @@ __all__ = [
     "compare_fixed_cycle_control_payloads",
     "fixed_cycle_parity_projection",
     "initialize_fixed_cycle_parity_study",
+    "initialize_seed303_replication_study",
     "initialize_sequence_ablation_study",
     "run_fixed_cycle_parity_cell",
     "run_fixed_cycle_parity_study",

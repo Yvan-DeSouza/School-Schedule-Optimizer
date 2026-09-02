@@ -1658,3 +1658,145 @@ sequence is promoted by this result. A future rerun must first use an awake,
 power-stable host and repair or independently verify the supervision boundary,
 then complete the prescribed seed-303 paired replication before causal
 sequence ablations resume.
+
+#### Seed-303 controlled replication continuation (2026-09-01)
+
+Because the retry-1 seed-303 study was interrupted by host sleep, a separate
+continuation lineage was created at
+`C:\Users\desou\research_runs\fixed_cycle_parity_seed303_replication_20260901\`.
+It inherited only the three clean `reference_target` seed-303 repeat-0
+artifacts from retry-1 by reference. The contaminated special-pressure
+artifact was not inherited. The continuation used the same immutable input
+fingerprints, source-seed fingerprints, resolved request fingerprint, fixed
+cycle sequence, balanced v2 profile, one CP-SAT worker, 300-second operator
+limit, 900-second cumulative policy budget, 180-second independent validation
+limit, and 1,800-second supervised wall.
+
+The awake supervision boundary was checked before the target run:
+`test_hard_deadline_terminates_worker_and_descendant` and
+`test_watchdog_enforces_deadline_during_slow_snapshot` passed (2 passed, 9
+deselected). No software watchdog defect was found in that check. The host's
+AC sleep and hibernate timeouts were then disabled for the remainder of the
+session. However, Windows recorded a sleep interval during the continuation
+(Kernel-Power event 42 followed by event 107, approximately 16:21:06Z to
+16:24:16Z). All runtime/stop facts from the affected continuation are
+therefore `host_sleep_contaminated` and are not evidence about awake solver
+performance.
+
+The continuation persisted 13 hash-verified result references: three
+inherited clean reference artifacts and ten fresh artifacts. Twelve fresh or
+inherited cells completed; one fresh reference repeat-2 cell was terminated by
+the resource guard when system available memory fell to approximately 1.43
+GiB, below the configured 1.5-GiB floor. Descendant cleanup completed. No
+causal ablation was launched.
+
+The completed seed-303 trajectories were:
+
+| Scenario | Origin | Repeat 0 | Repeat 1 | Repeat 2 |
+| --- | --- | ---: | ---: | ---: |
+| `reference_target` | `startup_aware_parent` | 42,654 | 42,750 | resource-guard terminated |
+| `reference_target` | `sequence_ablation` | 42,660 | 42,654 | not run |
+| `reference_target` | `parallel_policy` | 42,750 | 42,660 | not run |
+| `special_commitment_pressure_target` | `startup_aware_parent` | 43,626 | 43,464 | not run |
+| `special_commitment_pressure_target` | `sequence_ablation` | 43,626 | 43,464 | not run |
+| `special_commitment_pressure_target` | `parallel_policy` | 43,626 | 43,464 | not run |
+
+Every completed cell retained zero unmet requests and all scenario special
+commitments. The completed artifacts retained the shared request and lineage
+fingerprints and continued to require full-model validation for every adopted
+candidate. The reference repeat-0 and repeat-1 results show that all three
+origins can reach different valid transition trajectories from identical
+configuration and source input; the special-pressure repeat-1 results were
+directionally consistent but did not complete the required repeat-2 cohort.
+
+The required seed-303 qualification is therefore **inconclusive**. The exact
+classification for this continuation is:
+
+**`CONTROLLED SEED-303 QUALIFICATION REMAINS INCONCLUSIVE`**
+
+This is not a configuration-parity failure and not a proven awake supervision
+defect. It is the conservative result of an incomplete, host-sleep-
+contaminated/resource-guarded continuation. The earlier clean seed-101 and
+seed-202 `PARITY_MATCH` evidence remains historical and unchanged. The three
+harnesses must not be used for causal policy ranking until a future awake,
+resource-qualified seed-303 continuation completes the prescribed paired
+replication. No canonical checkpoint, benchmark input, approval state,
+production policy wiring, or Objective Semantics v2 behavior was changed.
+
+#### Seed-303 cross-harness qualification retry 3 (2026-09-01/02)
+
+A fresh retry-3 directory was initialized from the retry-2 continuation and
+ran all 18 scheduled seed-303 artifacts in sequential target processes. The
+reference-target cohort was clean; two final special-pressure cells overlapped
+brief host-sleep intervals and are explicitly excluded below. The authoritative
+benchmark inputs and source seeds were unchanged:
+
+| Item | Fingerprint |
+| --- | --- |
+| `reference_target` input | `f56b5c0d5b745d919a57281a2f1e49959b4b23d8feb9486eda3c81afd8bb7906` |
+| `reference_target` source | `f5cfd15465bab1815ad21a3565236f1ff383e8ffff82a4c783ab62ff410c9fb1` |
+| `special_commitment_pressure_target` input | `93d4bdf208027d50e51842290d77b7f77c6a92af724a7bd99ce6b78519bc0ca5` |
+| `special_commitment_pressure_target` source | `1866d7dca8dddb65a93f7eb1eb6935a329098c49da17c7897edc4a027c72cd46` |
+| shared request | `e0bad8e85d6ccbfc1f377d937634cb2222ad28cae226bc24651dae6aa497de50` |
+| balanced v2 profile | `d1eb7b0501db1b8fd6a2cf0598f4788a6864e4eb11ced45617f102f6f6b628da` |
+
+All cells used one CP-SAT worker, seed 303, the same fixed-cycle request,
+300-second per-operator limits, 900-second cumulative policy budget,
+180-second independent candidate-validation limit, and 1,800-second supervised
+wall. Every completed cell was complete, had zero unmet required requests, and
+retained the expected special-commitment count (140 for the reference scenario
+and 280 for the special-pressure scenario). Adopted candidates continued to
+require unchanged full-model validation.
+
+The clean reference-target substantive outcomes were:
+
+| Origin | Repeat 0 | Repeat 1 | Repeat 2 |
+| --- | ---: | ---: | ---: |
+| `startup_aware_parent` | 42,654 | 42,654 | 42,660 |
+| `sequence_ablation` | 42,660 | 42,654 | 42,654 |
+| `parallel_policy` | 42,750 | 42,660 | 42,654 |
+
+The corresponding component vectors were 9,228/9,246/11,286/12,894 for
+42,654; 9,210/9,258/11,298/12,894 for 42,660; and
+9,234/9,288/11,334/12,894 for 42,750 (section utilization, semester balance,
+difficulty, and category diversity). The clean reference cells took roughly
+909--953 seconds externally, with reported CP-SAT totals roughly 397--512
+seconds. These timings are descriptive only because the same-seed parallel
+CP-SAT runs showed transition variance.
+
+The special-pressure outcomes were:
+
+| Origin | Repeat 0 | Repeat 1 | Repeat 2 |
+| --- | ---: | ---: | ---: |
+| `startup_aware_parent` | 43,458 | 43,464 | 43,536 |
+| `sequence_ablation` | 43,458 | 43,458 | host-sleep-contaminated |
+| `parallel_policy` | 43,458 | 43,464 | host-sleep-contaminated |
+
+The clean special-pressure cells were complete and zero-unmet. Their observed
+values were 43,458, 43,464, or 43,536, with component vectors
+8,820/9,774/12,012/12,852; 8,832/9,774/12,006/12,852; and
+8,838/9,798/12,048/12,852 respectively. The two repeat-2 cells that ended
+during the final special-pressure cohort overlapped brief Windows sleep
+intervals and are excluded from runtime and trajectory conclusions. The three
+intervals were approximately 02:18:15--02:18:21Z, 02:22:51--02:23:08Z, and
+02:35:40--02:35:44Z on 2026-09-02. The retry-3 manifest records the affected
+cells and those intervals as `host_sleep_contaminated`; no awake supervision
+defect was found, and no long hard-wall overrun occurred in retry 3.
+
+Across the completed clean comparisons, configuration parity remained exact,
+but the same fixed seed and request did not guarantee an identical semantic
+transition trajectory. The retry-3 comparator recorded 2 `PARITY_MATCH` and
+10 `TRAJECTORY_NON_PARITY` pairwise classifications; there was no
+`CONFIGURATION_NON_PARITY`. The conservative conclusion is:
+
+**`CROSS-HARNESS QUALITY PARITY SUPPORTED BUT TRANSITION VARIANCE MUST BE MODELED IN CAUSAL STUDIES`**
+
+This is the final seed-303 qualification result for the current evidence set.
+The three origins are equivalent in request/configuration and preserve the same
+hard-validity and completeness guarantees, but one-run trajectory identity is
+not established. Causal sequence studies may resume only with distributional
+replication and transition-variance reporting; a single observed endpoint must
+not be treated as a harness-caused effect. No seed-101/202 reruns, broad causal
+ablation, biased-adaptive matrix, v1 continuation, production-policy change,
+Objective Semantics change, canonical checkpoint mutation, migration, or Git
+commit was performed for this closeout.
