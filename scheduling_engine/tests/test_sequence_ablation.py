@@ -43,6 +43,25 @@ def test_sequence_variants_are_existing_operator_sequences():
     )
 
 
+def test_sequence_result_filename_preserves_default_and_separates_repeats():
+    assert sequence_study._result_filename(
+        "reference_target", "full_fixed_cycle", 101
+    ) == "reference_target_full_fixed_cycle_seed101.json"
+    assert sequence_study._result_filename(
+        "reference_target", "full_fixed_cycle", 101, 2
+    ) == "reference_target_full_fixed_cycle_seed101_repeat2.json"
+
+
+def test_sequence_manifest_accepts_research_study_id(tmp_path):
+    manifest = sequence_study.build_sequence_ablation_manifest(
+        study_directory=tmp_path,
+        study_id="v2_fixed_cycle_sequence_ablation_distributional_test",
+    )
+    assert manifest["study_id"] == (
+        "v2_fixed_cycle_sequence_ablation_distributional_test"
+    )
+
+
 def test_sequence_budget_requires_full_validation_and_no_unvalidated_adoption():
     contract = sequence_ablation_budget_contract()
     assert contract["worker_count"] == 1

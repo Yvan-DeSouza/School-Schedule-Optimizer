@@ -136,6 +136,7 @@ def build_sequence_ablation_manifest(
     study_directory,
     scenario_ids=SEQUENCE_SCENARIOS,
     variant_ids=tuple(SEQUENCE_VARIANTS),
+    study_id=SEQUENCE_STUDY_ID,
 ):
     unknown_scenarios = set(scenario_ids) - set(TARGET_SCENARIO_DIRECTORIES)
     unknown_variants = set(variant_ids) - set(SEQUENCE_VARIANTS)
@@ -145,7 +146,7 @@ def build_sequence_ablation_manifest(
         raise ValueError(f"Unknown sequence-study variants: {sorted(unknown_variants)}")
     return {
         "schema": SEQUENCE_STUDY_SCHEMA,
-        "study_id": SEQUENCE_STUDY_ID,
+        "study_id": study_id,
         "parent_study_id": "v2_policy_generalization_startup_aware_20260831",
         "purpose": (
             "Causal ablation of the existing fixed-cycle sequence and "
@@ -193,18 +194,24 @@ def build_sequence_ablation_manifest(
     }
 
 
-def initialize_sequence_ablation_study(study_directory):
+def initialize_sequence_ablation_study(
+    study_directory, *, study_id=SEQUENCE_STUDY_ID
+):
     study_directory = Path(study_directory)
     path = study_directory / "study_manifest.json"
     if path.exists():
         raise FileExistsError(f"Study manifest already exists: {path}")
-    manifest = build_sequence_ablation_manifest(study_directory=study_directory)
+    manifest = build_sequence_ablation_manifest(
+        study_directory=study_directory,
+        study_id=study_id,
+    )
     _json_write_atomic(path, manifest)
     return manifest
 
 
-def _result_filename(scenario_id, variant, seed):
-    return f"{scenario_id}_{variant}_seed{int(seed)}.json"
+def _result_filename(scenario_id, variant, seed, repeat=0):
+    suffix = "" if int(repeat) == 0 else f"_repeat{int(repeat)}"
+    return f"{scenario_id}_{variant}_seed{int(seed)}{suffix}.json"
 
 
 def _operator_roles():
@@ -219,6 +226,7 @@ def run_sequence_ablation_cell(
     scenario_id,
     variant,
     seed,
+    repeat=0,
     profile=SEQUENCE_PROFILE,
     benchmark_directory=None,
 ):
@@ -230,6 +238,8 @@ def run_sequence_ablation_cell(
         raise ValueError(f"Unknown sequence-study variant: {variant}")
     if int(seed) not in SEQUENCE_SEEDS:
         raise ValueError(f"Seed is not preregistered: {seed}")
+    if int(repeat) < 0:
+        raise ValueError(f"Repeat must be non-negative: {repeat}")
     if profile not in CALIBRATION_PROFILES:
         raise ValueError(f"Unknown calibration profile: {profile}")
 
@@ -241,7 +251,7 @@ def run_sequence_ablation_cell(
         benchmark_directory
         or (_REPOSITORY_ROOT / scenario["benchmark_directory"])
     )
-    filename = _result_filename(scenario_id, variant, seed)
+    filename = _result_filename(scenario_id, variant, seed, repeat)
     result_path = study_directory / "results" / filename
     if result_path.exists():
         raise FileExistsError(f"Result artifact already exists: {result_path}")
@@ -267,12 +277,13 @@ def run_sequence_ablation_cell(
         payload = dict(payload)
         payload.update({
             "schema": SEQUENCE_RESULT_SCHEMA,
-            "study_id": SEQUENCE_STUDY_ID,
+            "study_id": manifest.get("study_id", SEQUENCE_STUDY_ID),
             "parent_study_id": manifest["parent_study_id"],
             "scenario_id": scenario_id,
             "sequence_variant": variant,
             "sequence": list(SEQUENCE_VARIANTS[variant]),
             "seed": int(seed),
+            "repeat": int(repeat),
             "profile": profile,
             "source_lineage": {
                 "input_fingerprint": scenario["input_fingerprint"],
@@ -291,12 +302,13 @@ def run_sequence_ablation_cell(
     except Exception as error:
         payload = {
             "schema": SEQUENCE_RESULT_SCHEMA,
-            "study_id": SEQUENCE_STUDY_ID,
+            "study_id": manifest.get("study_id", SEQUENCE_STUDY_ID),
             "parent_study_id": manifest["parent_study_id"],
             "scenario_id": scenario_id,
             "sequence_variant": variant,
             "sequence": list(SEQUENCE_VARIANTS[variant]),
             "seed": int(seed),
+            "repeat": int(repeat),
             "profile": profile,
             "status": "source_or_runner_error",
             "error_type": type(error).__name__,
@@ -336,6 +348,10 @@ def run_sequence_ablation_cell(
         "status": payload.get("execution_status") or payload.get("status"),
         "final_substantive_value": payload.get("final_substantive_value"),
         "candidate_complete": payload.get("candidate_complete"),
+        "scenario_id": scenario_id,
+        "sequence_variant": variant,
+        "seed": int(seed),
+        "repeat": int(repeat),
     }
     _json_write_atomic(manifest_path, manifest)
     return payload
@@ -1781,6 +1797,7 @@ def write_sequence_ablation_summary(study_directory):
 def main(argv=None):  # pragma: no cover - offline experiment entrypoint
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--study-directory", type=Path, required=True)
+    parser.add_argument("--study-id", default=SEQUENCE_STUDY_ID)
     parser.add_argument("--initialize", action="store_true")
     parser.add_argument("--summarize", action="store_true")
     parser.add_argument(
@@ -1822,6 +1839,7 @@ def main(argv=None):  # pragma: no cover - offline experiment entrypoint
     parser.add_argument("--scenario", choices=SEQUENCE_SCENARIOS)
     parser.add_argument("--variant", choices=tuple(SEQUENCE_VARIANTS))
     parser.add_argument("--seed", type=int)
+    parser.add_argument("--repeat", type=int, default=0)
     args = parser.parse_args(argv)
     compare_args = (
         args.compare_parent,
@@ -1868,7 +1886,10 @@ def main(argv=None):  # pragma: no cover - offline experiment entrypoint
             args.compare_output,
         )
     elif args.initialize:
-        payload = initialize_sequence_ablation_study(args.study_directory)
+        payload = initialize_sequence_ablation_study(
+            args.study_directory,
+            study_id=args.study_id,
+        )
     elif args.summarize:
         payload = write_sequence_ablation_summary(args.study_directory)
     elif args.initialize_parity:
@@ -1893,6 +1914,7 @@ def main(argv=None):  # pragma: no cover - offline experiment entrypoint
             scenario_id=args.scenario,
             variant=args.variant,
             seed=args.seed,
+            repeat=args.repeat,
         )
     if (
         args.compare_parent is not None
@@ -1900,7 +1922,9 @@ def main(argv=None):  # pragma: no cover - offline experiment entrypoint
     ):
         print(json.dumps(payload, indent=2, sort_keys=True, default=str))
     else:
-        filename = _result_filename(args.scenario, args.variant, args.seed)
+        filename = _result_filename(
+            args.scenario, args.variant, args.seed, args.repeat
+        )
         print(json.dumps({
             "study_id": payload.get("study_id"),
             "scenario_id": payload.get("scenario_id"),

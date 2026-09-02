@@ -1800,3 +1800,140 @@ not be treated as a harness-caused effect. No seed-101/202 reruns, broad causal
 ablation, biased-adaptive matrix, v1 continuation, production-policy change,
 Objective Semantics change, canonical checkpoint mutation, migration, or Git
 commit was performed for this closeout.
+
+## Distributional fixed-cycle sequence-ablation study (2026-09-02)
+
+The cross-harness parity gate was followed by a new, external, diagnostic-only
+sequence study. This study is separate from the preliminary sequence-ablation
+artifacts above and does not mutate the canonical benchmark or any Django
+state.
+
+Study identity and lineage:
+
+- study ID: `v2_fixed_cycle_sequence_ablation_distributional_20260901`;
+- external study directory:
+  `C:\Users\desou\research_runs\fixed_cycle_sequence_ablation_distributional_20260901`;
+- input fingerprints:
+  `f56b5c0d5b745d919a57281a2f1e49959b4b23d8feb9486eda3c81afd8bb7906`
+  (`reference_target`) and
+  `93d4bdf208027d50e51842290d77b7f77c6a92af724a7bd99ce6b78519bc0ca5`
+  (`special_commitment_pressure_target`);
+- source-seed fingerprints:
+  `f5cfd15465bab1815ad21a3565236f1ff383e8ffff82a4c783ab62ff410c9fb1`
+  and
+  `1866d7dca8dddb65a93f7eb1eb6935a329098c49da17c7897edc4a027c72cd46`;
+- balanced Objective Semantics v2 profile fingerprint:
+  `d1eb7b0501db1b8fd6a2cf0598f4788a6864e4eb11ced45617f102f6f6b628da`;
+- 36 cells: six variants, two scenarios, and seeds 101, 202, and 303;
+- one CP-SAT worker per cell, 300 seconds per operator, 900 seconds
+  cumulative policy budget, 180 seconds independent candidate-validation
+  limit, 1,800 seconds parent hard wall, and no ordinary Stage 2 between
+  diagnostic attempts.
+
+The positive control was the parity-qualified sequence:
+
+```text
+targeted_r4_s2 -> targeted_utilization_r64_s8 -> r2
+```
+
+The ablations were `r4_s2_only`, `no_r2`, `no_utilization`,
+`reversed_role_order`, and `r4_utilization_r4`. Every one of the 36 cells
+returned `completed`. Every final candidate was complete, had zero unmet
+required requests, retained the scenario's special commitments, and every
+adopted transition passed unchanged full-model validation. No unvalidated
+incumbent was adopted. The result and summary hashes were independently
+verified; the canonical checkpoint remained unchanged.
+
+### Distributional results
+
+Final substantive values are listed by seed in seed order `101, 202, 303`.
+Lower is better. The gain column is the reduction from the common scenario
+seed baseline.
+
+| Scenario | Variant | Final values | Median | Median gain | Median cell seconds |
+| --- | --- | ---: | ---: | ---: | ---: |
+| `reference_target` | `full_fixed_cycle` | 42,654 / 42,654 / 42,654 | 42,654 | 96 | 971.39 |
+| `reference_target` | `r4_s2_only` | 42,588 / 42,606 / 42,606 | 42,606 | 144 | 969.92 |
+| `reference_target` | `no_r2` | 42,642 / 42,642 / 42,642 | 42,642 | 108 | 968.93 |
+| `reference_target` | `no_utilization` | 42,660 / 42,660 / 42,660 | 42,660 | 90 | 985.34 |
+| `reference_target` | `reversed_role_order` | 42,648 / 42,648 / 42,648 | 42,648 | 102 | 970.23 |
+| `reference_target` | `r4_utilization_r4` | 42,630 / 42,630 / 42,630 | 42,630 | 120 | 969.41 |
+| `special_commitment_pressure_target` | `full_fixed_cycle` | 43,458 / 43,458 / 43,464 | 43,458 | 168 | 959.17 |
+| `special_commitment_pressure_target` | `r4_s2_only` | 43,320 / 43,320 / 43,320 | 43,320 | 306 | 963.23 |
+| `special_commitment_pressure_target` | `no_r2` | 43,404 / 43,404 / 43,404 | 43,404 | 222 | 961.35 |
+| `special_commitment_pressure_target` | `no_utilization` | 43,470 / 43,470 / 43,470 | 43,470 | 156 | 969.42 |
+| `special_commitment_pressure_target` | `reversed_role_order` | 43,452 / 43,452 / 43,518 | 43,452 | 174 | 958.74 |
+| `special_commitment_pressure_target` | `r4_utilization_r4` | 43,374 / 43,374 / 43,374 | 43,374 | 252 | 962.52 |
+
+The matched control deltas below are `control value - variant value`; positive
+means that the variant produced a lower substantive value than the control.
+Each row has three paired observations, one for each seed.
+
+| Scenario | Variant | Paired deltas vs control | Median advantage | Better / equal / worse |
+| --- | --- | ---: | ---: | ---: |
+| `reference_target` | `r4_s2_only` | +66 / +48 / +48 | +48 | 3 / 0 / 0 |
+| `reference_target` | `no_r2` | +12 / +12 / +12 | +12 | 3 / 0 / 0 |
+| `reference_target` | `no_utilization` | -6 / -6 / -6 | -6 | 0 / 0 / 3 |
+| `reference_target` | `reversed_role_order` | +6 / +6 / +6 | +6 | 3 / 0 / 0 |
+| `reference_target` | `r4_utilization_r4` | +24 / +24 / +24 | +24 | 3 / 0 / 0 |
+| `special_commitment_pressure_target` | `r4_s2_only` | +138 / +138 / +144 | +138 | 3 / 0 / 0 |
+| `special_commitment_pressure_target` | `no_r2` | +54 / +54 / +60 | +54 | 3 / 0 / 0 |
+| `special_commitment_pressure_target` | `no_utilization` | -12 / -12 / -6 | -12 | 0 / 0 / 3 |
+| `special_commitment_pressure_target` | `reversed_role_order` | +6 / +6 / -54 | +6 | 2 / 0 / 1 |
+| `special_commitment_pressure_target` | `r4_utilization_r4` | +84 / +84 / +90 | +84 | 3 / 0 / 0 |
+
+The strongest repeated sequence was `r4_s2_only`. It beat the positive control
+in all six paired observations, with median advantages of 48 points on the
+reference scenario and 138 points under special-commitment pressure. It also
+had the lowest median endpoint in both scenarios. `no_r2` and
+`r4_utilization_r4` also showed consistent but smaller advantages over the
+control. Removing utilization was consistently non-improving. Reversing the
+role order was only directionally promising: it improved five of six paired
+observations, but lost by 54 points in one special-pressure seed, so it remains
+transition-variance limited rather than a stable ranking.
+
+The direct sequence effects were not explained by completeness or validation
+failures. All variants preserved the same assignment counts, zero unmet
+requests, and special-commitment counts. Peak process-tree working-set memory
+was approximately 0.899--1.028 GB across all cells. Median cell times were
+roughly 959--985 seconds, with no meaningful runtime winner established from
+these sequential one-cell trials. Median CP-SAT and validation totals were,
+respectively, 498.58/162.36 seconds for the control, 329.36/212.47 for
+`r4_s2_only`, 341.67/213.84 for `no_r2`, 576.39/73.41 for `no_utilization`,
+481.73/148.85 for `reversed_role_order`, and 334.66/209.19 for
+`r4_utilization_r4` when the two scenarios are combined descriptively.
+
+### v1 operator classification and closeout
+
+- `full_fixed_cycle`: **retained research control**;
+- `r4_s2_only`: **causally supported improvement** under the tested matched
+  scenarios, with the strongest and most consistent result;
+- `no_r2`: **causally supported improvement**, but smaller than `r4_s2_only`;
+- `no_utilization`: **non-improving under tested scenarios**;
+- `reversed_role_order`: **directionally promising but transition-variance
+  limited**;
+- `r4_utilization_r4`: **causally supported improvement**, although its
+  endpoints were consistently dominated by `r4_s2_only` in this matrix.
+
+This closes the current v1 fixed-cycle sequence characterization. The evidence
+supports retaining `full_fixed_cycle` as the control and retaining the
+sequence operators as research inputs for future adaptive-policy work, with
+`r4_s2_only` the strongest candidate for follow-up. It does not promote any
+sequence to production and does not justify another open-ended v1 endpoint
+descent. The conclusions are distributional, not deterministic guarantees:
+the seed-303 special-pressure reversal result demonstrates that identical
+configuration does not eliminate CP-SAT transition variance.
+
+The next research order remains intentionally separate from this v1 closeout:
+
+1. design principled Objective Semantics v2 normalization;
+2. introduce one canonical counselor importance score from 0 through 10;
+3. create and validate an Objective Semantics v2 baseline;
+4. revalidate only the retained search operators under that new objective;
+5. investigate student-targeted repair and adaptive operator allocation;
+6. investigate grade-bounded global escape only after targeted/local evidence;
+7. run any production-policy promotion study only after those prerequisites.
+
+No objective definition, hard constraint, production policy wiring, approval
+behavior, canonical checkpoint, migration, or Django scheduling state changed
+as part of this study.
