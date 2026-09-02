@@ -1488,12 +1488,13 @@ The active v2 research roadmap is now explicitly staged as follows:
 5. Pursue broader research only if the matched study remains scenario-
    dependent or inconclusive.
 
-Objective Semantics v2 is implemented and remains frozen during this gate.
-Normalization, a canonical 0--10 counselor-importance policy, adaptive
-operator allocation, student-targeted repair, grade-bounded global escape,
-and full-school unrestricted escalation are later research topics, not
-implemented behavior here. No current v2 objective, hard constraint, solver
-authority, or production policy has changed.
+At the time of this historical gate, Objective Semantics v2 was already
+implemented and remained frozen during the study. The then-later research
+topics were adaptive operator allocation, student-targeted repair,
+grade-bounded global escape, and full-school unrestricted escalation. This
+historical note does not mean that v2 normalization or the canonical 0--10
+counselor-importance representation is unimplemented today. No v2 objective,
+hard constraint, solver authority, or production policy changed in that gate.
 
 #### Progressive parallel policy study (Objective Semantics v2, 2026-09-01)
 
@@ -1801,7 +1802,7 @@ ablation, biased-adaptive matrix, v1 continuation, production-policy change,
 Objective Semantics change, canonical checkpoint mutation, migration, or Git
 commit was performed for this closeout.
 
-## Distributional fixed-cycle sequence-ablation study (2026-09-02)
+## Distributional fixed-cycle sequence-ablation study (Objective Semantics v2; search-study v1, 2026-09-02)
 
 The cross-harness parity gate was followed by a new, external, diagnostic-only
 sequence study. This study is separate from the preliminary sequence-ablation
@@ -1915,7 +1916,8 @@ respectively, 498.58/162.36 seconds for the control, 329.36/212.47 for
 - `r4_utilization_r4`: **causally supported improvement**, although its
   endpoints were consistently dominated by `r4_s2_only` in this matrix.
 
-This closes the current v1 fixed-cycle sequence characterization. The evidence
+This closes the current search-mechanics v1 characterization under the already
+implemented Objective Semantics v2 contract. The evidence
 supports retaining `full_fixed_cycle` as the control and retaining the
 sequence operators as research inputs for future adaptive-policy work, with
 `r4_s2_only` the strongest candidate for follow-up. It does not promote any
@@ -1924,15 +1926,14 @@ descent. The conclusions are distributional, not deterministic guarantees:
 the seed-303 special-pressure reversal result demonstrates that identical
 configuration does not eliminate CP-SAT transition variance.
 
-The next research order remains intentionally separate from this v1 closeout:
+The next research order remains intentionally separate from this search-study
+v1 closeout and stays within the already implemented v2 objective contract:
 
-1. design principled Objective Semantics v2 normalization;
-2. introduce one canonical counselor importance score from 0 through 10;
-3. create and validate an Objective Semantics v2 baseline;
-4. revalidate only the retained search operators under that new objective;
-5. investigate student-targeted repair and adaptive operator allocation;
-6. investigate grade-bounded global escape only after targeted/local evidence;
-7. run any production-policy promotion study only after those prerequisites.
+1. revalidate the retained search operators and controls under the frozen v2
+   contract where additional evidence is needed;
+2. investigate student-targeted repair and adaptive operator allocation;
+3. investigate grade-bounded global escape only after targeted/local evidence;
+4. run any production-policy promotion study only after those diagnostics.
 
 No objective definition, hard constraint, production policy wiring, approval
 behavior, canonical checkpoint, migration, or Django scheduling state changed
