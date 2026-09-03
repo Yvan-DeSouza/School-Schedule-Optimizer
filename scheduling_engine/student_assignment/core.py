@@ -3941,11 +3941,24 @@ def _solve_student_assignment(
         stage_2_local_bootstrap
         and stage_2_local_bootstrap.get("operator_session")
     )
+    independent_candidate_validation_budget = bool(
+        operator_session_budget
+        and stage_2_local_bootstrap.get(
+            "candidate_validation_time_limit_seconds"
+        ) is not None
+    )
     stage_2_deadline = (
         MonotonicDeadline(
             max(0.0, float(stage_2_budget_seconds)),
             started_at=(
-                engine_operation_started
+                # In the diagnostic independent-validation mode this deadline
+                # is the CP-SAT/search allowance.  Static model construction
+                # happens before this point and candidate validation receives a
+                # separate deadline below.  Keep the historical engine-start
+                # accounting when the option is not enabled.
+                monotonic()
+                if independent_candidate_validation_budget
+                else engine_operation_started
                 if operator_session_budget
                 else monotonic()
             ),
@@ -4410,9 +4423,21 @@ def _solve_student_assignment(
                     if separate_validation_budget:
                         # Re-read the shared budget after preparation so the
                         # CP-SAT allowance cannot consume time already spent
-                        # selecting targets or preparing the attempt.
+                        # selecting targets or preparing the attempt. The
+                        # independent-validation mode starts its stage-2 clock
+                        # after static model construction, so this is the
+                        # configured CP-SAT allowance, subject to the parent
+                        # wall.
+                        parent_remaining = _remaining_parent_wall_seconds()
                         probe_limit = max(
-                            0.001, min(per_probe_limit, _remaining_stage2_budget())
+                            0.001,
+                            min(
+                                per_probe_limit,
+                                _remaining_stage2_budget(),
+                                parent_remaining
+                                if parent_remaining is not None
+                                else per_probe_limit,
+                            ),
                         )
                     probe_selected_student_ids = (
                         selected_student_ids if operator_session else ()
@@ -4472,15 +4497,19 @@ def _solve_student_assignment(
                             iteration=iteration_count + 1,
                         )
                         if separate_validation_budget:
+                            configured_validation_limit = float(
+                                local_config[
+                                    "candidate_validation_time_limit_seconds"
+                                ]
+                            )
+                            parent_remaining = _remaining_parent_wall_seconds()
                             validation_limit = max(
                                 0.001,
                                 min(
-                                    float(
-                                        local_config[
-                                            "candidate_validation_time_limit_seconds"
-                                        ]
-                                    ),
-                                    validation_budget_start_remaining,
+                                    configured_validation_limit,
+                                    parent_remaining
+                                    if parent_remaining is not None
+                                    else configured_validation_limit,
                                 ),
                             )
                             validation_deadline = MonotonicDeadline.start(
@@ -4573,6 +4602,32 @@ def _solve_student_assignment(
                             if validation_deadline is not None
                             else None
                         ),
+                        "validation_effective_time_limit_seconds": validation_limit,
+                        "validation_truncation_reason": (
+                            "parent_wall_remaining"
+                            if (
+                                separate_validation_budget
+                                and validation_limit is not None
+                                and validation_limit
+                                < float(
+                                    local_config[
+                                        "candidate_validation_time_limit_seconds"
+                                    ]
+                                )
+                            )
+                            else None
+                        ),
+                        "validation_budget_scope": (
+                            "parent_wall"
+                            if separate_validation_budget
+                            and local_config.get(
+                                "diagnostic_parent_hard_wall_deadline_monotonic"
+                            )
+                            is not None
+                            else "independent_operation"
+                            if separate_validation_budget
+                            else "shared_stage2_deadline"
+                        ),
                         "remaining_stage2_budget_at_validation_start": (
                             validation_budget_start_remaining
                         ),
@@ -4657,6 +4712,19 @@ def _solve_student_assignment(
                             )
                             if local_result.candidate_source_decisions
                             else None
+                        ),
+                        # Keep the semantic candidate available to the outer
+                        # diagnostic allocator when validation is inconclusive.
+                        # This is an in-process handoff only; it is never used
+                        # as an incumbent until the authoritative validator
+                        # accepts the same source decisions.
+                        "candidate_source_decisions": (
+                            tuple(local_result.candidate_source_decisions)
+                            if (
+                                local_result.candidate_source_decisions
+                                and not candidate_validated
+                            )
+                            else ()
                         ),
                         "component_values": dict(local_result.candidate_component_values),
                         "component_deltas": dict(local_result.component_deltas),

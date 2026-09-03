@@ -207,15 +207,21 @@ scope for every attempt. These IDs restrict diagnostic search only; they never
 authorize an assignment and an empty/invalid target scope stops the session
 with an explicit diagnostic stop reason.
 
-The session has one monotonic wall-clock deadline. It covers model setup,
-incumbent validation, probe model cloning, CP-SAT, candidate extraction,
-full-model validation, and final session facts. `UNKNOWN` remains unresolved
-and is distinct from proven `INFEASIBLE`; a complete validated incumbent is
-retained in either case. The record reports configured budget, attempt count,
-CP-SAT and validation time, total elapsed time, external overrun, target
-history, adopted gains, resource facts, and the stop reason. A native solver
-call can exceed its requested slice before returning, so external overrun is
-reported rather than hidden.
+The session has one monotonic policy wall-clock deadline. When an independent
+candidate-validation allowance is configured, the selected operator receives
+its search/model-preparation allowance first and candidate validation starts a
+fresh bounded deadline afterward. That validation deadline is still capped by
+the supervising parent wall. Without the opt-in allowance, the historical
+shared Stage 2 deadline remains in effect. The record reports the requested
+and effective search/validation limits, validation budget scope, elapsed
+search and validation time, parent-wall truncation, and any retry facts.
+`UNKNOWN` remains unresolved and is distinct from proven `INFEASIBLE`; a
+complete validated incumbent is retained in either case. A complete candidate
+whose validation is inconclusive is retained only as ephemeral pending
+evidence and may be retried through the same full source-decision validation
+boundary. It can never become the next search incumbent until validation
+accepts it. A native solver call can exceed its requested slice before
+returning, so external overrun is reported rather than hidden.
 
 The adaptive allocator remains an offline policy diagnostic. Its session
 request shape describes an operator family, allocated chunk, attempt cap,
@@ -224,6 +230,12 @@ selected grade. The allocator does not execute as ordinary scheduling
 behavior. Static R2, specialized, utilization, fixed-cycle, stateless-role,
 and adaptive comparisons are research controls; this interface does not imply
 production promotion.
+
+When the outer adaptive selector supplies explicit student IDs, the runtime
+passes those IDs to the operator session as fixed targeting. Dynamic target
+selection remains available for sessions that intentionally own target
+selection internally. This keeps predicted-versus-executed scope evidence
+meaningful without changing hard constraints or candidate authority.
 
 Two solver-free controls are available for calibration. The stateless-role
 selector uses the same current-state role signals with an empty operator

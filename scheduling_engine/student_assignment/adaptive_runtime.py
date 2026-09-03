@@ -27,6 +27,7 @@ from .adaptive_search import (
 )
 from .core import (
     run_student_assignment_operator_session_diagnostic,
+    run_student_assignment_source_decision_validation_diagnostic,
 )
 from .runtime import semantic_student_assignment_input_fingerprint
 from .search_experiments import source_decision_fingerprint
@@ -147,6 +148,36 @@ def _weighted_substantive_value(result):
     )
 
 
+def _effective_operator_spec(spec, session_overrides=None):
+    """Apply diagnostic session limits before policy costing or execution."""
+
+    override = dict((session_overrides or {}).get(spec.name, {}))
+    return replace(
+        spec,
+        session_time_limit_seconds=float(
+            override.get("session_time_limit_seconds", spec.session_time_limit_seconds)
+        ),
+        session_max_attempts=int(
+            override.get("session_max_attempts", spec.session_max_attempts)
+        ),
+        per_attempt_cp_sat_limit_seconds=float(
+            override.get(
+                "per_attempt_cp_sat_limit_seconds",
+                spec.per_attempt_cp_sat_limit_seconds,
+            )
+        ),
+    )
+
+
+def _selector_portfolio_with_effective_limits(portfolio, session_overrides=None):
+    """Give adaptive selection the same limits the runtime will execute."""
+
+    return tuple(
+        _effective_operator_spec(spec, session_overrides)
+        for spec in tuple(portfolio)
+    )
+
+
 def _weighted_quality_value(quality, result):
     """Use the supplied DTO profile when valuing an incumbent.
 
@@ -178,6 +209,68 @@ def _source_decisions_from_result(result):
         .get("stage_2", {})
         .get("final_source_decisions", ())
     )
+
+
+def _candidate_source_decisions_from_local(local):
+    """Recover a non-authoritative probe candidate for validation retry."""
+
+    for iteration in reversed(tuple(local.get("iterations", ()) or ())):
+        candidate = tuple(iteration.get("candidate_source_decisions") or ())
+        if candidate:
+            return candidate
+    return ()
+
+
+def _retry_candidate_validation(
+    data,
+    *,
+    candidate_source_decisions,
+    time_limit_seconds,
+    worker_count,
+    random_seed=None,
+):
+    """Retry only an inconclusive validation, never candidate generation.
+
+    The returned result is usable as an incumbent only when the existing full
+    source-decision validation boundary reports a complete matching solution.
+    """
+
+    started = monotonic()
+    result = run_student_assignment_source_decision_validation_diagnostic(
+        data,
+        source_decisions=tuple(candidate_source_decisions),
+        time_limit_seconds=float(time_limit_seconds),
+        worker_count=int(worker_count),
+        capture_final_source_decisions=True,
+        collect_resource_telemetry=False,
+    )
+    stage_2 = dict((result.optimization_facts or {}).get("stage_2") or {})
+    validated_source = tuple(stage_2.get("final_source_decisions") or ())
+    validated = bool(
+        result.status == "complete"
+        and not result.unmet_requests
+        and stage_2.get("alternate_seed_validated")
+        and validated_source == tuple(candidate_source_decisions)
+    )
+    return {
+        "result": result,
+        "validated": validated,
+        "classification": "validated" if validated else (
+            "validation_unknown"
+            if str(result.solver_outcome).lower() == "unknown"
+            else "validation_error"
+        ),
+        "solver_outcome": result.solver_outcome,
+        "elapsed_seconds": monotonic() - started,
+        "source_decision_identity_matches": (
+            validated_source == tuple(candidate_source_decisions)
+            if validated_source
+            else False
+        ),
+        "source_decision_count": len(validated_source),
+        "requested_time_limit_seconds": float(time_limit_seconds),
+        "cp_sat_random_seed": random_seed,
+    }
 
 
 def _compact_inner_probe_summary(
@@ -231,6 +324,15 @@ def _compact_inner_probe_summary(
         "elapsed_seconds": iteration.get("elapsed_seconds"),
         "solver_wall_time_seconds": iteration.get("solver_wall_time_seconds"),
         "validation_elapsed_seconds": iteration.get("validation_elapsed_seconds"),
+        "validation_requested_time_limit_seconds": iteration.get(
+            "validation_requested_time_limit_seconds"
+        ),
+        "validation_effective_time_limit_seconds": iteration.get(
+            "validation_effective_time_limit_seconds"
+        ),
+        "validation_truncation_reason": iteration.get(
+            "validation_truncation_reason"
+        ),
         "branches": iteration.get("branches"),
         "conflicts": iteration.get("conflicts"),
         "best_bound": iteration.get("best_bound"),
@@ -257,28 +359,20 @@ def _operator_result(data, spec, *, selected_student_ids, current_source_decisio
                     candidate_validation_time_limit_seconds=None,
                     cp_sat_random_seed=None,
                     cp_sat_max_deterministic_time_seconds=None,
+                    diagnostic_parent_hard_wall_deadline_monotonic=None,
                     phase_callback=None):
     # Every policy family uses the same reusable continuous-session boundary.
     # The policy spec describes the session granularity; the outer caller still
     # caps it by the remaining shared deadline.  This keeps multi-attempt
     # execution and validation semantics identical across adaptive and static
     # controls.
-    override = dict((session_overrides or {}).get(spec.name, {}))
-    effective_spec = replace(
-        spec,
-        session_time_limit_seconds=float(
-            override.get("session_time_limit_seconds", spec.session_time_limit_seconds)
-        ),
-        session_max_attempts=int(
-            override.get("session_max_attempts", spec.session_max_attempts)
-        ),
-        per_attempt_cp_sat_limit_seconds=float(
-            override.get(
-                "per_attempt_cp_sat_limit_seconds",
-                spec.per_attempt_cp_sat_limit_seconds,
-            )
-        ),
-    )
+    effective_spec = _effective_operator_spec(spec, session_overrides)
+    # The outer adaptive selector is authoritative for the diagnostic target
+    # scope.  Dynamic target selection remains available to callers that do
+    # not provide an explicit scope, but must not silently replace a scope
+    # that was already selected and recorded by the policy.
+    if selected_student_ids and effective_spec.target_policy == "dynamic":
+        effective_spec = replace(effective_spec, target_policy="fixed")
     request = build_operator_session_request(
         effective_spec,
         remaining_seconds=time_limit_seconds,
@@ -316,6 +410,9 @@ def _operator_result(data, spec, *, selected_student_ids, current_source_decisio
         cp_sat_random_seed=cp_sat_random_seed,
         cp_sat_max_deterministic_time_seconds=(
             cp_sat_max_deterministic_time_seconds
+        ),
+        diagnostic_parent_hard_wall_deadline_monotonic=(
+            diagnostic_parent_hard_wall_deadline_monotonic
         ),
         collect_resource_telemetry=collect_resource_telemetry,
         capture_final_source_decisions=True,
@@ -474,10 +571,14 @@ def run_adaptive_local_search_diagnostic(
             "started",
             iteration=len(history) + 1,
         )
+        selection_portfolio = _selector_portfolio_with_effective_limits(
+            portfolio,
+            session_overrides,
+        )
         if selection_policy == "adaptive":
             decision = choose_adaptive_operator(
                 state,
-                portfolio=portfolio,
+                portfolio=selection_portfolio,
                 ranked_students=ranked,
                 adaptive_policy_variant=adaptive_policy_variant,
             )
@@ -515,27 +616,12 @@ def run_adaptive_local_search_diagnostic(
         )
         selected = tuple(decision.selected_student_ids)
         operation_limit = min(per_operator, remaining)
-        effective_spec = replace(
+        effective_spec = _effective_operator_spec(
             decision.operator,
-            session_time_limit_seconds=float(
-                dict((session_overrides or {}).get(decision.operator.name, {})).get(
-                    "session_time_limit_seconds",
-                    decision.operator.session_time_limit_seconds,
-                )
-            ),
-            session_max_attempts=int(
-                dict((session_overrides or {}).get(decision.operator.name, {})).get(
-                    "session_max_attempts",
-                    decision.operator.session_max_attempts,
-                )
-            ),
-            per_attempt_cp_sat_limit_seconds=float(
-                dict((session_overrides or {}).get(decision.operator.name, {})).get(
-                    "per_attempt_cp_sat_limit_seconds",
-                    decision.operator.per_attempt_cp_sat_limit_seconds,
-                )
-            ),
+            session_overrides,
         )
+        if selected and effective_spec.target_policy == "dynamic":
+            effective_spec = replace(effective_spec, target_policy="fixed")
         decision_payload["session_request"] = build_operator_session_request(
             effective_spec,
             remaining_seconds=operation_limit,
@@ -609,12 +695,15 @@ def run_adaptive_local_search_diagnostic(
                 candidate_validation_time_limit_seconds=(
                     candidate_validation_time_limit_seconds
                 ),
-                cp_sat_random_seed=cp_sat_random_seed,
-                cp_sat_max_deterministic_time_seconds=(
-                    cp_sat_max_deterministic_time_seconds
-                ),
-                phase_callback=phase_callback,
-            )
+                    cp_sat_random_seed=cp_sat_random_seed,
+                    cp_sat_max_deterministic_time_seconds=(
+                        cp_sat_max_deterministic_time_seconds
+                    ),
+                    diagnostic_parent_hard_wall_deadline_monotonic=(
+                        started + configured_budget
+                    ),
+                    phase_callback=phase_callback,
+                )
         except ValueError as exc:
             # An operator may be given too little of the shared budget to
             # validate its supplied incumbent. Treat that as a recorded
@@ -651,11 +740,84 @@ def run_adaptive_local_search_diagnostic(
                 "validation_error": validation_error,
                 "stopping_reason": "candidate_validation_error",
             })
-        candidate_source = _source_decisions_from_result(result)
-        candidate_quality = _quality_report(data, result)
-        candidate_value = _weighted_quality_value(candidate_quality, result)
         candidate_found = bool(local.get("candidate_found", False))
         candidate_validated = bool(local.get("candidate_validated", False))
+        probe_iterations = tuple(local.get("iterations", ()) or ())
+        probe_candidate_source = _candidate_source_decisions_from_local(local)
+        candidate_source = (
+            probe_candidate_source
+            if candidate_found and probe_candidate_source
+            else _source_decisions_from_result(result)
+        )
+        probe_candidate_value = next(
+            (
+                item.get("candidate_value")
+                for item in reversed(probe_iterations)
+                if item.get("candidate_value") is not None
+            ),
+            None,
+        )
+        validation_retry = None
+        retry_remaining_seconds = max(
+            0.0, configured_budget - (monotonic() - started)
+        )
+        if (
+            candidate_found
+            and not candidate_validated
+            and candidate_source
+            and local.get("validation_classification") == "validation_unknown"
+            and candidate_validation_time_limit_seconds is not None
+            and float(candidate_validation_time_limit_seconds) > 0
+            and retry_remaining_seconds > 0.001
+        ):
+            # A complete candidate that ran out of validation time is retained
+            # as pending evidence only.  Retry the existing authoritative
+            # source-decision validation boundary; never use this candidate as
+            # an incumbent until that retry accepts the same source decisions.
+            validation_retry_limit = min(
+                float(candidate_validation_time_limit_seconds),
+                retry_remaining_seconds,
+            )
+            validation_retry = _retry_candidate_validation(
+                data,
+                candidate_source_decisions=candidate_source,
+                time_limit_seconds=validation_retry_limit,
+                worker_count=(
+                    hard_feasibility_validation_worker_count
+                    if hard_feasibility_validation_worker_count is not None
+                    else 1
+                ),
+                random_seed=cp_sat_random_seed,
+            )
+            local["validation_retry"] = {
+                key: value
+                for key, value in validation_retry.items()
+                if key != "result"
+            }
+            local["validation_elapsed_seconds"] = float(
+                local.get("validation_elapsed_seconds", 0.0) or 0.0
+            ) + float(validation_retry["elapsed_seconds"])
+            local["validation_classification"] = validation_retry[
+                "classification"
+            ]
+            local["validation_solver_outcome"] = validation_retry[
+                "solver_outcome"
+            ]
+            local["validation_error"] = None
+            candidate_validated = bool(validation_retry["validated"])
+            if candidate_validated:
+                result = validation_retry["result"]
+        candidate_quality = _quality_report(data, result)
+        candidate_value = (
+            float(probe_candidate_value)
+            if candidate_found and probe_candidate_value is not None
+            else _weighted_quality_value(candidate_quality, result)
+        )
+        candidate_discovery_gain = (
+            max(0.0, current_value - candidate_value)
+            if candidate_found and candidate_value is not None
+            else 0.0
+        )
         hard_complete = result.status == "complete" and not result.unmet_requests
         adopted = bool(
             hard_complete
@@ -836,6 +998,9 @@ def run_adaptive_local_search_diagnostic(
                     else None
                 ),
                 operator_family=operator_family(decision.operator),
+                candidate_discovery_gain=candidate_discovery_gain,
+                search_unknown=(status == "unknown"),
+                validation_retry_count=(1 if validation_retry is not None else 0),
             )
         )
         if monotonic() - started >= configured_budget:

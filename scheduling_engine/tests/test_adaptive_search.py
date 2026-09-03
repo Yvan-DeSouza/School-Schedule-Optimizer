@@ -3,6 +3,8 @@ from types import SimpleNamespace
 
 import pytest
 
+import scheduling_engine.student_assignment.adaptive_runtime as adaptive_runtime
+
 from scheduling_engine.realistic_student_assignment_validation import (
     build_realistic_quality_tradeoff_fixture,
     build_production_shaped_medium_fixture,
@@ -405,6 +407,7 @@ def test_operator_session_can_bound_candidate_validation_independently():
     assert facts["candidate_validation_time_limit_seconds"] == pytest.approx(1)
     assert iteration["search_time_limit_seconds"] == pytest.approx(1)
     assert iteration["candidate_validation_time_limit_seconds"] == pytest.approx(1)
+    assert iteration["validation_budget_scope"] == "independent_operation"
     assert iteration["remaining_stage2_budget_at_validation_start"] is not None
     assert iteration["validation_requested_time_limit_seconds"] <= 1
     assert iteration["candidate_validated"] is True
@@ -1235,6 +1238,87 @@ def test_runner_executes_fixed_cycle_control_through_shared_operator_boundary(mo
     assert result.record.decisions[0]["selection_policy"] == "fixed_cycle"
     assert result.result is candidate
     assert result.record.attempts[0]["adopted"] is True
+
+
+def test_validation_unknown_candidate_is_retried_without_becoming_interim_incumbent(
+    monkeypatch,
+):
+    data = replace(
+        build_realistic_quality_tradeoff_fixture(),
+        objective_semantics_version="v2",
+    )
+    quality = {"objective_semantics": {"components": {}}}
+    initial = SimpleNamespace(
+        status="complete",
+        solver_outcome="optimal",
+        unmet_requests=(),
+        assignments=(1,),
+        commitment_assignments=(),
+        objective_components={"weighted_normalized_contributions": {"x": 100}},
+        optimization_facts={
+            "stage_2": {
+                "final_source_decisions": (("a", 1),),
+            }
+        },
+    )
+    candidate = SimpleNamespace(
+        status="complete",
+        solver_outcome="feasible",
+        unmet_requests=(),
+        assignments=(1, 2),
+        commitment_assignments=(),
+        objective_components={"weighted_normalized_contributions": {"x": 90}},
+        optimization_facts={
+            "stage_2_local_bootstrap": {
+                "status": "feasible",
+                "candidate_found": True,
+                "candidate_validated": False,
+                "validation_classification": "validation_unknown",
+                "iterations": ({
+                    "candidate_source_decisions": (("a", 2),),
+                    "candidate_value": 90,
+                },),
+            },
+            "stage_2": {
+                "final_source_decisions": (("a", 2),),
+            },
+        },
+    )
+    retry = {}
+
+    def fake_retry(*args, **kwargs):
+        retry.update(kwargs)
+        return {
+            "result": candidate,
+            "validated": True,
+            "classification": "validated",
+            "solver_outcome": "feasible",
+            "elapsed_seconds": 0.01,
+            "source_decision_identity_matches": True,
+            "source_decision_count": 1,
+            "requested_time_limit_seconds": kwargs["time_limit_seconds"],
+            "cp_sat_random_seed": None,
+        }
+
+    monkeypatch.setattr(adaptive_runtime, "_quality_report", lambda *_args: quality)
+    monkeypatch.setattr(adaptive_runtime, "_operator_result", lambda *_args, **_kwargs: candidate)
+    monkeypatch.setattr(adaptive_runtime, "_retry_candidate_validation", fake_retry)
+
+    result = run_adaptive_local_search_diagnostic(
+        data,
+        initial_result=initial,
+        total_time_limit_seconds=1,
+        per_operator_time_limit_seconds=0.1,
+        candidate_validation_time_limit_seconds=0.8,
+        max_iterations=1,
+        portfolio=(AdaptiveOperatorSpec("r2", 2, None, False, 0, "local_descent"),),
+    )
+
+    assert retry["candidate_source_decisions"] == (("a", 2),)
+    assert retry["time_limit_seconds"] <= 0.8
+    assert result.result is candidate
+    assert result.record.attempts[0]["candidate_validated"] is True
+    assert result.record.attempts[0]["validation_retry_count"] == 1
 
 
 def test_runner_records_validation_error_and_retains_incumbent(monkeypatch):

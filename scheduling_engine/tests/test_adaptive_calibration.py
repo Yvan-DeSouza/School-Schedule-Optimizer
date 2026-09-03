@@ -518,7 +518,9 @@ def test_operator_result_forwards_specified_continuous_session(monkeypatch):
     assert calls[0]["max_attempts"] == 4
     assert calls[0]["per_attempt_time_limit_seconds"] == 15
     assert calls[0]["worker_count"] == 8
-    assert calls[0]["target_policy"] == "dynamic"
+    # An outer selector-owned scope is forwarded as fixed targeting so the
+    # operator cannot silently replace the students that were scored.
+    assert calls[0]["target_policy"] == "fixed"
     assert calls[0]["selected_student_ids"] == (7, 8)
 
 

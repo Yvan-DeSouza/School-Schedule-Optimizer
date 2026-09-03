@@ -108,6 +108,43 @@ def test_parallel_cell_forwards_one_cp_sat_worker_and_shared_seed(monkeypatch):
     assert payload["policy_fingerprint"] == "fingerprint-adaptive_student_pressure_biased"
 
 
+def test_parallel_cell_forwards_prepared_source_context_without_revalidating(
+    monkeypatch,
+):
+    manifest = _manifest(
+        policies=("adaptive_balanced",),
+        seeds=(101,),
+    )
+    context = {
+        "branch_input": "prepared-branch.json.gz",
+        "context_fingerprint": "prepared-context",
+        "preparation": {"total_seconds": 12.0},
+    }
+    captured = {}
+
+    def fake_trial(**kwargs):
+        captured.update(kwargs)
+        return {
+            "execution_status": "completed",
+            "candidate_complete": True,
+            "final_substantive_value": 12,
+        }
+
+    monkeypatch.setattr(policy_study, "run_supervised_calibration_trial", fake_trial)
+    payload = policy_study.execute_parallel_policy_cell(
+        manifest=manifest,
+        scenario_id="reference_target",
+        policy="adaptive_balanced",
+        seed=101,
+        prepared_source_context=context,
+    )
+
+    assert captured["prepared_source_context"] is context
+    assert captured["branch_input"] == "prepared-branch.json.gz"
+    assert payload["prepared_source_context_fingerprint"] == "prepared-context"
+    assert payload["source_preparation"]["total_seconds"] == 12.0
+
+
 def test_parallel_concurrency_qualification_requires_measured_headroom():
     payload = {
         "execution_status": "completed",
@@ -248,6 +285,7 @@ def test_parallel_study_expands_only_after_a_qualified_batch(monkeypatch, tmp_pa
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     requested = []
     qualification_flags = []
+    prepared_scenarios = []
 
     def fake_batch(**kwargs):
         requested.append(kwargs["max_parallel_trials"])
@@ -276,6 +314,16 @@ def test_parallel_study_expands_only_after_a_qualified_batch(monkeypatch, tmp_pa
     monkeypatch.setattr(policy_study, "run_parallel_policy_batch", fake_batch)
     monkeypatch.setattr(
         policy_study,
+        "prepare_supervised_calibration_source",
+        lambda **kwargs: prepared_scenarios.append(kwargs["benchmark_directory"])
+        or {
+            "preparation": {},
+            "input_fingerprint": "input",
+            "source_fingerprint": "seed",
+        },
+    )
+    monkeypatch.setattr(
+        policy_study,
         "_persist_parallel_policy_result",
         lambda _directory, value, payload: value["results"].update({
             policy_study._result_filename(
@@ -290,6 +338,7 @@ def test_parallel_study_expands_only_after_a_qualified_batch(monkeypatch, tmp_pa
     )
 
     assert requested == [2, 3]
+    assert len(prepared_scenarios) == 1
     assert qualification_flags == [True, True]
     assert result["concurrency_history"] == [
         {"completed_parallel_trials": 2, "qualified_for_next_slot": True, "reasons": []},
@@ -338,6 +387,15 @@ def test_parallel_study_returns_to_last_qualified_level_after_failed_expansion(
     monkeypatch.setattr(policy_study, "run_parallel_policy_batch", fake_batch)
     monkeypatch.setattr(
         policy_study,
+        "prepare_supervised_calibration_source",
+        lambda **_kwargs: {
+            "preparation": {},
+            "input_fingerprint": "input",
+            "source_fingerprint": "seed",
+        },
+    )
+    monkeypatch.setattr(
+        policy_study,
         "_persist_parallel_policy_result",
         lambda _directory, value, payload: value["results"].update({
             policy_study._result_filename(
@@ -357,3 +415,32 @@ def test_parallel_study_returns_to_last_qualified_level_after_failed_expansion(
         {"completed_parallel_trials": 4, "qualified_for_next_slot": False, "reasons": ["test_stop"]},
         {"completed_parallel_trials": 3, "qualified_for_next_slot": False, "reasons": ["test_stop"]},
     ]
+
+
+def test_parallel_study_rejects_prepared_context_with_stale_manifest_lineage(
+    monkeypatch, tmp_path
+):
+    manifest = _manifest(
+        policies=("adaptive_balanced",),
+        seeds=(101,),
+    )
+    (tmp_path / "study_manifest.json").write_text(
+        json.dumps(manifest), encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        policy_study,
+        "prepare_supervised_calibration_source",
+        lambda **_kwargs: {
+            "preparation": {},
+            "input_fingerprint": "stale-input",
+            "source_fingerprint": "seed",
+        },
+    )
+    monkeypatch.setattr(
+        policy_study,
+        "run_parallel_policy_batch",
+        lambda **_kwargs: pytest.fail("policy cells must not launch"),
+    )
+
+    with pytest.raises(ValueError, match="input fingerprint"):
+        policy_study.run_parallel_policy_study(tmp_path)

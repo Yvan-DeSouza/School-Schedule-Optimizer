@@ -137,6 +137,12 @@ class AdaptiveOperatorAttempt:
     role_exhaustion_classification: str = "ROLE_EXHAUSTION_NOT_PROVEN"
     sequence_position: int | None = None
     operator_family: str | None = None
+    # Search progress and validation authority are intentionally separate. A
+    # complete improving candidate that could not yet be validated is useful
+    # diagnostic evidence, but it is never authoritative productivity.
+    candidate_discovery_gain: float = 0.0
+    search_unknown: bool = False
+    validation_retry_count: int = 0
 
     @property
     def gain_per_minute(self):

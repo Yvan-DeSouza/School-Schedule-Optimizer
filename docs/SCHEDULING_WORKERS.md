@@ -223,6 +223,18 @@ result JSON and updates the study manifest. This parent-owned write rule is
 required because the historical single-cell runner appends a shared manifest
 and is not safe to call concurrently.
 
+For a multi-cell policy batch, the coordinator first prepares each distinct
+scenario/source/profile cohort once. That preparation materializes the
+detached branch and runs the authoritative full-model validation exactly once
+for that cohort, then records the input, source, profile, validation facts, and
+prepared-context fingerprint. Every child receives the same read-only branch
+and verifies those fingerprints before policy execution. Candidate validation
+inside each child is never skipped or shared: each newly proposed candidate
+still must pass the existing full-model authority boundary before adoption.
+If the coordinator process restarts, its in-memory prepared contexts are lost
+and the source incumbent is validated again; a persisted validation flag alone
+is not trusted as proof.
+
 From the repository root, a reproducible research run is:
 
 ```bash

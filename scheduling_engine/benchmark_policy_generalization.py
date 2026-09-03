@@ -18,11 +18,15 @@ import json
 import os
 from pathlib import Path
 import statistics
+import tempfile
 from time import perf_counter
 import threading
 import time
 
-from .benchmark_adaptive_calibration import run_supervised_calibration_trial
+from .benchmark_adaptive_calibration import (
+    prepare_supervised_calibration_source,
+    run_supervised_calibration_trial,
+)
 from .student_assignment.adaptive_calibration import (
     ADAPTIVE_POLICY_VARIANT_POLICIES,
     CALIBRATION_PROFILES,
@@ -765,6 +769,7 @@ def execute_parallel_policy_cell(
     seed,
     worker_started_callback=None,
     cancel_requested=None,
+    prepared_source_context=None,
 ):
     """Execute one new-study cell without writing shared study state.
 
@@ -816,6 +821,9 @@ def execute_parallel_policy_cell(
             "cancel_requested": cancel_requested,
             "worker_started_callback": worker_started_callback,
         })
+        if prepared_source_context is not None:
+            run_kwargs["branch_input"] = prepared_source_context["branch_input"]
+            run_kwargs["prepared_source_context"] = prepared_source_context
         payload = run_supervised_calibration_trial(**run_kwargs)
         payload = dict(payload)
         payload.update({
@@ -835,6 +843,16 @@ def execute_parallel_policy_cell(
             },
             "budget_contract": manifest["budget_contract"],
             "cell_elapsed_seconds": perf_counter() - started,
+            "source_preparation": (
+                prepared_source_context.get("preparation")
+                if prepared_source_context is not None
+                else None
+            ),
+            "prepared_source_context_fingerprint": (
+                prepared_source_context.get("context_fingerprint")
+                if prepared_source_context is not None
+                else None
+            ),
         })
         if fixed_cycle_request is not None:
             payload.update({
@@ -922,6 +940,7 @@ def run_parallel_policy_batch(
     cells,
     qualified_for_requested_parallelism=False,
     cancel_requested=None,
+    prepared_source_contexts=None,
 ):
     """Run one parent-coordinated batch of independent policy cells."""
 
@@ -944,6 +963,16 @@ def run_parallel_policy_batch(
                 "qualified": False,
                 "reasons": ["empty_batch"],
             },
+        }
+
+    # Direct callers may omit preparation for lightweight/unit-test batches;
+    # the public study runner always supplies contexts prepared once per
+    # scenario cohort.  ``None`` therefore deliberately preserves the legacy
+    # low-level execution contract without weakening the real study path.
+    if prepared_source_contexts is None:
+        prepared_source_contexts = {
+            scenario_id: None
+            for scenario_id in {cell["scenario_id"] for cell in cells}
         }
 
     active_workers = {}
@@ -986,6 +1015,7 @@ def run_parallel_policy_batch(
                 seed=cell["seed"],
                 worker_started_callback=_started,
                 cancel_requested=_cancel_requested,
+                prepared_source_context=prepared_source_contexts[cell["scenario_id"]],
             )
         finally:
             with active_lock:
@@ -1069,55 +1099,92 @@ def run_parallel_policy_study(
         not in manifest.get("results", {})
     ]
     current_parallelism = PARALLEL_POLICY_STUDY_DEFAULT_PARALLEL_TRIALS
-    while pending:
-        batch_cells = tuple(pending[:current_parallelism])
-        qualified_levels = {
-            int(item.get("completed_parallel_trials"))
-            for item in manifest.get("concurrency_history") or ()
-            if item.get("qualified_for_next_slot")
-            and item.get("completed_parallel_trials") is not None
-        }
-        batch = run_parallel_policy_batch(
-            manifest=manifest,
-            max_parallel_trials=current_parallelism,
-            cells=batch_cells,
-            qualified_for_requested_parallelism=(
-                current_parallelism <= 2
-                or max(qualified_levels, default=0) >= current_parallelism - 1
-            ),
-        )
-        persisted = []
-        for payload in batch["payloads"]:
-            persisted.append(_persist_parallel_policy_result(
-                study_directory,
-                manifest,
-                payload,
-            ))
-        manifest["batches"].append({
-            "batch_number": len(manifest["batches"]) + 1,
-            "requested_parallel_trials": current_parallelism,
-            "cells": list(batch_cells),
-            "persisted_results": persisted,
-            "resource": batch["resource"],
-            "qualification": batch["qualification"],
-        })
-        manifest["concurrency_history"].append({
-            "completed_parallel_trials": current_parallelism,
-            "qualified_for_next_slot": bool(batch["qualification"]["qualified"]),
-            "reasons": list(batch["qualification"].get("reasons") or ()),
-        })
-        _json_write_atomic(manifest_path, manifest)
-        if (
-            batch["qualification"].get("qualified")
-            and current_parallelism < max_parallel_trials
-        ):
-            current_parallelism += 1
-        elif (
-            not batch["qualification"].get("qualified")
-            and current_parallelism > PARALLEL_POLICY_STUDY_DEFAULT_PARALLEL_TRIALS
-        ):
-            current_parallelism -= 1
-        pending = pending[len(batch_cells):]
+    if not pending:
+        return manifest
+
+    # Source validation is a scenario-level gate.  Keep the detached branch
+    # files alive for the whole coordinator run so every policy/seed cell for
+    # the same scenario consumes the exact same validated source context.
+    with tempfile.TemporaryDirectory(prefix="student-policy-source-context-") as context_dir:
+        prepared_source_contexts = {}
+        for scenario_id in sorted({cell["scenario_id"] for cell in pending}):
+            scenario = manifest["scenarios"][scenario_id]
+            benchmark_directory = _REPOSITORY_ROOT / scenario["benchmark_directory"]
+            context = prepare_supervised_calibration_source(
+                benchmark_directory=benchmark_directory,
+                profile=PARALLEL_POLICY_STUDY_PROFILE,
+                branch_input=Path(context_dir) / f"{scenario_id}.json.gz",
+                validation_time_limit_seconds=(
+                    manifest["budget_contract"].get(
+                        "candidate_validation_time_limit_seconds"
+                    )
+                ),
+            )
+            if context["input_fingerprint"] != scenario["input_fingerprint"]:
+                raise ValueError(
+                    f"Prepared source input fingerprint does not match scenario {scenario_id}"
+                )
+            if context["source_fingerprint"] != scenario["source_seed_fingerprint"]:
+                raise ValueError(
+                    f"Prepared source seed fingerprint does not match scenario {scenario_id}"
+                )
+            prepared_source_contexts[scenario_id] = context
+        while pending:
+            batch_cells = tuple(pending[:current_parallelism])
+            qualified_levels = {
+                int(item.get("completed_parallel_trials"))
+                for item in manifest.get("concurrency_history") or ()
+                if item.get("qualified_for_next_slot")
+                and item.get("completed_parallel_trials") is not None
+            }
+            batch = run_parallel_policy_batch(
+                manifest=manifest,
+                max_parallel_trials=current_parallelism,
+                cells=batch_cells,
+                qualified_for_requested_parallelism=(
+                    current_parallelism <= 2
+                    or max(qualified_levels, default=0) >= current_parallelism - 1
+                ),
+                prepared_source_contexts=prepared_source_contexts,
+            )
+            persisted = []
+            for payload in batch["payloads"]:
+                persisted.append(_persist_parallel_policy_result(
+                    study_directory,
+                    manifest,
+                    payload,
+                ))
+            manifest["batches"].append({
+                "batch_number": len(manifest["batches"]) + 1,
+                "requested_parallel_trials": current_parallelism,
+                "cells": list(batch_cells),
+                "persisted_results": persisted,
+                "resource": batch["resource"],
+                "qualification": batch["qualification"],
+                "source_preparation": {
+                    scenario_id: prepared_source_contexts[scenario_id][
+                        "preparation"
+                    ]
+                    for scenario_id in prepared_source_contexts
+                },
+            })
+            manifest["concurrency_history"].append({
+                "completed_parallel_trials": current_parallelism,
+                "qualified_for_next_slot": bool(batch["qualification"]["qualified"]),
+                "reasons": list(batch["qualification"].get("reasons") or ()),
+            })
+            _json_write_atomic(manifest_path, manifest)
+            if (
+                batch["qualification"].get("qualified")
+                and current_parallelism < max_parallel_trials
+            ):
+                current_parallelism += 1
+            elif (
+                not batch["qualification"].get("qualified")
+                and current_parallelism > PARALLEL_POLICY_STUDY_DEFAULT_PARALLEL_TRIALS
+            ):
+                current_parallelism -= 1
+            pending = pending[len(batch_cells):]
     return manifest
 
 
@@ -1215,6 +1282,17 @@ def _cell_summary(filename, payload, manifest):
         "branch_revalidated": bool(
             ((payload.get("preparation") or {}).get("parent_branch_validation") or {})
             .get("full_model_validation")
+        ),
+        "reused_prepared_source_context": bool(
+            (payload.get("preparation") or {}).get(
+                "reused_prepared_source_context", False
+            )
+        ),
+        "prepared_source_context_fingerprint": payload.get(
+            "prepared_source_context_fingerprint"
+        ),
+        "source_preparation_seconds": (
+            (payload.get("source_preparation") or {}).get("total_seconds")
         ),
         "parallel_execution": payload.get("parallel_execution"),
     }

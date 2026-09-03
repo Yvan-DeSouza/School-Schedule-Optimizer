@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import asdict
 from dataclasses import replace
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -28,6 +29,7 @@ from .student_assignment.adaptive_calibration import (
     apply_calibration_profile,
     profile_fingerprint,
     run_matched_calibration_trial,
+    profile_fingerprint,
 )
 from .student_assignment.core import (
     run_student_assignment_stage2_diagnostic,
@@ -229,7 +231,9 @@ def _write_worker_output(path, payload):
     temporary.replace(path)
 
 
-def _write_prepared_incumbent(path, *, data, branch, result):
+def _write_prepared_incumbent(
+    path, *, data, branch, result, prepared_source_context=None
+):
     """Serialize parent-validated facts for one isolated policy worker.
 
     The parent remains the authority for the full-model validation.  The
@@ -276,11 +280,20 @@ def _write_prepared_incumbent(path, *, data, branch, result):
             ],
         },
     }
+    if prepared_source_context is not None:
+        payload["prepared_source_context_fingerprint"] = prepared_source_context[
+            "context_fingerprint"
+        ]
+        payload["profile_fingerprint"] = prepared_source_context[
+            "profile_fingerprint"
+        ]
     _write_worker_output(path, payload)
     return payload
 
 
-def _read_prepared_incumbent(path, *, data, branch):
+def _read_prepared_incumbent(
+    path, *, data, branch, expected_context_fingerprint=None, expected_profile_fingerprint=None
+):
     """Rehydrate facts already validated by the supervising parent."""
 
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
@@ -290,6 +303,17 @@ def _read_prepared_incumbent(path, *, data, branch):
         raise ValueError("Prepared incumbent input fingerprint does not match")
     if payload.get("source_fingerprint") != branch["source_decision_fingerprint"]:
         raise ValueError("Prepared incumbent source fingerprint does not match")
+    if (
+        expected_context_fingerprint is not None
+        and payload.get("prepared_source_context_fingerprint")
+        != expected_context_fingerprint
+    ):
+        raise ValueError("Prepared incumbent context fingerprint does not match")
+    if (
+        expected_profile_fingerprint is not None
+        and payload.get("profile_fingerprint") != expected_profile_fingerprint
+    ):
+        raise ValueError("Prepared incumbent profile fingerprint does not match")
     validation = payload.get("validation") or {}
     if (
         not validation.get("full_model_validation")
@@ -334,6 +358,144 @@ def _read_prepared_incumbent(path, *, data, branch):
             },
         },
     )
+
+
+def _prepared_source_context_fingerprint(
+    *, input_fingerprint, source_fingerprint, profile_name, validation
+):
+    """Fingerprint the facts that authorize reuse of parent source validation."""
+
+    payload = {
+        "schema": "student_assignment_prepared_source_context_v1",
+        "input_fingerprint": input_fingerprint,
+        "source_fingerprint": source_fingerprint,
+        "profile": profile_name,
+        "profile_fingerprint": profile_fingerprint(profile_name),
+        "validation": {
+            key: validation.get(key)
+            for key in (
+                "full_model_validation",
+                "complete",
+                "unmet_request_count",
+                "assignment_count",
+                "special_commitment_count",
+                "solver_outcome",
+            )
+        },
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode(
+            "utf-8"
+        )
+    ).hexdigest()
+
+
+def prepare_supervised_calibration_source(
+    *,
+    benchmark_directory,
+    profile="balanced",
+    branch_input,
+    validation_time_limit_seconds=None,
+):
+    """Prepare and validate one immutable source context for child trials.
+
+    This is the coordinator boundary for repeated policy cells sharing an
+    identical scenario/source/profile cohort.  The returned DTO and result
+    are read-only handoff facts; candidate validation in a child remains
+    independent and authoritative.
+    """
+
+    if profile not in CALIBRATION_PROFILES:
+        raise ValueError(f"Unknown calibration profile: {profile}")
+    started = perf_counter()
+    benchmark_started = perf_counter()
+    benchmark = read_durable_stage2_benchmark(benchmark_directory)
+    data = apply_calibration_profile(benchmark["data"], profile)
+    manifest = benchmark.get("manifest", {})
+    benchmark_load_seconds = perf_counter() - benchmark_started
+    branch_input = Path(branch_input)
+    branch_input.parent.mkdir(parents=True, exist_ok=True)
+    stage1 = dict(benchmark.get("manifest", {}).get("stage1") or {})
+    materialization_started = perf_counter()
+    write_diagnostic_branch_checkpoint(
+        branch_input,
+        data=data,
+        source_decisions=tuple(benchmark["seed"]["seed_source_decisions"]),
+        parent_source_decision_fingerprint=benchmark.get("manifest", {}).get(
+            "seed_source_decision_fingerprint"
+        ),
+        branch_id=f"prepared-source-{profile}",
+        provenance={
+            "runner": "benchmark_adaptive_calibration_source_preparation",
+            "profile": profile,
+        },
+        objective_vector=stage1.get("objective_vector", ()),
+        substantive_components=stage1.get("substantive_components", {}),
+        validation={
+            "full_model_validation": bool(stage1.get("validated")),
+            "complete": bool(stage1.get("complete")),
+            "assignment_count": stage1.get("source_decision_count"),
+            "required_source_decision_group_count": manifest.get(
+                "counts", {}
+            ).get("required_source_decision_group_count"),
+            "unmet_request_count": manifest.get("counts", {}).get(
+                "unmet_required_request_count", 0
+            ),
+            "special_commitment_count": manifest.get("counts", {}).get(
+                "special_commitment_count", 0
+            ),
+        },
+    )
+    branch_materialization_seconds = perf_counter() - materialization_started
+    validation_started = perf_counter()
+    checked = validate_diagnostic_branch_checkpoint(
+        branch_input,
+        data=data,
+        time_limit_seconds=_calibration_validation_time_limit(
+            data, validation_time_limit_seconds
+        ),
+        worker_count=1,
+    )
+    branch = read_diagnostic_branch_checkpoint(branch_input, data=data)
+    validation = dict(checked["validation"])
+    if not (
+        validation.get("full_model_validation")
+        and validation.get("complete")
+        and int(validation.get("unmet_request_count", 0) or 0) == 0
+    ):
+        raise ValueError(
+            "Prepared source context is not a complete validated incumbent: "
+            f"{validation}"
+        )
+    input_fingerprint = semantic_student_assignment_input_fingerprint(data)
+    source_fingerprint = branch["source_decision_fingerprint"]
+    return {
+        "schema": "student_assignment_prepared_source_context_v1",
+        "benchmark_directory": str(Path(benchmark_directory)),
+        "branch_input": str(branch_input),
+        "data": data,
+        "branch": branch,
+        "checked": checked,
+        "input_fingerprint": input_fingerprint,
+        "source_fingerprint": source_fingerprint,
+        "profile": profile,
+        "profile_fingerprint": profile_fingerprint(profile),
+        "context_fingerprint": _prepared_source_context_fingerprint(
+            input_fingerprint=input_fingerprint,
+            source_fingerprint=source_fingerprint,
+            profile_name=profile,
+            validation=validation,
+        ),
+        "preparation": {
+            "benchmark_load_seconds": benchmark_load_seconds,
+            "branch_materialization_seconds": branch_materialization_seconds,
+            "branch_validation_seconds": validation.get(
+                "elapsed_seconds", perf_counter() - validation_started
+            ),
+            "total_seconds": perf_counter() - started,
+            "validation": validation,
+        },
+    }
 
 
 def _write_validated_supervised_branch(
@@ -528,6 +690,14 @@ def _run_supervised_worker(args):
             args.prepared_incumbent,
             data=data,
             branch=branch,
+            expected_context_fingerprint=getattr(
+                args, "prepared_context_fingerprint", None
+            ),
+            expected_profile_fingerprint=(
+                profile_fingerprint(args.profile)
+                if getattr(args, "prepared_context_fingerprint", None)
+                else None
+            ),
         )
         checked = {
             "result": prepared_result,
@@ -815,6 +985,7 @@ def run_supervised_calibration_trial(
     fixed_cycle_names=None,
     cancel_requested=None,
     worker_started_callback=None,
+    prepared_source_context=None,
 ):
     """Run one detached calibration trial under a true parent-side deadline."""
 
@@ -825,15 +996,53 @@ def run_supervised_calibration_trial(
             "Supervised calibration requires a detached benchmark directory"
         )
     started = perf_counter()
-    benchmark_load_started = perf_counter()
-    benchmark = read_durable_stage2_benchmark(benchmark_directory)
-    data = apply_calibration_profile(benchmark["data"], profile)
-    manifest = benchmark["manifest"]
-    benchmark_load_seconds = perf_counter() - benchmark_load_started
+    if prepared_source_context is None:
+        benchmark_load_started = perf_counter()
+        benchmark = read_durable_stage2_benchmark(benchmark_directory)
+        data = apply_calibration_profile(benchmark["data"], profile)
+        manifest = benchmark["manifest"]
+        benchmark_load_seconds = perf_counter() - benchmark_load_started
+    else:
+        context = prepared_source_context
+        if context.get("schema") != "student_assignment_prepared_source_context_v1":
+            raise ValueError("Unsupported prepared source context schema")
+        if context.get("profile") != profile:
+            raise ValueError("Prepared source context profile does not match")
+        data = context["data"]
+        manifest = {}
+        benchmark = {"manifest": manifest}
+        benchmark_load_seconds = 0.0
     branch_directory = None
     branch_materialization_started = perf_counter()
     try:
-        if branch_input is None:
+        if prepared_source_context is not None:
+            branch_input = Path(prepared_source_context["branch_input"])
+            branch = read_diagnostic_branch_checkpoint(branch_input, data=data)
+            checked = dict(prepared_source_context["checked"])
+            checked["validation"] = {
+                **dict(checked.get("validation") or {}),
+                "reused_parent_validation": True,
+                "prepared_source_context_fingerprint": prepared_source_context[
+                    "context_fingerprint"
+                ],
+            }
+            context_input_fingerprint = semantic_student_assignment_input_fingerprint(data)
+            if context.get("input_fingerprint") != context_input_fingerprint:
+                raise ValueError("Prepared source context input fingerprint does not match")
+            if branch.get("source_decision_fingerprint") != context.get(
+                "source_fingerprint"
+            ):
+                raise ValueError("Prepared source context source fingerprint does not match")
+            if context.get("profile_fingerprint") != profile_fingerprint(profile):
+                raise ValueError("Prepared source context profile fingerprint does not match")
+            if context.get("context_fingerprint") != _prepared_source_context_fingerprint(
+                input_fingerprint=context["input_fingerprint"],
+                source_fingerprint=context["source_fingerprint"],
+                profile_name=profile,
+                validation=checked["validation"],
+            ):
+                raise ValueError("Prepared source context fingerprint is invalid")
+        elif branch_input is None:
             branch_directory = tempfile.TemporaryDirectory(
                 prefix="student-supervised-calibration-"
             )
@@ -871,16 +1080,19 @@ def run_supervised_calibration_trial(
             )
         branch_materialization_seconds = (
             perf_counter() - branch_materialization_started
+            if prepared_source_context is None
+            else 0.0
         )
-        checked = validate_diagnostic_branch_checkpoint(
-            branch_input,
-            data=data,
-            time_limit_seconds=_calibration_validation_time_limit(
-                data, validation_time_limit_seconds
-            ),
-            worker_count=1,
-        )
-        branch = read_diagnostic_branch_checkpoint(branch_input, data=data)
+        if prepared_source_context is None:
+            checked = validate_diagnostic_branch_checkpoint(
+                branch_input,
+                data=data,
+                time_limit_seconds=_calibration_validation_time_limit(
+                    data, validation_time_limit_seconds
+                ),
+                worker_count=1,
+            )
+            branch = read_diagnostic_branch_checkpoint(branch_input, data=data)
 
         if hard_wall_seconds is None:
             hard_wall_seconds = total_time_limit_seconds
@@ -949,6 +1161,11 @@ def run_supervised_calibration_trial(
                     "--cp-sat-max-deterministic-time-seconds",
                     str(float(cp_sat_max_deterministic_time_seconds)),
                 ])
+            if prepared_source_context is not None:
+                command.extend([
+                    "--prepared-context-fingerprint",
+                    str(prepared_source_context["context_fingerprint"]),
+                ])
             if startup_aware:
                 command.append("--startup-aware")
             if fixed_cycle_names is not None:
@@ -965,6 +1182,7 @@ def run_supervised_calibration_trial(
                 data=data,
                 branch=branch,
                 result=checked["result"],
+                prepared_source_context=prepared_source_context,
             )
             parent_preparation_elapsed = perf_counter() - started
             supervision = supervise_json_worker(
@@ -995,9 +1213,19 @@ def run_supervised_calibration_trial(
                     "benchmark_load_seconds": benchmark_load_seconds,
                     "branch_materialization_seconds": branch_materialization_seconds,
                     "branch_validation_seconds": float(
-                        checked["validation"].get("elapsed_seconds", 0.0) or 0.0
+                        0.0
+                        if prepared_source_context is not None
+                        else checked["validation"].get("elapsed_seconds", 0.0)
+                        or 0.0
                     ),
                     "preparation_total_seconds": parent_preparation_elapsed,
+                    "reused_prepared_source_context": prepared_source_context
+                    is not None,
+                    "prepared_source_context_fingerprint": (
+                        prepared_source_context.get("context_fingerprint")
+                        if prepared_source_context is not None
+                        else None
+                    ),
                 }
                 existing_phase_timings["supervision"] = {
                     "worker_elapsed_seconds": supervision.elapsed_seconds,
@@ -1095,7 +1323,10 @@ def run_supervised_calibration_trial(
         "benchmark_load_seconds": benchmark_load_seconds,
         "branch_materialization_seconds": branch_materialization_seconds,
         "branch_validation_seconds": float(
-            checked["validation"].get("elapsed_seconds", 0.0) or 0.0
+            0.0
+            if prepared_source_context is not None
+            else checked["validation"].get("elapsed_seconds", 0.0)
+            or 0.0
         ),
         "parent_branch_validation": checked["validation"],
         "input_fingerprint": semantic_student_assignment_input_fingerprint(data),
@@ -1103,7 +1334,13 @@ def run_supervised_calibration_trial(
         "initial_solver_outcome": checked["result"].solver_outcome,
         "initial_assignment_count": len(checked["result"].assignments),
         "initial_unmet_count": len(checked["result"].unmet_requests),
-        "branch_revalidated": True,
+        "branch_revalidated": prepared_source_context is None,
+        "reused_prepared_source_context": prepared_source_context is not None,
+        "prepared_source_context_fingerprint": (
+            prepared_source_context.get("context_fingerprint")
+            if prepared_source_context is not None
+            else None
+        ),
         "branch_source_fingerprint": branch["source_decision_fingerprint"],
     }
     return payload
@@ -1286,6 +1523,10 @@ def main(argv=None):  # pragma: no cover - clean-process experiment surface
     parser.add_argument("--worker-output", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--worker-status", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--prepared-incumbent", type=Path, help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--prepared-context-fingerprint",
+        help=argparse.SUPPRESS,
+    )
     parser.add_argument("--initial-seconds", type=float, default=5.0)
     parser.add_argument("--initial-workers", type=int, default=2)
     parser.add_argument("--total-seconds", type=float, default=60.0)
