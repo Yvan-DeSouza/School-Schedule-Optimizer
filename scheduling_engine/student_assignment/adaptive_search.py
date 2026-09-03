@@ -112,6 +112,7 @@ class AdaptiveOperatorAttempt:
     # Scope order is not semantically meaningful.  This records equality after
     # both scopes have been canonicalized by the diagnostic runtime.
     scope_equal: bool | None = None
+    scope_mismatch: bool = False
     # Diagnostic identity of the candidate source decisions returned by the
     # operator. This is deliberately metadata only; candidate authority still
     # comes from the existing full-model validation boundary.
@@ -430,7 +431,7 @@ def _group_reliability(history):
     resolved = tuple(
         item for item in history
         if not item.unknown and item.validation_classification not in {
-            "validation_unknown", "validation_error"
+        "validation_unknown", "validation_error", "scope_mismatch"
         }
     )
     return (1.0 + sum(bool(item.adopted) for item in resolved)) / (2.0 + len(resolved))
@@ -439,7 +440,7 @@ def _group_reliability(history):
 def _group_unknown_rate(history):
     return (
         sum(bool(item.unknown) or item.validation_classification in {
-            "validation_unknown", "validation_error"
+            "validation_unknown", "validation_error", "scope_mismatch"
         } for item in history) / len(history)
         if history else 0.0
     )
@@ -465,7 +466,7 @@ def _scope_status(history, key):
         if item_key != key:
             continue
         if item.unknown or item.validation_classification in {
-            "validation_unknown", "validation_error"
+            "validation_unknown", "validation_error", "scope_mismatch"
         }:
             return "unresolved"
         if item.exhaustion_classification == "EXACT_SCOPE_EXHAUSTED":
@@ -1155,6 +1156,7 @@ def build_operator_session_request(
     remaining_seconds,
     worker_count=8,
     selected_student_ids=None,
+    enforced_student_scope=None,
     cp_sat_random_seed=None,
     cp_sat_max_deterministic_time_seconds=None,
 ):
@@ -1172,6 +1174,8 @@ def build_operator_session_request(
             if isinstance(decision, AdaptivePolicyDecision)
             else ()
         )
+    if enforced_student_scope is None:
+        enforced_student_scope = selected_student_ids
     return {
         "operator_family": spec.name,
         "allocated_time_limit_seconds": min(
@@ -1184,6 +1188,7 @@ def build_operator_session_request(
         "target_policy": spec.target_policy,
         "selected_grade": spec.selected_grade,
         "selected_student_ids": tuple(selected_student_ids),
+        "enforced_student_scope": tuple(enforced_student_scope),
         "cp_sat_random_seed": (
             int(cp_sat_random_seed) if cp_sat_random_seed is not None else None
         ),
@@ -1209,7 +1214,9 @@ def replay_adaptive_policy(records, *, portfolio=DEFAULT_ADAPTIVE_OPERATOR_PORTF
             elapsed_seconds=float(item.get("total_operation_seconds", 0) or 0),
             unknown=(
                 item.get("status") == "unknown"
-                or item.get("validation_classification") == "validation_unknown"
+                or item.get("validation_classification") in {
+                    "validation_unknown", "scope_mismatch"
+                }
             ),
             infeasible=item.get("status") == "infeasible",
             role_specific_gain=float(item.get("role_specific_gain", 0) or 0),
@@ -1221,6 +1228,7 @@ def replay_adaptive_policy(records, *, portfolio=DEFAULT_ADAPTIVE_OPERATOR_PORTF
             target_scope=tuple(item.get("target_scope", ())),
             actual_target_scope=tuple(item.get("actual_target_scope", ())),
             scope_equal=item.get("scope_equal"),
+            scope_mismatch=bool(item.get("scope_mismatch", False)),
             source_fingerprint_before=item.get("source_fingerprint_before"),
             candidate_source_decision_fingerprint=item.get(
                 "candidate_source_decision_fingerprint"
@@ -1285,7 +1293,9 @@ def simulate_adaptive_policy(
                     elapsed_seconds=float(item.get("elapsed_seconds", item.get("total_operation_seconds", 0)) or 0),
                     unknown=(
                         item.get("status") == "unknown"
-                        or item.get("validation_classification") == "validation_unknown"
+                        or item.get("validation_classification") in {
+                            "validation_unknown", "scope_mismatch"
+                        }
                     ),
                     infeasible=item.get("status") == "infeasible",
                     role_specific_gain=float(item.get("role_specific_gain", 0) or 0),
@@ -1297,6 +1307,7 @@ def simulate_adaptive_policy(
                     target_scope=tuple(item.get("target_scope", ())),
                     actual_target_scope=tuple(item.get("actual_target_scope", ())),
                     scope_equal=item.get("scope_equal"),
+                    scope_mismatch=bool(item.get("scope_mismatch", False)),
                     source_fingerprint_before=item.get("source_fingerprint_before"),
                     candidate_source_decision_fingerprint=item.get(
                         "candidate_source_decision_fingerprint"

@@ -1156,6 +1156,7 @@ def run_student_assignment_operator_session_diagnostic(
     worker_count=8,
     target_policy="dynamic",
     selected_student_ids=(),
+    enforced_student_scope=(),
     selected_grade=None,
     projected_grade_scope=False,
     utilization_cluster_policy="interaction_aware",
@@ -1197,6 +1198,11 @@ def run_student_assignment_operator_session_diagnostic(
 
     from .operator_session import ContinuousOperatorSessionConfig
 
+    selected_student_ids = tuple(selected_student_ids)
+    enforced_student_scope = tuple(enforced_student_scope)
+    if enforced_student_scope and not selected_student_ids:
+        selected_student_ids = enforced_student_scope
+
     if prepared_validation_strategy is None:
         prepared_validation_strategy = (
             "eager" if use_prepared_validation_context else "ordinary"
@@ -1208,7 +1214,8 @@ def run_student_assignment_operator_session_diagnostic(
         per_attempt_time_limit_seconds=per_attempt_time_limit_seconds,
         worker_count=worker_count,
         target_policy=target_policy,
-        selected_student_ids=tuple(selected_student_ids),
+        selected_student_ids=selected_student_ids,
+        enforced_student_scope=enforced_student_scope,
         selected_grade=selected_grade,
         utilization_cluster_policy=utilization_cluster_policy,
         minimum_next_attempt_seconds=minimum_next_attempt_seconds,
@@ -1263,6 +1270,7 @@ def run_student_assignment_operator_session_diagnostic(
             "max_changed_students": config.max_changed_students,
             "target_policy": config.target_policy,
             "selected_student_ids": tuple(config.selected_student_ids),
+            "enforced_student_scope": tuple(config.enforced_student_scope),
             "selected_grade": config.selected_grade,
             "projected_grade_scope": bool(projected_grade_scope),
             "utilization_cluster_policy": config.utilization_cluster_policy,
@@ -4078,11 +4086,17 @@ def _solve_student_assignment(
             session_target_history = []
             session_target_guidance = []
             selected_student_ids = tuple(local_config.get("selected_student_ids", ()))
+            enforced_student_scope = tuple(
+                local_config.get("enforced_student_scope", ())
+            )
             # A fixed selector scope is immutable for the complete operator
             # session.  Keep a separate copy so no inner target-preparation
             # path can accidentally carry a prior/dynamic scope into a later
             # attempt.
-            fixed_student_scope = tuple(selected_student_ids)
+            fixed_student_scope = tuple(
+                enforced_student_scope or selected_student_ids
+            )
+            selector_scope_enforced = bool(enforced_student_scope)
             selected_grade = local_config.get("selected_grade")
             grade_bounded = selected_grade is not None
 
@@ -4338,6 +4352,7 @@ def _solve_student_assignment(
                         "guidance_only": True,
                         "objective_attribution": False,
                     }
+                    target_scope_source = "not_targeted"
                     if grade_bounded:
                         grade_facts = build_grade_opportunity_facts(
                             data,
@@ -4372,6 +4387,18 @@ def _solve_student_assignment(
                             current_quality = _full_quality_for_solver(
                                 stage_2_seed_solver
                             )
+                        if selector_scope_enforced:
+                            # Utilization guidance remains useful as evidence,
+                            # but an outer adaptive selector owns this scope.
+                            # Never allow an inner guidance pass to replace the
+                            # scope that the selector recorded and requested.
+                            selected_student_ids = fixed_student_scope
+                            target_guidance.update({
+                                "policy": "enforced_selector_scope",
+                                "scope_source": "adaptive_selector",
+                                "selected_student_ids": selected_student_ids,
+                                "guidance_only": True,
+                            })
                         if utilization_cluster:
                             utilization_selection = (
                                 select_utilization_cluster_targets(
@@ -4390,12 +4417,24 @@ def _solve_student_assignment(
                                     ),
                                 )
                             )
-                            selected_student_ids = (
-                                utilization_selection.selected_student_ids
-                            )
-                            target_guidance = dict(
+                            guidance_facts = dict(
                                 utilization_selection.guidance_facts
                             )
+                            if selector_scope_enforced:
+                                # Preserve detailed utilization facts, but keep
+                                # the selector-owned target authoritative.
+                                guidance_facts["selected_student_ids"] = (
+                                    selected_student_ids
+                                )
+                                guidance_facts["scope_source"] = (
+                                    "adaptive_selector"
+                                )
+                                guidance_facts["guidance_only"] = True
+                            else:
+                                selected_student_ids = (
+                                    utilization_selection.selected_student_ids
+                                )
+                            target_guidance = guidance_facts
                         else:
                             if local_config.get("target_policy") == "dynamic":
                                 ranked_students = rank_students_by_quality_pressure(
@@ -4417,7 +4456,13 @@ def _solve_student_assignment(
                         if len(selected_student_ids) != required_targets:
                             stopping_reason = "no_eligible_target"
                             break
-                        session_target_guidance.append(target_guidance)
+                    if operator_session:
+                        target_scope_source = (
+                            "adaptive_selector"
+                            if selector_scope_enforced
+                            else "operator_session"
+                        )
+                    session_target_guidance.append(target_guidance)
                     session_target_history.append(selected_student_ids)
                     _notify_phase(
                         phase_callback,
@@ -4487,6 +4532,22 @@ def _solve_student_assignment(
                         phase_callback=phase_callback,
                     )
                     last_result = local_result
+                    expected_probe_scope = tuple(
+                        sorted(
+                            set(fixed_student_scope or selected_student_ids),
+                            key=repr,
+                        )
+                    )
+                    actual_probe_scope = tuple(
+                        sorted(
+                            set(local_result.selected_student_ids or ()),
+                            key=repr,
+                        )
+                    )
+                    scope_equal = (
+                        not operator_session
+                        or expected_probe_scope == actual_probe_scope
+                    )
                     candidate_before_validation = local_result.candidate_substantive_value
                     validation_started = monotonic()
                     validation_budget_start_remaining = None
@@ -4546,6 +4607,18 @@ def _solve_student_assignment(
                             validated=local_validator is not None,
                         )
                     candidate_validated = local_validator is not None
+                    if selector_scope_enforced and not scope_equal:
+                        # A selector-owned scope is part of the diagnostic
+                        # authority contract.  Even if the candidate itself
+                        # passes full-model validation, a scope drift means it
+                        # was not the candidate requested by the selector and
+                        # must not replace the authoritative incumbent.
+                        candidate_validated = False
+                        validation_facts = dict(validation_facts)
+                        validation_facts["classification"] = "scope_mismatch"
+                        validation_facts["error"] = (
+                            "selector-owned scope did not reach the probe"
+                        )
                     if candidate_validated:
                         any_candidate_validated = True
                         validated_candidate_count += 1
@@ -4648,6 +4721,11 @@ def _solve_student_assignment(
                         ),
                         "incumbent_before": current_seed_value,
                         "selected_student_ids": tuple(selected_student_ids),
+                        "enforced_student_scope": tuple(enforced_student_scope),
+                        "probe_selected_student_ids": actual_probe_scope,
+                        "scope_source": target_scope_source,
+                        "scope_equal": scope_equal,
+                        "scope_mismatch": not scope_equal,
                         "candidate_value": candidate_before_validation,
                         "candidate_validated": candidate_validated,
                         "validation_classification": validation_facts[
@@ -4898,6 +4976,9 @@ def _solve_student_assignment(
                         "source_seed_fingerprint"
                     ),
                     "target_policy": local_config.get("target_policy"),
+                    "enforced_student_scope": tuple(
+                        local_config.get("enforced_student_scope", ())
+                    ),
                     "session_context_reused": operator_session,
                     "static_probe_context_built_once": operator_session,
                     "session_target_history": tuple(session_target_history),

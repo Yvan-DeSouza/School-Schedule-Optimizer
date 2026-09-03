@@ -1489,3 +1489,27 @@ The medium suite is discriminative, but the target promotion did not establish
 production policy superiority.  Adaptive/stateless/fixed remain offline
 diagnostic controls; no policy router, hybrid, persistence, role stickiness,
 objective change, or production scheduling wiring is authorized by this study.
+
+### Selector-owned scope integrity (2026-09-03)
+
+Adaptive diagnostic sessions now carry an explicit internal
+`enforced_student_scope` whenever the outer adaptive selector owns the target
+scope. The scope is transferred through the operator-session request and held
+immutable for every inner probe in that session, including utilization
+operators. Utilization guidance may still produce observational pressure
+facts, but it cannot replace the selector-owned scope.
+
+Direct operator-session callers that intentionally use dynamic targeting remain
+dynamic, and legacy fixed-target callers continue to use
+`selected_student_ids`. The enforced field is therefore a diagnostic
+authority boundary, not a change to the operator portfolio or to Objective
+Semantics v2.
+
+Each inner attempt records the enforced scope, guidance scope, probe scope,
+scope source, and canonicalized equality result. If a selector-owned scope
+ever differs from the scope actually passed to the probe, the attempt is
+classified as `scope_mismatch` and remains unresolved. The candidate cannot
+be adopted, cannot replace the source incumbent, cannot count as validated
+productivity, and cannot mark the scope exhausted. The previous complete
+incumbent remains authoritative. This fail-closed rule applies in both the
+student-assignment core and the outer adaptive runtime.

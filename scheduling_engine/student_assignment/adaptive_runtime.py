@@ -117,7 +117,9 @@ def _attempt_exhaustion_classification(*, status, candidate_found, candidate_val
         return "PRODUCTIVE"
     if (
         status == "unknown"
-        or validation_classification in {"validation_unknown", "validation_error"}
+        or validation_classification in {
+            "validation_unknown", "validation_error", "scope_mismatch"
+        }
         or (candidate_found and not candidate_validated)
     ):
         return "OPERATOR_UNRESOLVED"
@@ -313,6 +315,14 @@ def _compact_inner_probe_summary(
         "target_scope": canonical_target_scope,
         "actual_target_scope": canonical_actual_target_scope,
         "scope_equal": canonical_target_scope == canonical_actual_target_scope,
+        "enforced_student_scope": _canonical_student_scope(
+            iteration.get("enforced_student_scope") or ()
+        ),
+        "probe_selected_student_ids": _canonical_student_scope(
+            iteration.get("probe_selected_student_ids") or ()
+        ),
+        "scope_source": iteration.get("scope_source"),
+        "scope_mismatch": bool(iteration.get("scope_mismatch", False)),
         "selected_grade": iteration.get("selected_grade", selected_grade),
         "status": iteration.get("status"),
         "candidate_found": bool(iteration.get("candidate_found", candidate_value is not None)),
@@ -394,6 +404,7 @@ def _operator_result(data, spec, *, selected_student_ids, current_source_decisio
         remaining_seconds=time_limit_seconds,
         worker_count=worker_count,
         selected_student_ids=selected_student_ids,
+        enforced_student_scope=selected_student_ids,
         cp_sat_random_seed=cp_sat_random_seed,
         cp_sat_max_deterministic_time_seconds=(
             cp_sat_max_deterministic_time_seconds
@@ -412,6 +423,7 @@ def _operator_result(data, spec, *, selected_student_ids, current_source_decisio
         worker_count=request["worker_count"],
         target_policy=request["target_policy"],
         selected_student_ids=request["selected_student_ids"],
+        enforced_student_scope=request["selected_student_ids"],
         selected_grade=request["selected_grade"],
         utilization_cluster_policy="interaction_aware",
         hard_feasibility_validation_time_limit_seconds=(
@@ -646,6 +658,7 @@ def run_adaptive_local_search_diagnostic(
             remaining_seconds=operation_limit,
             worker_count=worker_count,
             selected_student_ids=selected,
+            enforced_student_scope=selected,
             cp_sat_random_seed=cp_sat_random_seed,
             cp_sat_max_deterministic_time_seconds=(
                 cp_sat_max_deterministic_time_seconds
@@ -768,6 +781,35 @@ def run_adaptive_local_search_diagnostic(
             if candidate_found and probe_candidate_source
             else _source_decisions_from_result(result)
         )
+        executed_scopes = tuple(
+            _canonical_student_scope(item.get("selected_student_ids"))
+            for item in probe_iterations
+            if item.get("selected_student_ids") is not None
+        )
+        actual_target_scope = (
+            executed_scopes[-1]
+            if executed_scopes
+            else _canonical_student_scope(
+                local.get("selected_student_ids") or selected
+            )
+        )
+        scope_equal = (
+            not selected
+            or not executed_scopes
+            or all(scope == selected for scope in executed_scopes)
+        )
+        scope_mismatch = bool(selected and not scope_equal)
+        if scope_mismatch:
+            # This is a defense-in-depth authority check.  The core session
+            # also guards selector-owned scopes, but the outer allocator must
+            # remain fail-closed if a legacy or mocked operator returns a
+            # different executed scope.
+            local["scope_mismatch"] = True
+            local["validation_classification"] = "scope_mismatch"
+            local["validation_error"] = (
+                "selector-owned scope did not match the executed scope"
+            )
+            candidate_validated = False
         probe_candidate_value = next(
             (
                 item.get("candidate_value")
@@ -924,18 +966,6 @@ def run_adaptive_local_search_diagnostic(
         validation_classification = str(
             local.get("validation_classification", "not_attempted")
         )
-        executed_scopes = tuple(
-            _canonical_student_scope(item.get("selected_student_ids"))
-            for item in probe_iterations
-            if item.get("selected_student_ids") is not None
-        )
-        actual_target_scope = (
-            executed_scopes[-1]
-            if executed_scopes
-            else _canonical_student_scope(
-                local.get("selected_student_ids") or selected
-            )
-        )
         exhaustion_classification = _attempt_exhaustion_classification(
             status=status,
             candidate_found=candidate_found,
@@ -965,7 +995,9 @@ def run_adaptive_local_search_diagnostic(
                 ),
                 unknown=(
                     status == "unknown"
-                    or local.get("validation_classification") == "validation_unknown"
+                    or local.get("validation_classification") in {
+                        "validation_unknown", "scope_mismatch"
+                    }
                 ),
                 infeasible=status == "infeasible",
                 stopping_reason=local.get("stopping_reason"),
@@ -975,11 +1007,8 @@ def run_adaptive_local_search_diagnostic(
                 validation_error=local.get("validation_error"),
                 target_scope=selected,
                 actual_target_scope=actual_target_scope,
-                scope_equal=(
-                    all(scope == selected for scope in executed_scopes)
-                    if executed_scopes
-                    else selected == actual_target_scope
-                ),
+                scope_equal=scope_equal,
+                scope_mismatch=scope_mismatch,
                 source_fingerprint_before=source_fingerprint_before,
                 candidate_source_decision_fingerprint=(
                     source_decision_fingerprint(candidate_source)

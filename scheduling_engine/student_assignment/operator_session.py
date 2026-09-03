@@ -202,6 +202,10 @@ class ContinuousOperatorSessionConfig:
     worker_count: int = 8
     target_policy: str = "dynamic"
     selected_student_ids: tuple = ()
+    # When supplied by an outer adaptive selector, this scope is authoritative
+    # for every inner probe in the session.  ``selected_student_ids`` remains
+    # the backwards-compatible input used by direct fixed-target callers.
+    enforced_student_scope: tuple = ()
     utilization_cluster_policy: str = "interaction_aware"
     selected_grade: int | None = None
     minimum_next_attempt_seconds: float = 1.0
@@ -276,6 +280,26 @@ class ContinuousOperatorSessionConfig:
             )
         if self.operator_family == "r2" and self.selected_student_ids:
             raise ValueError("r2 does not accept targeted student IDs")
+        selected_scope = tuple(sorted(set(self.selected_student_ids), key=repr))
+        enforced_scope = tuple(sorted(set(self.enforced_student_scope), key=repr))
+        if enforced_scope:
+            if self.target_policy != "fixed":
+                raise ValueError("enforced_student_scope requires fixed targeting")
+            if selected_scope and selected_scope != enforced_scope:
+                raise ValueError(
+                    "selected_student_ids must match enforced_student_scope"
+                )
+            if self.operator_family == "r2":
+                raise ValueError("r2 does not accept an enforced student scope")
+            if self.operator_family.startswith("grade_bounded_"):
+                raise ValueError(
+                    "grade-bounded operators do not accept an enforced student scope"
+                )
+            required = operator_session_target_count(self.operator_family)
+            if len(enforced_scope) != required:
+                raise ValueError(
+                    f"{self.operator_family} enforced scope requires {required} students"
+                )
         grade_bounded = self.operator_family.startswith("grade_bounded_")
         if grade_bounded:
             if self.selected_grade not in VALID_STUDENT_GRADE_LEVELS:
@@ -299,7 +323,8 @@ class ContinuousOperatorSessionConfig:
             and not grade_bounded
         ):
             required = operator_session_target_count(self.operator_family)
-            if len(tuple(self.selected_student_ids)) != required:
+            effective_fixed_scope = enforced_scope or selected_scope
+            if len(effective_fixed_scope) != required:
                 raise ValueError(
                     f"{self.operator_family} fixed targeting requires {required} students"
                 )

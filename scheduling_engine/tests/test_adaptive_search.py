@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import pytest
 
 import scheduling_engine.student_assignment.adaptive_runtime as adaptive_runtime
+import scheduling_engine.student_assignment.core as student_assignment_core
 
 from scheduling_engine.realistic_student_assignment_validation import (
     build_realistic_quality_tradeoff_fixture,
@@ -1429,6 +1430,176 @@ def test_session_config_validates_family_target_policy_and_fixed_targets():
     assert config.targeted is True
 
 
+def test_enforced_scope_is_explicit_and_must_match_fixed_scope():
+    config = ContinuousOperatorSessionConfig(
+        operator_family="targeted_utilization_r16_s2",
+        target_policy="fixed",
+        selected_student_ids=(8, 7),
+        enforced_student_scope=(7, 8),
+        total_time_limit_seconds=30,
+        max_attempts=2,
+        per_attempt_time_limit_seconds=5,
+    )
+    assert config.enforced_student_scope == (7, 8)
+
+    with pytest.raises(ValueError, match="match enforced_student_scope"):
+        ContinuousOperatorSessionConfig(
+            operator_family="targeted_utilization_r16_s2",
+            target_policy="fixed",
+            selected_student_ids=(7, 8),
+            enforced_student_scope=(8, 9),
+            total_time_limit_seconds=30,
+            max_attempts=2,
+            per_attempt_time_limit_seconds=5,
+        )
+
+
+def test_enforced_scope_prevents_utilization_guidance_from_replacing_probe_scope():
+    data, source = _multi_attempt_operator_fixture((1, 2, 3, 4))
+    result = run_student_assignment_operator_session_diagnostic(
+        data,
+        operator_family="targeted_utilization_r16_s2",
+        initial_source_decisions=source,
+        total_time_limit_seconds=4,
+        max_attempts=2,
+        per_attempt_time_limit_seconds=1.5,
+        worker_count=1,
+        target_policy="fixed",
+        selected_student_ids=(2, 1),
+        enforced_student_scope=(2, 1),
+        hard_feasibility_validation_time_limit_seconds=1,
+        hard_feasibility_validation_worker_count=1,
+        collect_resource_telemetry=False,
+    )
+    facts = result.optimization_facts["stage_2_local_bootstrap"]
+    assert facts["enforced_student_scope"] == (2, 1)
+    assert all(
+        tuple(item["enforced_student_scope"]) == (2, 1)
+        and tuple(item["probe_selected_student_ids"]) == (1, 2)
+        and item["scope_equal"] is True
+        and item["scope_mismatch"] is False
+        for item in facts["iterations"]
+    )
+
+
+def test_core_rejects_a_probe_result_with_scope_drift(monkeypatch):
+    data, source = _multi_attempt_operator_fixture((1, 2, 3, 4))
+    original_probe = student_assignment_core.probe_substantive_soft_tier
+
+    def drifted_probe(*args, **kwargs):
+        result = original_probe(*args, **kwargs)
+        return replace(result, selected_student_ids=(999,))
+
+    monkeypatch.setattr(
+        student_assignment_core,
+        "probe_substantive_soft_tier",
+        drifted_probe,
+    )
+    result = run_student_assignment_operator_session_diagnostic(
+        data,
+        operator_family="targeted_utilization_r16_s2",
+        initial_source_decisions=source,
+        total_time_limit_seconds=3,
+        max_attempts=1,
+        per_attempt_time_limit_seconds=1.5,
+        worker_count=1,
+        target_policy="fixed",
+        selected_student_ids=(1, 2),
+        enforced_student_scope=(1, 2),
+        hard_feasibility_validation_time_limit_seconds=1,
+        hard_feasibility_validation_worker_count=1,
+        collect_resource_telemetry=False,
+    )
+
+    iteration = result.optimization_facts["stage_2_local_bootstrap"][
+        "iterations"
+    ][0]
+    assert iteration["scope_mismatch"] is True
+    assert iteration["scope_equal"] is False
+    assert iteration["candidate_validated"] is False
+    assert iteration["validation_classification"] == "scope_mismatch"
+    assert iteration["adopted"] is False
+
+
+def test_scope_mismatch_is_fail_closed_at_adaptive_authority_boundary(monkeypatch):
+    data = replace(
+        build_realistic_quality_tradeoff_fixture(),
+        objective_semantics_version="v2",
+    )
+    quality = {"objective_semantics": {"components": {}}}
+    initial = SimpleNamespace(
+        status="complete",
+        solver_outcome="optimal",
+        unmet_requests=(),
+        assignments=(1,),
+        commitment_assignments=(),
+        objective_components={"weighted_normalized_contributions": {"x": 100}},
+        optimization_facts={"stage_2": {"final_source_decisions": (("a", 1),)}},
+    )
+    candidate = SimpleNamespace(
+        status="complete",
+        solver_outcome="feasible",
+        unmet_requests=(),
+        assignments=(1, 2),
+        commitment_assignments=(),
+        objective_components={"weighted_normalized_contributions": {"x": 90}},
+        optimization_facts={
+            "stage_2_local_bootstrap": {
+                "status": "feasible",
+                "candidate_found": True,
+                "candidate_validated": True,
+                "iterations": ({
+                    "selected_student_ids": (9,),
+                    "candidate_source_decisions": (("a", 2),),
+                    "candidate_value": 90,
+                },),
+            },
+            "stage_2": {"final_source_decisions": (("a", 2),)},
+        },
+    )
+    spec = AdaptiveOperatorSpec(
+        "targeted_r4_s1", 4, 1, True, 1, "targeted_repair"
+    )
+    decision = AdaptivePolicyDecision(
+        operator=spec,
+        selected_student_ids=(7,),
+        score=0.0,
+        reasons=("test_scope_mismatch",),
+        signal_values={},
+    )
+    monkeypatch.setattr(
+        adaptive_runtime,
+        "_quality_report",
+        lambda *_args: quality,
+    )
+    monkeypatch.setattr(
+        adaptive_runtime,
+        "choose_adaptive_operator",
+        lambda *_args, **_kwargs: decision,
+    )
+    monkeypatch.setattr(
+        adaptive_runtime,
+        "_operator_result",
+        lambda *_args, **_kwargs: candidate,
+    )
+
+    result = run_adaptive_local_search_diagnostic(
+        data,
+        initial_result=initial,
+        total_time_limit_seconds=1,
+        per_operator_time_limit_seconds=0.1,
+        max_iterations=1,
+        portfolio=(spec,),
+    )
+
+    attempt = result.record.attempts[0]
+    assert result.result is initial
+    assert result.source_decisions == (("a", 1),)
+    assert attempt["scope_mismatch"] is True
+    assert attempt["validation_classification"] == "scope_mismatch"
+    assert attempt["adopted"] is False
+
+
 def test_all_continuous_operator_families_have_explicit_scope_contracts():
     cases = (
         ("r2", (), None, ()),
@@ -1483,6 +1654,7 @@ def test_adaptive_policy_exposes_a_continuous_session_request():
     assert request["max_attempts"] == decision.operator.session_max_attempts
     assert request["worker_count"] == 4
     assert request["selected_student_ids"] == decision.selected_student_ids
+    assert request["enforced_student_scope"] == decision.selected_student_ids
     assert decision.to_dict()["session_request"]["operator_family"] == (
         decision.operator.name
     )
