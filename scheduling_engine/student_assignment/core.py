@@ -158,6 +158,12 @@ def _soft_tier_importance_level(data):
     )
 
 
+def _canonical_operator_student_scope(student_ids):
+    """Return the canonical semantic scope used by diagnostic operators."""
+
+    return tuple(sorted({int(student_id) for student_id in (student_ids or ())}))
+
+
 def _candidate_sort_key(candidate):
     """Keep counselor evidence stable without reusing database-ID solver ordering."""
 
@@ -1157,6 +1163,7 @@ def run_student_assignment_operator_session_diagnostic(
     target_policy="dynamic",
     selected_student_ids=(),
     enforced_student_scope=(),
+    scope_contract_expected_student_ids=(),
     selected_grade=None,
     projected_grade_scope=False,
     utilization_cluster_policy="interaction_aware",
@@ -1198,8 +1205,27 @@ def run_student_assignment_operator_session_diagnostic(
 
     from .operator_session import ContinuousOperatorSessionConfig
 
-    selected_student_ids = tuple(selected_student_ids)
-    enforced_student_scope = tuple(enforced_student_scope)
+    selected_student_ids = tuple(
+        sorted(set(int(student_id) for student_id in selected_student_ids))
+    )
+    enforced_student_scope = tuple(
+        sorted(set(int(student_id) for student_id in enforced_student_scope))
+    )
+    scope_contract_expected_student_ids = tuple(
+        sorted(
+            set(
+                int(student_id)
+                for student_id in scope_contract_expected_student_ids
+            )
+        )
+    )
+    if (
+        scope_contract_expected_student_ids
+        and scope_contract_expected_student_ids != enforced_student_scope
+    ):
+        raise ValueError(
+            "scope contract expected IDs do not match enforced_student_scope"
+        )
     if enforced_student_scope and not selected_student_ids:
         selected_student_ids = enforced_student_scope
 
@@ -1271,6 +1297,11 @@ def run_student_assignment_operator_session_diagnostic(
             "target_policy": config.target_policy,
             "selected_student_ids": tuple(config.selected_student_ids),
             "enforced_student_scope": tuple(config.enforced_student_scope),
+            "scope_contract_expected_student_ids": (
+                tuple(scope_contract_expected_student_ids)
+                if scope_contract_expected_student_ids
+                else tuple(config.enforced_student_scope)
+            ),
             "selected_grade": config.selected_grade,
             "projected_grade_scope": bool(projected_grade_scope),
             "utilization_cluster_policy": config.utilization_cluster_policy,
@@ -4085,18 +4116,40 @@ def _solve_student_assignment(
             local_session_started = monotonic()
             session_target_history = []
             session_target_guidance = []
-            selected_student_ids = tuple(local_config.get("selected_student_ids", ()))
-            enforced_student_scope = tuple(
+            scope_boundary_trace = []
+            selected_student_ids = _canonical_operator_student_scope(
+                local_config.get("selected_student_ids", ())
+            )
+            enforced_student_scope = _canonical_operator_student_scope(
                 local_config.get("enforced_student_scope", ())
             )
             # A fixed selector scope is immutable for the complete operator
             # session.  Keep a separate copy so no inner target-preparation
             # path can accidentally carry a prior/dynamic scope into a later
             # attempt.
-            fixed_student_scope = tuple(
+            fixed_student_scope = _canonical_operator_student_scope(
                 enforced_student_scope or selected_student_ids
             )
             selector_scope_enforced = bool(enforced_student_scope)
+            scope_boundary_trace.append({
+                "boundary": "core_session_initialization",
+                "selected_student_ids": tuple(selected_student_ids),
+                "enforced_student_scope": tuple(enforced_student_scope),
+                "fixed_student_scope": tuple(fixed_student_scope),
+                "scope_contract_expected_student_ids": tuple(
+                    local_config.get(
+                        "scope_contract_expected_student_ids", ()
+                    )
+                ),
+                "target_policy": local_config.get("target_policy"),
+                "scope_source": (
+                    "adaptive_selector"
+                    if selector_scope_enforced
+                    else "operator_session"
+                    if operator_session
+                    else "not_targeted"
+                ),
+            })
             selected_grade = local_config.get("selected_grade")
             grade_bounded = selected_grade is not None
 
@@ -4338,10 +4391,10 @@ def _solve_student_assignment(
                         "started",
                         iteration=iteration_count + 1,
                     )
-                    selected_student_ids = (
+                    selected_student_ids = _canonical_operator_student_scope(
                         fixed_student_scope
                         if local_config.get("target_policy") == "fixed"
-                        else tuple(local_config.get("selected_student_ids", ()))
+                        else local_config.get("selected_student_ids", ())
                     )
                     required_targets = (
                         int(local_config["max_changed_students"])
@@ -4353,6 +4406,16 @@ def _solve_student_assignment(
                         "objective_attribution": False,
                     }
                     target_scope_source = "not_targeted"
+                    scope_boundary_trace.append({
+                        "boundary": "before_target_preparation",
+                        "iteration": iteration_count + 1,
+                        "enforced_student_scope": tuple(
+                            enforced_student_scope
+                        ),
+                        "fixed_student_scope": tuple(fixed_student_scope),
+                        "selected_student_ids": tuple(selected_student_ids),
+                        "target_policy": local_config.get("target_policy"),
+                    })
                     if grade_bounded:
                         grade_facts = build_grade_opportunity_facts(
                             data,
@@ -4462,6 +4525,23 @@ def _solve_student_assignment(
                             if selector_scope_enforced
                             else "operator_session"
                         )
+                    scope_boundary_trace.append({
+                        "boundary": "after_target_preparation",
+                        "iteration": iteration_count + 1,
+                        "enforced_student_scope": tuple(
+                            enforced_student_scope
+                        ),
+                        "fixed_student_scope": tuple(fixed_student_scope),
+                        "selected_student_ids": tuple(selected_student_ids),
+                        "guidance_scope": tuple(
+                            target_guidance.get("selected_student_ids", ())
+                            or ()
+                        ),
+                        "scope_source": target_scope_source,
+                        "guidance_only": bool(
+                            target_guidance.get("guidance_only", False)
+                        ),
+                    })
                     session_target_guidance.append(target_guidance)
                     session_target_history.append(selected_student_ids)
                     _notify_phase(
@@ -4491,8 +4571,38 @@ def _solve_student_assignment(
                                 else per_probe_limit,
                             ),
                         )
-                    probe_selected_student_ids = (
+                    probe_selected_student_ids = _canonical_operator_student_scope(
                         selected_student_ids if operator_session else ()
+                    )
+                    # This is the authoritative execution-boundary fact for
+                    # scope integrity.  The probe result echoes its input for
+                    # ordinary diagnostics, but that echo is kept separate so
+                    # telemetry cannot confuse result reconstruction with the
+                    # scope that was actually passed to CP-SAT.
+                    probe_invocation_student_ids = probe_selected_student_ids
+                    scope_boundary_trace.append({
+                        "boundary": "probe_invocation",
+                        "iteration": iteration_count + 1,
+                        "enforced_student_scope": tuple(
+                            enforced_student_scope
+                        ),
+                        "fixed_student_scope": tuple(fixed_student_scope),
+                        "probe_invocation_student_ids": tuple(
+                            probe_invocation_student_ids
+                        ),
+                        "scope_source": target_scope_source,
+                    })
+                    _notify_phase(
+                        phase_callback,
+                        "probe_invocation",
+                        "started",
+                        iteration=iteration_count + 1,
+                        selected_student_ids=probe_invocation_student_ids,
+                        enforced_student_scope=enforced_student_scope,
+                        scope_source=target_scope_source,
+                        max_changed_students=local_config.get(
+                            "max_changed_students"
+                        ),
                     )
                     local_result = probe_substantive_soft_tier(
                         _build_probe_context(stage_2_seed_solver),
@@ -4531,23 +4641,48 @@ def _solve_student_assignment(
                         ),
                         phase_callback=phase_callback,
                     )
-                    last_result = local_result
-                    expected_probe_scope = tuple(
-                        sorted(
-                            set(fixed_student_scope or selected_student_ids),
-                            key=repr,
-                        )
+                    probe_result_student_ids = _canonical_operator_student_scope(
+                        local_result.selected_student_ids
                     )
-                    actual_probe_scope = tuple(
-                        sorted(
-                            set(local_result.selected_student_ids or ()),
-                            key=repr,
-                        )
+                    _notify_phase(
+                        phase_callback,
+                        "probe_invocation",
+                        "completed",
+                        iteration=iteration_count + 1,
+                        selected_student_ids=probe_invocation_student_ids,
+                        probe_result_student_ids=probe_result_student_ids,
+                        scope_equal=(
+                            probe_invocation_student_ids
+                            == probe_result_student_ids
+                        ),
+                    )
+                    last_result = local_result
+                    expected_probe_scope = _canonical_operator_student_scope(
+                        fixed_student_scope or selected_student_ids
+                    )
+                    actual_probe_scope = probe_invocation_student_ids
+                    probe_result_scope_equal = (
+                        actual_probe_scope == probe_result_student_ids
                     )
                     scope_equal = (
                         not operator_session
-                        or expected_probe_scope == actual_probe_scope
+                        or (
+                            expected_probe_scope == actual_probe_scope
+                            and probe_result_scope_equal
+                        )
                     )
+                    scope_boundary_trace.append({
+                        "boundary": "probe_result",
+                        "iteration": iteration_count + 1,
+                        "probe_invocation_student_ids": tuple(
+                            probe_invocation_student_ids
+                        ),
+                        "probe_result_student_ids": tuple(
+                            probe_result_student_ids
+                        ),
+                        "probe_result_scope_equal": probe_result_scope_equal,
+                        "scope_equal": scope_equal,
+                    })
                     candidate_before_validation = local_result.candidate_substantive_value
                     validation_started = monotonic()
                     validation_budget_start_remaining = None
@@ -4722,7 +4857,18 @@ def _solve_student_assignment(
                         "incumbent_before": current_seed_value,
                         "selected_student_ids": tuple(selected_student_ids),
                         "enforced_student_scope": tuple(enforced_student_scope),
+                        "probe_invocation_student_ids": (
+                            probe_invocation_student_ids
+                        ),
                         "probe_selected_student_ids": actual_probe_scope,
+                        "probe_result_student_ids": probe_result_student_ids,
+                        "probe_result_scope_equal": probe_result_scope_equal,
+                        "scope_contract_expected_student_ids": tuple(
+                            local_config.get(
+                                "scope_contract_expected_student_ids", ()
+                            )
+                        ),
+                        "scope_boundary_trace": tuple(scope_boundary_trace),
                         "scope_source": target_scope_source,
                         "scope_equal": scope_equal,
                         "scope_mismatch": not scope_equal,
@@ -4977,8 +5123,14 @@ def _solve_student_assignment(
                     ),
                     "target_policy": local_config.get("target_policy"),
                     "enforced_student_scope": tuple(
-                        local_config.get("enforced_student_scope", ())
+                        enforced_student_scope
                     ),
+                    "scope_contract_expected_student_ids": tuple(
+                        local_config.get(
+                            "scope_contract_expected_student_ids", ()
+                        )
+                    ),
+                    "scope_boundary_trace": tuple(scope_boundary_trace),
                     "session_context_reused": operator_session,
                     "static_probe_context_built_once": operator_session,
                     "session_target_history": tuple(session_target_history),

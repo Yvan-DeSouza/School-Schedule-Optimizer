@@ -1967,3 +1967,38 @@ evidence that the policy is inferior. The special-pressure cohort therefore
 does not qualify as clean policy evidence until that mismatch is explained or
 fixed. No target result from this hardening check changes the v2 objective,
 candidate-authority rule, canonical checkpoint, or production wiring.
+
+### Scope-integrity closure and corrected confirmation (2026-09-03)
+
+The follow-up implementation added exact pre-call probe-scope telemetry,
+immutable selector-owned scope handoff, and protection against reconstructing
+a failed attempt from a previous iteration's retained bootstrap facts. The
+external study `adaptive_scope_integrity_confirmation3_20260903` used the
+same balanced v2 contract: one CP-SAT worker, 300 seconds per operator, a
+900-second policy budget, an independent 180-second validation allowance, and
+a 1,800-second parent wall.
+
+The reference-target seed-101 gate completed cleanly for all four policies:
+`r4_s2_only` ended at 42,726, `adaptive_evidence_guided` at 42,726,
+`adaptive_r4_anchor` at 42,726, and `adaptive_balanced` at 42,732, from a
+common 42,750 source value. Every completed result was complete, had zero
+unmet requests, retained 140 special commitments, and reported exact
+selector-to-probe scope equality. These results are execution-integrity
+confirmation, not a policy-promotion study.
+
+The special-pressure seed-101 gate completed cleanly for
+`r4_s2_only`, `adaptive_evidence_guided`, and `adaptive_r4_anchor`. Each
+ended at 43,548 from 43,626, with two adopted improvements, zero scope
+mismatches, complete results, zero unmet requests, and all 280 special
+commitments retained. The fourth cell, `adaptive_balanced`, did not produce a
+policy result because its fresh prepared source checkpoint failed full-model
+validation before policy search. That is source-preparation-unresolved
+evidence, not a policy failure; the special-pressure cohort is therefore
+incomplete and no general adaptive ranking or replication claim is made from
+it.
+
+The current evidence closes the observed scope-mismatch path for the seven
+completed target cells, but does not close the full two-scenario confirmation
+gate. Seeds 202 and 303 remain intentionally unrun. The next action is to
+diagnose the intermittent source-preparation validation failure and rerun only
+the missing balanced special-pressure cell after the source gate is reliable.

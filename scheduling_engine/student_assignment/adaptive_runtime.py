@@ -304,7 +304,9 @@ def _compact_inner_probe_summary(
     incumbent_before = iteration.get("incumbent_before")
     canonical_target_scope = _canonical_student_scope(target_scope)
     canonical_actual_target_scope = _canonical_student_scope(
-        iteration.get("selected_student_ids") or actual_target_scope or ()
+        iteration.get("probe_invocation_student_ids")
+        if iteration.get("probe_invocation_student_ids") is not None
+        else iteration.get("selected_student_ids") or actual_target_scope or ()
     )
     return {
         "operator": operator,
@@ -320,6 +322,19 @@ def _compact_inner_probe_summary(
         ),
         "probe_selected_student_ids": _canonical_student_scope(
             iteration.get("probe_selected_student_ids") or ()
+        ),
+        "probe_invocation_student_ids": _canonical_student_scope(
+            iteration.get("probe_invocation_student_ids") or ()
+        ),
+        "probe_result_student_ids": _canonical_student_scope(
+            iteration.get("probe_result_student_ids") or ()
+        ),
+        "probe_result_scope_equal": iteration.get("probe_result_scope_equal"),
+        "scope_contract_expected_student_ids": _canonical_student_scope(
+            iteration.get("scope_contract_expected_student_ids") or ()
+        ),
+        "scope_boundary_trace": tuple(
+            dict(item) for item in (iteration.get("scope_boundary_trace") or ())
         ),
         "scope_source": iteration.get("scope_source"),
         "scope_mismatch": bool(iteration.get("scope_mismatch", False)),
@@ -393,23 +408,51 @@ def _operator_result(data, spec, *, selected_student_ids, current_source_decisio
     # execution and validation semantics identical across adaptive and static
     # controls.
     effective_spec = _effective_operator_spec(spec, session_overrides)
+    # Keep one immutable contract value for the complete handoff.  The
+    # selector owns this scope; no later request-building step may derive it
+    # again from mutable policy state or operator guidance.
+    enforced_scope = _canonical_student_scope(selected_student_ids)
     # The outer adaptive selector is authoritative for the diagnostic target
     # scope.  Dynamic target selection remains available to callers that do
     # not provide an explicit scope, but must not silently replace a scope
     # that was already selected and recorded by the policy.
-    if selected_student_ids and effective_spec.target_policy == "dynamic":
+    if enforced_scope and effective_spec.target_policy == "dynamic":
         effective_spec = replace(effective_spec, target_policy="fixed")
     request = build_operator_session_request(
         effective_spec,
         remaining_seconds=time_limit_seconds,
         worker_count=worker_count,
-        selected_student_ids=selected_student_ids,
-        enforced_student_scope=selected_student_ids,
+        selected_student_ids=enforced_scope,
+        enforced_student_scope=enforced_scope,
         cp_sat_random_seed=cp_sat_random_seed,
         cp_sat_max_deterministic_time_seconds=(
             cp_sat_max_deterministic_time_seconds
         ),
     )
+    if enforced_scope and (
+        _canonical_student_scope(request["selected_student_ids"])
+        != enforced_scope
+        or _canonical_student_scope(request["enforced_student_scope"])
+        != enforced_scope
+    ):
+        raise ValueError(
+            "operator session request changed the selector-owned scope"
+        )
+    if phase_callback is not None:
+        phase_callback(
+            "scope_contract",
+            event="completed",
+            operator=spec.name,
+            selected_student_ids=enforced_scope,
+            request_selected_student_ids=_canonical_student_scope(
+                request["selected_student_ids"]
+            ),
+            request_enforced_student_scope=_canonical_student_scope(
+                request["enforced_student_scope"]
+            ),
+            target_policy=request["target_policy"],
+            contract_match=True,
+        )
     return run_student_assignment_operator_session_diagnostic(
         data,
         operator_family=spec.name,
@@ -422,8 +465,9 @@ def _operator_result(data, spec, *, selected_student_ids, current_source_decisio
         ),
         worker_count=request["worker_count"],
         target_policy=request["target_policy"],
-        selected_student_ids=request["selected_student_ids"],
-        enforced_student_scope=request["selected_student_ids"],
+        selected_student_ids=enforced_scope,
+        enforced_student_scope=enforced_scope,
+        scope_contract_expected_student_ids=enforced_scope,
         selected_grade=request["selected_grade"],
         utilization_cluster_policy="interaction_aware",
         hard_feasibility_validation_time_limit_seconds=(
@@ -706,6 +750,7 @@ def run_adaptive_local_search_diagnostic(
             operator=decision.operator.name,
         )
         validation_error = None
+        operator_execution_error = None
         try:
             result = _operator_result(
                 data,
@@ -742,7 +787,8 @@ def run_adaptive_local_search_diagnostic(
             # validation failure, not as a policy/runtime crash; the current
             # complete incumbent remains authoritative and adoptable.
             result = current_result
-            validation_error = str(exc)
+            operator_execution_error = str(exc)
+            validation_error = operator_execution_error
         operation_elapsed = monotonic() - operation_started
         operator_execution_seconds += operation_elapsed
         phase_timings["operator_execution"] = (
@@ -762,7 +808,20 @@ def run_adaptive_local_search_diagnostic(
             "started",
             iteration=len(history) + 1,
         )
-        local = dict((result.optimization_facts or {}).get("stage_2_local_bootstrap") or {})
+        # If the operator failed before returning a new session result, do not
+        # inspect the retained incumbent's previous local-bootstrap facts as
+        # though they were produced by this attempt.  Doing so can report a
+        # stale prior scope as the current attempt's executed scope.
+        local = (
+            {}
+            if operator_execution_error is not None
+            else dict(
+                (result.optimization_facts or {}).get(
+                    "stage_2_local_bootstrap"
+                )
+                or {}
+            )
+        )
         if validation_error is not None:
             local.update({
                 "status": "validation_error",
@@ -781,24 +840,51 @@ def run_adaptive_local_search_diagnostic(
             if candidate_found and probe_candidate_source
             else _source_decisions_from_result(result)
         )
-        executed_scopes = tuple(
-            _canonical_student_scope(item.get("selected_student_ids"))
+        execution_scope_facts = tuple(
+            (
+                _canonical_student_scope(
+                    item.get("probe_invocation_student_ids")
+                )
+                if item.get("probe_invocation_student_ids") is not None
+                else None,
+                _canonical_student_scope(item.get("selected_student_ids")),
+            )
             for item in probe_iterations
-            if item.get("selected_student_ids") is not None
+        )
+        executed_scopes = tuple(
+            invocation_scope
+            for invocation_scope, _ in execution_scope_facts
+            if invocation_scope is not None
+        )
+        missing_execution_scope = bool(
+            selected
+            and (
+                not probe_iterations
+                or any(invocation_scope is None for invocation_scope, _ in execution_scope_facts)
+            )
         )
         actual_target_scope = (
             executed_scopes[-1]
             if executed_scopes
-            else _canonical_student_scope(
-                local.get("selected_student_ids") or selected
+            else None
+        )
+        scope_equal = bool(
+            not selected
+            or (
+                not missing_execution_scope
+                and bool(executed_scopes)
+                and all(scope == selected for scope in executed_scopes)
+                and all(
+                    item.get("probe_result_scope_equal") is not False
+                    for item in probe_iterations
+                )
             )
         )
-        scope_equal = (
-            not selected
-            or not executed_scopes
-            or all(scope == selected for scope in executed_scopes)
+        scope_mismatch = bool(
+            selected
+            and operator_execution_error is None
+            and (missing_execution_scope or not scope_equal)
         )
-        scope_mismatch = bool(selected and not scope_equal)
         if scope_mismatch:
             # This is a defense-in-depth authority check.  The core session
             # also guards selector-owned scopes, but the outer allocator must
@@ -807,7 +893,7 @@ def run_adaptive_local_search_diagnostic(
             local["scope_mismatch"] = True
             local["validation_classification"] = "scope_mismatch"
             local["validation_error"] = (
-                "selector-owned scope did not match the executed scope"
+                "selector-owned scope execution evidence was missing or did not match"
             )
             candidate_validated = False
         probe_candidate_value = next(

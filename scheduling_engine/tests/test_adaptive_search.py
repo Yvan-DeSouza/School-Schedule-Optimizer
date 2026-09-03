@@ -1097,7 +1097,14 @@ def test_adaptive_runner_adopts_only_validated_strict_improvement(monkeypatch):
                 "candidate_validated": True,
                 "changed_student_count": 1,
                 "changed_source_decision_count": 1,
-                "selected_student_ids": (9,),
+                "selected_student_ids": (1,),
+                "probe_invocation_student_ids": (1,),
+                "probe_result_scope_equal": True,
+                "iterations": ({
+                    "selected_student_ids": (1,),
+                    "probe_invocation_student_ids": (1,),
+                    "probe_result_scope_equal": True,
+                },),
             },
             "stage_2": {"objective_values": (-2,), "final_source_decisions": (("a", 2),)},
         },
@@ -1129,7 +1136,7 @@ def test_adaptive_runner_adopts_only_validated_strict_improvement(monkeypatch):
     assert result.record.phase_timings["policy_selection"] >= 0
     assert result.record.phase_timings["operator_execution"] >= 0
     assert result.record.phase_timings["candidate_processing"] >= 0
-    assert result.record.attempts[0]["actual_target_scope"] == (9,)
+    assert result.record.attempts[0]["actual_target_scope"] == (1,)
     assert result.record.attempts[0]["candidate_source_decision_fingerprint"] == (
         source_decision_fingerprint((("a", 2),))
     )
@@ -1348,11 +1355,31 @@ def test_runner_records_validation_error_and_retains_incumbent(monkeypatch):
                 "objective_values": (-1,),
                 "final_source_decisions": (("a", 1),),
             },
+            # This deliberately resembles a prior operator result. A new
+            # operator failure must not reuse its inner scope as current
+            # execution evidence.
+            "stage_2_local_bootstrap": {
+                "iterations": ({"selected_student_ids": (9,)},),
+            },
         },
+    )
+    spec = AdaptiveOperatorSpec(
+        "targeted_r4_s1", 4, 1, True, 1, "targeted_repair"
+    )
+    decision = AdaptivePolicyDecision(
+        operator=spec,
+        selected_student_ids=(7,),
+        score=0.0,
+        reasons=("test_operator_error",),
+        signal_values={},
     )
     monkeypatch.setattr(
         "scheduling_engine.student_assignment.adaptive_runtime._quality_report",
         lambda *_args: quality,
+    )
+    monkeypatch.setattr(
+        "scheduling_engine.student_assignment.adaptive_runtime.select_fixed_cycle_operator",
+        lambda *_args, **_kwargs: decision,
     )
     monkeypatch.setattr(
         "scheduling_engine.student_assignment.adaptive_runtime._operator_result",
@@ -1367,7 +1394,9 @@ def test_runner_records_validation_error_and_retains_incumbent(monkeypatch):
         total_time_limit_seconds=1,
         per_operator_time_limit_seconds=0.1,
         max_iterations=1,
-        portfolio=(AdaptiveOperatorSpec("r2", 2, None, False, 0, "local_descent"),),
+        portfolio=(spec,),
+        selection_policy="fixed_cycle",
+        fixed_cycle=(spec,),
     )
 
     attempt = result.record.attempts[0]
@@ -1375,6 +1404,8 @@ def test_runner_records_validation_error_and_retains_incumbent(monkeypatch):
     assert attempt["status"] == "validation_error"
     assert attempt["validation_classification"] == "validation_error"
     assert attempt["candidate_validated"] is False
+    assert attempt["scope_mismatch"] is False
+    assert attempt["actual_target_scope"] is None
     assert result.record.final_assignment_count == 1
 
 
@@ -1472,13 +1503,29 @@ def test_enforced_scope_prevents_utilization_guidance_from_replacing_probe_scope
         collect_resource_telemetry=False,
     )
     facts = result.optimization_facts["stage_2_local_bootstrap"]
-    assert facts["enforced_student_scope"] == (2, 1)
+    assert facts["enforced_student_scope"] == (1, 2)
+    assert facts["scope_contract_expected_student_ids"] == (1, 2)
+    assert facts["scope_boundary_trace"][0]["boundary"] == (
+        "core_session_initialization"
+    )
+    assert facts["scope_boundary_trace"][0]["fixed_student_scope"] == (1, 2)
     assert all(
-        tuple(item["enforced_student_scope"]) == (2, 1)
+        tuple(item["enforced_student_scope"]) == (1, 2)
         and tuple(item["probe_selected_student_ids"]) == (1, 2)
+        and tuple(item["probe_invocation_student_ids"]) == (1, 2)
         and item["scope_equal"] is True
         and item["scope_mismatch"] is False
         for item in facts["iterations"]
+    )
+    assert all(
+        item["boundary"] in {
+            "core_session_initialization",
+            "before_target_preparation",
+            "after_target_preparation",
+            "probe_invocation",
+            "probe_result",
+        }
+        for item in facts["scope_boundary_trace"]
     )
 
 
@@ -1514,11 +1561,91 @@ def test_core_rejects_a_probe_result_with_scope_drift(monkeypatch):
     iteration = result.optimization_facts["stage_2_local_bootstrap"][
         "iterations"
     ][0]
+    assert tuple(iteration["probe_invocation_student_ids"]) == (1, 2)
+    assert tuple(iteration["probe_result_student_ids"]) == (999,)
+    assert iteration["probe_result_scope_equal"] is False
     assert iteration["scope_mismatch"] is True
     assert iteration["scope_equal"] is False
     assert iteration["candidate_validated"] is False
     assert iteration["validation_classification"] == "scope_mismatch"
     assert iteration["adopted"] is False
+
+
+def test_missing_selector_scope_execution_evidence_is_fail_closed(monkeypatch):
+    data = replace(
+        build_realistic_quality_tradeoff_fixture(),
+        objective_semantics_version="v2",
+    )
+    initial = SimpleNamespace(
+        status="complete",
+        solver_outcome="optimal",
+        unmet_requests=(),
+        assignments=(1,),
+        commitment_assignments=(),
+        objective_components={"weighted_normalized_contributions": {"x": 100}},
+        optimization_facts={
+            "stage_2": {"final_source_decisions": (("a", 1),)},
+        },
+    )
+    candidate = SimpleNamespace(
+        status="complete",
+        solver_outcome="feasible",
+        unmet_requests=(),
+        assignments=(1, 2),
+        commitment_assignments=(),
+        objective_components={"weighted_normalized_contributions": {"x": 90}},
+        optimization_facts={
+            "stage_2_local_bootstrap": {
+                "status": "feasible",
+                "candidate_found": True,
+                "candidate_validated": True,
+                "iterations": ({
+                    "selected_student_ids": (7,),
+                    "candidate_source_decisions": (("a", 2),),
+                    "candidate_value": 90,
+                },),
+            },
+            "stage_2": {"final_source_decisions": (("a", 2),)},
+        },
+    )
+    spec = AdaptiveOperatorSpec(
+        "targeted_r4_s1", 4, 1, True, 1, "targeted_repair"
+    )
+    decision = AdaptivePolicyDecision(
+        operator=spec,
+        selected_student_ids=(7,),
+        score=0.0,
+        reasons=("test_missing_scope_evidence",),
+        signal_values={},
+    )
+    monkeypatch.setattr(adaptive_runtime, "_quality_report", lambda *_args: {})
+    monkeypatch.setattr(
+        adaptive_runtime,
+        "choose_adaptive_operator",
+        lambda *_args, **_kwargs: decision,
+    )
+    monkeypatch.setattr(
+        adaptive_runtime,
+        "_operator_result",
+        lambda *_args, **_kwargs: candidate,
+    )
+
+    result = run_adaptive_local_search_diagnostic(
+        data,
+        initial_result=initial,
+        total_time_limit_seconds=1,
+        per_operator_time_limit_seconds=0.1,
+        max_iterations=1,
+        portfolio=(spec,),
+    )
+
+    attempt = result.record.attempts[0]
+    assert result.result is initial
+    assert result.source_decisions == (("a", 1),)
+    assert attempt["actual_target_scope"] is None
+    assert attempt["scope_mismatch"] is True
+    assert attempt["validation_classification"] == "scope_mismatch"
+    assert attempt["adopted"] is False
 
 
 def test_scope_mismatch_is_fail_closed_at_adaptive_authority_boundary(monkeypatch):

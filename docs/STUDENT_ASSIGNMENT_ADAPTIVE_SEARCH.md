@@ -1513,3 +1513,14 @@ be adopted, cannot replace the source incumbent, cannot count as validated
 productivity, and cannot mark the scope exhausted. The previous complete
 incumbent remains authoritative. This fail-closed rule applies in both the
 student-assignment core and the outer adaptive runtime.
+
+The execution-boundary fact is the pre-call
+`probe_invocation_student_ids` value. The probe's returned student IDs and
+outer result reconstruction are recorded separately as corroborating
+telemetry; they are not allowed to replace the exact argument sent to the
+probe. Operator errors that occur before a probe call do not reuse a previous
+iteration's retained bootstrap facts when reconstructing the failed attempt.
+They remain execution evidence with no inferred scope and no incumbent
+change. Missing or divergent pre-call scope evidence continues to fail closed
+as `scope_mismatch` when a selector-owned attempt reaches the execution
+boundary.
