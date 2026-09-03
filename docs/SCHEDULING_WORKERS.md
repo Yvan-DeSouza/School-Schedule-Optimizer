@@ -257,6 +257,30 @@ evidence, not a fair per-policy runtime ranking; repeatable sequential
 confirmation is required before comparing policy speed or considering any
 policy for promotion.
 
+For the evidence-guided cohort, sequential confirmation is available through
+the same parent-owned study boundary:
+
+```bash
+python -m scheduling_engine.benchmark_policy_generalization \
+  --study-directory C:/research_runs/adaptive-validation-hardening-YYYYMMDD \
+  --initialize-evidence-guided
+python -m scheduling_engine.benchmark_policy_generalization \
+  --study-directory C:/research_runs/adaptive-validation-hardening-YYYYMMDD \
+  --run-sequential --scenario reference_target --seed 101
+python -m scheduling_engine.benchmark_policy_generalization \
+  --study-directory C:/research_runs/adaptive-validation-hardening-YYYYMMDD \
+  --summarize
+```
+
+The sequential command runs the selected pending cells one at a time. It
+prepares and validates one source context per scenario for the selected
+cohort, passes that read-only context to each supervised child, and lets only
+the parent write result artifacts and manifest hashes. `--policy` may be
+provided to run one policy; omitting it runs every pending policy for the
+selected scenario and seed. This mode is research-only and does not alter
+production Celery concurrency, ordinary scheduling, canonical benchmark
+state, Django rows, or approvals.
+
 The student-assignment diagnostic paths expose compact operation and local
 probe resource facts when measurement is enabled. These facts can include RSS,
 USS/private memory where supported, VMS, CPU, thread/process-tree, and host

@@ -1563,8 +1563,24 @@ def test_inner_probe_summary_preserves_bounded_causal_facts():
     assert summary["candidate_validated"] is True
     assert summary["substantive_gain"] == 6.0
     assert summary["actual_target_scope"] == (7, 8)
+    assert summary["scope_equal"] is True
     assert summary["component_deltas"] == {"section_utilization": -6}
     assert summary["affected_student_ids"] == (7, 8)
+
+
+def test_adaptive_scope_telemetry_is_order_insensitive_for_fixed_student_sets():
+    summary = _compact_inner_probe_summary(
+        {"selected_student_ids": (423, 750, 1025, 1392)},
+        operator="targeted_r4_s2",
+        target_scope=(1392, 423, 750, 1025),
+        actual_target_scope=(),
+        selected_grade=None,
+    )
+
+    expected_scope = tuple(sorted((423, 750, 1025, 1392), key=repr))
+    assert summary["target_scope"] == expected_scope
+    assert summary["actual_target_scope"] == expected_scope
+    assert summary["scope_equal"] is True
 
 
 def test_continuous_r2_session_reuses_one_engine_context_and_returns_complete_result():
@@ -1729,6 +1745,10 @@ def test_continuous_targeted_operator_families_reuse_context_across_improvements
         assert all(
             tuple(targets) == tuple(selected_student_ids)
             for targets in facts["session_target_history"]
+        )
+        assert all(
+            tuple(item["selected_student_ids"]) == tuple(selected_student_ids)
+            for item in facts["iterations"]
         )
         assert all(
             item["candidate_validated"]

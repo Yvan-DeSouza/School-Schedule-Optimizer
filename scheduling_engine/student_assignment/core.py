@@ -4078,6 +4078,11 @@ def _solve_student_assignment(
             session_target_history = []
             session_target_guidance = []
             selected_student_ids = tuple(local_config.get("selected_student_ids", ()))
+            # A fixed selector scope is immutable for the complete operator
+            # session.  Keep a separate copy so no inner target-preparation
+            # path can accidentally carry a prior/dynamic scope into a later
+            # attempt.
+            fixed_student_scope = tuple(selected_student_ids)
             selected_grade = local_config.get("selected_grade")
             grade_bounded = selected_grade is not None
 
@@ -4319,8 +4324,10 @@ def _solve_student_assignment(
                         "started",
                         iteration=iteration_count + 1,
                     )
-                    selected_student_ids = tuple(
-                        local_config.get("selected_student_ids", ())
+                    selected_student_ids = (
+                        fixed_student_scope
+                        if local_config.get("target_policy") == "fixed"
+                        else tuple(local_config.get("selected_student_ids", ()))
                     )
                     required_targets = (
                         int(local_config["max_changed_students"])
@@ -4377,7 +4384,7 @@ def _solve_student_assignment(
                                         "interaction_aware",
                                     ),
                                     fixed_student_ids=(
-                                        selected_student_ids
+                                        fixed_student_scope
                                         if local_config.get("target_policy") == "fixed"
                                         else ()
                                     ),
@@ -4403,7 +4410,7 @@ def _solve_student_assignment(
                                 local_config.get("operator_family"),
                                 target_policy=local_config.get("target_policy", "dynamic"),
                                 ranked_student_ids=ranked_student_ids,
-                                fixed_student_ids=selected_student_ids,
+                                fixed_student_ids=fixed_student_scope,
                             )
                             target_guidance["policy"] = "student_quality_pressure"
                             target_guidance["selected_student_ids"] = selected_student_ids
@@ -4640,6 +4647,7 @@ def _solve_student_assignment(
                             else None
                         ),
                         "incumbent_before": current_seed_value,
+                        "selected_student_ids": tuple(selected_student_ids),
                         "candidate_value": candidate_before_validation,
                         "candidate_validated": candidate_validated,
                         "validation_classification": validation_facts[

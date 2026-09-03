@@ -236,6 +236,11 @@ passes those IDs to the operator session as fixed targeting. Dynamic target
 selection remains available for sessions that intentionally own target
 selection internally. This keeps predicted-versus-executed scope evidence
 meaningful without changing hard constraints or candidate authority.
+Student scopes are semantic sets rather than ordered schedules. The diagnostic
+runtime therefore records selector-predicted and executed student IDs in the
+same stable canonical order used by fixed operator targeting and records
+scope-equality after canonicalization. A different ranking order is not
+treated as a scope mismatch; a different student set remains a mismatch.
 
 Two solver-free controls are available for calibration. The stateless-role
 selector uses the same current-state role signals with an empty operator

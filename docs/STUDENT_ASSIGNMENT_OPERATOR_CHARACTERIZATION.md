@@ -1938,3 +1938,32 @@ v1 closeout and stays within the already implemented v2 objective contract:
 No objective definition, hard constraint, production policy wiring, approval
 behavior, canonical checkpoint, migration, or Django scheduling state changed
 as part of this study.
+
+### Adaptive validation-hardening confirmation (2026-09-03)
+
+The authority-hardening implementation was exercised against the detached
+Objective Semantics v2 target inputs in the external studies
+`adaptive_validation_hardening_20260903` and
+`adaptive_validation_hardening_20260903_scopefix_rerun`. The diagnostic
+contract was one CP-SAT worker per child, 300 seconds per operator, a 900-second
+policy budget, an independent 180-second candidate-validation allowance, and a
+1,800-second parent wall. Source validation was prepared once per exact
+scenario cohort and reused only through the in-process prepared-context
+boundary.
+
+The reference seed-101 cohort produced complete, zero-unmet results for
+`adaptive_balanced`, `adaptive_evidence_guided`, `adaptive_r4_anchor`, and
+`r4_s2_only`; each retained 140 special commitments and each recorded
+selector/executed scope equality. The final substantive values were 42,708,
+42,678, 42,678, and 42,678 respectively, from a common 42,750 source value.
+
+The special-commitment-pressure seed-101 cohort also produced complete,
+zero-unmet results and retained all 280 special commitments. The corrected
+fresh evidence-guided replay ended at 43,422 from 43,626. However, its final
+near-wall R4/S2 attempt reported a selector scope of `(56, 156)` and an
+executed inner scope of `(56, 906)`; the candidate was not adopted after its
+validation error. This is an unresolved scope-forwarding/telemetry defect, not
+evidence that the policy is inferior. The special-pressure cohort therefore
+does not qualify as clean policy evidence until that mismatch is explained or
+fixed. No target result from this hardening check changes the v2 objective,
+candidate-authority rule, canonical checkpoint, or production wiring.

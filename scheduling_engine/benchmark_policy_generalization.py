@@ -1188,6 +1188,116 @@ def run_parallel_policy_study(
     return manifest
 
 
+def run_sequential_policy_study(
+    study_directory,
+    *,
+    scenario_id=None,
+    policy=None,
+    seed=None,
+):
+    """Run selected evidence-study cells sequentially in one coordinator.
+
+    This is a research-only confirmation path.  It deliberately reuses the
+    persistence-free cell executor and parent-owned artifact publication from
+    the progressive runner, while preparing one validated source context per
+    scenario for the whole sequential cohort.  It never changes production
+    scheduling state or canonical benchmark artifacts.
+    """
+
+    study_directory = Path(study_directory)
+    manifest_path = study_directory / "study_manifest.json"
+    if not manifest_path.exists():
+        raise FileNotFoundError(
+            "Initialize the evidence-guided policy study before running cells"
+        )
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if manifest.get("schema") != PARALLEL_POLICY_STUDY_SCHEMA:
+        raise ValueError("Study manifest is not a policy comparison study")
+    if scenario_id is not None and scenario_id not in manifest.get(
+        "scenario_ids", ()
+    ):
+        raise ValueError(f"Scenario is not registered in this study: {scenario_id}")
+    if policy is not None and policy not in manifest.get("policies", ()):
+        raise ValueError(f"Policy is not registered in this study: {policy}")
+    if seed is not None and int(seed) not in manifest.get("seeds", ()):
+        raise ValueError(f"Seed is not registered in this study: {seed}")
+
+    pending = [
+        {
+            "scenario_id": current_scenario,
+            "policy": current_policy,
+            "seed": int(current_seed),
+        }
+        for current_scenario in manifest["scenario_ids"]
+        if scenario_id is None or current_scenario == scenario_id
+        for current_policy in manifest["policies"]
+        if policy is None or current_policy == policy
+        for current_seed in manifest["seeds"]
+        if seed is None or int(current_seed) == int(seed)
+        if _result_filename(current_scenario, current_policy, current_seed)
+        not in manifest.get("results", {})
+    ]
+    if not pending:
+        return manifest
+
+    with tempfile.TemporaryDirectory(
+        prefix="student-policy-sequential-source-context-"
+    ) as context_dir:
+        prepared_source_contexts = {}
+        for current_scenario in sorted(
+            {cell["scenario_id"] for cell in pending}
+        ):
+            scenario = manifest["scenarios"][current_scenario]
+            context = prepare_supervised_calibration_source(
+                benchmark_directory=(
+                    _REPOSITORY_ROOT / scenario["benchmark_directory"]
+                ),
+                profile=PARALLEL_POLICY_STUDY_PROFILE,
+                branch_input=Path(context_dir) / f"{current_scenario}.json.gz",
+                validation_time_limit_seconds=manifest["budget_contract"].get(
+                    "candidate_validation_time_limit_seconds"
+                ),
+            )
+            if context["input_fingerprint"] != scenario["input_fingerprint"]:
+                raise ValueError(
+                    f"Prepared source input fingerprint does not match scenario {current_scenario}"
+                )
+            if context["source_fingerprint"] != scenario[
+                "source_seed_fingerprint"
+            ]:
+                raise ValueError(
+                    f"Prepared source seed fingerprint does not match scenario {current_scenario}"
+                )
+            prepared_source_contexts[current_scenario] = context
+
+        for cell in pending:
+            payload = execute_parallel_policy_cell(
+                manifest=manifest,
+                scenario_id=cell["scenario_id"],
+                policy=cell["policy"],
+                seed=cell["seed"],
+                prepared_source_context=prepared_source_contexts[
+                    cell["scenario_id"]
+                ],
+            )
+            payload = dict(payload)
+            payload["execution_mode"] = "sequential_confirmation"
+            _persist_parallel_policy_result(study_directory, manifest, payload)
+            manifest["batches"].append({
+                "batch_number": len(manifest["batches"]) + 1,
+                "execution_mode": "sequential_confirmation",
+                "requested_parallel_trials": 1,
+                "cells": [cell],
+                "source_preparation": {
+                    cell["scenario_id"]: prepared_source_contexts[
+                        cell["scenario_id"]
+                    ]["preparation"]
+                },
+            })
+            _json_write_atomic(manifest_path, manifest)
+    return manifest
+
+
 def _load_startup_aware_results(study_directory):
     """Load and integrity-check the immutable result artifacts for a study."""
 
@@ -1470,6 +1580,14 @@ def main(argv=None):  # pragma: no cover - offline experiment entrypoint
         help="Run the four-policy study with measured concurrency expansion.",
     )
     parser.add_argument(
+        "--run-sequential",
+        action="store_true",
+        help=(
+            "Run selected policy-study cells sequentially with one shared "
+            "prepared source context per scenario."
+        ),
+    )
+    parser.add_argument(
         "--max-parallel-trials",
         type=int,
         default=PARALLEL_POLICY_STUDY_MAX_PARALLEL_TRIALS,
@@ -1481,7 +1599,11 @@ def main(argv=None):  # pragma: no cover - offline experiment entrypoint
     )
     parser.add_argument(
         "--policy",
-        choices=STARTUP_AWARE_POLICIES,
+        choices=tuple(sorted(
+            set(STARTUP_AWARE_POLICIES)
+            | set(PARALLEL_POLICY_STUDY_POLICIES)
+            | set(EVIDENCE_GUIDED_STUDY_POLICIES)
+        )),
     )
     parser.add_argument("--seed", type=int)
     args = parser.parse_args(argv)
@@ -1491,6 +1613,7 @@ def main(argv=None):  # pragma: no cover - offline experiment entrypoint
         args.initialize_parallel,
         args.initialize_evidence_guided,
         args.run_parallel,
+        args.run_sequential,
     ))
     if selected_modes > 1:
         parser.error("study action flags are mutually exclusive")
@@ -1504,6 +1627,13 @@ def main(argv=None):  # pragma: no cover - offline experiment entrypoint
         payload = run_parallel_policy_study(
             args.study_directory,
             max_parallel_trials=args.max_parallel_trials,
+        )
+    elif args.run_sequential:
+        payload = run_sequential_policy_study(
+            args.study_directory,
+            scenario_id=args.scenario,
+            policy=args.policy,
+            seed=args.seed,
         )
     elif args.summarize:
         payload = write_startup_aware_study_summary(args.study_directory)
@@ -1522,6 +1652,7 @@ def main(argv=None):  # pragma: no cover - offline experiment entrypoint
         or args.initialize_parallel
         or args.initialize_evidence_guided
         or args.run_parallel
+        or args.run_sequential
     ):
         print(json.dumps(payload, indent=2, sort_keys=True, default=str))
     else:
@@ -1586,6 +1717,7 @@ __all__ = [
     "qualify_parallel_concurrency",
     "run_parallel_policy_batch",
     "run_parallel_policy_study",
+    "run_sequential_policy_study",
     "run_startup_aware_policy_cell",
     "summarize_startup_aware_study",
     "startup_aware_policy_budget_contract",

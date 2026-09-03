@@ -44,6 +44,19 @@ class AdaptiveSessionResult:
     source_decisions: tuple
 
 
+def _canonical_student_scope(student_ids):
+    """Return the stable semantic representation of a student scope.
+
+    Operator sessions treat targeted IDs as a set and normalize fixed scopes
+    with ``sorted(set(...), key=repr)``.  Policy records used to retain the
+    selector's ranking order, which made an unchanged scope look different in
+    telemetry even though the executed set was identical.  Scope order has no
+    scheduling meaning, so canonicalize it at the diagnostic boundary.
+    """
+
+    return tuple(sorted(set(tuple(student_ids or ())), key=repr))
+
+
 def _quality_report(data, result):
     """Rebuild entity facts from the current result for policy state only."""
 
@@ -287,16 +300,19 @@ def _compact_inner_probe_summary(
 
     candidate_value = iteration.get("candidate_value")
     incumbent_before = iteration.get("incumbent_before")
+    canonical_target_scope = _canonical_student_scope(target_scope)
+    canonical_actual_target_scope = _canonical_student_scope(
+        iteration.get("selected_student_ids") or actual_target_scope or ()
+    )
     return {
         "operator": operator,
         "iteration": iteration.get("iteration"),
         "attempt_number_for_radius": iteration.get("attempt_number_for_radius"),
         "radius": iteration.get("radius"),
         "effective_radius": iteration.get("effective_radius"),
-        "target_scope": tuple(target_scope or ()),
-        "actual_target_scope": tuple(
-            iteration.get("selected_student_ids") or actual_target_scope or ()
-        ),
+        "target_scope": canonical_target_scope,
+        "actual_target_scope": canonical_actual_target_scope,
+        "scope_equal": canonical_target_scope == canonical_actual_target_scope,
         "selected_grade": iteration.get("selected_grade", selected_grade),
         "status": iteration.get("status"),
         "candidate_found": bool(iteration.get("candidate_found", candidate_value is not None)),
@@ -614,7 +630,10 @@ def run_adaptive_local_search_diagnostic(
         decision_payload["adaptive_policy_variant"] = (
             adaptive_policy_variant if selection_policy == "adaptive" else "balanced"
         )
-        selected = tuple(decision.selected_student_ids)
+        # Student target scopes are semantic sets.  Canonicalize the selector
+        # output before passing it to the operator so the request and the
+        # operator-session telemetry use the same representation.
+        selected = _canonical_student_scope(decision.selected_student_ids)
         operation_limit = min(per_operator, remaining)
         effective_spec = _effective_operator_spec(
             decision.operator,
@@ -905,6 +924,18 @@ def run_adaptive_local_search_diagnostic(
         validation_classification = str(
             local.get("validation_classification", "not_attempted")
         )
+        executed_scopes = tuple(
+            _canonical_student_scope(item.get("selected_student_ids"))
+            for item in probe_iterations
+            if item.get("selected_student_ids") is not None
+        )
+        actual_target_scope = (
+            executed_scopes[-1]
+            if executed_scopes
+            else _canonical_student_scope(
+                local.get("selected_student_ids") or selected
+            )
+        )
         exhaustion_classification = _attempt_exhaustion_classification(
             status=status,
             candidate_found=candidate_found,
@@ -943,8 +974,11 @@ def run_adaptive_local_search_diagnostic(
                 validation_solver_outcome=local.get("validation_solver_outcome"),
                 validation_error=local.get("validation_error"),
                 target_scope=selected,
-                actual_target_scope=tuple(
-                    local.get("selected_student_ids") or selected
+                actual_target_scope=actual_target_scope,
+                scope_equal=(
+                    all(scope == selected for scope in executed_scopes)
+                    if executed_scopes
+                    else selected == actual_target_scope
                 ),
                 source_fingerprint_before=source_fingerprint_before,
                 candidate_source_decision_fingerprint=(
@@ -980,9 +1014,7 @@ def run_adaptive_local_search_diagnostic(
                         item,
                         operator=decision.operator.name,
                         target_scope=selected,
-                        actual_target_scope=tuple(
-                            local.get("selected_student_ids") or selected
-                        ),
+                        actual_target_scope=actual_target_scope,
                         selected_grade=decision.operator.selected_grade,
                         candidate_complete=hard_complete,
                     )

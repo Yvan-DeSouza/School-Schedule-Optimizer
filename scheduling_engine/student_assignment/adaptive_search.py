@@ -109,6 +109,9 @@ class AdaptiveOperatorAttempt:
     # differ when an operator uses dynamic targeting. Keep both facts so
     # diagnostic comparisons do not mistake policy selection for execution.
     actual_target_scope: tuple = ()
+    # Scope order is not semantically meaningful.  This records equality after
+    # both scopes have been canonicalized by the diagnostic runtime.
+    scope_equal: bool | None = None
     # Diagnostic identity of the candidate source decisions returned by the
     # operator. This is deliberately metadata only; candidate authority still
     # comes from the existing full-model validation boundary.
@@ -1217,6 +1220,7 @@ def replay_adaptive_policy(records, *, portfolio=DEFAULT_ADAPTIVE_OPERATOR_PORTF
             validation_error=item.get("validation_error"),
             target_scope=tuple(item.get("target_scope", ())),
             actual_target_scope=tuple(item.get("actual_target_scope", ())),
+            scope_equal=item.get("scope_equal"),
             source_fingerprint_before=item.get("source_fingerprint_before"),
             candidate_source_decision_fingerprint=item.get(
                 "candidate_source_decision_fingerprint"
@@ -1292,6 +1296,7 @@ def simulate_adaptive_policy(
                     validation_error=item.get("validation_error"),
                     target_scope=tuple(item.get("target_scope", ())),
                     actual_target_scope=tuple(item.get("actual_target_scope", ())),
+                    scope_equal=item.get("scope_equal"),
                     source_fingerprint_before=item.get("source_fingerprint_before"),
                     candidate_source_decision_fingerprint=item.get(
                         "candidate_source_decision_fingerprint"

@@ -417,6 +417,76 @@ def test_parallel_study_returns_to_last_qualified_level_after_failed_expansion(
     ]
 
 
+def test_sequential_policy_study_reuses_one_source_context_and_persists_cells(
+    monkeypatch, tmp_path
+):
+    manifest = _manifest(
+        policies=("adaptive_balanced", "adaptive_evidence_guided"),
+        seeds=(101,),
+    )
+    manifest["budget_contract"] = {
+        "candidate_validation_time_limit_seconds": 180.0,
+    }
+    manifest_path = tmp_path / "study_manifest.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    prepared = []
+    executed = []
+
+    def fake_prepare(**kwargs):
+        prepared.append(kwargs)
+        return {
+            "input_fingerprint": "input",
+            "source_fingerprint": "seed",
+            "branch_input": "prepared.json.gz",
+            "context_fingerprint": "context",
+            "preparation": {"total_seconds": 1.0},
+        }
+
+    def fake_execute(**kwargs):
+        executed.append(kwargs)
+        context = kwargs["prepared_source_context"]
+        return {
+            "scenario_id": kwargs["scenario_id"],
+            "policy": kwargs["policy"],
+            "seed": kwargs["seed"],
+            "execution_status": "completed",
+            "candidate_complete": True,
+            "final_substantive_value": 10,
+            "source_preparation": context["preparation"],
+            "prepared_source_context_fingerprint": context[
+                "context_fingerprint"
+            ],
+        }
+
+    monkeypatch.setattr(
+        policy_study, "prepare_supervised_calibration_source", fake_prepare
+    )
+    monkeypatch.setattr(
+        policy_study, "execute_parallel_policy_cell", fake_execute
+    )
+
+    result = policy_study.run_sequential_policy_study(
+        tmp_path,
+        scenario_id="reference_target",
+        seed=101,
+    )
+
+    assert len(prepared) == 1
+    assert len(executed) == 2
+    assert all(
+        item["prepared_source_context"]["context_fingerprint"] == "context"
+        for item in executed
+    )
+    assert len(result["results"]) == 2
+    assert all(
+        item["sha256"] for item in result["results"].values()
+    )
+    assert all(
+        item["execution_mode"] == "sequential_confirmation"
+        for item in result["batches"]
+    )
+
+
 def test_parallel_study_rejects_prepared_context_with_stale_manifest_lineage(
     monkeypatch, tmp_path
 ):
