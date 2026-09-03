@@ -13,7 +13,14 @@ import hashlib
 import json
 
 from .adaptive_runtime import AdaptiveSessionResult, run_adaptive_local_search_diagnostic
-from .adaptive_search import DEFAULT_ADAPTIVE_OPERATOR_PORTFOLIO
+from .adaptive_search import (
+    ADAPTIVE_POLICY_VERSION,
+    DEFAULT_ADAPTIVE_OPERATOR_PORTFOLIO,
+    EVIDENCE_GUIDED_CONTINUATION_LIMIT,
+    EVIDENCE_GUIDED_DUPLICATE_SCOPE_PENALTY,
+    EVIDENCE_GUIDED_GAIN_SCALE_PER_MINUTE,
+    EVIDENCE_GUIDED_OPERATOR_PRIORS,
+)
 from .runtime import semantic_student_assignment_input_fingerprint
 
 
@@ -148,6 +155,7 @@ CALIBRATION_SESSION_OVERRIDES = {
 
 CALIBRATION_FIXED_CYCLES = {
     "r2_only": ("r2",),
+    "r4_s2_only": ("targeted_r4_s2",),
     "student_repair_only": ("targeted_r4_s2",),
     # A named R8-only control keeps the broader student-pressure family
     # independently measurable without changing the ordinary scheduler.
@@ -200,6 +208,28 @@ ADAPTIVE_POLICY_VARIANT_POLICIES = {
     "adaptive_balanced": "balanced",
     "adaptive_student_pressure_biased": "student_pressure_biased",
     "adaptive_utilization_biased": "utilization_biased",
+    "adaptive_evidence_guided": "evidence_guided",
+    "adaptive_r4_anchor": "r4_anchor",
+}
+
+# New diagnostic comparison cohort.  Keep the historical parallel-study
+# tuple unchanged so old manifests retain their original policy identity.
+EVIDENCE_GUIDED_POLICY_STUDY_POLICIES = (
+    "adaptive_balanced",
+    "adaptive_evidence_guided",
+    "adaptive_r4_anchor",
+    "r4_s2_only",
+)
+
+# The policy fingerprint includes every diagnostic scoring control so a
+# result cannot be compared as though it came from another allocator.
+EVIDENCE_GUIDED_POLICY_CONFIGURATION = {
+    "policy_version": ADAPTIVE_POLICY_VERSION,
+    "gain_scale_per_minute": EVIDENCE_GUIDED_GAIN_SCALE_PER_MINUTE,
+    "continuation_limit": EVIDENCE_GUIDED_CONTINUATION_LIMIT,
+    "duplicate_scope_penalty": EVIDENCE_GUIDED_DUPLICATE_SCOPE_PENALTY,
+    "operator_priors": dict(EVIDENCE_GUIDED_OPERATOR_PRIORS),
+    "tie_break": "score, estimated full cost, smaller radius, natural operator name",
 }
 
 
@@ -216,6 +246,26 @@ def profile_fingerprint(profile_name):
         separators=(",", ":"),
     ).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
+
+
+def policy_configuration_fingerprint(policy_name):
+    """Return a stable fingerprint for one diagnostic allocation policy."""
+
+    if policy_name not in ADAPTIVE_POLICY_VARIANT_POLICIES:
+        raise ValueError(f"Unknown adaptive policy: {policy_name!r}")
+    payload = {
+        "policy": policy_name,
+        "variant": ADAPTIVE_POLICY_VARIANT_POLICIES[policy_name],
+        "evidence_guided": EVIDENCE_GUIDED_POLICY_CONFIGURATION
+        if ADAPTIVE_POLICY_VARIANT_POLICIES[policy_name]
+        in {"evidence_guided", "r4_anchor"}
+        else None,
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode(
+            "utf-8"
+        )
+    ).hexdigest()
 
 
 def fixed_cycle_control_request(
@@ -426,6 +476,9 @@ class AdaptiveCalibrationTrialRecord:
     final_objective_vector: tuple = ()
     final_source_decisions: tuple = ()
     adaptive_policy_variant: str = "balanced"
+    # Diagnostic policy identity.  This is defaulted so older in-memory
+    # records and historical JSON-shaped callers remain readable.
+    policy_configuration_fingerprint: str = ""
 
     def to_dict(self):
         return asdict(self)
@@ -593,6 +646,9 @@ def build_calibration_trial_record(
             if adaptive_policy_variant is not None
             else build_calibration_policy(policy)["adaptive_policy_variant"]
         ),
+        policy_configuration_fingerprint=policy_configuration_fingerprint(policy)
+        if policy in ADAPTIVE_POLICY_VARIANT_POLICIES
+        else "",
         attempts=tuple(record.attempts),
         decisions=tuple(record.decisions),
         timing={
@@ -611,6 +667,9 @@ def build_calibration_trial_record(
 __all__ = [
     "CALIBRATION_SESSION_OVERRIDES",
     "ADAPTIVE_POLICY_VARIANT_POLICIES",
+    "EVIDENCE_GUIDED_POLICY_STUDY_POLICIES",
+    "EVIDENCE_GUIDED_POLICY_CONFIGURATION",
+    "policy_configuration_fingerprint",
     "CALIBRATION_FIXED_CYCLES",
     "CALIBRATION_PROFILES",
     "CALIBRATION_PROTOCOL_VERSION",

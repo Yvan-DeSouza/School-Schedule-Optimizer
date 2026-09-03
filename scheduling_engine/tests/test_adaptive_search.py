@@ -23,6 +23,8 @@ from scheduling_engine.student_assignment.search_experiments import (
 from scheduling_engine.student_assignment.adaptive_search import (
     ADAPTIVE_ROLE_BIAS_MULTIPLIER,
     ADAPTIVE_POLICY_VARIANTS,
+    EVIDENCE_GUIDED_CONTINUATION_LIMIT,
+    EVIDENCE_GUIDED_OPERATOR_PRIORS,
     AdaptiveOperatorAttempt,
     AdaptiveOperatorSpec,
     AdaptivePolicyDecision,
@@ -34,6 +36,7 @@ from scheduling_engine.student_assignment.adaptive_search import (
     select_fixed_cycle_operator,
     select_stateless_role_operator,
     replay_adaptive_policy,
+    operator_family,
 )
 from scheduling_engine.student_assignment.core import (
     run_student_assignment_operator_session_diagnostic,
@@ -558,6 +561,8 @@ def test_adaptive_policy_variants_are_bounded_role_gate_biases():
         "balanced",
         "student_pressure_biased",
         "utilization_biased",
+        "evidence_guided",
+        "r4_anchor",
     )
     balanced = choose_adaptive_operator(
         _state(local_share=0.4, utilization_share=0.46),
@@ -593,6 +598,126 @@ def test_adaptive_bias_does_not_turn_a_nonzero_signal_into_an_automatic_role():
     assert decision.signal_values["adjusted_role_signals"]["targeted_repair"] < (
         decision.signal_values["adjusted_role_signals"]["utilization_repair"]
     )
+
+
+def test_evidence_guided_policy_competes_across_roles_with_bounded_prior():
+    ranked = (SimpleNamespace(student_id=7), SimpleNamespace(student_id=8))
+    decision = choose_adaptive_operator(
+        _state(local_share=0.4, utilization_share=0.46),
+        ranked_students=ranked,
+        adaptive_policy_variant="evidence_guided",
+    )
+    assert decision.operator.name == "targeted_r4_s2"
+    assert decision.signal_values["evidence_guided"]["operator_prior"] == (
+        EVIDENCE_GUIDED_OPERATOR_PRIORS["targeted_r4_s2"]
+    )
+    assert decision.signal_values["selected_role"] == "targeted_repair"
+
+
+def test_evidence_guided_policy_allows_decisive_utilization_signal_to_win():
+    decision = choose_adaptive_operator(
+        _state(local_share=0.1, utilization_share=1.0),
+        ranked_students=(SimpleNamespace(student_id=7), SimpleNamespace(student_id=8)),
+        adaptive_policy_variant="evidence_guided",
+    )
+    assert decision.operator.portfolio_role == "utilization_repair"
+
+
+def test_r4_anchor_starts_with_r4_then_uses_fresh_incumbent_continuation():
+    ranked = (SimpleNamespace(student_id=7), SimpleNamespace(student_id=8))
+    first = choose_adaptive_operator(
+        _state(local_share=0.1, utilization_share=1.0),
+        ranked_students=ranked,
+        adaptive_policy_variant="r4_anchor",
+    )
+    assert first.operator.name == "targeted_r4_s2"
+    previous = AdaptiveOperatorAttempt(
+        operator="targeted_r4_s2",
+        status="optimal",
+        candidate_found=True,
+        candidate_validated=True,
+        adopted=True,
+        gain=12,
+        elapsed_seconds=10,
+        source_fingerprint_before="old",
+        candidate_source_decision_fingerprint="new",
+        target_scope=(7, 8),
+        actual_target_scope=(7, 8),
+    )
+    continued = choose_adaptive_operator(
+        replace(
+            _state(local_share=0.1, utilization_share=1.0, history=(previous,)),
+            current_source_fingerprint="new",
+        ),
+        ranked_students=ranked,
+        adaptive_policy_variant="r4_anchor",
+    )
+    assert continued.operator.name == "targeted_r4_s2"
+    assert "productive_validated_continuation" in continued.reasons
+    assert EVIDENCE_GUIDED_CONTINUATION_LIMIT == 2
+
+
+def test_evidence_guided_policy_does_not_repeat_exhausted_source_scope():
+    exhausted = AdaptiveOperatorAttempt(
+        operator="targeted_r4_s2",
+        status="optimal",
+        candidate_found=False,
+        candidate_validated=False,
+        adopted=False,
+        gain=0,
+        elapsed_seconds=10,
+        target_scope=(7, 8),
+        actual_target_scope=(7, 8),
+        exhaustion_classification="EXACT_SCOPE_EXHAUSTED",
+    )
+    decision = choose_adaptive_operator(
+        replace(
+            _state(local_share=0.4, utilization_share=0.46, history=(exhausted,)),
+            current_source_fingerprint=None,
+        ),
+        portfolio=(
+            AdaptiveOperatorSpec("targeted_r4_s2", 4, 2, True, 2, "targeted_repair"),
+        ),
+        ranked_students=(SimpleNamespace(student_id=7), SimpleNamespace(student_id=8)),
+        adaptive_policy_variant="evidence_guided",
+    )
+    assert decision is None
+
+
+def test_evidence_guided_policy_preserves_grade_escape_stagnation_gate():
+    grade = AdaptiveOperatorSpec(
+        "grade_bounded_g9", None, None, False, 0, "basin_escape",
+        target_policy="fixed", selected_grade=9,
+    )
+    state = replace(
+        _state(local_share=0.0, utilization_share=0.0),
+        grade_opportunities=(
+            {"grade_level": 9, "effective_search_available": True},
+        ),
+        consecutive_no_improvement_attempts=1,
+    )
+    assert choose_adaptive_operator(
+        state,
+        portfolio=(grade,),
+        adaptive_policy_variant="evidence_guided",
+    ) is None
+
+
+def test_r4_anchor_records_explicit_fallback_when_anchor_is_unavailable():
+    decision = choose_adaptive_operator(
+        _state(local_share=0.2, utilization_share=0.2),
+        portfolio=(AdaptiveOperatorSpec("r2", 2, None, False, 0, "local_descent"),),
+        adaptive_policy_variant="r4_anchor",
+    )
+    assert decision.operator.name == "r2"
+    assert "r4_anchor_fallback" in decision.reasons
+    assert decision.signal_values["anchor_fallback"] is True
+
+
+def test_operator_family_groups_existing_portfolio_without_changing_operator_names():
+    assert operator_family("targeted_r4_s1") == "targeted_r4"
+    assert operator_family("targeted_utilization_r64_s8") == "utilization_r64"
+    assert operator_family("grade_bounded_g12") == "grade_bounded_g12"
 
 
 def test_balanced_adaptive_variant_is_backward_compatible():

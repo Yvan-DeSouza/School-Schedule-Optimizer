@@ -23,6 +23,7 @@ from .adaptive_search import (
     select_fixed_cycle_operator,
     select_stateless_role_operator,
     _role_signals,
+    operator_family,
 )
 from .core import (
     run_student_assignment_operator_session_diagnostic,
@@ -114,11 +115,13 @@ def _attempt_exhaustion_classification(*, status, candidate_found, candidate_val
     return "OPERATOR_NON_IMPROVING"
 
 
-def _role_exhaustion_classification(role_pressure):
+def _role_exhaustion_classification(role_pressure, role=None):
     """Avoid inferring role exhaustion from one failed operator."""
 
     signals = role_pressure.get("role_signals", {})
-    if any(float(value or 0) > 0 for value in signals.values()):
+    if role is not None and float(signals.get(role, 0) or 0) > 0:
+        return "ROLE_REMAINS_ACTIONABLE"
+    if role is None and any(float(value or 0) > 0 for value in signals.values()):
         return "ROLE_REMAINS_ACTIONABLE"
     return "ROLE_EXHAUSTION_NOT_PROVEN"
 
@@ -366,7 +369,8 @@ def run_adaptive_local_search_diagnostic(
     if selection_policy == "adaptive" and adaptive_policy_variant not in ADAPTIVE_POLICY_VARIANTS:
         raise ValueError(
             "adaptive_policy_variant must be balanced, "
-            "student_pressure_biased, or utilization_biased"
+            "student_pressure_biased, utilization_biased, evidence_guided, "
+            "or r4_anchor"
         )
     if selection_policy == "fixed_cycle" and not tuple(fixed_cycle):
         raise ValueError("fixed_cycle selection requires at least one operator")
@@ -455,6 +459,12 @@ def run_adaptive_local_search_diagnostic(
                 .get("operation_resource_monitor", {})
                 .get("peak_working_set_bytes", 0)
                 or 0
+            ),
+            current_source_fingerprint=source_decision_fingerprint(
+                current_source_decisions
+            ),
+            candidate_validation_time_limit_seconds=(
+                candidate_validation_time_limit_seconds
             ),
         )
         _record_phase("target_preparation", phase_started)
@@ -568,6 +578,9 @@ def run_adaptive_local_search_diagnostic(
         )
         decisions.append(decision_payload)
         operation_started = monotonic()
+        source_fingerprint_before = source_decision_fingerprint(
+            current_source_decisions
+        )
         _emit_phase(
             "operator_execution",
             "started",
@@ -673,6 +686,12 @@ def run_adaptive_local_search_diagnostic(
                     .get("peak_working_set_bytes", 0)
                     or 0
                 ),
+                current_source_fingerprint=source_decision_fingerprint(
+                    current_source_decisions
+                ),
+                candidate_validation_time_limit_seconds=(
+                    candidate_validation_time_limit_seconds
+                ),
             )
             role_pressure_after = _role_pressure_facts(
                 after_state,
@@ -733,7 +752,8 @@ def run_adaptive_local_search_diagnostic(
             adopted=adopted,
         )
         role_exhaustion_classification = _role_exhaustion_classification(
-            role_pressure_before
+            role_pressure_before,
+            decision.operator.portfolio_role,
         )
         history.append(
             AdaptiveOperatorAttempt(
@@ -764,9 +784,7 @@ def run_adaptive_local_search_diagnostic(
                 actual_target_scope=tuple(
                     local.get("selected_student_ids") or selected
                 ),
-                source_fingerprint_before=source_decision_fingerprint(
-                    current_source_decisions
-                ),
+                source_fingerprint_before=source_fingerprint_before,
                 candidate_source_decision_fingerprint=(
                     source_decision_fingerprint(candidate_source)
                     if candidate_source
@@ -817,6 +835,7 @@ def run_adaptive_local_search_diagnostic(
                     if sequence_position is not None
                     else None
                 ),
+                operator_family=operator_family(decision.operator),
             )
         )
         if monotonic() - started >= configured_budget:
@@ -841,7 +860,7 @@ def run_adaptive_local_search_diagnostic(
     _emit_phase("total", "completed", elapsed_seconds=elapsed_seconds)
     record = AdaptiveSessionRecord(
         session_id=str(session_id or uuid4()),
-        policy_version=state.policy_version if "state" in locals() else "v2-local-allocator-diagnostic-2",
+        policy_version=state.policy_version if "state" in locals() else "v2-local-allocator-diagnostic-3",
         input_fingerprint=semantic_student_assignment_input_fingerprint(data),
         source_seed_fingerprint=source_decision_fingerprint(initial_source_decisions or _source_decisions_from_result(initial_result)),
         objective_semantics_version=data.objective_semantics_version,

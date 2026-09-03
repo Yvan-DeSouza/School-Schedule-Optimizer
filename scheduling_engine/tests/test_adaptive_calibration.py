@@ -19,6 +19,7 @@ from scheduling_engine.realistic_student_assignment_validation import (
 )
 from scheduling_engine.student_assignment.adaptive_calibration import (
     ADAPTIVE_POLICY_VARIANT_POLICIES,
+    EVIDENCE_GUIDED_POLICY_STUDY_POLICIES,
     CALIBRATION_FIXED_CYCLES,
     CALIBRATION_PROFILES,
     CALIBRATION_SESSION_OVERRIDES,
@@ -29,6 +30,7 @@ from scheduling_engine.student_assignment.adaptive_calibration import (
     build_calibration_trial_record,
     build_calibration_policy,
     fixed_cycle_control_request,
+    policy_configuration_fingerprint,
     profile_fingerprint,
 )
 from scheduling_engine.benchmark_policy_generalization import (
@@ -322,6 +324,8 @@ def test_parallel_study_policies_share_balanced_objective_and_encode_variants():
         "adaptive_balanced": "balanced",
         "adaptive_student_pressure_biased": "student_pressure_biased",
         "adaptive_utilization_biased": "utilization_biased",
+        "adaptive_evidence_guided": "evidence_guided",
+        "adaptive_r4_anchor": "r4_anchor",
     }
     assert build_calibration_policy("adaptive_balanced") == {
         "selection_policy": "adaptive",
@@ -337,6 +341,31 @@ def test_parallel_study_policies_share_balanced_objective_and_encode_variants():
     assert build_calibration_policy("fixed_cycle")["adaptive_policy_variant"] == (
         "balanced"
     )
+
+
+def test_evidence_guided_study_is_separate_from_historical_policy_cohort():
+    assert EVIDENCE_GUIDED_POLICY_STUDY_POLICIES == (
+        "adaptive_balanced",
+        "adaptive_evidence_guided",
+        "adaptive_r4_anchor",
+        "r4_s2_only",
+    )
+    assert build_calibration_policy("r4_s2_only")["fixed_cycle"]
+    assert tuple(
+        spec.name for spec in build_calibration_policy("r4_s2_only")["fixed_cycle"]
+    ) == ("targeted_r4_s2",)
+
+
+def test_evidence_guided_policy_fingerprints_include_allocation_configuration():
+    fingerprints = {
+        policy_configuration_fingerprint(policy)
+        for policy in (
+            "adaptive_balanced",
+            "adaptive_evidence_guided",
+            "adaptive_r4_anchor",
+        )
+    }
+    assert len(fingerprints) == 3
 
 
 def test_fixed_cycle_name_override_uses_the_same_policy_builder():

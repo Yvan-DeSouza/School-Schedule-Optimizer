@@ -58,6 +58,46 @@ semantics with search-policy allocation. The study is research-only and is not
 called by ordinary student assignment, Celery scheduling, approval, or
 persistence.
 
+The next diagnostic cohort adds two evidence-guided allocators while keeping
+the three existing adaptive variants unchanged:
+
+`adaptive_evidence_guided` scores every currently eligible operator across
+roles. Its score is the bounded current opportunity signal plus transparent
+session-local evidence: weak versioned operator priors, validated gain yield
+per minute, family and role yield, shrinkage-adjusted family reliability,
+exploration value, remaining-budget fitness, and an unresolved-attempt
+penalty. The yield denominator includes every attempted operation, while only
+complete, full-model-validated adopted gains contribute to the numerator.
+`UNKNOWN`, validation `UNKNOWN`, and validation errors remain unresolved;
+they are never treated as exhaustion.
+
+`adaptive_r4_anchor` is a deliberately simpler comparator. It tries the
+eligible `targeted_r4_s2` operator first, then falls back to the same
+evidence-guided scoring after the anchor is unavailable, resolved without
+improvement, unresolved, or exhausted. Both policies may continue an
+operator after a validated source change, for at most two productive
+continuations, provided the recomputed scope is fresh and still eligible.
+
+The evidence-guided constants are policy-allocation controls only. The
+current research priors are `0.20` for `targeted_r4_s2`, `0.05` for `r2`, and
+`0.025` for `targeted_utilization_r16_s4` and
+`targeted_utilization_r64_s8`; all other priors are zero. They are lower than
+the existing untried-operator bonus and do not change any Objective
+Semantics v2 weight, counselor score, constraint, candidate, or authority
+rule. Role signals remain bounded before cross-role comparison. Scope keys
+include the operator, current source fingerprint, predicted students, and
+selected grade, so a resolved non-improving or proven-exhausted scope is not
+repeated against the same incumbent while an unresolved scope remains
+eligible with an explicit penalty.
+
+Every new decision records raw opportunity signals, evidence score inputs,
+operator family, predicted scope, scope status, priors, yields, reliability,
+unknown rate, budget fitness, continuation facts, and deterministic
+tie-breaking. Runtime records capture the pre-attempt source fingerprint and
+the actual executed scope. CP-SAT and unchanged full-model validation remain
+the sole candidate authorities. These variants are diagnostic-only and are
+not production scheduling policies.
+
 This document is intentionally separate from the historical v1 adaptive
 bootstrap/VNS experiments. Those older experiments used a bounded radius
 sequence inside one solver call. The v2 allocator is a policy layer over
@@ -234,7 +274,7 @@ contract, that is a separate Objective Semantics decision.
 ## Current offline policy implementation
 
 The current implementation is versioned as
-`v2-local-allocator-diagnostic-2`. It is a deterministic, JSON-safe policy
+`v2-local-allocator-diagnostic-3`. It is a deterministic, JSON-safe policy
 layer over the existing diagnostic operator sessions. It is not called by
 ordinary student assignment, backend scheduling services, Celery execution,
 approval, or persistence workflows.
@@ -294,10 +334,16 @@ clean-process command surface in
 `adaptive-calibration-v1`. A trial applies one explicit v2 counselor-score
 profile, consumes one detached input and one complete semantic source-
 decision incumbent, and runs one selected policy under one shared outer
-wall-clock budget. The controls are `r2_only`, `student_repair_only`,
-`utilization_only`, `fixed_cycle`, `stateless_role`, and `adaptive`; they all
+wall-clock budget. The historical controls are `r2_only`,
+`student_repair_only`, `utilization_only`, `fixed_cycle`, `stateless_role`,
+and `adaptive`; they all
 use the same existing operator-session boundary, CP-SAT workers, full-model
 validation, strict-improvement adoption, and complete-incumbent retention.
+The separate evidence-guided cohort registers `adaptive_balanced`,
+`adaptive_evidence_guided`, `adaptive_r4_anchor`, and `r4_s2_only`. Its policy
+configuration fingerprint includes the allocator version, priors,
+coefficients, family mapping, continuation cap, and tie-break contract, so
+these results cannot be confused with historical study artifacts.
 
 The harness writes only a temporary, transparent
 `student_assignment_diagnostic_branch_v1` checkpoint when a branch is needed

@@ -59,6 +59,24 @@ def test_parallel_policy_fingerprints_distinguish_policy_variants():
     assert len(fingerprints) == 4
 
 
+def test_evidence_guided_manifest_uses_separate_four_policy_cohort(tmp_path):
+    manifest = policy_study.build_parallel_policy_study_manifest(
+        study_directory=tmp_path,
+        policies=policy_study.EVIDENCE_GUIDED_STUDY_POLICIES,
+        study_id=policy_study.EVIDENCE_GUIDED_STUDY_ID,
+        scenario_ids=("reference_target",),
+    )
+    assert manifest["study_id"] == policy_study.EVIDENCE_GUIDED_STUDY_ID
+    assert manifest["policies"] == [
+        "adaptive_balanced",
+        "adaptive_evidence_guided",
+        "adaptive_r4_anchor",
+        "r4_s2_only",
+    ]
+    assert len(set(manifest["policy_fingerprints"].values())) == 4
+    assert manifest["budget_contract"]["profile"] == "balanced"
+
+
 def test_parallel_cell_forwards_one_cp_sat_worker_and_shared_seed(monkeypatch):
     manifest = _manifest(
         policies=("adaptive_student_pressure_biased",),

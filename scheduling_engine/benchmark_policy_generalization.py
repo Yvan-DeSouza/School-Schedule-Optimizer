@@ -31,7 +31,9 @@ from .student_assignment.adaptive_calibration import (
     STARTUP_AWARE_SESSION_OVERRIDES,
     STARTUP_AWARE_TOTAL_POLICY_SECONDS,
     build_calibration_policy,
+    EVIDENCE_GUIDED_POLICY_STUDY_POLICIES,
     fixed_cycle_control_request,
+    policy_configuration_fingerprint,
     profile_fingerprint,
 )
 from .student_assignment.adaptive_search import ADAPTIVE_ROLE_BIAS_MULTIPLIER
@@ -61,6 +63,9 @@ PARALLEL_POLICY_STUDY_POLICIES = (
     "adaptive_utilization_biased",
     "fixed_cycle",
 )
+# Keep this new cohort distinct from the historical biased-adaptive study.
+EVIDENCE_GUIDED_STUDY_POLICIES = EVIDENCE_GUIDED_POLICY_STUDY_POLICIES
+EVIDENCE_GUIDED_STUDY_ID = "v2_evidence_guided_adaptive_variants_20260902"
 PARALLEL_POLICY_STUDY_SEEDS = (101, 202, 303)
 PARALLEL_POLICY_STUDY_PROFILE = "balanced"
 PARALLEL_POLICY_STUDY_WORKER_COUNT = 1
@@ -111,10 +116,15 @@ def _relative_path(path):
         return str(Path(path))
 
 
-def parallel_policy_fingerprint(policy, *, profile=PARALLEL_POLICY_STUDY_PROFILE):
+def parallel_policy_fingerprint(
+    policy,
+    *,
+    profile=PARALLEL_POLICY_STUDY_PROFILE,
+    allowed_policies=None,
+):
     """Return the immutable policy identity used by the parallel study."""
 
-    if policy not in PARALLEL_POLICY_STUDY_POLICIES:
+    if policy not in tuple(allowed_policies or PARALLEL_POLICY_STUDY_POLICIES):
         raise ValueError(f"Unknown parallel-study policy: {policy}")
     if profile not in CALIBRATION_PROFILES:
         raise ValueError(f"Unknown calibration profile: {profile}")
@@ -129,6 +139,21 @@ def parallel_policy_fingerprint(policy, *, profile=PARALLEL_POLICY_STUDY_PROFILE
         "role_bias_multiplier": ADAPTIVE_ROLE_BIAS_MULTIPLIER,
         "fixed_cycle": [item.name for item in config["fixed_cycle"]],
     }
+    if policy in EVIDENCE_GUIDED_STUDY_POLICIES:
+        payload["policy_configuration_fingerprint"] = (
+            policy_configuration_fingerprint(policy)
+            if policy in ADAPTIVE_POLICY_VARIANT_POLICIES
+            else hashlib.sha256(
+                json.dumps(
+                    {
+                        "policy": policy,
+                        "fixed_cycle": payload["fixed_cycle"],
+                    },
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            ).hexdigest()
+        )
     return hashlib.sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode(
             "utf-8"
@@ -136,19 +161,22 @@ def parallel_policy_fingerprint(policy, *, profile=PARALLEL_POLICY_STUDY_PROFILE
     ).hexdigest()
 
 
-def parallel_policy_budget_contract():
+def parallel_policy_budget_contract(*, policies=None):
     """Return the fixed, diagnostic-only contract for the four-policy study."""
 
+    policies = tuple(policies or PARALLEL_POLICY_STUDY_POLICIES)
     return {
         "protocol_version": PARALLEL_POLICY_PROTOCOL_VERSION,
         "profile": PARALLEL_POLICY_STUDY_PROFILE,
         "profile_fingerprint": profile_fingerprint(
             PARALLEL_POLICY_STUDY_PROFILE
         ),
-        "policies": list(PARALLEL_POLICY_STUDY_POLICIES),
+        "policies": list(policies),
         "policy_fingerprints": {
-            policy: parallel_policy_fingerprint(policy)
-            for policy in PARALLEL_POLICY_STUDY_POLICIES
+            policy: parallel_policy_fingerprint(
+                policy, allowed_policies=policies
+            )
+            for policy in policies
         },
         "cp_sat_workers_per_trial": PARALLEL_POLICY_STUDY_WORKER_COUNT,
         "cp_sat_random_seeds": list(PARALLEL_POLICY_STUDY_SEEDS),
@@ -171,32 +199,43 @@ def build_parallel_policy_study_manifest(
     *,
     study_directory,
     scenario_ids=("reference_target", "special_commitment_pressure_target"),
+    policies=None,
+    study_id=None,
 ):
     """Build a manifest for the new four-policy research study."""
 
     unknown = set(scenario_ids) - set(TARGET_SCENARIO_DIRECTORIES)
     if unknown:
         raise ValueError(f"Unknown target scenarios: {sorted(unknown)}")
+    policies = tuple(policies or PARALLEL_POLICY_STUDY_POLICIES)
+    known_policies = set(PARALLEL_POLICY_STUDY_POLICIES) | set(
+        EVIDENCE_GUIDED_STUDY_POLICIES
+    )
+    unknown_policies = set(policies) - known_policies
+    if unknown_policies:
+        raise ValueError(f"Unknown study policies: {sorted(unknown_policies)}")
     return {
         "schema": PARALLEL_POLICY_STUDY_SCHEMA,
-        "study_id": PARALLEL_POLICY_STUDY_ID,
+        "study_id": study_id or PARALLEL_POLICY_STUDY_ID,
         "study_kind": "progressive_parallel_policy_comparison",
         "purpose": (
-            "Research-only comparison of balanced adaptive, two bounded "
-            "adaptive biases, and the existing fixed-cycle control."
+            "Research-only comparison of the selected adaptive allocator "
+            "variants and fixed-cycle control; no production wiring."
         ),
         "synthetic_only": True,
         "production_wiring": False,
         "objective_semantics_version": "v2",
         "source_lineage": "v2_policy_generalization_suite_20260829",
-        "policies": list(PARALLEL_POLICY_STUDY_POLICIES),
+        "policies": list(policies),
         "policy_fingerprints": {
-            policy: parallel_policy_fingerprint(policy)
-            for policy in PARALLEL_POLICY_STUDY_POLICIES
+            policy: parallel_policy_fingerprint(
+                policy, allowed_policies=policies
+            )
+            for policy in policies
         },
         "seeds": list(PARALLEL_POLICY_STUDY_SEEDS),
         "scenario_ids": list(scenario_ids),
-        "budget_contract": parallel_policy_budget_contract(),
+        "budget_contract": parallel_policy_budget_contract(policies=policies),
         "scenarios": {
             scenario_id: _scenario_manifest(scenario_id)
             for scenario_id in scenario_ids
@@ -209,7 +248,9 @@ def build_parallel_policy_study_manifest(
     }
 
 
-def initialize_parallel_policy_study(study_directory, *, scenario_ids=None):
+def initialize_parallel_policy_study(
+    study_directory, *, scenario_ids=None, policies=None, study_id=None
+):
     """Create the parallel-study manifest without overwriting existing state."""
 
     study_directory = Path(study_directory)
@@ -223,9 +264,22 @@ def initialize_parallel_policy_study(study_directory, *, scenario_ids=None):
             if scenario_ids is not None
             else tuple(TARGET_SCENARIO_DIRECTORIES)
         ),
+        policies=policies,
+        study_id=study_id,
     )
     _json_write_atomic(manifest_path, manifest)
     return manifest
+
+
+def initialize_evidence_guided_policy_study(study_directory, *, scenario_ids=None):
+    """Create the new evidence-guided policy cohort without touching history."""
+
+    return initialize_parallel_policy_study(
+        study_directory,
+        scenario_ids=scenario_ids,
+        policies=EVIDENCE_GUIDED_STUDY_POLICIES,
+        study_id=EVIDENCE_GUIDED_STUDY_ID,
+    )
 
 
 def _parallel_resource_snapshot(active_workers):
@@ -722,7 +776,7 @@ def execute_parallel_policy_cell(
 
     if scenario_id not in manifest.get("scenarios", {}):
         raise ValueError(f"Unknown parallel-study scenario: {scenario_id}")
-    if policy not in PARALLEL_POLICY_STUDY_POLICIES:
+    if policy not in tuple(manifest.get("policies") or ()):
         raise ValueError(f"Unknown parallel-study policy: {policy}")
     if int(seed) not in PARALLEL_POLICY_STUDY_SEEDS:
         raise ValueError(f"Seed is not preregistered: {seed}")
@@ -1328,6 +1382,11 @@ def main(argv=None):  # pragma: no cover - offline experiment entrypoint
         help="Create the four-policy progressive-parallel study manifest.",
     )
     parser.add_argument(
+        "--initialize-evidence-guided",
+        action="store_true",
+        help="Create the evidence-guided adaptive-variant study manifest.",
+    )
+    parser.add_argument(
         "--run-parallel",
         action="store_true",
         help="Run the four-policy study with measured concurrency expansion.",
@@ -1352,6 +1411,7 @@ def main(argv=None):  # pragma: no cover - offline experiment entrypoint
         args.initialize,
         args.summarize,
         args.initialize_parallel,
+        args.initialize_evidence_guided,
         args.run_parallel,
     ))
     if selected_modes > 1:
@@ -1360,6 +1420,8 @@ def main(argv=None):  # pragma: no cover - offline experiment entrypoint
         payload = initialize_startup_aware_study(args.study_directory)
     elif args.initialize_parallel:
         payload = initialize_parallel_policy_study(args.study_directory)
+    elif args.initialize_evidence_guided:
+        payload = initialize_evidence_guided_policy_study(args.study_directory)
     elif args.run_parallel:
         payload = run_parallel_policy_study(
             args.study_directory,
@@ -1376,7 +1438,13 @@ def main(argv=None):  # pragma: no cover - offline experiment entrypoint
             policy=args.policy,
             seed=args.seed,
         )
-    if args.initialize or args.summarize or args.initialize_parallel or args.run_parallel:
+    if (
+        args.initialize
+        or args.summarize
+        or args.initialize_parallel
+        or args.initialize_evidence_guided
+        or args.run_parallel
+    ):
         print(json.dumps(payload, indent=2, sort_keys=True, default=str))
     else:
         print(json.dumps({
@@ -1420,6 +1488,8 @@ __all__ = [
     "PARALLEL_POLICY_STUDY_SCHEMA",
     "PARALLEL_POLICY_STUDY_SEEDS",
     "PARALLEL_POLICY_STUDY_WORKER_COUNT",
+    "EVIDENCE_GUIDED_STUDY_ID",
+    "EVIDENCE_GUIDED_STUDY_POLICIES",
     "STARTUP_AWARE_POLICIES",
     "STARTUP_AWARE_PROFILE",
     "STARTUP_AWARE_RESULT_SCHEMA",
@@ -1432,6 +1502,7 @@ __all__ = [
     "execute_parallel_policy_cell",
     "initialize_startup_aware_study",
     "initialize_parallel_policy_study",
+    "initialize_evidence_guided_policy_study",
     "parallel_policy_budget_contract",
     "parallel_policy_fingerprint",
     "qualify_parallel_concurrency",

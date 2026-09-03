@@ -11,13 +11,14 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 import json
+import math
 
 from .grade_guidance import build_grade_opportunity_facts
 from .search_guidance import rank_students_by_quality_pressure
 from .utilization_guidance import build_utilization_cluster_guidance
 
 
-ADAPTIVE_POLICY_VERSION = "v2-local-allocator-diagnostic-2"
+ADAPTIVE_POLICY_VERSION = "v2-local-allocator-diagnostic-3"
 
 # These variants alter diagnostic operator allocation only.  They do not
 # change Objective Semantics v2, counselor scores, candidate authority, or the
@@ -26,8 +27,22 @@ ADAPTIVE_POLICY_VARIANTS = (
     "balanced",
     "student_pressure_biased",
     "utilization_biased",
+    "evidence_guided",
+    "r4_anchor",
 )
 ADAPTIVE_ROLE_BIAS_MULTIPLIER = 0.25
+
+# Evidence-guided policy constants are diagnostic allocation controls only.
+# They do not enter Objective Semantics v2 or any solver model.
+EVIDENCE_GUIDED_GAIN_SCALE_PER_MINUTE = 10.0
+EVIDENCE_GUIDED_CONTINUATION_LIMIT = 2
+EVIDENCE_GUIDED_DUPLICATE_SCOPE_PENALTY = 0.25
+EVIDENCE_GUIDED_OPERATOR_PRIORS = {
+    "targeted_r4_s2": 0.20,
+    "r2": 0.05,
+    "targeted_utilization_r16_s4": 0.025,
+    "targeted_utilization_r64_s8": 0.025,
+}
 
 
 @dataclass(frozen=True)
@@ -121,6 +136,7 @@ class AdaptiveOperatorAttempt:
     exhaustion_classification: str = "OPERATOR_UNRESOLVED"
     role_exhaustion_classification: str = "ROLE_EXHAUSTION_NOT_PROVEN"
     sequence_position: int | None = None
+    operator_family: str | None = None
 
     @property
     def gain_per_minute(self):
@@ -170,6 +186,8 @@ class AdaptiveSearchState:
     last_grade: int | None = None
     last_utilization_cluster: tuple = ()
     estimated_operator_cost_seconds: float = 0.0
+    current_source_fingerprint: str | None = None
+    candidate_validation_time_limit_seconds: float | None = None
 
     def to_dict(self):
         payload = asdict(self)
@@ -266,7 +284,8 @@ def _role_selection_facts(state, adaptive_policy_variant="balanced"):
     if adaptive_policy_variant not in ADAPTIVE_POLICY_VARIANTS:
         raise ValueError(
             "adaptive_policy_variant must be balanced, "
-            "student_pressure_biased, or utilization_biased"
+            "student_pressure_biased, utilization_biased, evidence_guided, "
+            "or r4_anchor"
         )
     raw_signals = _role_signals(state)
     adjusted_signals = dict(raw_signals)
@@ -358,6 +377,346 @@ def _history_for(history, operator):
     return tuple(item for item in history if item.operator == operator)
 
 
+def operator_family(spec_or_name):
+    """Return a stable family identity for grouped policy evidence."""
+
+    name = spec_or_name.name if isinstance(spec_or_name, AdaptiveOperatorSpec) else str(spec_or_name)
+    if name == "r2":
+        return "local_r2"
+    if name.startswith("targeted_r4_"):
+        return "targeted_r4"
+    if name.startswith("targeted_r8_"):
+        return "targeted_r8"
+    if name.startswith("targeted_utilization_r16_"):
+        return "utilization_r16"
+    if name.startswith("targeted_utilization_r32_"):
+        return "utilization_r32"
+    if name.startswith("targeted_utilization_r64_"):
+        return "utilization_r64"
+    if name.startswith("grade_bounded_g"):
+        return name
+    return name
+
+
+def _family_history(history, family):
+    return tuple(item for item in history if operator_family(item.operator) == family)
+
+
+def _role_history(history, role, portfolio):
+    names = {spec.name for spec in portfolio if spec.portfolio_role == role}
+    return tuple(item for item in history if item.operator in names)
+
+
+def _group_yield(history):
+    if not history:
+        return 0.0
+    total_minutes = sum(max(0.0, float(item.elapsed_seconds)) for item in history) / 60.0
+    if total_minutes <= 0:
+        return 0.0
+    total_gain = sum(max(0.0, float(item.gain)) for item in history if item.adopted)
+    return min(1.0, total_gain / (total_minutes * EVIDENCE_GUIDED_GAIN_SCALE_PER_MINUTE))
+
+
+def _group_reliability(history):
+    resolved = tuple(
+        item for item in history
+        if not item.unknown and item.validation_classification not in {
+            "validation_unknown", "validation_error"
+        }
+    )
+    return (1.0 + sum(bool(item.adopted) for item in resolved)) / (2.0 + len(resolved))
+
+
+def _group_unknown_rate(history):
+    return (
+        sum(bool(item.unknown) or item.validation_classification in {
+            "validation_unknown", "validation_error"
+        } for item in history) / len(history)
+        if history else 0.0
+    )
+
+
+def _scope_key(spec, selected_student_ids, state):
+    return (
+        spec.name,
+        state.current_source_fingerprint,
+        tuple(selected_student_ids),
+        spec.selected_grade,
+    )
+
+
+def _scope_status(history, key):
+    for item in reversed(history):
+        item_key = (
+            item.operator,
+            item.source_fingerprint_before,
+            tuple(item.actual_target_scope or item.target_scope),
+            item.selected_grade,
+        )
+        if item_key != key:
+            continue
+        if item.unknown or item.validation_classification in {
+            "validation_unknown", "validation_error"
+        }:
+            return "unresolved"
+        if item.exhaustion_classification == "EXACT_SCOPE_EXHAUSTED":
+            return "exhausted"
+        return "non_improving"
+    return None
+
+
+def _predicted_scope(spec, state, ranked_students):
+    if spec.portfolio_role == "targeted_repair":
+        return tuple(item.student_id for item in ranked_students[: spec.student_count])
+    if spec.portfolio_role == "utilization_repair":
+        return tuple(state.utilization_ranked_student_ids[: spec.student_count])
+    return ()
+
+
+def _estimated_full_cost(spec, state, history):
+    operator_history = _history_for(history, spec.name)
+    if operator_history:
+        return max(0.001, sum(item.elapsed_seconds for item in operator_history) / len(operator_history))
+    validation = float(state.candidate_validation_time_limit_seconds or 0.0)
+    return max(0.001, float(spec.session_time_limit_seconds) + validation)
+
+
+def _evidence_guided_score(spec, state, portfolio, ranked_students):
+    history = tuple(state.operator_history)
+    exact_history = _history_for(history, spec.name)
+    family_history = _family_history(history, operator_family(spec))
+    role_history = _role_history(history, spec.portfolio_role, portfolio)
+    role_signals = _role_signals(state)
+    predicted = _predicted_scope(spec, state, ranked_students)
+    scope_state = _scope_status(history, _scope_key(spec, predicted, state))
+    operator_yield = _group_yield(exact_history)
+    family_yield = _group_yield(family_history)
+    role_yield = _group_yield(role_history)
+    family_centered_reliability = 2.0 * _group_reliability(family_history) - 1.0
+    family_unknown_rate = _group_unknown_rate(family_history)
+    family_attempts = len(family_history)
+    estimated_cost = _estimated_full_cost(spec, state, history)
+    budget_fit = min(1.0, state.remaining_seconds / estimated_cost)
+    previous = history[-1] if history else None
+    productive_continuation = bool(
+        previous
+        and previous.adopted
+        and previous.operator == spec.name
+        and previous.candidate_source_decision_fingerprint
+        and previous.candidate_source_decision_fingerprint != previous.source_fingerprint_before
+    )
+    duplicate_penalty = (
+        EVIDENCE_GUIDED_DUPLICATE_SCOPE_PENALTY
+        if scope_state == "unresolved" else 0.0
+    )
+    score = (
+        role_signals.get(spec.portfolio_role, 0.0)
+        + EVIDENCE_GUIDED_OPERATOR_PRIORS.get(spec.name, 0.0)
+        + 0.25 * operator_yield
+        + 0.15 * family_yield
+        + 0.10 * role_yield
+        + 0.10 * family_centered_reliability
+        + 0.10 / math.sqrt(1.0 + family_attempts)
+        + 0.10 * budget_fit
+        - 0.25 * family_unknown_rate
+        - duplicate_penalty
+    )
+    if productive_continuation:
+        score += 0.20
+    return {
+        "score": score,
+        "operator_family": operator_family(spec),
+        "role_signal": role_signals.get(spec.portfolio_role, 0.0),
+        "operator_prior": EVIDENCE_GUIDED_OPERATOR_PRIORS.get(spec.name, 0.0),
+        "operator_yield": operator_yield,
+        "family_yield": family_yield,
+        "role_yield": role_yield,
+        "family_centered_reliability": family_centered_reliability,
+        "family_unknown_rate": family_unknown_rate,
+        "family_attempt_count": family_attempts,
+        "estimated_full_cost_seconds": estimated_cost,
+        "budget_fit": budget_fit,
+        "predicted_scope": predicted,
+        "scope_state": scope_state,
+        "duplicate_scope_penalty": duplicate_penalty,
+        "productive_continuation": productive_continuation,
+    }
+
+
+def _new_policy_decision(spec, selected, score, reasons, signal_values):
+    return AdaptivePolicyDecision(
+        operator=spec,
+        selected_student_ids=tuple(selected),
+        score=round(float(score), 9),
+        reasons=tuple(reasons),
+        signal_values=dict(signal_values),
+    )
+
+
+def _eligible_operator_selection(spec, state, ranked_students, history):
+    """Return the predicted scope or ``None`` when the existing scope rules reject it."""
+
+    if spec.portfolio_role == "targeted_repair":
+        if len(ranked_students) < spec.student_count:
+            return None
+        selected = tuple(item.student_id for item in ranked_students[: spec.student_count])
+    elif spec.portfolio_role == "utilization_repair":
+        selected = tuple(state.utilization_ranked_student_ids[: spec.student_count])
+        if len(selected) < spec.student_count:
+            return None
+    else:
+        selected = ()
+    if spec.portfolio_role == "basin_escape":
+        # Grade-bounded search is deliberately a stagnation escape.  Keeping
+        # this gate here is important because the evidence-guided variants
+        # score all roles together; otherwise a grade operator could win on
+        # exploration/budget evidence before the existing two-failed-attempt
+        # safeguard has made a basin escape appropriate.
+        if state.consecutive_no_improvement_attempts < 2:
+            return None
+        if not any(
+            item.get("grade_level") == spec.selected_grade
+            and item.get("effective_search_available")
+            for item in state.grade_opportunities
+        ):
+            return None
+    scope_state = _scope_status(history, _scope_key(spec, selected, state))
+    if scope_state in {"exhausted", "non_improving"}:
+        return None
+    return selected
+
+
+def _productive_continuation_operator(state, portfolio, ranked_students):
+    """Return a successful operator's next fresh scope, at most twice in a row."""
+
+    history = tuple(state.operator_history)
+    if not history or not history[-1].adopted:
+        return None
+    previous = history[-1]
+    consecutive = 0
+    for item in reversed(history):
+        if item.operator != previous.operator or not item.adopted:
+            break
+        consecutive += 1
+    if consecutive > EVIDENCE_GUIDED_CONTINUATION_LIMIT:
+        return None
+    spec = next((item for item in portfolio if item.name == previous.operator), None)
+    if spec is None:
+        return None
+    selected = _eligible_operator_selection(spec, state, ranked_students, history)
+    if selected is None:
+        return None
+    if not previous.candidate_source_decision_fingerprint:
+        return None
+    if (
+        state.current_source_fingerprint
+        and state.current_source_fingerprint
+        == previous.source_fingerprint_before
+    ):
+        return None
+    return spec, selected, consecutive
+
+
+def _choose_evidence_guided_operator(
+    state,
+    *,
+    portfolio,
+    ranked_students,
+    adaptive_policy_variant,
+):
+    """Choose across eligible roles using current opportunity plus live evidence."""
+
+    history = tuple(state.operator_history)
+    continuation = _productive_continuation_operator(state, portfolio, ranked_students)
+    if continuation is not None:
+        spec, selected, consecutive = continuation
+        facts = _evidence_guided_score(spec, state, portfolio, ranked_students)
+        return _new_policy_decision(
+            spec,
+            selected,
+            facts["score"],
+            (
+                "productive_validated_continuation",
+                "fresh_source_incumbent",
+            ),
+            {
+                "selected_role": spec.portfolio_role,
+                "adaptive_policy_variant": adaptive_policy_variant,
+                "operator_family": facts["operator_family"],
+                "evidence_guided": facts,
+                "continuation_count": consecutive,
+            },
+        )
+
+    if adaptive_policy_variant == "r4_anchor" and not history:
+        anchored = next((item for item in portfolio if item.name == "targeted_r4_s2"), None)
+        if anchored is not None:
+            selected = _eligible_operator_selection(anchored, state, ranked_students, history)
+            if selected is not None:
+                facts = _evidence_guided_score(anchored, state, portfolio, ranked_students)
+                return _new_policy_decision(
+                    anchored,
+                    selected,
+                    facts["score"],
+                    ("r4_s2_evidence_anchor",),
+                    {
+                        "selected_role": anchored.portfolio_role,
+                        "adaptive_policy_variant": adaptive_policy_variant,
+                        "operator_family": facts["operator_family"],
+                        "evidence_guided": facts,
+                        "anchor_fallback": False,
+                    },
+                )
+
+    anchor_fallback_reason = None
+    if adaptive_policy_variant == "r4_anchor" and not history:
+        anchor_fallback_reason = (
+            "targeted_r4_s2_unavailable_or_scope_ineligible"
+        )
+
+    candidates = []
+    for spec in portfolio:
+        selected = _eligible_operator_selection(spec, state, ranked_students, history)
+        if selected is None:
+            continue
+        facts = _evidence_guided_score(spec, state, portfolio, ranked_students)
+        reasons = ["bounded_current_opportunity", "evidence_guided_score"]
+        if anchor_fallback_reason is not None:
+            reasons.append("r4_anchor_fallback")
+        if facts["operator_prior"]:
+            reasons.append("historical_operator_prior")
+        if facts["family_attempt_count"] == 0:
+            reasons.append("family_exploration_bonus")
+        candidates.append(
+            _new_policy_decision(
+                spec,
+                selected,
+                facts["score"],
+                reasons,
+                {
+                    "selected_role": spec.portfolio_role,
+                    "adaptive_policy_variant": adaptive_policy_variant,
+                    "operator_family": facts["operator_family"],
+                    "evidence_guided": facts,
+                    "role_signals": _role_signals(state),
+                    "anchor_fallback": bool(anchor_fallback_reason),
+                    "anchor_fallback_reason": anchor_fallback_reason,
+                },
+            )
+        )
+    if not candidates:
+        return None
+    return max(
+        candidates,
+        key=lambda decision: (
+            decision.score,
+            -_estimated_full_cost(decision.operator, state, history),
+            -(decision.operator.radius or 0),
+            decision.operator.name,
+        ),
+    )
+
+
 def build_adaptive_search_state(
     data,
     quality_report,
@@ -368,6 +727,8 @@ def build_adaptive_search_state(
     history=(),
     source_decisions=(),
     recent_memory_peak_bytes=0,
+    current_source_fingerprint=None,
+    candidate_validation_time_limit_seconds=None,
 ):
     """Build policy state from current quality facts and immutable history."""
 
@@ -510,6 +871,12 @@ def build_adaptive_search_state(
             sum(item.elapsed_seconds for item in history) / len(history)
             if history else 0.0
         ),
+        current_source_fingerprint=current_source_fingerprint,
+        candidate_validation_time_limit_seconds=(
+            float(candidate_validation_time_limit_seconds)
+            if candidate_validation_time_limit_seconds is not None
+            else None
+        ),
     )
 
 
@@ -603,6 +970,13 @@ def choose_adaptive_operator(
 
     if state.remaining_seconds <= 0 or not portfolio:
         return None
+    if adaptive_policy_variant in {"evidence_guided", "r4_anchor"}:
+        return _choose_evidence_guided_operator(
+            state,
+            portfolio=portfolio,
+            ranked_students=ranked_students,
+            adaptive_policy_variant=adaptive_policy_variant,
+        )
     role_selection = _role_selection_facts(
         state,
         adaptive_policy_variant=adaptive_policy_variant,
@@ -836,8 +1210,17 @@ def replay_adaptive_policy(records, *, portfolio=DEFAULT_ADAPTIVE_OPERATOR_PORTF
             validation_solver_outcome=item.get("validation_solver_outcome"),
             validation_error=item.get("validation_error"),
             target_scope=tuple(item.get("target_scope", ())),
+            actual_target_scope=tuple(item.get("actual_target_scope", ())),
+            source_fingerprint_before=item.get("source_fingerprint_before"),
+            candidate_source_decision_fingerprint=item.get(
+                "candidate_source_decision_fingerprint"
+            ),
             selected_grade=item.get("selected_grade"),
             utilization_cluster=tuple(item.get("utilization_cluster", ())),
+            exhaustion_classification=item.get(
+                "exhaustion_classification", "OPERATOR_UNRESOLVED"
+            ),
+            operator_family=item.get("operator_family"),
         )
         for item in records
     )
@@ -850,6 +1233,7 @@ def simulate_adaptive_policy(
     *,
     portfolio=DEFAULT_ADAPTIVE_OPERATOR_PORTFOLIO,
     ranked_students=(),
+    adaptive_policy_variant="balanced",
 ):
     """Replay operator allocation from recorded outcomes without solving.
 
@@ -872,6 +1256,7 @@ def simulate_adaptive_policy(
             current,
             portfolio=portfolio,
             ranked_students=ranked_students,
+            adaptive_policy_variant=adaptive_policy_variant,
         )
         if decision is None:
             break
@@ -900,8 +1285,17 @@ def simulate_adaptive_policy(
                     validation_solver_outcome=item.get("validation_solver_outcome"),
                     validation_error=item.get("validation_error"),
                     target_scope=tuple(item.get("target_scope", ())),
+                    actual_target_scope=tuple(item.get("actual_target_scope", ())),
+                    source_fingerprint_before=item.get("source_fingerprint_before"),
+                    candidate_source_decision_fingerprint=item.get(
+                        "candidate_source_decision_fingerprint"
+                    ),
                     selected_grade=item.get("selected_grade"),
                     utilization_cluster=tuple(item.get("utilization_cluster", ())),
+                    exhaustion_classification=item.get(
+                        "exhaustion_classification", "OPERATOR_UNRESOLVED"
+                    ),
+                    operator_family=item.get("operator_family"),
                 )
             )
     return tuple(decisions)
@@ -987,12 +1381,17 @@ __all__ = [
     "ADAPTIVE_POLICY_VERSION",
     "ADAPTIVE_POLICY_VARIANTS",
     "ADAPTIVE_ROLE_BIAS_MULTIPLIER",
+    "EVIDENCE_GUIDED_CONTINUATION_LIMIT",
+    "EVIDENCE_GUIDED_DUPLICATE_SCOPE_PENALTY",
+    "EVIDENCE_GUIDED_GAIN_SCALE_PER_MINUTE",
+    "EVIDENCE_GUIDED_OPERATOR_PRIORS",
     "AdaptiveOperatorAttempt",
     "AdaptiveOperatorSpec",
     "AdaptivePolicyDecision",
     "AdaptiveSearchState",
     "AdaptiveSessionRecord",
     "DEFAULT_ADAPTIVE_OPERATOR_PORTFOLIO",
+    "operator_family",
     "build_adaptive_search_state",
     "select_adaptive_role",
     "choose_adaptive_operator",
