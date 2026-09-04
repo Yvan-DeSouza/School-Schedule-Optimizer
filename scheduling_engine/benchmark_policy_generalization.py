@@ -42,7 +42,10 @@ from .student_assignment.adaptive_calibration import (
 )
 from .student_assignment.adaptive_search import ADAPTIVE_ROLE_BIAS_MULTIPLIER
 from .student_assignment.calibration_supervisor import process_tree_snapshot
-from .student_assignment.stage2_benchmark import read_durable_stage2_benchmark
+from .student_assignment.stage2_benchmark import (
+    DiagnosticBranchValidationError,
+    read_durable_stage2_benchmark,
+)
 
 
 STARTUP_AWARE_STUDY_ID = "v2_policy_generalization_startup_aware_20260831"
@@ -1188,11 +1191,134 @@ def run_parallel_policy_study(
     return manifest
 
 
+def _persist_source_preparation_failure(
+    study_directory,
+    manifest,
+    *,
+    scenario_id,
+    requested_policies,
+    seed,
+    error,
+    attempts=None,
+):
+    """Persist a source-gate failure without creating a policy result."""
+
+    details = dict(getattr(error, "details", {}) or {})
+    message = str(error)
+    details.setdefault(
+        "failure_classification",
+        (
+            "source_validation_fingerprint_mismatch"
+            if "fingerprint" in message.lower()
+            else "source_validation_materialization_error"
+        ),
+    )
+    details.setdefault("failure_phase", "source_preparation")
+    details.setdefault("solver_outcome", "not_observed")
+    details["exception_type"] = type(error).__name__
+    details["exception"] = message
+    if attempts:
+        details["attempts"] = list(attempts)
+    failure = {
+        "schema": "student_assignment_source_preparation_failure_v1",
+        "study_id": manifest["study_id"],
+        "scenario_id": scenario_id,
+        "requested_policies": list(requested_policies),
+        "seed": int(seed) if seed is not None else None,
+        "profile": PARALLEL_POLICY_STUDY_PROFILE,
+        "status": "source_validation_unresolved",
+        "failure": details,
+        "budget_contract": manifest["budget_contract"],
+        "created_at_utc": datetime.now(timezone.utc).isoformat(),
+    }
+    failure_path = (
+        Path(study_directory)
+        / "source_preparation_failures"
+        / f"{scenario_id}_seed{int(seed) if seed is not None else 'all'}.json"
+    )
+    _json_write_atomic(failure_path, failure)
+    manifest.setdefault("source_preparation_failures", {})[failure_path.name] = {
+        "path": _relative_path(failure_path),
+        "sha256": _sha256_file(failure_path),
+        "status": failure["status"],
+        "scenario_id": scenario_id,
+        "requested_policies": list(requested_policies),
+    }
+    manifest.setdefault("batches", []).append({
+        "batch_number": len(manifest["batches"]) + 1,
+        "execution_mode": "sequential_confirmation",
+        "requested_parallel_trials": 1,
+        "cells": [],
+        "source_preparation_failure": failure_path.name,
+    })
+    _json_write_atomic(Path(study_directory) / "study_manifest.json", manifest)
+    return manifest
+
+
+def _source_preparation_retryable(error):
+    """Return whether one fresh source-validation attempt is justified.
+
+    A retry is limited to transient validation-boundary outcomes.  Structural
+    failures (bad fingerprints, incomplete sources, unmet requests, and
+    materialization errors) must remain a hard source gate rather than being
+    retried as if they were solver transition variance.
+    """
+
+    details = getattr(error, "details", {}) or {}
+    classification = details.get("failure_classification")
+    return classification in {
+        "source_validation_unknown",
+        "source_validation_error",
+    }
+
+
+def _source_preparation_attempt_record(*, attempt_number, error=None, context=None):
+    """Create compact, serializable source-preparation attempt telemetry."""
+
+    if error is not None:
+        details = dict(getattr(error, "details", {}) or {})
+        return {
+            "attempt": int(attempt_number),
+            "status": "failed",
+            "failure_classification": details.get(
+                "failure_classification", "source_validation_materialization_error"
+            ),
+            "failure_phase": details.get("failure_phase"),
+            "solver_outcome": details.get("solver_outcome", "not_observed"),
+            "elapsed_seconds": details.get("elapsed_seconds"),
+            "requested_validation_time_limit_seconds": details.get(
+                "requested_validation_time_limit_seconds"
+            ),
+            "effective_validation_time_limit_seconds": details.get(
+                "effective_validation_time_limit_seconds"
+            ),
+            "exception_type": type(error).__name__,
+            "exception": str(error),
+        }
+    preparation = dict((context or {}).get("preparation") or {})
+    validation = dict(preparation.get("validation") or {})
+    return {
+        "attempt": int(attempt_number),
+        "status": "passed",
+        "failure_classification": None,
+        "failure_phase": None,
+        "solver_outcome": validation.get("solver_outcome"),
+        "elapsed_seconds": preparation.get("branch_validation_seconds"),
+        "requested_validation_time_limit_seconds": preparation.get(
+            "requested_validation_time_limit_seconds"
+        ),
+        "effective_validation_time_limit_seconds": preparation.get(
+            "effective_validation_time_limit_seconds"
+        ),
+    }
+
+
 def run_sequential_policy_study(
     study_directory,
     *,
     scenario_id=None,
     policy=None,
+    policies=None,
     seed=None,
 ):
     """Run selected evidence-study cells sequentially in one coordinator.
@@ -1217,8 +1343,20 @@ def run_sequential_policy_study(
         "scenario_ids", ()
     ):
         raise ValueError(f"Scenario is not registered in this study: {scenario_id}")
-    if policy is not None and policy not in manifest.get("policies", ()):
-        raise ValueError(f"Policy is not registered in this study: {policy}")
+    if policy is not None and policies is not None:
+        raise ValueError("Use policy or policies, not both")
+    requested_policies = (
+        tuple(policies)
+        if policies is not None
+        else (policy,)
+        if policy is not None
+        else tuple(manifest.get("policies", ()))
+    )
+    unknown_policies = set(requested_policies) - set(manifest.get("policies", ()))
+    if unknown_policies:
+        raise ValueError(
+            f"Policies are not registered in this study: {sorted(unknown_policies)}"
+        )
     if seed is not None and int(seed) not in manifest.get("seeds", ()):
         raise ValueError(f"Seed is not registered in this study: {seed}")
 
@@ -1230,8 +1368,7 @@ def run_sequential_policy_study(
         }
         for current_scenario in manifest["scenario_ids"]
         if scenario_id is None or current_scenario == scenario_id
-        for current_policy in manifest["policies"]
-        if policy is None or current_policy == policy
+        for current_policy in requested_policies
         for current_seed in manifest["seeds"]
         if seed is None or int(current_seed) == int(seed)
         if _result_filename(current_scenario, current_policy, current_seed)
@@ -1248,26 +1385,77 @@ def run_sequential_policy_study(
             {cell["scenario_id"] for cell in pending}
         ):
             scenario = manifest["scenarios"][current_scenario]
-            context = prepare_supervised_calibration_source(
-                benchmark_directory=(
-                    _REPOSITORY_ROOT / scenario["benchmark_directory"]
-                ),
-                profile=PARALLEL_POLICY_STUDY_PROFILE,
-                branch_input=Path(context_dir) / f"{current_scenario}.json.gz",
-                validation_time_limit_seconds=manifest["budget_contract"].get(
-                    "candidate_validation_time_limit_seconds"
-                ),
-            )
-            if context["input_fingerprint"] != scenario["input_fingerprint"]:
-                raise ValueError(
-                    f"Prepared source input fingerprint does not match scenario {current_scenario}"
+            attempts = []
+            context = None
+            for attempt_number in (1, 2):
+                try:
+                    context = prepare_supervised_calibration_source(
+                        benchmark_directory=(
+                            _REPOSITORY_ROOT / scenario["benchmark_directory"]
+                        ),
+                        profile=PARALLEL_POLICY_STUDY_PROFILE,
+                        branch_input=Path(context_dir) / f"{current_scenario}.json.gz",
+                        validation_time_limit_seconds=manifest["budget_contract"].get(
+                            "candidate_validation_time_limit_seconds"
+                        ),
+                    )
+                    if context["input_fingerprint"] != scenario["input_fingerprint"]:
+                        raise DiagnosticBranchValidationError(
+                            "Prepared source input fingerprint does not match "
+                            f"scenario {current_scenario}",
+                            details={
+                                "failure_classification": (
+                                    "source_validation_fingerprint_mismatch"
+                                ),
+                                "failure_phase": "source_context_verification",
+                                "solver_outcome": "not_observed",
+                            },
+                        )
+                    if context["source_fingerprint"] != scenario[
+                        "source_seed_fingerprint"
+                    ]:
+                        raise DiagnosticBranchValidationError(
+                            "Prepared source seed fingerprint does not match "
+                            f"scenario {current_scenario}",
+                            details={
+                                "failure_classification": (
+                                    "source_validation_fingerprint_mismatch"
+                                ),
+                                "failure_phase": "source_context_verification",
+                                "solver_outcome": "not_observed",
+                            },
+                        )
+                    attempts.append(
+                        _source_preparation_attempt_record(
+                            attempt_number=attempt_number,
+                            context=context,
+                        )
+                    )
+                    break
+                except Exception as error:
+                    attempts.append(
+                        _source_preparation_attempt_record(
+                            attempt_number=attempt_number,
+                            error=error,
+                        )
+                    )
+                    if attempt_number == 1 and _source_preparation_retryable(error):
+                        continue
+                    return _persist_source_preparation_failure(
+                        study_directory,
+                        manifest,
+                        scenario_id=current_scenario,
+                        requested_policies=requested_policies,
+                        seed=seed,
+                        error=error,
+                        attempts=attempts,
+                    )
+            if context is None:
+                raise RuntimeError(
+                    f"Source preparation produced no context for {current_scenario}"
                 )
-            if context["source_fingerprint"] != scenario[
-                "source_seed_fingerprint"
-            ]:
-                raise ValueError(
-                    f"Prepared source seed fingerprint does not match scenario {current_scenario}"
-                )
+            context = dict(context)
+            context["source_preparation_attempts"] = attempts
             prepared_source_contexts[current_scenario] = context
 
         for cell in pending:
@@ -1292,6 +1480,11 @@ def run_sequential_policy_study(
                     cell["scenario_id"]: prepared_source_contexts[
                         cell["scenario_id"]
                     ]["preparation"]
+                },
+                "source_preparation_attempts": {
+                    cell["scenario_id"]: prepared_source_contexts[
+                        cell["scenario_id"]
+                    ].get("source_preparation_attempts", [])
                 },
             })
             _json_write_atomic(manifest_path, manifest)
@@ -1605,8 +1798,27 @@ def main(argv=None):  # pragma: no cover - offline experiment entrypoint
             | set(EVIDENCE_GUIDED_STUDY_POLICIES)
         )),
     )
+    parser.add_argument(
+        "--policies",
+        nargs="+",
+        choices=tuple(sorted(
+            set(STARTUP_AWARE_POLICIES)
+            | set(PARALLEL_POLICY_STUDY_POLICIES)
+            | set(EVIDENCE_GUIDED_STUDY_POLICIES)
+        )),
+        help=(
+            "Run multiple selected policies in one sequential coordinator "
+            "so they share one prepared source context."
+        ),
+    )
     parser.add_argument("--seed", type=int)
     args = parser.parse_args(argv)
+    if args.policy is not None and args.policies is not None:
+        parser.error("Use --policy or --policies, not both")
+    if args.policies is not None and (
+        args.scenario is None or args.seed is None
+    ):
+        parser.error("--policies requires --scenario and --seed")
     selected_modes = sum(bool(value) for value in (
         args.initialize,
         args.summarize,
@@ -1633,6 +1845,7 @@ def main(argv=None):  # pragma: no cover - offline experiment entrypoint
             args.study_directory,
             scenario_id=args.scenario,
             policy=args.policy,
+            policies=args.policies,
             seed=args.seed,
         )
     elif args.summarize:

@@ -5,6 +5,9 @@ import time
 import pytest
 
 import scheduling_engine.benchmark_policy_generalization as policy_study
+from scheduling_engine.student_assignment.stage2_benchmark import (
+    DiagnosticBranchValidationError,
+)
 
 
 def _manifest(*, policies=None, seeds=None, scenarios=None):
@@ -143,6 +146,200 @@ def test_parallel_cell_forwards_prepared_source_context_without_revalidating(
     assert captured["branch_input"] == "prepared-branch.json.gz"
     assert payload["prepared_source_context_fingerprint"] == "prepared-context"
     assert payload["source_preparation"]["total_seconds"] == 12.0
+
+
+def test_sequential_policy_cohort_reuses_one_prepared_context(
+    monkeypatch, tmp_path
+):
+    manifest = _manifest(
+        policies=("adaptive_balanced", "adaptive_evidence_guided"),
+        seeds=(101,),
+    )
+    (tmp_path / "study_manifest.json").write_text(
+        json.dumps(manifest), encoding="utf-8"
+    )
+    prepared = []
+    executed = []
+
+    def fake_prepare(**kwargs):
+        prepared.append(kwargs)
+        return {
+            "input_fingerprint": "input",
+            "source_fingerprint": "seed",
+            "branch_input": "prepared.json.gz",
+            "context_fingerprint": "context",
+            "preparation": {"total_seconds": 1.0},
+        }
+
+    def fake_execute(**kwargs):
+        executed.append(kwargs)
+        return {
+            "scenario_id": kwargs["scenario_id"],
+            "policy": kwargs["policy"],
+            "seed": kwargs["seed"],
+            "execution_status": "completed",
+            "candidate_complete": True,
+            "final_substantive_value": 10,
+            "source_preparation": {"total_seconds": 1.0},
+        }
+
+    monkeypatch.setattr(policy_study, "prepare_supervised_calibration_source", fake_prepare)
+    monkeypatch.setattr(policy_study, "execute_parallel_policy_cell", fake_execute)
+
+    result = policy_study.run_sequential_policy_study(
+        tmp_path,
+        scenario_id="reference_target",
+        policies=("adaptive_balanced", "adaptive_evidence_guided"),
+        seed=101,
+    )
+
+    assert len(prepared) == 1
+    assert len(executed) == 2
+    assert [item["policy"] for item in executed] == [
+        "adaptive_balanced",
+        "adaptive_evidence_guided",
+    ]
+
+
+def test_sequential_source_failure_is_hashable_and_gates_children(
+    monkeypatch, tmp_path
+):
+    manifest = _manifest(
+        policies=("adaptive_balanced", "adaptive_evidence_guided"),
+        seeds=(101,),
+    )
+    (tmp_path / "study_manifest.json").write_text(
+        json.dumps(manifest), encoding="utf-8"
+    )
+
+    def fake_prepare(**_kwargs):
+        raise DiagnosticBranchValidationError(
+            "source validation timed out",
+            details={
+                "failure_classification": "source_validation_unknown",
+                "failure_phase": "validation_solve",
+                "solver_outcome": "unknown",
+                "effective_validation_time_limit_seconds": 180.0,
+            },
+        )
+
+    monkeypatch.setattr(policy_study, "prepare_supervised_calibration_source", fake_prepare)
+    monkeypatch.setattr(
+        policy_study,
+        "execute_parallel_policy_cell",
+        lambda **_kwargs: pytest.fail("source failure must gate policy cells"),
+    )
+
+    result = policy_study.run_sequential_policy_study(
+        tmp_path,
+        scenario_id="reference_target",
+        policies=("adaptive_balanced", "adaptive_evidence_guided"),
+        seed=101,
+    )
+
+    assert result["results"] == {}
+    assert len(result["source_preparation_failures"]) == 1
+    failure_name = next(iter(result["source_preparation_failures"]))
+    failure_path = tmp_path / "source_preparation_failures" / failure_name
+    assert failure_path.exists()
+    assert result["source_preparation_failures"][failure_name]["sha256"]
+    failure = json.loads(failure_path.read_text(encoding="utf-8"))
+    assert failure["failure"]["failure_classification"] == (
+        "source_validation_unknown"
+    )
+
+
+def test_sequential_source_unknown_retries_once_and_records_passed_attempt(
+    monkeypatch, tmp_path
+):
+    manifest = _manifest(
+        policies=("adaptive_balanced", "adaptive_evidence_guided"),
+        seeds=(101,),
+    )
+    (tmp_path / "study_manifest.json").write_text(
+        json.dumps(manifest), encoding="utf-8"
+    )
+    prepare_calls = []
+    executed = []
+
+    def fake_prepare(**_kwargs):
+        prepare_calls.append(len(prepare_calls) + 1)
+        if len(prepare_calls) == 1:
+            raise DiagnosticBranchValidationError(
+                "source validation timed out",
+                details={
+                    "failure_classification": "source_validation_unknown",
+                    "failure_phase": "validation_solve",
+                    "solver_outcome": "unknown",
+                    "elapsed_seconds": 180.0,
+                    "effective_validation_time_limit_seconds": 180.0,
+                },
+            )
+        return {
+            "input_fingerprint": "input",
+            "source_fingerprint": "seed",
+            "branch_input": "prepared.json.gz",
+            "context_fingerprint": "context",
+            "preparation": {
+                "total_seconds": 1.0,
+                "branch_validation_seconds": 0.5,
+                "validation": {"solver_outcome": "feasible"},
+            },
+        }
+
+    def fake_execute(**kwargs):
+        executed.append(kwargs)
+        return {
+            "scenario_id": kwargs["scenario_id"],
+            "policy": kwargs["policy"],
+            "seed": kwargs["seed"],
+            "execution_status": "completed",
+            "candidate_complete": True,
+            "final_substantive_value": 10,
+        }
+
+    monkeypatch.setattr(
+        policy_study, "prepare_supervised_calibration_source", fake_prepare
+    )
+    monkeypatch.setattr(
+        policy_study, "execute_parallel_policy_cell", fake_execute
+    )
+
+    result = policy_study.run_sequential_policy_study(
+        tmp_path,
+        scenario_id="reference_target",
+        seed=101,
+    )
+
+    assert prepare_calls == [1, 2]
+    assert len(executed) == 2
+    assert len(result["results"]) == 2
+    assert result["batches"][0]["source_preparation_attempts"][
+        "reference_target"
+    ] == [
+        {
+            "attempt": 1,
+            "status": "failed",
+            "failure_classification": "source_validation_unknown",
+            "failure_phase": "validation_solve",
+            "solver_outcome": "unknown",
+            "elapsed_seconds": 180.0,
+            "requested_validation_time_limit_seconds": None,
+            "effective_validation_time_limit_seconds": 180.0,
+            "exception_type": "DiagnosticBranchValidationError",
+            "exception": "source validation timed out",
+        },
+        {
+            "attempt": 2,
+            "status": "passed",
+            "failure_classification": None,
+            "failure_phase": None,
+            "solver_outcome": "feasible",
+            "elapsed_seconds": 0.5,
+            "requested_validation_time_limit_seconds": None,
+            "effective_validation_time_limit_seconds": None,
+        },
+    ]
 
 
 def test_parallel_concurrency_qualification_requires_measured_headroom():

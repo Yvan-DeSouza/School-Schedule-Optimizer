@@ -41,6 +41,7 @@ from .dto import (
 )
 from .student_assignment.runtime import semantic_student_assignment_input_fingerprint
 from .student_assignment.stage2_benchmark import (
+    DiagnosticBranchValidationError,
     read_diagnostic_branch_checkpoint,
     read_durable_stage2_benchmark,
     semantic_stage1_seed_source_fingerprint,
@@ -448,14 +449,35 @@ def prepare_supervised_calibration_source(
     )
     branch_materialization_seconds = perf_counter() - materialization_started
     validation_started = perf_counter()
-    checked = validate_diagnostic_branch_checkpoint(
-        branch_input,
-        data=data,
-        time_limit_seconds=_calibration_validation_time_limit(
-            data, validation_time_limit_seconds
-        ),
-        worker_count=1,
+    effective_validation_limit = _calibration_validation_time_limit(
+        data, validation_time_limit_seconds
     )
+    try:
+        checked = validate_diagnostic_branch_checkpoint(
+            branch_input,
+            data=data,
+            time_limit_seconds=effective_validation_limit,
+            worker_count=1,
+        )
+    except DiagnosticBranchValidationError as error:
+        error.details.update({
+            "benchmark_directory": str(Path(benchmark_directory)),
+            "branch_input": str(branch_input),
+            "input_fingerprint": semantic_student_assignment_input_fingerprint(
+                data
+            ),
+            "source_fingerprint": manifest.get(
+                "seed_source_decision_fingerprint"
+            ),
+            "profile": profile,
+            "profile_fingerprint": profile_fingerprint(profile),
+            "requested_validation_time_limit_seconds": (
+                validation_time_limit_seconds
+            ),
+            "effective_validation_time_limit_seconds": effective_validation_limit,
+            "validation_worker_count": 1,
+        })
+        raise
     branch = read_diagnostic_branch_checkpoint(branch_input, data=data)
     validation = dict(checked["validation"])
     if not (
@@ -463,9 +485,33 @@ def prepare_supervised_calibration_source(
         and validation.get("complete")
         and int(validation.get("unmet_request_count", 0) or 0) == 0
     ):
-        raise ValueError(
+        validation["failure_phase"] = "prepared_source_validation"
+        validation["failure_classification"] = (
+            "source_validation_unmet_requests"
+            if int(validation.get("unmet_request_count", 0) or 0) > 0
+            else "source_validation_incomplete"
+        )
+        validation.update({
+            "benchmark_directory": str(Path(benchmark_directory)),
+            "branch_input": str(branch_input),
+            "input_fingerprint": semantic_student_assignment_input_fingerprint(
+                data
+            ),
+            "source_fingerprint": manifest.get(
+                "seed_source_decision_fingerprint"
+            ),
+            "profile": profile,
+            "profile_fingerprint": profile_fingerprint(profile),
+            "requested_validation_time_limit_seconds": (
+                validation_time_limit_seconds
+            ),
+            "effective_validation_time_limit_seconds": effective_validation_limit,
+            "validation_worker_count": 1,
+        })
+        raise DiagnosticBranchValidationError(
             "Prepared source context is not a complete validated incumbent: "
-            f"{validation}"
+            f"{validation}",
+            details=validation,
         )
     input_fingerprint = semantic_student_assignment_input_fingerprint(data)
     source_fingerprint = branch["source_decision_fingerprint"]
@@ -493,6 +539,13 @@ def prepare_supervised_calibration_source(
                 "elapsed_seconds", perf_counter() - validation_started
             ),
             "total_seconds": perf_counter() - started,
+            "requested_validation_time_limit_seconds": (
+                validation_time_limit_seconds
+            ),
+            "effective_validation_time_limit_seconds": (
+                effective_validation_limit
+            ),
+            "validation_worker_count": 1,
             "validation": validation,
         },
     }

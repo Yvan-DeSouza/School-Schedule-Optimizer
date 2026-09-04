@@ -3652,9 +3652,40 @@ def _solve_student_assignment(
 
     if mature_checkpoint_only:
         if not alternate_seed_validated:
-            raise ValueError(
+            validation_error = ValueError(
                 "The supplied mature checkpoint failed full-model validation"
             )
+            validation_error.validation_facts = {
+                "failure_phase": "mature_seed_validation",
+                "failure_classification": (
+                    "source_validation_unknown"
+                    if alternate_seed_validation_solver_outcome == "unknown"
+                    else "source_validation_hard_invalid"
+                    if alternate_seed_validation_solver_outcome == "infeasible"
+                    else "source_validation_error"
+                ),
+                "full_model_validation": False,
+                "complete": None,
+                "unmet_request_count": None,
+                "assignment_count": None,
+                "special_commitment_count": None,
+                "solver_outcome": (
+                    alternate_seed_validation_solver_outcome or "error"
+                ),
+                "validation_classification": (
+                    alternate_seed_validation_classification
+                ),
+                "validation_telemetry": dict(
+                    alternate_seed_validation_telemetry
+                ),
+                "materialization_elapsed_seconds": (
+                    alternate_seed_materialization_elapsed
+                ),
+                "validation_elapsed_seconds": (
+                    alternate_seed_validation_elapsed
+                ),
+            }
+            raise validation_error
         # The checkpoint is now the validated incumbent for every downstream
         # diagnostic step. It deliberately does not masquerade as a newly
         # generated Stage 1 seed in ordinary scheduling facts.

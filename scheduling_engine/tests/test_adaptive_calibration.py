@@ -43,6 +43,7 @@ from scheduling_engine.benchmark_policy_generalization import (
 from scheduling_engine.student_assignment.adaptive_search import AdaptiveOperatorSpec
 from scheduling_engine.student_assignment.core import run_substantive_soft_tier_probe
 from scheduling_engine.student_assignment.stage2_benchmark import (
+    DiagnosticBranchValidationError,
     read_diagnostic_branch_checkpoint,
     validate_diagnostic_branch_checkpoint,
     write_diagnostic_branch_checkpoint,
@@ -742,6 +743,50 @@ def test_diagnostic_branch_is_revalidated_by_the_current_full_model(tmp_path):
     assert validation["validation"]["full_model_validation"] is True
     assert validation["validation"]["complete"] is True
     assert validation["validation"]["unmet_request_count"] == 0
+
+
+def test_source_validation_failure_preserves_solver_outcome_facts(
+    monkeypatch, tmp_path
+):
+    data = _v2_data()
+    branch = {
+        "source_decision_fingerprint": "source-fingerprint",
+        "source_decisions": (),
+    }
+    monkeypatch.setattr(
+        stage2_benchmark,
+        "read_diagnostic_branch_checkpoint",
+        lambda *args, **kwargs: branch,
+    )
+
+    error = ValueError("mature checkpoint validation did not finish")
+    error.validation_facts = {
+        "solver_outcome": "unknown",
+        "validation_classification": "validation_unknown",
+        "full_model_validation": False,
+        "complete": None,
+        "unmet_request_count": None,
+    }
+    monkeypatch.setattr(
+        stage2_benchmark,
+        "run_student_assignment_source_decision_validation_diagnostic",
+        lambda *args, **kwargs: (_ for _ in ()).throw(error),
+    )
+
+    with pytest.raises(DiagnosticBranchValidationError) as raised:
+        validate_diagnostic_branch_checkpoint(
+            tmp_path / "branch.json.gz",
+            data=data,
+            time_limit_seconds=180.0,
+            worker_count=1,
+        )
+
+    assert raised.value.details["solver_outcome"] == "unknown"
+    assert raised.value.details["failure_phase"] == "validation_solve"
+    assert raised.value.details["failure_classification"] == (
+        "source_validation_unknown"
+    )
+    assert raised.value.details["requested_validation_time_limit_seconds"] == 180.0
 
 
 def test_session_override_profiles_are_bounded_and_include_grade_families():

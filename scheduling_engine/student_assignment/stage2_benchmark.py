@@ -179,6 +179,31 @@ def read_diagnostic_branch_checkpoint(
     }
 
 
+class DiagnosticBranchValidationError(ValueError):
+    """Structured failure from the authoritative detached-branch validator."""
+
+    def __init__(self, message, *, details=None):
+        super().__init__(message)
+        self.details = dict(details or {})
+
+
+def _source_validation_failure_classification(validation):
+    """Map validator facts to an explicit source-preparation failure class."""
+
+    if not validation.get("source_fingerprint_matches", True):
+        return "source_validation_fingerprint_mismatch"
+    if int(validation.get("unmet_request_count", 0) or 0) > 0:
+        return "source_validation_unmet_requests"
+    solver_outcome = validation.get("solver_outcome")
+    if solver_outcome == "infeasible":
+        return "source_validation_hard_invalid"
+    if solver_outcome == "unknown":
+        return "source_validation_unknown"
+    if validation.get("complete") is False:
+        return "source_validation_incomplete"
+    return "source_validation_error"
+
+
 def validate_diagnostic_branch_checkpoint(
     path,
     *,
@@ -197,15 +222,54 @@ def validate_diagnostic_branch_checkpoint(
     """
 
     started = perf_counter()
-    branch = read_diagnostic_branch_checkpoint(path, data=data)
-    result = run_student_assignment_source_decision_validation_diagnostic(
-        data,
-        source_decisions=branch["source_decisions"],
-        time_limit_seconds=time_limit_seconds,
-        worker_count=int(worker_count),
-        capture_final_source_decisions=True,
-        collect_resource_telemetry=False,
-    )
+    try:
+        branch = read_diagnostic_branch_checkpoint(path, data=data)
+    except Exception as error:
+        raise DiagnosticBranchValidationError(
+            "Diagnostic branch could not be materialized for validation",
+            details={
+                "failure_phase": "branch_materialization",
+                "failure_classification": (
+                    "source_validation_materialization_error"
+                ),
+                "solver_outcome": "not_attempted",
+                "elapsed_seconds": perf_counter() - started,
+                "requested_validation_time_limit_seconds": float(
+                    time_limit_seconds
+                ),
+                "validation_worker_count": int(worker_count),
+                "exception_type": type(error).__name__,
+                "exception": str(error),
+            },
+        ) from error
+    try:
+        result = run_student_assignment_source_decision_validation_diagnostic(
+            data,
+            source_decisions=branch["source_decisions"],
+            time_limit_seconds=time_limit_seconds,
+            worker_count=int(worker_count),
+            capture_final_source_decisions=True,
+            collect_resource_telemetry=False,
+        )
+    except Exception as error:
+        validation = dict(getattr(error, "validation_facts", {}) or {})
+        validation.setdefault("failure_phase", "validation_solve")
+        validation.setdefault("solver_outcome", "error")
+        validation["failure_classification"] = _source_validation_failure_classification(
+            validation
+        )
+        validation.setdefault(
+            "requested_validation_time_limit_seconds",
+            float(time_limit_seconds),
+        )
+        validation.setdefault("validation_worker_count", int(worker_count))
+        validation["elapsed_seconds"] = perf_counter() - started
+        validation["exception_type"] = type(error).__name__
+        validation["exception"] = str(error)
+        raise DiagnosticBranchValidationError(
+            "Diagnostic branch validation raised an exception",
+            details=validation,
+        ) from error
     stage_2 = dict((result.optimization_facts or {}).get("stage_2") or {})
     validation = {
         "full_model_validation": bool(stage_2.get("alternate_seed_validated")),
@@ -227,14 +291,24 @@ def validate_diagnostic_branch_checkpoint(
     else:
         validation["source_fingerprint_matches"] = False
     if not validation["full_model_validation"] or not validation["complete"]:
-        raise ValueError(
+        validation["failure_phase"] = "validation_result"
+        validation["failure_classification"] = _source_validation_failure_classification(
+            validation
+        )
+        raise DiagnosticBranchValidationError(
             "Diagnostic branch failed current full-model validation: "
-            f"{validation}"
+            f"{validation}",
+            details=validation,
         )
     if not validation["source_fingerprint_matches"]:
-        raise ValueError(
+        validation["failure_phase"] = "source_identity_check"
+        validation["failure_classification"] = (
+            "source_validation_fingerprint_mismatch"
+        )
+        raise DiagnosticBranchValidationError(
             "Diagnostic branch validation returned different source decisions: "
-            f"{validation}"
+            f"{validation}",
+            details=validation,
         )
     return {"branch": branch, "validation": validation, "result": result}
 

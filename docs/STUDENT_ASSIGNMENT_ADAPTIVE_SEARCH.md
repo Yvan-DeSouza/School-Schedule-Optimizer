@@ -1167,6 +1167,32 @@ provenance, but their no-adoption outcome is not treated as a clean causal
 policy-quality comparison until those cells are rerun under the corrected
 boundary.
 
+### Corrected authority confirmation and replication (2026-09-03)
+
+The later recovery and replication studies supersede the earlier incomplete
+seed-101 status. The balanced special-pressure recovery completed cleanly at
+`43,578` from `43,626`, with five adopted, complete, zero-unmet,
+full-model-validated improvements and all 280 special commitments retained.
+Its selector-owned probe scopes remained exact, with zero scope mismatches.
+
+The sequential replication study
+`C:\Users\desou\research_runs\adaptive_scope_integrity_replication_20260903`
+completed the remaining 16 cells for seeds 202 and 303 across both detached
+target scenarios and all four diagnostic policies. Together with the eight
+seed-101 cells from the scope-integrity confirmation and recovery, the
+corrected evidence set contains 24 policy observations. All completed cells
+were complete, zero-unmet, preserved their scenario special commitments, and
+adopted only full-model-validated candidates. Every result hash verified; no
+canonical or Django state was changed.
+
+The sequential runner now prepares one source context per exact scenario
+cohort and records source-validation outcome, elapsed time, requested and
+effective limits, and solver outcome. A source-validation `UNKNOWN` or
+transient validation error may receive one fresh retry; structural fingerprint,
+completeness, unmet-request, and materialization failures remain hard gates.
+Candidate validation remains independent for every candidate and is never
+shared between policies.
+
 Two clean parity replays from the frozen `37,596` source state established the
 effect without mutating the canonical benchmark. The policy-selected scope
 `(417, 360, 482, 25)` independently produced a complete validated `37,590`

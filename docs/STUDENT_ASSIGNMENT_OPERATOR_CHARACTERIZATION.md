@@ -2002,3 +2002,76 @@ completed target cells, but does not close the full two-scenario confirmation
 gate. Seeds 202 and 303 remain intentionally unrun. The next action is to
 diagnose the intermittent source-preparation validation failure and rerun only
 the missing balanced special-pressure cell after the source gate is reliable.
+
+### Corrected adaptive authority confirmation and replication (2026-09-03)
+
+The later recovery and replication artifacts supersede the incomplete status
+above. The balanced special-pressure recovery directory was
+`C:\Users\desou\research_runs\adaptive_scope_integrity_balanced_recovery_20260903`.
+Its balanced cell ended at `43,578` from `43,626` after five adopted
+improvements. The result was complete, zero-unmet, retained all 280 special
+commitments, passed full-model validation, and recorded zero selector/probe
+scope mismatches.
+
+The corrected replication directory was
+`C:\Users\desou\research_runs\adaptive_scope_integrity_replication_20260903`.
+It contains 16 sequential cells for seeds 202 and 303: four policies on both
+the reference and special-commitment-pressure scenarios. With the four
+reference and four special-pressure seed-101 cells from the preceding
+confirmation/recovery artifacts, the corrected evidence set contains 24
+observations under the unchanged balanced Objective Semantics v2 contract:
+
+```text
+one CP-SAT worker per trial
+300 seconds per operator
+900 seconds cumulative policy budget
+180 seconds independent candidate validation
+1,800 seconds parent hard wall
+full-model validation required
+ordinary Stage 2 absent
+```
+
+All 24 observations are execution-clean: complete, zero-unmet, special-
+commitment-preserving, and free of unvalidated adoption. Every selector-owned
+scope matched the exact pre-call probe scope; no `scope_mismatch` candidate
+was adopted. Each scenario cohort prepared and validated its source once and
+reused the immutable prepared context for its four child policies. Result
+hashes and summary hashes were verified, and no canonical checkpoint or
+application state was changed.
+
+Final substantive values, with lower being better and seed order `101 / 202 /
+303`, are:
+
+| Scenario | Policy | Final values | Median |
+| --- | --- | ---: | ---: |
+| reference | adaptive_balanced | 42,732 / 42,708 / 42,708 | 42,708 |
+| reference | adaptive_evidence_guided | 42,726 / 42,678 / 42,678 | 42,678 |
+| reference | adaptive_r4_anchor | 42,726 / 42,678 / 42,678 | 42,678 |
+| reference | r4_s2_only | 42,726 / 42,678 / 42,678 | 42,678 |
+| special pressure | adaptive_balanced | 43,578 / 43,566 / 43,566 | 43,566 |
+| special pressure | adaptive_evidence_guided | 43,548 / 43,422 / 43,476 | 43,476 |
+| special pressure | adaptive_r4_anchor | 43,548 / 43,422 / 43,452 | 43,452 |
+| special pressure | r4_s2_only | 43,548 / 43,422 / 43,476 | 43,476 |
+
+Balanced adaptive was worse than the R4-oriented policies in all six matched
+scenario/seed observations. Evidence-guided and R4-anchor did not establish a
+repeatable improvement over fixed `r4_s2_only`: they tied it or differed by
+transition-level amounts. R4-anchor had the lowest special-pressure median;
+evidence-guided had the lowest reference median. Those are research findings,
+not production-promotion decisions.
+
+The replication artifacts report median policy times of approximately
+911--922 seconds and peak process-tree working sets of approximately
+0.9--1.0 GB. The study did not establish a meaningful runtime winner. The
+correct classification is **execution-clean, with directional evidence for
+R4-first allocation but no proven advantage over fixed R4/S2**. No adaptive
+policy is promoted to production.
+
+The source-validation boundary is now observable: failures carry phase,
+classification, solver outcome, elapsed time, requested/effective limit,
+lineage, and exception facts. The sequential cohort runner allows at most one
+fresh retry for `UNKNOWN` or transient validation errors; structural failures
+remain hard gates. The seed-101 recovery and all 16 replication source
+preparations passed without requiring a recorded retry, so the original
+generic source failure remains historical and is not reinterpreted as a policy
+failure.

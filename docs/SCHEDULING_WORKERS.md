@@ -287,6 +287,23 @@ USS/private memory where supported, VMS, CPU, thread/process-tree, and host
 memory context. They are intended to validate worker capacity and process
 recycling; they are not progress signals, solver decisions, or approval facts.
 
+For evidence-guided sequential policy cohorts, the research coordinator may
+select several policies for one scenario/seed invocation with `--policies`.
+The coordinator prepares and fully validates one detached source context for
+that exact cohort, then runs one supervised child per policy in sequence. The
+parent alone publishes result files and manifest hashes; candidate validation
+still occurs independently inside every child. A source-validation `UNKNOWN`
+or transient validation error receives at most one fresh retry. Structural
+fingerprint, completeness, unmet-request, or materialization failures gate the
+whole cohort and are recorded as source-validation failures rather than policy
+failures.
+
+This is research-only behavior. It does not change production Celery
+concurrency, ordinary scheduling persistence, approvals, canonical benchmark
+state, or the candidate-authority rule. Sequential child runtimes are the
+appropriate facts for policy-speed comparison; parallel study slots are only
+throughput/resource experiments.
+
 ## Windows and WSL development
 
 Redis connectivity from the Windows environment was verified with the Python
