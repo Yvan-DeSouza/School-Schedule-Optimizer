@@ -1710,3 +1710,34 @@ non-R4 decision discrimination is `adaptive_hierarchical_evidence`; however,
 the horizon-aware variant also demonstrates the explicitly horizon-caused
 long/short crossover. Selecting a target-study policy remains a separate
 study-design decision and was not performed by this gate.
+
+### Real recent-productivity runtime qualification (2026-09-05)
+
+The first real runtime qualification of the recent-productivity layer used
+only existing v2 medium inputs, one CP-SAT worker, seed `101`, sequential
+execution, 30-second operator/session limits, and 30-second full-model
+validation. The smallest production-shaped 80-student fixture was run for a
+12-attempt common prefix using
+`targeted_r4_s2 -> targeted_utilization_r64_s8 -> r2` repeated four times.
+The durable `reference_medium` fixture was then run under the same protocol
+from its stored source-decision seed: 240 students, 1,529 requests, 308
+sections, 56 delivery groups, 20 special commitments, input fingerprint
+`9c9ffe0924a8d36b8673c14a7706b239a1d22cae31e06196ea850589b0556956`, and
+validated starting substantive value `42,552`.
+
+After every real attempt, `adaptive_hierarchical_evidence` and
+`adaptive_hierarchical_recent` were evaluated against the same incumbent,
+source decisions, state, history, budget, ranking, and effective portfolio.
+All 12 comparisons on each scenario selected the same operator. The real
+R4/utilization attempts were validated adoptions; repeated R2 probes were
+unresolved `UNKNOWN` outcomes and were retained as unresolved cost/history
+facts, never as zero-productivity observations. In the reference scenario,
+the observed exact-stratum lifetime and recent yields remained equal for the
+operators in competition (including recent weights reaching `0.50`), so no
+operator met the documented meaningful stale-history condition.
+
+The result is **REAL RECENT-PRODUCTIVITY RUNTIME DIVERGENCE NOT OBSERVED**.
+This qualifies neither recent-productivity selection nor schedule-quality
+superiority. No fork, replay artifact, component-aware comparison, or
+target-scale study was justified; the next isolated ladder question remains
+component awareness.
