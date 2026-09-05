@@ -304,6 +304,41 @@ state, or the candidate-authority rule. Sequential child runtimes are the
 appropriate facts for policy-speed comparison; parallel study slots are only
 throughput/resource experiments.
 
+### Three-policy eight-worker v2 confirmation
+
+The separate `v2_three_policy_8worker_confirmation_20260904` study is a
+sequential, diagnostic-only comparison of `adaptive_evidence_guided`,
+`adaptive_r4_anchor`, and `r4_s2_only`. It uses eight internal CP-SAT workers
+inside each supervised policy process, a 3,600-second cumulative policy
+budget, a 300-second per-operator limit, an independent 180-second candidate
+validation allowance, and a 4,200-second parent hard wall. These values are
+stored and fingerprinted in the study manifest; they do not replace the
+historical one-worker/900-second research contracts.
+
+The study must run one policy process at a time. Three simultaneous trials
+would create approximately 24 internal solver workers and would confound
+runtime and memory comparisons. The coordinator prepares one immutable,
+authoritatively validated Stage 1 source context for each exact scenario
+cohort, passes that context to each child, and lets only the parent publish
+result artifacts and hashes. Candidate validation remains independent inside
+every child.
+
+Initialize this study with:
+
+```bash
+python -m scheduling_engine.benchmark_policy_generalization \
+  --study-directory C:/research_runs/v2_three_policy_8worker_confirmation_YYYYMMDD \
+  --initialize-three-policy-8worker
+```
+
+Run a seed-101 scenario cohort with `--run-sequential`, `--scenario`,
+`--seed`, and `--policies`. Seeds 202 and 303 are gated on clean seed-101
+results. Record available memory, process-tree RSS/USS, VMS/pagefile, CPU,
+child cleanup, and host sleep/wake facts. Resource or host contamination is
+an execution classification, not evidence that a policy is inferior. This
+research mode does not launch Celery tasks, change production Celery
+concurrency, write Django state, or mutate canonical benchmark artifacts.
+
 ## Windows and WSL development
 
 Redis connectivity from the Windows environment was verified with the Python

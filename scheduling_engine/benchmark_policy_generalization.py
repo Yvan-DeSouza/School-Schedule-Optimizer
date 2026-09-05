@@ -81,6 +81,27 @@ PARALLEL_POLICY_STUDY_DEFAULT_PARALLEL_TRIALS = 2
 PARALLEL_POLICY_MEMORY_RESERVE_BYTES = 2 * 1024**3
 PARALLEL_POLICY_MAX_SWAP_GROWTH_BYTES = 256 * 1024**2
 
+# Separate sequential confirmation contract.  Historical startup-aware and
+# parallel-study manifests intentionally retain their original one-worker and
+# 900-second semantics.  This contract is diagnostic-only and is selected by
+# its own initializer so an old manifest cannot silently acquire new limits.
+THREE_POLICY_8WORKER_STUDY_ID = "v2_three_policy_8worker_confirmation_20260904"
+THREE_POLICY_8WORKER_STUDY_PROTOCOL_VERSION = (
+    "adaptive-policy-three-policy-8worker-v1"
+)
+THREE_POLICY_8WORKER_STUDY_POLICIES = (
+    "adaptive_evidence_guided",
+    "adaptive_r4_anchor",
+    "r4_s2_only",
+)
+THREE_POLICY_8WORKER_STUDY_SEEDS = (101, 202, 303)
+THREE_POLICY_8WORKER_STUDY_PROFILE = "balanced"
+THREE_POLICY_8WORKER_STUDY_WORKER_COUNT = 8
+THREE_POLICY_8WORKER_TOTAL_POLICY_SECONDS = 3600.0
+THREE_POLICY_8WORKER_MAX_OPERATOR_SECONDS = 300.0
+THREE_POLICY_8WORKER_VALIDATION_SECONDS = 180.0
+THREE_POLICY_8WORKER_PARENT_HARD_WALL_SECONDS = 4200.0
+
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 _BENCHMARK_ROOT = (
     _REPOSITORY_ROOT
@@ -116,6 +137,20 @@ def _sha256_file(path):
     return digest.hexdigest()
 
 
+def _json_fingerprint(payload):
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode(
+            "utf-8"
+        )
+    ).hexdigest()
+
+
+def budget_contract_fingerprint(contract):
+    """Return the stable identity of a complete study budget contract."""
+
+    return _json_fingerprint(contract)
+
+
 def _relative_path(path):
     try:
         return str(Path(path).resolve().relative_to(_REPOSITORY_ROOT))
@@ -128,6 +163,7 @@ def parallel_policy_fingerprint(
     *,
     profile=PARALLEL_POLICY_STUDY_PROFILE,
     allowed_policies=None,
+    protocol_version=PARALLEL_POLICY_PROTOCOL_VERSION,
 ):
     """Return the immutable policy identity used by the parallel study."""
 
@@ -137,7 +173,7 @@ def parallel_policy_fingerprint(
         raise ValueError(f"Unknown calibration profile: {profile}")
     config = build_calibration_policy(policy)
     payload = {
-        "protocol_version": PARALLEL_POLICY_PROTOCOL_VERSION,
+        "protocol_version": protocol_version,
         "policy": policy,
         "profile": profile,
         "profile_fingerprint": profile_fingerprint(profile),
@@ -166,6 +202,48 @@ def parallel_policy_fingerprint(
             "utf-8"
         )
     ).hexdigest()
+
+
+def three_policy_8worker_budget_contract():
+    """Return the immutable three-policy eight-worker research contract."""
+
+    policies = THREE_POLICY_8WORKER_STUDY_POLICIES
+    return {
+        "protocol_version": THREE_POLICY_8WORKER_STUDY_PROTOCOL_VERSION,
+        "profile": THREE_POLICY_8WORKER_STUDY_PROFILE,
+        "profile_fingerprint": profile_fingerprint(
+            THREE_POLICY_8WORKER_STUDY_PROFILE
+        ),
+        "policies": list(policies),
+        "policy_fingerprints": {
+            policy: parallel_policy_fingerprint(
+                policy,
+                profile=THREE_POLICY_8WORKER_STUDY_PROFILE,
+                allowed_policies=policies,
+                protocol_version=THREE_POLICY_8WORKER_STUDY_PROTOCOL_VERSION,
+            )
+            for policy in policies
+        },
+        "cp_sat_workers_per_trial": THREE_POLICY_8WORKER_STUDY_WORKER_COUNT,
+        "cp_sat_random_seeds": list(THREE_POLICY_8WORKER_STUDY_SEEDS),
+        "per_operator_maximum_seconds": (
+            THREE_POLICY_8WORKER_MAX_OPERATOR_SECONDS
+        ),
+        "cumulative_policy_budget_seconds": (
+            THREE_POLICY_8WORKER_TOTAL_POLICY_SECONDS
+        ),
+        "candidate_validation_time_limit_seconds": (
+            THREE_POLICY_8WORKER_VALIDATION_SECONDS
+        ),
+        "candidate_validation_worker_count": 1,
+        "parent_hard_wall_seconds": THREE_POLICY_8WORKER_PARENT_HARD_WALL_SECONDS,
+        "full_model_validation_required": True,
+        "unvalidated_candidate_adoption": False,
+        "ordinary_stage2_between_iterations": False,
+        "production_policy_wiring": False,
+        "canonical_checkpoint_mutation": False,
+        "execution_mode": "sequential_confirmation",
+    }
 
 
 def parallel_policy_budget_contract(*, policies=None):
@@ -208,8 +286,11 @@ def build_parallel_policy_study_manifest(
     scenario_ids=("reference_target", "special_commitment_pressure_target"),
     policies=None,
     study_id=None,
+    budget_contract=None,
+    study_kind="progressive_parallel_policy_comparison",
+    purpose=None,
 ):
-    """Build a manifest for the new four-policy research study."""
+    """Build a manifest for a versioned diagnostic policy study."""
 
     unknown = set(scenario_ids) - set(TARGET_SCENARIO_DIRECTORIES)
     if unknown:
@@ -221,11 +302,16 @@ def build_parallel_policy_study_manifest(
     unknown_policies = set(policies) - known_policies
     if unknown_policies:
         raise ValueError(f"Unknown study policies: {sorted(unknown_policies)}")
+    budget_contract = dict(
+        budget_contract or parallel_policy_budget_contract(policies=policies)
+    )
+    if tuple(budget_contract.get("policies") or ()) != tuple(policies):
+        raise ValueError("Budget contract policies do not match study policies")
     return {
         "schema": PARALLEL_POLICY_STUDY_SCHEMA,
         "study_id": study_id or PARALLEL_POLICY_STUDY_ID,
-        "study_kind": "progressive_parallel_policy_comparison",
-        "purpose": (
+        "study_kind": study_kind,
+        "purpose": purpose or (
             "Research-only comparison of the selected adaptive allocator "
             "variants and fixed-cycle control; no production wiring."
         ),
@@ -234,15 +320,17 @@ def build_parallel_policy_study_manifest(
         "objective_semantics_version": "v2",
         "source_lineage": "v2_policy_generalization_suite_20260829",
         "policies": list(policies),
-        "policy_fingerprints": {
-            policy: parallel_policy_fingerprint(
-                policy, allowed_policies=policies
+        "policy_fingerprints": dict(budget_contract["policy_fingerprints"]),
+        "seeds": list(
+            budget_contract.get(
+                "cp_sat_random_seeds", PARALLEL_POLICY_STUDY_SEEDS
             )
-            for policy in policies
-        },
-        "seeds": list(PARALLEL_POLICY_STUDY_SEEDS),
+        ),
         "scenario_ids": list(scenario_ids),
-        "budget_contract": parallel_policy_budget_contract(policies=policies),
+        "budget_contract": budget_contract,
+        "budget_contract_fingerprint": budget_contract_fingerprint(
+            budget_contract
+        ),
         "scenarios": {
             scenario_id: _scenario_manifest(scenario_id)
             for scenario_id in scenario_ids
@@ -287,6 +375,36 @@ def initialize_evidence_guided_policy_study(study_directory, *, scenario_ids=Non
         policies=EVIDENCE_GUIDED_STUDY_POLICIES,
         study_id=EVIDENCE_GUIDED_STUDY_ID,
     )
+
+
+def build_three_policy_8worker_study_manifest(*, study_directory):
+    """Build the separate eight-worker v2 confirmation manifest."""
+
+    return build_parallel_policy_study_manifest(
+        study_directory=study_directory,
+        policies=THREE_POLICY_8WORKER_STUDY_POLICIES,
+        study_id=THREE_POLICY_8WORKER_STUDY_ID,
+        budget_contract=three_policy_8worker_budget_contract(),
+        study_kind="sequential_three_policy_8worker_confirmation",
+        purpose=(
+            "Research-only sequential Objective Semantics v2 confirmation "
+            "of evidence-guided, R4-anchor, and fixed R4/S2 policies."
+        ),
+    )
+
+
+def initialize_three_policy_8worker_study(study_directory):
+    """Create the eight-worker study without overwriting existing state."""
+
+    study_directory = Path(study_directory)
+    manifest_path = study_directory / "study_manifest.json"
+    if manifest_path.exists():
+        raise FileExistsError(f"Study manifest already exists: {manifest_path}")
+    manifest = build_three_policy_8worker_study_manifest(
+        study_directory=study_directory
+    )
+    _json_write_atomic(manifest_path, manifest)
+    return manifest
 
 
 def _parallel_resource_snapshot(active_workers):
@@ -786,37 +904,93 @@ def execute_parallel_policy_cell(
         raise ValueError(f"Unknown parallel-study scenario: {scenario_id}")
     if policy not in tuple(manifest.get("policies") or ()):
         raise ValueError(f"Unknown parallel-study policy: {policy}")
-    if int(seed) not in PARALLEL_POLICY_STUDY_SEEDS:
+    contract = manifest.get("budget_contract") or {}
+    registered_seeds = tuple(
+        manifest.get("seeds")
+        or contract.get("cp_sat_random_seeds")
+        or PARALLEL_POLICY_STUDY_SEEDS
+    )
+    if int(seed) not in registered_seeds:
         raise ValueError(f"Seed is not preregistered: {seed}")
     scenario = manifest["scenarios"][scenario_id]
     benchmark_directory = _REPOSITORY_ROOT / scenario["benchmark_directory"]
+    profile = contract.get("profile", PARALLEL_POLICY_STUDY_PROFILE)
+    total_policy_seconds = float(
+        contract.get(
+            "cumulative_policy_budget_seconds",
+            STARTUP_AWARE_TOTAL_POLICY_SECONDS,
+        )
+    )
+    per_operator_seconds = float(
+        contract.get(
+            "per_operator_maximum_seconds",
+            STARTUP_AWARE_MAX_OPERATOR_SECONDS,
+        )
+    )
+    worker_count = int(
+        contract.get(
+            "cp_sat_workers_per_trial", PARALLEL_POLICY_STUDY_WORKER_COUNT
+        )
+    )
+    validation_seconds = float(
+        contract.get(
+            "candidate_validation_time_limit_seconds",
+            STARTUP_AWARE_VALIDATION_SECONDS,
+        )
+    )
+    parent_hard_wall_seconds = float(
+        contract.get(
+            "parent_hard_wall_seconds",
+            STARTUP_AWARE_PARENT_HARD_WALL_SECONDS,
+        )
+    )
+    contract_protocol = contract.get("protocol_version")
+    expected_policy_fingerprint = manifest.get("policy_fingerprints", {}).get(
+        policy
+    )
+    if contract_protocol and expected_policy_fingerprint and contract.get(
+        "profile_fingerprint"
+    ):
+        calculated_policy_fingerprint = parallel_policy_fingerprint(
+            policy,
+            profile=profile,
+            allowed_policies=tuple(manifest.get("policies") or ()),
+            protocol_version=contract_protocol,
+        )
+        if calculated_policy_fingerprint != expected_policy_fingerprint:
+            raise ValueError(
+                "Policy fingerprint does not match the study contract"
+            )
+        if contract["profile_fingerprint"] != profile_fingerprint(profile):
+            raise ValueError("Profile fingerprint does not match the study contract")
+    contract_fingerprint = manifest.get("budget_contract_fingerprint")
     started = perf_counter()
     try:
         fixed_cycle_request = None
         if policy == "fixed_cycle":
             fixed_cycle_request = fixed_cycle_control_request(
-                profile=PARALLEL_POLICY_STUDY_PROFILE,
+                profile=profile,
                 benchmark_directory=benchmark_directory,
                 input_fingerprint=scenario["input_fingerprint"],
                 source_seed_fingerprint=scenario["source_seed_fingerprint"],
                 cp_sat_random_seed=int(seed),
-                total_time_limit_seconds=STARTUP_AWARE_TOTAL_POLICY_SECONDS,
-                per_operator_time_limit_seconds=STARTUP_AWARE_MAX_OPERATOR_SECONDS,
-                worker_count=PARALLEL_POLICY_STUDY_WORKER_COUNT,
-                validation_time_limit_seconds=STARTUP_AWARE_VALIDATION_SECONDS,
-                parent_hard_wall_seconds=STARTUP_AWARE_PARENT_HARD_WALL_SECONDS,
+                total_time_limit_seconds=total_policy_seconds,
+                per_operator_time_limit_seconds=per_operator_seconds,
+                worker_count=worker_count,
+                validation_time_limit_seconds=validation_seconds,
+                parent_hard_wall_seconds=parent_hard_wall_seconds,
             )
             run_kwargs = dict(fixed_cycle_request["run_kwargs"])
         else:
             run_kwargs = {
                 "policy": policy,
-                "profile": PARALLEL_POLICY_STUDY_PROFILE,
+                "profile": profile,
                 "benchmark_directory": benchmark_directory,
-                "total_time_limit_seconds": STARTUP_AWARE_TOTAL_POLICY_SECONDS,
-                "per_operator_time_limit_seconds": STARTUP_AWARE_MAX_OPERATOR_SECONDS,
-                "worker_count": PARALLEL_POLICY_STUDY_WORKER_COUNT,
-                "validation_time_limit_seconds": STARTUP_AWARE_VALIDATION_SECONDS,
-                "hard_wall_seconds": STARTUP_AWARE_PARENT_HARD_WALL_SECONDS,
+                "total_time_limit_seconds": total_policy_seconds,
+                "per_operator_time_limit_seconds": per_operator_seconds,
+                "worker_count": worker_count,
+                "validation_time_limit_seconds": validation_seconds,
+                "hard_wall_seconds": parent_hard_wall_seconds,
                 "startup_aware": True,
                 "cp_sat_random_seed": int(seed),
             }
@@ -835,7 +1009,7 @@ def execute_parallel_policy_cell(
             "scenario_id": scenario_id,
             "policy": policy,
             "seed": int(seed),
-            "profile": PARALLEL_POLICY_STUDY_PROFILE,
+            "profile": profile,
             "adaptive_policy_variant": build_calibration_policy(policy)[
                 "adaptive_policy_variant"
             ],
@@ -845,6 +1019,7 @@ def execute_parallel_policy_cell(
                 "source_seed_fingerprint": scenario["source_seed_fingerprint"],
             },
             "budget_contract": manifest["budget_contract"],
+            "budget_contract_fingerprint": contract_fingerprint,
             "cell_elapsed_seconds": perf_counter() - started,
             "source_preparation": (
                 prepared_source_context.get("preparation")
@@ -873,7 +1048,7 @@ def execute_parallel_policy_cell(
             "scenario_id": scenario_id,
             "policy": policy,
             "seed": int(seed),
-            "profile": PARALLEL_POLICY_STUDY_PROFILE,
+            "profile": profile,
             "adaptive_policy_variant": build_calibration_policy(policy)[
                 "adaptive_policy_variant"
             ],
@@ -886,20 +1061,21 @@ def execute_parallel_policy_cell(
                 "source_seed_fingerprint": scenario["source_seed_fingerprint"],
             },
             "budget_contract": manifest["budget_contract"],
+            "budget_contract_fingerprint": contract_fingerprint,
             "cell_elapsed_seconds": perf_counter() - started,
         }
         if policy == "fixed_cycle":
             fixed_cycle_request = fixed_cycle_control_request(
-                profile=PARALLEL_POLICY_STUDY_PROFILE,
+                profile=profile,
                 benchmark_directory=benchmark_directory,
                 input_fingerprint=scenario["input_fingerprint"],
                 source_seed_fingerprint=scenario["source_seed_fingerprint"],
                 cp_sat_random_seed=int(seed),
-                total_time_limit_seconds=STARTUP_AWARE_TOTAL_POLICY_SECONDS,
-                per_operator_time_limit_seconds=STARTUP_AWARE_MAX_OPERATOR_SECONDS,
-                worker_count=PARALLEL_POLICY_STUDY_WORKER_COUNT,
-                validation_time_limit_seconds=STARTUP_AWARE_VALIDATION_SECONDS,
-                parent_hard_wall_seconds=STARTUP_AWARE_PARENT_HARD_WALL_SECONDS,
+                total_time_limit_seconds=total_policy_seconds,
+                per_operator_time_limit_seconds=per_operator_seconds,
+                worker_count=worker_count,
+                validation_time_limit_seconds=validation_seconds,
+                parent_hard_wall_seconds=parent_hard_wall_seconds,
             )
             payload.update({
                 "origin": "parallel_policy_study",
@@ -1225,7 +1401,9 @@ def _persist_source_preparation_failure(
         "scenario_id": scenario_id,
         "requested_policies": list(requested_policies),
         "seed": int(seed) if seed is not None else None,
-        "profile": PARALLEL_POLICY_STUDY_PROFILE,
+        "profile": (manifest.get("budget_contract") or {}).get(
+            "profile", PARALLEL_POLICY_STUDY_PROFILE
+        ),
         "status": "source_validation_unresolved",
         "failure": details,
         "budget_contract": manifest["budget_contract"],
@@ -1339,6 +1517,13 @@ def run_sequential_policy_study(
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if manifest.get("schema") != PARALLEL_POLICY_STUDY_SCHEMA:
         raise ValueError("Study manifest is not a policy comparison study")
+    budget_contract = manifest.get("budget_contract") or {}
+    study_profile = budget_contract.get(
+        "profile", PARALLEL_POLICY_STUDY_PROFILE
+    )
+    validation_seconds = budget_contract.get(
+        "candidate_validation_time_limit_seconds"
+    )
     if scenario_id is not None and scenario_id not in manifest.get(
         "scenario_ids", ()
     ):
@@ -1393,11 +1578,9 @@ def run_sequential_policy_study(
                         benchmark_directory=(
                             _REPOSITORY_ROOT / scenario["benchmark_directory"]
                         ),
-                        profile=PARALLEL_POLICY_STUDY_PROFILE,
+                        profile=study_profile,
                         branch_input=Path(context_dir) / f"{current_scenario}.json.gz",
-                        validation_time_limit_seconds=manifest["budget_contract"].get(
-                            "candidate_validation_time_limit_seconds"
-                        ),
+                        validation_time_limit_seconds=validation_seconds,
                     )
                     if context["input_fingerprint"] != scenario["input_fingerprint"]:
                         raise DiagnosticBranchValidationError(
@@ -1458,6 +1641,7 @@ def run_sequential_policy_study(
             context["source_preparation_attempts"] = attempts
             prepared_source_contexts[current_scenario] = context
 
+        persisted_results = []
         for cell in pending:
             payload = execute_parallel_policy_cell(
                 manifest=manifest,
@@ -1470,24 +1654,37 @@ def run_sequential_policy_study(
             )
             payload = dict(payload)
             payload["execution_mode"] = "sequential_confirmation"
-            _persist_parallel_policy_result(study_directory, manifest, payload)
-            manifest["batches"].append({
-                "batch_number": len(manifest["batches"]) + 1,
-                "execution_mode": "sequential_confirmation",
-                "requested_parallel_trials": 1,
-                "cells": [cell],
-                "source_preparation": {
-                    cell["scenario_id"]: prepared_source_contexts[
-                        cell["scenario_id"]
-                    ]["preparation"]
-                },
-                "source_preparation_attempts": {
-                    cell["scenario_id"]: prepared_source_contexts[
-                        cell["scenario_id"]
-                    ].get("source_preparation_attempts", [])
-                },
-            })
-            _json_write_atomic(manifest_path, manifest)
+            persisted_results.append(
+                _persist_parallel_policy_result(
+                    study_directory,
+                    manifest,
+                    payload,
+                )
+            )
+        # One manifest batch represents the whole selected cohort.  Results
+        # are still published one at a time by the parent, but the source
+        # preparation record must not imply that identical policy cells each
+        # performed an independent source validation.
+        manifest["batches"].append({
+            "batch_number": len(manifest["batches"]) + 1,
+            "execution_mode": "sequential_confirmation",
+            "requested_parallel_trials": 1,
+            "cells": list(pending),
+            "persisted_results": persisted_results,
+            "source_preparation": {
+                scenario_id: prepared_source_contexts[scenario_id][
+                    "preparation"
+                ]
+                for scenario_id in prepared_source_contexts
+            },
+            "source_preparation_attempts": {
+                scenario_id: prepared_source_contexts[scenario_id].get(
+                    "source_preparation_attempts", []
+                )
+                for scenario_id in prepared_source_contexts
+            },
+        })
+        _json_write_atomic(manifest_path, manifest)
     return manifest
 
 
@@ -1768,6 +1965,14 @@ def main(argv=None):  # pragma: no cover - offline experiment entrypoint
         help="Create the evidence-guided adaptive-variant study manifest.",
     )
     parser.add_argument(
+        "--initialize-three-policy-8worker",
+        action="store_true",
+        help=(
+            "Create the separate sequential three-policy eight-worker "
+            "Objective Semantics v2 study manifest."
+        ),
+    )
+    parser.add_argument(
         "--run-parallel",
         action="store_true",
         help="Run the four-policy study with measured concurrency expansion.",
@@ -1824,6 +2029,7 @@ def main(argv=None):  # pragma: no cover - offline experiment entrypoint
         args.summarize,
         args.initialize_parallel,
         args.initialize_evidence_guided,
+        args.initialize_three_policy_8worker,
         args.run_parallel,
         args.run_sequential,
     ))
@@ -1835,6 +2041,8 @@ def main(argv=None):  # pragma: no cover - offline experiment entrypoint
         payload = initialize_parallel_policy_study(args.study_directory)
     elif args.initialize_evidence_guided:
         payload = initialize_evidence_guided_policy_study(args.study_directory)
+    elif args.initialize_three_policy_8worker:
+        payload = initialize_three_policy_8worker_study(args.study_directory)
     elif args.run_parallel:
         payload = run_parallel_policy_study(
             args.study_directory,
@@ -1864,6 +2072,7 @@ def main(argv=None):  # pragma: no cover - offline experiment entrypoint
         or args.summarize
         or args.initialize_parallel
         or args.initialize_evidence_guided
+        or args.initialize_three_policy_8worker
         or args.run_parallel
         or args.run_sequential
     ):
@@ -1910,6 +2119,16 @@ __all__ = [
     "PARALLEL_POLICY_STUDY_SCHEMA",
     "PARALLEL_POLICY_STUDY_SEEDS",
     "PARALLEL_POLICY_STUDY_WORKER_COUNT",
+    "THREE_POLICY_8WORKER_STUDY_ID",
+    "THREE_POLICY_8WORKER_STUDY_POLICIES",
+    "THREE_POLICY_8WORKER_STUDY_PROTOCOL_VERSION",
+    "THREE_POLICY_8WORKER_STUDY_SEEDS",
+    "THREE_POLICY_8WORKER_STUDY_PROFILE",
+    "THREE_POLICY_8WORKER_STUDY_WORKER_COUNT",
+    "THREE_POLICY_8WORKER_TOTAL_POLICY_SECONDS",
+    "THREE_POLICY_8WORKER_MAX_OPERATOR_SECONDS",
+    "THREE_POLICY_8WORKER_VALIDATION_SECONDS",
+    "THREE_POLICY_8WORKER_PARENT_HARD_WALL_SECONDS",
     "EVIDENCE_GUIDED_STUDY_ID",
     "EVIDENCE_GUIDED_STUDY_POLICIES",
     "STARTUP_AWARE_POLICIES",
@@ -1921,11 +2140,15 @@ __all__ = [
     "TARGET_SCENARIO_DIRECTORIES",
     "build_startup_aware_study_manifest",
     "build_parallel_policy_study_manifest",
+    "build_three_policy_8worker_study_manifest",
+    "budget_contract_fingerprint",
     "execute_parallel_policy_cell",
     "initialize_startup_aware_study",
     "initialize_parallel_policy_study",
     "initialize_evidence_guided_policy_study",
+    "initialize_three_policy_8worker_study",
     "parallel_policy_budget_contract",
+    "three_policy_8worker_budget_contract",
     "parallel_policy_fingerprint",
     "qualify_parallel_concurrency",
     "run_parallel_policy_batch",

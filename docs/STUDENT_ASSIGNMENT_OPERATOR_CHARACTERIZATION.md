@@ -2075,3 +2075,136 @@ remain hard gates. The seed-101 recovery and all 16 replication source
 preparations passed without requiring a recorded retry, so the original
 generic source failure remains historical and is not reinterpreted as a policy
 failure.
+
+### Objective Semantics v2 three-policy eight-worker confirmation (2026-09-04)
+
+The external study
+`C:\Users\desou\research_runs\v2_three_policy_8worker_confirmation_20260904`
+ran `adaptive_evidence_guided`, `adaptive_r4_anchor`, and the registered
+fixed control `r4_s2_only` under a separate production-shaped solver
+contract. All policies used the same detached v2 input, validated Stage 1
+source, balanced Objective Semantics v2 profile, hard constraints, operator
+portfolio, CP-SAT seed, full-model validation, and strict-improvement rule.
+
+The contract was:
+
+```text
+8 internal CP-SAT workers per policy process
+3,600 seconds cumulative policy budget
+300 seconds maximum per operator
+180 seconds independent candidate-validation allowance
+4,200 seconds supervised parent hard wall
+ordinary Stage 2 absent
+canonical and Django mutation forbidden
+```
+
+The seed-101 reference and special-pressure cohorts ran sequentially, one
+supervised policy process at a time. Source preparation was performed once
+for the special-pressure cohort and the immutable prepared context was shared
+by its three children. All six result artifacts and manifest hashes verified.
+
+The reference seed-101 batch entries retain the older one-cell batch shape
+because that cohort began before grouped batch persistence was added. The
+top-level manifest still registers and hashes all 18 result artifacts; the
+later seed-101 special-pressure and seed-202/303 cohorts use the grouped
+three-policy batch representation.
+
+| Scenario | Policy | Initial → final substantive | Adopted | Attempts | Complete | Unmet | Special commitments | Scope mismatches |
+| --- | --- | ---: | ---: | ---: | --- | ---: | ---: | ---: |
+| reference | adaptive_evidence_guided | 42,750 → 42,534 | 16 | 16 | yes | 0 | 140 | 0 |
+| reference | adaptive_r4_anchor | 42,750 → 42,486 | 15 | 16 | yes | 0 | 140 | 0 |
+| reference | r4_s2_only | 42,750 → 42,546 | 15 | 16 | yes | 0 | 140 | 0 |
+| special pressure | adaptive_evidence_guided | 43,626 → 43,140 | 20 | 20 | yes | 0 | 280 | 0 |
+| special pressure | adaptive_r4_anchor | 43,626 → 43,140 | 20 | 21 | yes | 0 | 280 | 0 |
+| special pressure | r4_s2_only | 43,626 → 43,140 | 20 | 20 | yes | 0 | 280 | 0 |
+
+The reference endpoint differences came from small changes in difficulty,
+section-utilization, and semester-load balance; the category-diversity
+contribution was equal across the three reference endpoints. The applicable
+soft sequence-preference opportunities remained fully satisfied, so their
+penalty stayed zero. This does not show that any policy improved sequence
+preferences. Hard prerequisite relationships remained feasibility constraints;
+the sequence-preference measure is the separate soft directional objective.
+
+No selector/probe scope mismatch was recorded. Every final result was
+complete and zero-unmet, all scenario special commitments were preserved, and
+no unvalidated candidate was adopted. One reference anchor attempt and one
+reference fixed-control attempt were unresolved validation outcomes; neither
+counted as an adopted improvement. No policy is promoted from this seed-101
+confirmation alone.
+
+Seeds 202 and 303 remain conditional replication work. The next evidence step
+is to run those matched cohorts under the same eight-worker contract, adding
+clean repeats if rankings reverse or solver transition variance makes a
+comparison close. Runtime conclusions must use sequential results; this study
+does not establish a runtime winner.
+
+### Eight-worker v2 replication addendum (2026-09-04)
+
+The conditional replication completed in the same external study directory.
+The final study contains 18 top-level result artifacts:
+
+```text
+C:\Users\desou\research_runs\v2_three_policy_8worker_confirmation_20260904
+```
+
+All 18 result hashes match the manifest. Every result used eight internal
+CP-SAT workers, the balanced Objective Semantics v2 profile, a validated
+scenario-specific Stage 1 source, a 3,600-second cumulative policy budget,
+300 seconds per operator, 180 seconds of independent candidate validation,
+and a 4,200-second supervised parent wall. The policies ran sequentially,
+one supervised child at a time. Ordinary Stage 2 was absent; each final value
+is therefore the result of diagnostic policy search from the shared validated
+Stage 1 source.
+
+The final substantive values are shown in seed order `101 / 202 / 303`;
+lower is better:
+
+| Scenario | Policy | Final values | Median | Attempts | Adopted | Validation UNKNOWN |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| reference | adaptive_evidence_guided | 42,534 / 42,498 / 42,510 | 42,510 | 48 | 47 | 1 |
+| reference | adaptive_r4_anchor | 42,486 / 42,546 / 42,546 | 42,546 | 48 | 45 | 3 |
+| reference | r4_s2_only | 42,546 / 42,498 / 42,558 | 42,546 | 46 | 43 | 2 |
+| special pressure | adaptive_evidence_guided | 43,140 / 43,140 / 43,362 | 43,140 | 51 | 49 | 0 |
+| special pressure | adaptive_r4_anchor | 43,140 / 43,140 / 43,422 | 43,140 | 48 | 46 | 1 |
+| special pressure | r4_s2_only | 43,140 / 43,140 / 43,158 | 43,140 | 61 | 59 | 0 |
+
+All 18 results were complete, zero-unmet, and preserved the scenario special
+commitments: 140 in the reference scenario and 280 in the special-pressure
+scenario. No selector/probe scope mismatch was recorded, no mismatched
+candidate was adopted, and no unvalidated candidate became authoritative.
+Search `UNKNOWN` was not observed in the completed cells. Validation
+`UNKNOWN` attempts remained non-authoritative and did not prevent the prior
+complete incumbent from being returned.
+
+The reference scenario provides directional evidence for
+`adaptive_evidence_guided`: it has the lowest three-seed median and was best
+or tied for best in two of the three seeds, while `adaptive_r4_anchor` had the
+best single seed-101 endpoint. The special-pressure scenario does not show a
+policy separation in the median; all three medians are 43,140, and the seed
+303 endpoint favors the simpler fixed control. These results therefore do not
+establish a repeatable advantage over `r4_s2_only`.
+
+The v2 soft-component records show that the observed endpoint differences
+were mainly in section-utilization balance, semester-load balance, and
+difficulty balance. Category-diversity contributions were constant within
+each scenario. All applicable soft sequence-preference opportunities were
+satisfied in every result: 56 in the reference scenario and 42 in the
+special-pressure scenario, with zero sequence penalty. No policy can be
+credited with improving sequence preferences in this study. Hard prerequisite
+relationships remained feasibility constraints, distinct from the soft
+directional sequence-preference objective.
+
+Median cell elapsed times were approximately 3,618--3,620 seconds for the
+reference policies and 3,624--3,626 seconds for the special-pressure
+policies. Peak process-tree working sets were approximately 0.86--0.94 GiB.
+Because cells were sequential, these timings are not parallel-throughput
+measurements and do not show a meaningful runtime winner. The eight CP-SAT
+workers were diagnostic solver workers; production Celery concurrency was
+unchanged.
+
+The final classification is **execution-clean, complete, and transition-
+variance-limited with directional evidence for evidence-guided allocation on
+the reference scenario, but no repeatable policy advantage over fixed
+R4/S2**. The three policies remain diagnostic/research references. No policy
+is promoted to production from this study.

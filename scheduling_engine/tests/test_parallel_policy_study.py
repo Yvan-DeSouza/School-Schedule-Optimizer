@@ -80,6 +80,79 @@ def test_evidence_guided_manifest_uses_separate_four_policy_cohort(tmp_path):
     assert manifest["budget_contract"]["profile"] == "balanced"
 
 
+def test_three_policy_8worker_contract_is_separate_and_fully_fingerprinted():
+    contract = policy_study.three_policy_8worker_budget_contract()
+
+    assert contract["protocol_version"] == (
+        policy_study.THREE_POLICY_8WORKER_STUDY_PROTOCOL_VERSION
+    )
+    assert contract["policies"] == [
+        "adaptive_evidence_guided",
+        "adaptive_r4_anchor",
+        "r4_s2_only",
+    ]
+    assert contract["cp_sat_workers_per_trial"] == 8
+    assert contract["cumulative_policy_budget_seconds"] == 3600.0
+    assert contract["per_operator_maximum_seconds"] == 300.0
+    assert contract["candidate_validation_time_limit_seconds"] == 180.0
+    assert contract["parent_hard_wall_seconds"] == 4200.0
+    assert contract["ordinary_stage2_between_iterations"] is False
+    assert contract["production_policy_wiring"] is False
+    assert set(contract["policy_fingerprints"]) == set(contract["policies"])
+
+
+def test_three_policy_8worker_manifest_preserves_historical_contracts(tmp_path):
+    manifest = policy_study.build_three_policy_8worker_study_manifest(
+        study_directory=tmp_path
+    )
+
+    assert manifest["study_id"] == policy_study.THREE_POLICY_8WORKER_STUDY_ID
+    assert manifest["study_kind"] == (
+        "sequential_three_policy_8worker_confirmation"
+    )
+    assert manifest["budget_contract"]["cp_sat_workers_per_trial"] == 8
+    assert manifest["budget_contract"]["cumulative_policy_budget_seconds"] == (
+        3600.0
+    )
+    historical = policy_study.parallel_policy_budget_contract()
+    assert historical["cp_sat_workers_per_trial"] == 1
+    assert historical["cumulative_policy_budget_seconds"] == 900.0
+
+
+def test_three_policy_8worker_cell_uses_manifest_contract(monkeypatch):
+    contract = policy_study.three_policy_8worker_budget_contract()
+    manifest = _manifest(
+        policies=tuple(contract["policies"]),
+        seeds=(101,),
+    )
+    manifest["budget_contract"] = contract
+    manifest["policy_fingerprints"] = dict(contract["policy_fingerprints"])
+    captured = {}
+
+    def fake_trial(**kwargs):
+        captured.update(kwargs)
+        return {
+            "execution_status": "completed",
+            "candidate_complete": True,
+            "final_substantive_value": 12,
+        }
+
+    monkeypatch.setattr(policy_study, "run_supervised_calibration_trial", fake_trial)
+    payload = policy_study.execute_parallel_policy_cell(
+        manifest=manifest,
+        scenario_id="reference_target",
+        policy="adaptive_evidence_guided",
+        seed=101,
+    )
+
+    assert captured["worker_count"] == 8
+    assert captured["total_time_limit_seconds"] == 3600.0
+    assert captured["per_operator_time_limit_seconds"] == 300.0
+    assert captured["validation_time_limit_seconds"] == 180.0
+    assert captured["hard_wall_seconds"] == 4200.0
+    assert payload["budget_contract"] is contract
+
+
 def test_parallel_cell_forwards_one_cp_sat_worker_and_shared_seed(monkeypatch):
     manifest = _manifest(
         policies=("adaptive_student_pressure_biased",),
