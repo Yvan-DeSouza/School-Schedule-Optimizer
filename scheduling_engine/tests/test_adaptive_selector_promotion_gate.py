@@ -94,6 +94,7 @@ def _attempt(
         unknown=unknown,
         validation_classification=validation_classification,
         objective_weighted_delta=dict(weighted_delta or {}),
+        objective_improvement_weighted_delta=dict(weighted_delta or {}),
     )
 
 

@@ -1741,3 +1741,50 @@ This qualifies neither recent-productivity selection nor schedule-quality
 superiority. No fork, replay artifact, component-aware comparison, or
 target-scale study was justified; the next isolated ladder question remains
 component awareness.
+
+### Real component-aware runtime qualification (2026-09-05)
+
+The component-aware qualification used only existing medium inputs and the
+unchanged solver/authority path: one CP-SAT worker, seed `101`, sequential
+execution, 30-second operator and session limits, and 30-second full-model
+validation. The comparison was made after each real adopted transition between
+`adaptive_hierarchical_recent` and `adaptive_component_aware`, using the same
+incumbent, source decisions, ranking, state, history, budget, and effective
+portfolio. Each reviewed scenario used a 12-attempt common prefix alternating
+`targeted_r4_s2` and `targeted_utilization_r64_s8`.
+
+Two completed, fully reviewed scenarios were sufficient for this qualification:
+
+| Scenario | Input fingerprint | Starting value | Result |
+| --- | --- | ---: | --- |
+| 80-student production-shaped v2 fixture | `32b6893e7d86e6b3804d112930ed1b3b40a61ca4ec00e77bc8768e877f20934` | `34,650` | 12/12 optimal, validated, adopted; selectors agreed on every decision |
+| durable `reference_medium` | `9c9ffe0924a8d36b8673c14a7706b239a1d22cae31e06196ea850589b0556956` | `42,552` | 12/12 optimal, validated, adopted; selectors agreed on every decision |
+
+The component layer was live in these runs. Exact operator signatures became
+nonzero and distinct, and component alignment changed over the common prefix.
+For example, the 80-student run reached component-aware alignment of about
+`0.1159` for utilization versus `0.0766` for R4 near the end; the reference
+run reached about `0.1426` versus `0.0884` in a later comparison. The
+component term therefore received real validated evidence, but it did not
+change the selected operator. Sequence alignment remained zero because the
+current sequence contribution was zero; global section utilization remained a
+global Objective Semantics v2 component and was not converted into a
+student-local penalty.
+
+During implementation, the runtime boundary was made explicit: the existing
+objective trajectory `weighted_delta` remains after-minus-before for backward
+compatibility, while component signatures consume a separate
+before-minus-after improvement delta. The selector also canonicalizes the
+quality evaluator's live `_penalty` component keys only in its local alignment
+view. The authoritative quality facts and Objective Semantics v2 definitions
+were not changed.
+
+The result is **REAL COMPONENT-AWARE RUNTIME DIVERGENCE NOT OBSERVED**. This
+is classification B: meaningful validated component differentiation was
+collected, but recent and component-aware selectors remained equivalent on the
+reviewed real prefixes. There was no policy divergence, so no common-history
+stop, exact replay, or matched one-step fork was justified. No schedule-quality
+superiority may be inferred. The next isolated qualification is
+`adaptive_horizon_aware`; this result does not authorize horizon-aware testing
+in the current increment, a target-scale study, a 4–8-hour solve, or production
+wiring.

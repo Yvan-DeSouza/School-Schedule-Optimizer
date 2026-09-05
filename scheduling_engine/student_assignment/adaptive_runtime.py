@@ -1072,6 +1072,7 @@ def run_adaptive_local_search_diagnostic(
         )
         objective_weighted_delta = {}
         objective_normalized_delta = {}
+        objective_improvement_weighted_delta = {}
         if adopted:
             before_objective_snapshot = _compact_objective_snapshot(
                 quality,
@@ -1094,6 +1095,9 @@ def run_adaptive_local_search_diagnostic(
                 after_objective_snapshot,
                 "normalized_penalty",
             )
+            objective_improvement_weighted_delta = {
+                name: -value for name, value in objective_weighted_delta.items()
+            }
             objective_transitions.append({
                 "schema": "adaptive_objective_transition_v1",
                 "attempt_index": len(history) + 1,
@@ -1106,7 +1110,8 @@ def run_adaptive_local_search_diagnostic(
                 "normalized_delta": dict(objective_normalized_delta),
                 "weighted_delta": dict(objective_weighted_delta),
                 "improvement_delta": {
-                    name: -value for name, value in objective_weighted_delta.items()
+                    name: value
+                    for name, value in objective_improvement_weighted_delta.items()
                 },
                 "validated_gain": gain,
                 "validation_classification": validation_classification,
@@ -1293,6 +1298,9 @@ def run_adaptive_local_search_diagnostic(
                 validation_retry_facts=dict(validation_retry_facts),
                 objective_weighted_delta=dict(objective_weighted_delta),
                 objective_normalized_delta=dict(objective_normalized_delta),
+                objective_improvement_weighted_delta=dict(
+                    objective_improvement_weighted_delta
+                ),
             )
         )
         if monotonic() - started >= configured_budget:

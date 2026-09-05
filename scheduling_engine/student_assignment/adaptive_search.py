@@ -184,6 +184,11 @@ class AdaptiveOperatorAttempt:
     # replacement for the solver's objective facts.
     objective_weighted_delta: dict = field(default_factory=dict)
     objective_normalized_delta: dict = field(default_factory=dict)
+    # Component signatures use the documented lower-is-better direction:
+    # before contribution minus after contribution. Keep this separate from
+    # objective_weighted_delta, whose trajectory schema retains after minus
+    # before deltas for compatibility and explicit transition reporting.
+    objective_improvement_weighted_delta: dict = field(default_factory=dict)
 
     @property
     def gain_per_minute(self):
@@ -772,10 +777,16 @@ def _hierarchical_yield_observation(
 def _component_alignment_observation(state, history, strata):
     """Return a sparse-safe, session-local component alignment signal."""
 
-    weighted = {
-        str(name): max(0.0, float(value or 0.0))
-        for name, value in dict(state.weighted_contributions).items()
-    }
+    weighted = {}
+    for name, value in dict(state.weighted_contributions).items():
+        # build_adaptive_search_state receives quality's weighted map with
+        # ``_penalty`` suffixes, while transition snapshots use the
+        # canonical component names. Normalize only this selector-local
+        # view; the authoritative quality/objective payload is unchanged.
+        canonical_name = str(name)
+        if canonical_name.endswith("_penalty"):
+            canonical_name = canonical_name[:-len("_penalty")]
+        weighted[canonical_name] = max(0.0, float(value or 0.0))
     total = sum(weighted.values())
     if total <= 0:
         remaining = {}
@@ -789,7 +800,19 @@ def _component_alignment_observation(state, history, strata):
         for item in items:
             if not _attempt_is_resolved(item) or not item.adopted:
                 continue
-            delta = dict(getattr(item, "objective_weighted_delta", {}) or {})
+            delta = dict(
+                getattr(item, "objective_improvement_weighted_delta", {}) or {}
+            )
+            if not delta:
+                # Older records retain after-minus-before weighted deltas.
+                # Read them compatibly in the documented improvement
+                # direction without rewriting historical artifacts.
+                delta = {
+                    name: -float(value or 0.0)
+                    for name, value in dict(
+                        getattr(item, "objective_weighted_delta", {}) or {}
+                    ).items()
+                }
             magnitude = sum(abs(float(value or 0.0)) for value in delta.values())
             if magnitude <= 0:
                 continue
@@ -2114,6 +2137,9 @@ def _attempt_from_record(item):
         validation_retry_facts=dict(item.get("validation_retry_facts", {}) or {}),
         objective_weighted_delta=dict(item.get("objective_weighted_delta", {}) or {}),
         objective_normalized_delta=dict(item.get("objective_normalized_delta", {}) or {}),
+        objective_improvement_weighted_delta=dict(
+            item.get("objective_improvement_weighted_delta", {}) or {}
+        ),
     )
 
 

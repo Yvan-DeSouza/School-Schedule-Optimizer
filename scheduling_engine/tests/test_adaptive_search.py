@@ -931,6 +931,45 @@ def test_new_policy_ladder_terms_are_deterministic_and_bounded():
             assert 0.0 <= row["exploration"] <= 0.20
 
 
+def test_component_alignment_uses_live_v2_weighted_keys_and_improvement_direction():
+    history = (
+        AdaptiveOperatorAttempt(
+            operator="targeted_r4_s2",
+            status="optimal",
+            candidate_found=True,
+            candidate_validated=True,
+            adopted=True,
+            gain=10.0,
+            elapsed_seconds=30.0,
+            # Runtime telemetry is after-minus-before.
+            objective_weighted_delta={"difficulty_balance": -10.0},
+            # Component signatures consume before-minus-after.
+            objective_improvement_weighted_delta={"difficulty_balance": 10.0},
+        ),
+    )
+    state = replace(
+        _state(local_share=0.8, utilization_share=0.2, history=history),
+        weighted_contributions={
+            "difficulty_balance_penalty": 10.0,
+            "section_utilization_balance_penalty": 1.0,
+            "course_sequence_preferences_penalty": 0.0,
+        },
+    )
+    spec = next(
+        item for item in DEFAULT_ADAPTIVE_OPERATOR_PORTFOLIO
+        if item.name == "targeted_r4_s2"
+    )
+    facts = adaptive_search._component_alignment_observation(
+        state,
+        history,
+        adaptive_search._disjoint_evidence_history(
+            history, spec, DEFAULT_ADAPTIVE_OPERATOR_PORTFOLIO
+        ),
+    )
+    assert facts["remaining_share"]["difficulty_balance"] > 0
+    assert facts["alignment"] > 0
+
+
 def test_prospective_selector_snapshot_replays_exactly_without_schedule_inference():
     state = _state(local_share=0.8, utilization_share=0.2)
     ranked = (SimpleNamespace(student_id=7), SimpleNamespace(student_id=8))
