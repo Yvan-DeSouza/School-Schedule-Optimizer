@@ -2208,3 +2208,15 @@ variance-limited with directional evidence for evidence-guided allocation on
 the reference scenario, but no repeatable policy advantage over fixed
 R4/S2**. The three policies remain diagnostic/research references. No policy
 is promoted to production from this study.
+
+### Selector-choice evidence boundary (2026-09-05)
+
+The 18-cell study is now interpreted narrowly: every executed attempt used
+`targeted_r4_s2`, so the artifacts prove the observed selected-path outcomes
+but do not contain complete rejected-candidate competitions. They therefore
+cannot establish an exact historical alternative winner, runner-up, or better
+schedule outcome. The new `adaptive_selector_trace_v1` and
+`adaptive_selector_state_v1` records are prospective evidence for those
+questions. Historical replay is explicitly classified as partial when those
+fields are absent; a replay-selected operator is not presented as a schedule
+performance result.

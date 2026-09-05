@@ -1550,3 +1550,98 @@ They remain execution evidence with no inferred scope and no incumbent
 change. Missing or divergent pre-call scope evidence continues to fail closed
 as `scope_mismatch` when a selector-owned attempt reaches the execution
 boundary.
+
+## Objective Semantics v2 adaptive-search increment (2026-09-05)
+
+The next research increment makes selector decisions auditable without changing
+the schedule objective or candidate authority. The implementation is in
+`scheduling_engine/student_assignment/adaptive_search.py` and
+`adaptive_runtime.py`; it remains diagnostic-only. CP-SAT candidate
+production, the unchanged full-model validator, strict improvement, hard
+constraints, and incumbent retention on unresolved outcomes remain the
+authorities described in
+[STUDENT_ASSIGNMENT_VALIDATION.md](STUDENT_ASSIGNMENT_VALIDATION.md).
+
+Every new-variant decision evaluates the complete effective portfolio before
+the unchanged deterministic choice. The nested `adaptive_selector_trace_v1`
+contains one compact row per operator, including eligibility and a stable
+reason code, predicted scope and scope fingerprint, opportunity, prior,
+hierarchical evidence, recent/lifetime productivity, reliability, unresolved
+rate, exploration, budget fit, duplicate-scope and component-alignment terms,
+final score, and the existing tie-break tuple: higher score, lower estimated
+full cost, smaller radius, then lexicographically greater operator name. It
+also records the score winner, runner-up and margin, top three, prior-removed
+and opportunity-only views, the executed winner, and whether continuation
+overrode the ordinary score winner.
+
+The associated `adaptive_selector_state_v1` snapshot is bounded. It stores only
+selector-consumed scalar state, objective vector, grade opportunities, source
+fingerprint, budget/validation limits, and the ranked student prefixes needed
+by the portfolio. It does not store schedules, entity-level quality maps,
+model variables, complete source decisions, or raw resource samples. A
+serialization failure is incomplete telemetry only; it cannot change the
+selected operator or candidate authority.
+
+The historical `adaptive_evidence_guided`, `adaptive_r4_anchor`, and
+`r4_s2_only` contracts retain their existing behavior and fingerprints. The
+new cumulative diagnostic ladder is registered in `adaptive_calibration.py`:
+
+1. `adaptive_hierarchical_evidence` uses disjoint exact-operator,
+   family-peer, and role-peer evidence. Its productivity term is exactly
+   `0.50 * H_exact`, where role, family, and exact yields back off with
+   pseudocounts 8, 4, and 2. Reliability uses the same hierarchy and remains
+   centered around 0.5.
+2. `adaptive_hierarchical_recent` adds a six-attempt global recent window.
+   Recent resolved evidence contributes at most 50% of each estimate; unresolved
+   attempts consume window positions and budget but are not false zero-gain
+   productivity samples.
+3. `adaptive_component_aware` adds a bounded `0.10` alignment term using only
+   the current counselor-weighted Objective Semantics v2 component vector and
+   adopted, full-model-validated transitions. It does not redefine or
+   reweight the objective.
+4. `adaptive_horizon_aware` replaces the ordinary exploration term with the
+   bounded horizon rule: `0.20 * horizon_fraction^2 * opportunity *
+   uncertainty * budget_fit`. It is strongest early, decreases with prior
+   family attempts, and is zero when opportunity is zero.
+
+The ladder is linear rather than a coefficient Cartesian product. A later
+target study may carry at most one new variant after the cheap promotion gate;
+this increment itself launches no target study.
+
+Runtime artifacts add `adaptive_objective_trajectory_v1`. Initial, adopted, and
+final facts preserve the five canonical v2 component names, raw penalty,
+denominator, normalized penalty, counselor importance, weighted contribution,
+fulfillment counts, special-commitment counts, assignment/unmet-request
+counts, and source fingerprints. Adopted transitions additionally store raw,
+normalized, and weighted deltas plus explicit lower-is-better improvement
+values. These facts use the existing quality evaluator and validated
+incumbent/candidate; normalization is not recomputed or redefined. Only
+adopted, full-model-validated transitions enter policy evidence.
+
+`replay_selector_decision` and `replay_selector_artifact` are pure selector
+interfaces. They do not import or call solver, model-building, validation,
+Django, or persistence code. Prospective snapshots replay as `exact` when
+their state, portfolio, history prefix, and digest are complete. Existing
+artifacts without rejected-candidate rows and decision-time state replay as
+`partial` (or `unavailable` when required identity is missing); they may audit
+selected-path facts but cannot invent historical runner-ups or schedule
+outcomes. The CLI is:
+
+```text
+python -m scheduling_engine.benchmark_adaptive_calibration \
+  --replay-selector-artifact <result.json> \
+  --selector-policies <policy...> \
+  --decision-index all
+```
+
+Replay is solver-free and writes JSON to stdout unless the caller explicitly
+redirects it. A changed replay-selected operator is never evidence that its
+schedule would have been better.
+
+The completed 18-cell eight-worker study remains historical evidence: every
+attempt used `targeted_r4_s2`, so it did not demonstrate operator-choice
+divergence. The new traces are the required prospective evidence for that
+question. The existing two-continuation rule is retained for this increment;
+only its competition and override facts are exposed. Alternate-seed retries,
+downstream/unlock rewards, conditional R4 anchoring, objective changes, and
+production wiring remain deferred or rejected at this research boundary.

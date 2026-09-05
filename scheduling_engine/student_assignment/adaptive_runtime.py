@@ -13,7 +13,8 @@ from time import monotonic
 from uuid import uuid4
 
 from .adaptive_search import (
-    ADAPTIVE_POLICY_VARIANTS,
+    ALL_ADAPTIVE_POLICY_VARIANTS,
+    ADAPTIVE_NEW_POLICY_VERSIONS,
     AdaptiveOperatorAttempt,
     AdaptiveSessionRecord,
     DEFAULT_ADAPTIVE_OPERATOR_PORTFOLIO,
@@ -216,6 +217,64 @@ def _weighted_quality_value(quality, result):
     if weighted:
         return float(sum(float(value or 0) for value in weighted))
     return _weighted_substantive_value(result)
+
+
+def _compact_objective_snapshot(quality, result, *, source_fingerprint=None):
+    """Capture bounded authoritative v2 quality facts for a trajectory."""
+
+    objective = dict((quality or {}).get("objective_semantics") or {})
+    components = {}
+    for name, facts in dict(objective.get("components") or {}).items():
+        if not isinstance(facts, dict):
+            continue
+        components[name] = {
+            key: facts.get(key)
+            for key in (
+                "raw_penalty",
+                "denominator",
+                "normalized_penalty",
+                "importance_score",
+                "weighted_normalized_contribution",
+            )
+        }
+    fulfillment = dict((quality or {}).get("request_fulfillment") or {})
+    compact_fulfillment = {
+        key: dict(fulfillment.get(key) or {})
+        for key in (
+            "solver_aligned_counts",
+            "eligible_counts",
+            "unmet_counts",
+        )
+    }
+    special = dict(fulfillment.get("special_commitments") or {})
+    compact_fulfillment["special_commitments"] = {
+        key: special.get(key)
+        for key in ("requested_count", "fulfilled_count", "unmet_count")
+    }
+    return {
+        "schema": "adaptive_objective_snapshot_v1",
+        "source_fingerprint": source_fingerprint,
+        "objective_semantics_version": objective.get("version"),
+        "components": components,
+        "fulfillment": compact_fulfillment,
+        "assignment_count": len(tuple(getattr(result, "assignments", ()) or ())),
+        "unmet_request_count": len(tuple(getattr(result, "unmet_requests", ()) or ())),
+        "special_commitment_count": len(
+            tuple(getattr(result, "commitment_assignments", ()) or ())
+        ),
+        "weighted_substantive_value": _weighted_quality_value(quality, result),
+    }
+
+
+def _objective_delta(before, after, field):
+    names = set(before.get("components", {})) | set(after.get("components", {}))
+    return {
+        name: float(
+            (after.get("components", {}).get(name, {}).get(field) or 0)
+            - (before.get("components", {}).get(name, {}).get(field) or 0)
+        )
+        for name in sorted(names)
+    }
 
 
 def _source_decisions_from_result(result):
@@ -535,11 +594,12 @@ def run_adaptive_local_search_diagnostic(
         raise ValueError(
             "selection_policy must be adaptive, stateless_role, or fixed_cycle"
         )
-    if selection_policy == "adaptive" and adaptive_policy_variant not in ADAPTIVE_POLICY_VARIANTS:
+    if selection_policy == "adaptive" and adaptive_policy_variant not in ALL_ADAPTIVE_POLICY_VARIANTS:
         raise ValueError(
             "adaptive_policy_variant must be balanced, "
             "student_pressure_biased, utilization_biased, evidence_guided, "
-            "or r4_anchor"
+            "r4_anchor, hierarchical_evidence, hierarchical_recent, "
+            "component_aware, or horizon_aware"
         )
     if selection_policy == "fixed_cycle" and not tuple(fixed_cycle):
         raise ValueError("fixed_cycle selection requires at least one operator")
@@ -588,6 +648,15 @@ def run_adaptive_local_search_diagnostic(
     initial_quality = _quality_report(data, current_result)
     _record_phase("initial_quality_evaluation", phase_started)
     current_value = _weighted_quality_value(initial_quality, current_result)
+    initial_source_fingerprint = source_decision_fingerprint(
+        current_source_decisions
+    )
+    initial_objective_snapshot = _compact_objective_snapshot(
+        initial_quality,
+        current_result,
+        source_fingerprint=initial_source_fingerprint,
+    )
+    objective_transitions = []
     iteration_limit = (
         max(1, int(max_iterations)) if max_iterations is not None else None
     )
@@ -634,6 +703,12 @@ def run_adaptive_local_search_diagnostic(
             ),
             candidate_validation_time_limit_seconds=(
                 candidate_validation_time_limit_seconds
+            ),
+            current_objective_vector=tuple(
+                (current_result.optimization_facts or {})
+                .get("stage_2", {})
+                .get("objective_values", ())
+                or ()
             ),
         )
         _record_phase("target_preparation", phase_started)
@@ -908,7 +983,7 @@ def run_adaptive_local_search_diagnostic(
         retry_remaining_seconds = max(
             0.0, configured_budget - (monotonic() - started)
         )
-        if (
+        retry_eligible = bool(
             candidate_found
             and not candidate_validated
             and candidate_source
@@ -916,7 +991,20 @@ def run_adaptive_local_search_diagnostic(
             and candidate_validation_time_limit_seconds is not None
             and float(candidate_validation_time_limit_seconds) > 0
             and retry_remaining_seconds > 0.001
-        ):
+        )
+        validation_retry_facts = {
+            "eligible": retry_eligible,
+            "count": 0,
+            "requested_limit_seconds": (
+                float(candidate_validation_time_limit_seconds)
+                if candidate_validation_time_limit_seconds is not None
+                else None
+            ),
+            "effective_limit_seconds": None,
+            "outcome": "not_attempted",
+            "ordinary_rescore_fallback": False,
+        }
+        if retry_eligible:
             # A complete candidate that ran out of validation time is retained
             # as pending evidence only.  Retry the existing authoritative
             # source-decision validation boundary; never use this candidate as
@@ -936,6 +1024,11 @@ def run_adaptive_local_search_diagnostic(
                 ),
                 random_seed=cp_sat_random_seed,
             )
+            validation_retry_facts.update({
+                "count": 1,
+                "effective_limit_seconds": validation_retry_limit,
+                "outcome": validation_retry.get("classification"),
+            })
             local["validation_retry"] = {
                 key: value
                 for key, value in validation_retry.items()
@@ -974,7 +1067,50 @@ def run_adaptive_local_search_diagnostic(
             and candidate_value < current_value
         )
         gain = max(0.0, current_value - candidate_value) if adopted else 0.0
+        validation_classification = str(
+            local.get("validation_classification", "not_attempted")
+        )
+        objective_weighted_delta = {}
+        objective_normalized_delta = {}
         if adopted:
+            before_objective_snapshot = _compact_objective_snapshot(
+                quality,
+                current_result,
+                source_fingerprint=source_fingerprint_before,
+            )
+            after_source_fingerprint = source_decision_fingerprint(candidate_source)
+            after_objective_snapshot = _compact_objective_snapshot(
+                candidate_quality,
+                result,
+                source_fingerprint=after_source_fingerprint,
+            )
+            objective_weighted_delta = _objective_delta(
+                before_objective_snapshot,
+                after_objective_snapshot,
+                "weighted_normalized_contribution",
+            )
+            objective_normalized_delta = _objective_delta(
+                before_objective_snapshot,
+                after_objective_snapshot,
+                "normalized_penalty",
+            )
+            objective_transitions.append({
+                "schema": "adaptive_objective_transition_v1",
+                "attempt_index": len(history) + 1,
+                "decision_index": len(decisions),
+                "before": before_objective_snapshot,
+                "after": after_objective_snapshot,
+                "raw_delta": _objective_delta(
+                    before_objective_snapshot, after_objective_snapshot, "raw_penalty"
+                ),
+                "normalized_delta": dict(objective_normalized_delta),
+                "weighted_delta": dict(objective_weighted_delta),
+                "improvement_delta": {
+                    name: -value for name, value in objective_weighted_delta.items()
+                },
+                "validated_gain": gain,
+                "validation_classification": validation_classification,
+            })
             current_result = result
             current_source_decisions = candidate_source
             current_value = candidate_value
@@ -1000,6 +1136,12 @@ def run_adaptive_local_search_diagnostic(
                 ),
                 candidate_validation_time_limit_seconds=(
                     candidate_validation_time_limit_seconds
+                ),
+                current_objective_vector=tuple(
+                    (current_result.optimization_facts or {})
+                    .get("stage_2", {})
+                    .get("objective_values", ())
+                    or ()
                 ),
             )
             role_pressure_after = _role_pressure_facts(
@@ -1148,6 +1290,9 @@ def run_adaptive_local_search_diagnostic(
                 candidate_discovery_gain=candidate_discovery_gain,
                 search_unknown=(status == "unknown"),
                 validation_retry_count=(1 if validation_retry is not None else 0),
+                validation_retry_facts=dict(validation_retry_facts),
+                objective_weighted_delta=dict(objective_weighted_delta),
+                objective_normalized_delta=dict(objective_normalized_delta),
             )
         )
         if monotonic() - started >= configured_budget:
@@ -1159,6 +1304,11 @@ def run_adaptive_local_search_diagnostic(
     _emit_phase("finalization", "started")
     final_components = dict(current_result.objective_components or {})
     final_quality = _quality_report(data, current_result)
+    final_objective_snapshot = _compact_objective_snapshot(
+        final_quality,
+        current_result,
+        source_fingerprint=source_decision_fingerprint(current_source_decisions),
+    )
     finalization_seconds = monotonic() - finalization_started
     phase_timings["finalization"] = finalization_seconds
     _emit_phase(
@@ -1172,7 +1322,15 @@ def run_adaptive_local_search_diagnostic(
     _emit_phase("total", "completed", elapsed_seconds=elapsed_seconds)
     record = AdaptiveSessionRecord(
         session_id=str(session_id or uuid4()),
-        policy_version=state.policy_version if "state" in locals() else "v2-local-allocator-diagnostic-3",
+        policy_version=(
+            ADAPTIVE_NEW_POLICY_VERSIONS.get(
+                adaptive_policy_variant,
+                state.policy_version if "state" in locals()
+                else "v2-local-allocator-diagnostic-3",
+            )
+            if selection_policy == "adaptive"
+            else (state.policy_version if "state" in locals() else "v2-local-allocator-diagnostic-3")
+        ),
         input_fingerprint=semantic_student_assignment_input_fingerprint(data),
         source_seed_fingerprint=source_decision_fingerprint(initial_source_decisions or _source_decisions_from_result(initial_result)),
         objective_semantics_version=data.objective_semantics_version,
@@ -1218,6 +1376,12 @@ def run_adaptive_local_search_diagnostic(
             cp_sat_max_deterministic_time_seconds
         ),
         phase_timings=dict(phase_timings),
+        objective_trajectory={
+            "schema": "adaptive_objective_trajectory_v1",
+            "initial": initial_objective_snapshot,
+            "adopted_transitions": tuple(objective_transitions),
+            "final": final_objective_snapshot,
+        },
     )
     return AdaptiveSessionResult(
         record=record,

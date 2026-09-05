@@ -28,6 +28,7 @@ from .benchmark_adaptive_calibration import (
     run_supervised_calibration_trial,
 )
 from .student_assignment.adaptive_calibration import (
+    ALL_ADAPTIVE_POLICY_VARIANT_POLICIES,
     ADAPTIVE_POLICY_VARIANT_POLICIES,
     CALIBRATION_PROFILES,
     STARTUP_AWARE_MAX_OPERATOR_SECONDS,
@@ -182,10 +183,13 @@ def parallel_policy_fingerprint(
         "role_bias_multiplier": ADAPTIVE_ROLE_BIAS_MULTIPLIER,
         "fixed_cycle": [item.name for item in config["fixed_cycle"]],
     }
-    if policy in EVIDENCE_GUIDED_STUDY_POLICIES:
+    if (
+        policy in EVIDENCE_GUIDED_STUDY_POLICIES
+        or policy in ALL_ADAPTIVE_POLICY_VARIANT_POLICIES
+    ):
         payload["policy_configuration_fingerprint"] = (
             policy_configuration_fingerprint(policy)
-            if policy in ADAPTIVE_POLICY_VARIANT_POLICIES
+            if policy in ALL_ADAPTIVE_POLICY_VARIANT_POLICIES
             else hashlib.sha256(
                 json.dumps(
                     {

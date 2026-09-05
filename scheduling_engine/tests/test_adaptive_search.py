@@ -1,9 +1,11 @@
 from dataclasses import replace
+import json
 from types import SimpleNamespace
 
 import pytest
 
 import scheduling_engine.student_assignment.adaptive_runtime as adaptive_runtime
+import scheduling_engine.student_assignment.adaptive_search as adaptive_search
 import scheduling_engine.student_assignment.core as student_assignment_core
 
 from scheduling_engine.realistic_student_assignment_validation import (
@@ -36,9 +38,13 @@ from scheduling_engine.student_assignment.adaptive_search import (
     build_adaptive_search_state,
     build_operator_session_request,
     choose_adaptive_operator,
+    build_adaptive_competition_trace,
+    adaptive_selector_state_snapshot,
     select_fixed_cycle_operator,
     select_stateless_role_operator,
     replay_adaptive_policy,
+    replay_selector_artifact,
+    replay_selector_decision,
     operator_family,
 )
 from scheduling_engine.student_assignment.core import (
@@ -830,6 +836,174 @@ def test_frozen_policy_state_replays_same_choice_and_reasoning():
     first = choose_adaptive_operator(state, ranked_students=ranked)
     second = choose_adaptive_operator(state, ranked_students=ranked)
     assert first.to_dict() == second.to_dict()
+
+
+def test_new_policy_records_a_complete_bounded_competition_trace():
+    state = _state(local_share=0.8, utilization_share=0.2)
+    ranked = (SimpleNamespace(student_id=7), SimpleNamespace(student_id=8))
+    decision = choose_adaptive_operator(
+        state,
+        ranked_students=ranked,
+        adaptive_policy_variant="hierarchical_evidence",
+    )
+
+    trace = decision.signal_values["competition_trace"]
+    assert trace["schema"] == "adaptive_selector_trace_v1"
+    assert trace["trace_complete"] is True
+    assert len(trace["candidates"]) == len(DEFAULT_ADAPTIVE_OPERATOR_PORTFOLIO)
+    assert {
+        row["operator"] for row in trace["candidates"]
+    } == {spec.name for spec in DEFAULT_ADAPTIVE_OPERATOR_PORTFOLIO}
+    assert trace["derived"]["score_winner"]["operator"] == decision.operator.name
+    assert trace["derived"]["executed_winner"]["operator"] == decision.operator.name
+    assert trace["derived"]["continuation_override"] is False
+
+
+def test_hierarchical_evidence_keeps_exact_and_peer_strata_disjoint():
+    exact = AdaptiveOperatorAttempt(
+        operator="targeted_r4_s2",
+        status="optimal",
+        candidate_found=True,
+        candidate_validated=True,
+        adopted=True,
+        gain=12,
+        elapsed_seconds=60,
+    )
+    state = _state(local_share=0.8, utilization_share=0.2, history=(exact,))
+    spec = next(
+        item for item in DEFAULT_ADAPTIVE_OPERATOR_PORTFOLIO
+        if item.name == "targeted_r4_s2"
+    )
+    strata = adaptive_search._disjoint_evidence_history(
+        state.operator_history, spec, DEFAULT_ADAPTIVE_OPERATOR_PORTFOLIO
+    )
+    facts = adaptive_search._hierarchical_yield_observation(
+        state.operator_history, strata
+    )
+
+    assert facts["exact"]["lifetime"]["resolved_attempt_count"] == 1
+    assert facts["family_peers"]["lifetime"]["resolved_attempt_count"] == 0
+    assert facts["role_peers"]["lifetime"]["resolved_attempt_count"] == 0
+    assert facts["exact_hierarchical_yield"] < facts["exact"]["blended_yield"]
+
+
+def test_new_policy_ladder_terms_are_deterministic_and_bounded():
+    attempt = AdaptiveOperatorAttempt(
+        operator="targeted_r4_s2",
+        status="optimal",
+        candidate_found=True,
+        candidate_validated=True,
+        adopted=True,
+        gain=8,
+        elapsed_seconds=30,
+        objective_weighted_delta={
+            "difficulty_balance": 4.0,
+            "course_category_diversity": -1.0,
+        },
+    )
+    state = replace(
+        _state(local_share=0.7, utilization_share=0.3, history=(attempt,)),
+        weighted_contributions={
+            "difficulty_balance": 8.0,
+            "course_category_diversity": 2.0,
+        },
+    )
+    ranked = (SimpleNamespace(student_id=7), SimpleNamespace(student_id=8))
+    for variant in (
+        "hierarchical_evidence",
+        "hierarchical_recent",
+        "component_aware",
+        "horizon_aware",
+    ):
+        first = build_adaptive_competition_trace(
+            state,
+            ranked_students=ranked,
+            adaptive_policy_variant=variant,
+        )
+        second = build_adaptive_competition_trace(
+            state,
+            ranked_students=ranked,
+            adaptive_policy_variant=variant,
+        )
+        assert first == second
+        for row in first["candidates"]:
+            assert -1.0 <= row["component_alignment"].get("alignment", 0.0) <= 1.0
+            assert 0.0 <= row["exploration"] <= 0.20
+
+
+def test_prospective_selector_snapshot_replays_exactly_without_schedule_inference():
+    state = _state(local_share=0.8, utilization_share=0.2)
+    ranked = (SimpleNamespace(student_id=7), SimpleNamespace(student_id=8))
+    decision = choose_adaptive_operator(
+        state,
+        ranked_students=ranked,
+        adaptive_policy_variant="horizon_aware",
+    )
+    replay = replay_selector_decision(
+        decision.signal_values["competition_trace"], state.operator_history
+    )
+
+    assert replay["replay_classification"] == "exact"
+    assert replay["selection_matches_original_score_winner"] is True
+    assert replay["replay_selected_operator"] == decision.operator.name
+    assert replay["schedule_outcome_inferred"] is False
+
+
+def test_legacy_selector_artifact_replay_is_partial_not_counterfactual():
+    replay = replay_selector_artifact({
+        "decisions": [{"operator": {"name": "targeted_r4_s2"}}],
+        "attempts": [],
+    })
+
+    assert replay["results"][0]["replay_classification"] == "partial"
+    assert replay["results"][0]["schedule_outcome_inferred"] is False
+
+
+def test_selector_trace_and_objective_trajectory_fit_telemetry_budget():
+    state = _state(local_share=0.8, utilization_share=0.2)
+    ranked = (SimpleNamespace(student_id=7), SimpleNamespace(student_id=8))
+    trace = build_adaptive_competition_trace(
+        state,
+        ranked_students=ranked,
+        adaptive_policy_variant="horizon_aware",
+    )
+    component = {
+        "raw_penalty": 10.0,
+        "normalization_denominator": 100.0,
+        "normalized_penalty": 0.1,
+        "counselor_importance": 6,
+        "weighted_normalized_contribution": 0.06,
+    }
+    trajectory = {
+        "schema": "adaptive_objective_trajectory_v1",
+        "initial": {"components": {name: dict(component) for name in (
+            "section_utilization_balance",
+            "student_semester_balance",
+            "difficulty_balance",
+            "course_category_diversity",
+            "course_sequence_preferences",
+        )}},
+        "adopted_transitions": tuple({
+            "decision_index": index,
+            "before": {"components": dict(component)},
+            "after": {"components": dict(component)},
+            "weighted_delta": {},
+        } for index in range(25)),
+        "final": {"components": {name: dict(component) for name in (
+            "section_utilization_balance",
+            "student_semester_balance",
+            "difficulty_balance",
+            "course_category_diversity",
+            "course_sequence_preferences",
+        )}},
+    }
+    payload = {
+        "selector_traces": tuple(trace for _ in range(25)),
+        "objective_trajectory": trajectory,
+    }
+    assert len(json.dumps(
+        payload, default=str, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")) < 1_048_576
 
 
 def test_policy_selects_grade_from_opportunity_facts_after_stagnation():

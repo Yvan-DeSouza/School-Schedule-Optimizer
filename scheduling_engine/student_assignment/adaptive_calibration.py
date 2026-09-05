@@ -8,18 +8,27 @@ validation boundaries remain authoritative.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, field, replace
 import hashlib
 import json
 
 from .adaptive_runtime import AdaptiveSessionResult, run_adaptive_local_search_diagnostic
 from .adaptive_search import (
     ADAPTIVE_POLICY_VERSION,
+    ADAPTIVE_NEW_POLICY_VERSIONS,
     DEFAULT_ADAPTIVE_OPERATOR_PORTFOLIO,
+    COMPONENT_ALIGNMENT_WEIGHT,
     EVIDENCE_GUIDED_CONTINUATION_LIMIT,
     EVIDENCE_GUIDED_DUPLICATE_SCOPE_PENALTY,
     EVIDENCE_GUIDED_GAIN_SCALE_PER_MINUTE,
     EVIDENCE_GUIDED_OPERATOR_PRIORS,
+    HIERARCHICAL_EXACT_PSEUDOCOUNT,
+    HIERARCHICAL_FAMILY_PSEUDOCOUNT,
+    HIERARCHICAL_ROLE_PSEUDOCOUNT,
+    HORIZON_EXPLORATION_MAX,
+    RECENT_PRODUCTIVITY_MAX_WEIGHT,
+    RECENT_PRODUCTIVITY_WEIGHT_DIVISOR,
+    RECENT_PRODUCTIVITY_WINDOW_ATTEMPTS,
 )
 from .runtime import semantic_student_assignment_input_fingerprint
 
@@ -212,6 +221,19 @@ ADAPTIVE_POLICY_VARIANT_POLICIES = {
     "adaptive_r4_anchor": "r4_anchor",
 }
 
+# Keep the historical public mapping stable. New diagnostic variants have a
+# separate mapping so old study-contract tests and manifests do not change.
+ADAPTIVE_LADDER_POLICY_VARIANT_POLICIES = {
+    "adaptive_hierarchical_evidence": "hierarchical_evidence",
+    "adaptive_hierarchical_recent": "hierarchical_recent",
+    "adaptive_component_aware": "component_aware",
+    "adaptive_horizon_aware": "horizon_aware",
+}
+ALL_ADAPTIVE_POLICY_VARIANT_POLICIES = {
+    **ADAPTIVE_POLICY_VARIANT_POLICIES,
+    **ADAPTIVE_LADDER_POLICY_VARIANT_POLICIES,
+}
+
 # New diagnostic comparison cohort.  Keep the historical parallel-study
 # tuple unchanged so old manifests retain their original policy identity.
 EVIDENCE_GUIDED_POLICY_STUDY_POLICIES = (
@@ -230,6 +252,24 @@ EVIDENCE_GUIDED_POLICY_CONFIGURATION = {
     "duplicate_scope_penalty": EVIDENCE_GUIDED_DUPLICATE_SCOPE_PENALTY,
     "operator_priors": dict(EVIDENCE_GUIDED_OPERATOR_PRIORS),
     "tie_break": "score, estimated full cost, smaller radius, natural operator name",
+}
+
+ADAPTIVE_NEW_POLICY_CONFIGURATIONS = {
+    variant: {
+        "policy_version": ADAPTIVE_NEW_POLICY_VERSIONS[variant],
+        "variant": variant,
+        "exact_pseudocount": HIERARCHICAL_EXACT_PSEUDOCOUNT,
+        "family_pseudocount": HIERARCHICAL_FAMILY_PSEUDOCOUNT,
+        "role_pseudocount": HIERARCHICAL_ROLE_PSEUDOCOUNT,
+        "recent_window_attempts": RECENT_PRODUCTIVITY_WINDOW_ATTEMPTS,
+        "recent_max_weight": RECENT_PRODUCTIVITY_MAX_WEIGHT,
+        "recent_weight_divisor": RECENT_PRODUCTIVITY_WEIGHT_DIVISOR,
+        "component_alignment_weight": COMPONENT_ALIGNMENT_WEIGHT,
+        "horizon_exploration_max": HORIZON_EXPLORATION_MAX,
+        "tie_break": "score, estimated full cost, smaller radius, natural operator name",
+        "continuation_limit": EVIDENCE_GUIDED_CONTINUATION_LIMIT,
+    }
+    for variant in ADAPTIVE_NEW_POLICY_VERSIONS
 }
 
 
@@ -251,15 +291,17 @@ def profile_fingerprint(profile_name):
 def policy_configuration_fingerprint(policy_name):
     """Return a stable fingerprint for one diagnostic allocation policy."""
 
-    if policy_name not in ADAPTIVE_POLICY_VARIANT_POLICIES:
+    if policy_name not in ALL_ADAPTIVE_POLICY_VARIANT_POLICIES:
         raise ValueError(f"Unknown adaptive policy: {policy_name!r}")
     payload = {
         "policy": policy_name,
-        "variant": ADAPTIVE_POLICY_VARIANT_POLICIES[policy_name],
+        "variant": ALL_ADAPTIVE_POLICY_VARIANT_POLICIES[policy_name],
         "evidence_guided": EVIDENCE_GUIDED_POLICY_CONFIGURATION
-        if ADAPTIVE_POLICY_VARIANT_POLICIES[policy_name]
+        if ALL_ADAPTIVE_POLICY_VARIANT_POLICIES[policy_name]
         in {"evidence_guided", "r4_anchor"}
-        else None,
+        else ADAPTIVE_NEW_POLICY_CONFIGURATIONS.get(
+            ALL_ADAPTIVE_POLICY_VARIANT_POLICIES[policy_name]
+        ),
     }
     return hashlib.sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode(
@@ -416,10 +458,10 @@ def build_calibration_policy(
             "adaptive_policy_variant": "balanced",
             "fixed_cycle": (),
         }
-    if policy_name in ADAPTIVE_POLICY_VARIANT_POLICIES:
+    if policy_name in ALL_ADAPTIVE_POLICY_VARIANT_POLICIES:
         return {
             "selection_policy": "adaptive",
-            "adaptive_policy_variant": ADAPTIVE_POLICY_VARIANT_POLICIES[
+            "adaptive_policy_variant": ALL_ADAPTIVE_POLICY_VARIANT_POLICIES[
                 policy_name
             ],
             "fixed_cycle": (),
@@ -479,6 +521,9 @@ class AdaptiveCalibrationTrialRecord:
     # Diagnostic policy identity.  This is defaulted so older in-memory
     # records and historical JSON-shaped callers remain readable.
     policy_configuration_fingerprint: str = ""
+    selector_trace_schema: str = "adaptive_selector_trace_v1"
+    initial_components: dict = field(default_factory=dict)
+    objective_trajectory: dict = field(default_factory=dict)
 
     def to_dict(self):
         return asdict(self)
@@ -646,9 +691,9 @@ def build_calibration_trial_record(
             if adaptive_policy_variant is not None
             else build_calibration_policy(policy)["adaptive_policy_variant"]
         ),
-        policy_configuration_fingerprint=policy_configuration_fingerprint(policy)
-        if policy in ADAPTIVE_POLICY_VARIANT_POLICIES
-        else "",
+            policy_configuration_fingerprint=policy_configuration_fingerprint(policy)
+            if policy in ALL_ADAPTIVE_POLICY_VARIANT_POLICIES
+            else "",
         attempts=tuple(record.attempts),
         decisions=tuple(record.decisions),
         timing={
@@ -659,14 +704,28 @@ def build_calibration_trial_record(
             "total_elapsed_seconds": record.elapsed_seconds,
             "phase_timings": dict(record.phase_timings),
         },
-        final_components=dict(record.final_components),
-        resource=dict(record.resource),
+            final_components=dict(record.final_components),
+            resource=dict(record.resource),
+            selector_trace_schema=getattr(
+                record, "selector_trace_schema", "adaptive_selector_trace_v1"
+            ),
+            initial_components=dict(
+                getattr(record, "objective_trajectory", {})
+                .get("initial", {})
+                .get("components", {})
+            ),
+            objective_trajectory=dict(
+                getattr(record, "objective_trajectory", {})
+            ),
     )
 
 
 __all__ = [
     "CALIBRATION_SESSION_OVERRIDES",
     "ADAPTIVE_POLICY_VARIANT_POLICIES",
+    "ADAPTIVE_LADDER_POLICY_VARIANT_POLICIES",
+    "ALL_ADAPTIVE_POLICY_VARIANT_POLICIES",
+    "ADAPTIVE_NEW_POLICY_CONFIGURATIONS",
     "EVIDENCE_GUIDED_POLICY_STUDY_POLICIES",
     "EVIDENCE_GUIDED_POLICY_CONFIGURATION",
     "policy_configuration_fingerprint",

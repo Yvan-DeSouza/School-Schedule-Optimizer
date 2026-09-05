@@ -24,6 +24,8 @@ from .realistic_student_assignment_validation import (
     build_mixed_grade_v2_fixture,
 )
 from .student_assignment.adaptive_calibration import (
+    ALL_ADAPTIVE_POLICY_VARIANT_POLICIES,
+    ADAPTIVE_POLICY_VARIANT_POLICIES,
     CALIBRATION_PROFILES,
     STARTUP_AWARE_SESSION_OVERRIDES,
     apply_calibration_profile,
@@ -31,6 +33,7 @@ from .student_assignment.adaptive_calibration import (
     run_matched_calibration_trial,
     profile_fingerprint,
 )
+from .student_assignment.adaptive_search import replay_selector_artifact
 from .student_assignment.core import (
     run_student_assignment_stage2_diagnostic,
 )
@@ -1559,6 +1562,10 @@ def main(argv=None):  # pragma: no cover - clean-process experiment surface
             "adaptive_utilization_biased",
             "adaptive_evidence_guided",
             "adaptive_r4_anchor",
+            "adaptive_hierarchical_evidence",
+            "adaptive_hierarchical_recent",
+            "adaptive_component_aware",
+            "adaptive_horizon_aware",
             "stateless_role",
             "r2_only",
             "r4_s2_only",
@@ -1605,11 +1612,51 @@ def main(argv=None):  # pragma: no cover - clean-process experiment surface
         nargs="+",
         help="Diagnostic override for the existing fixed-cycle operator tuple.",
     )
+    parser.add_argument(
+        "--replay-selector-artifact",
+        type=Path,
+        help="Replay selector traces from a JSON artifact without CP-SAT.",
+    )
+    parser.add_argument(
+        "--replay-policies",
+        "--selector-policies",
+        dest="replay_policies",
+        nargs="+",
+        help="Adaptive policy names or variants to compare during replay.",
+    )
+    parser.add_argument(
+        "--replay-decision-index",
+        "--decision-index",
+        dest="replay_decision_index",
+        nargs="+",
+        help="Optional zero-based decision indexes to replay.",
+    )
     args = parser.parse_args(argv)
     if args.worker:
         if not args.worker_output or not args.worker_status:
             raise ValueError("worker mode requires worker output/status paths")
         return _run_supervised_worker(args)
+    if args.replay_selector_artifact:
+        artifact = json.loads(
+            args.replay_selector_artifact.read_text(encoding="utf-8")
+        )
+        variants = tuple(
+            ALL_ADAPTIVE_POLICY_VARIANT_POLICIES.get(name, name)
+            for name in (args.replay_policies or ())
+        )
+        decision_indexes = args.replay_decision_index
+        if decision_indexes and "all" in decision_indexes:
+            decision_indexes = None
+        elif decision_indexes:
+            decision_indexes = tuple(int(index) for index in decision_indexes)
+        payload = replay_selector_artifact(
+            artifact,
+            policy_variants=variants,
+            decision_indices=decision_indexes,
+        )
+        json.dump(payload, sys.stdout, indent=2, sort_keys=True, default=str)
+        sys.stdout.write("\n")
+        return 0
     if args.benchmark_directory:
         payload = run_supervised_calibration_trial(
             policy=args.policy,

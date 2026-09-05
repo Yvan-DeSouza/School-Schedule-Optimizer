@@ -401,3 +401,11 @@ models using the repository's `--no-migrations` convention.
   worker credentials, TLS/host configuration, structured task logging, and
   PostgreSQL operational tuning.
 - Docker and container orchestration are intentionally deferred.
+
+### Selector replay does not launch workers (2026-09-05)
+
+The adaptive selector replay path is a pure, solver-free audit operation. It
+reads `adaptive_selector_state_v1` and `adaptive_selector_trace_v1` JSON,
+recomputes selector competition, and writes replay JSON to stdout. It launches
+no CP-SAT process, Celery task, or worker, and therefore does not consume the
+eight internal CP-SAT workers or change the production worker contract.

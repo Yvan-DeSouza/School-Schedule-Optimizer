@@ -52,6 +52,7 @@ from .search_experiments import (
 )
 from .adaptive_search import (
     ADAPTIVE_POLICY_VERSION,
+    ADAPTIVE_NEW_POLICY_VERSIONS,
     AdaptiveOperatorAttempt,
     AdaptiveOperatorSpec,
     AdaptivePolicyDecision,
@@ -66,6 +67,10 @@ from .adaptive_search import (
     choose_adaptive_operator,
     replay_adaptive_policy,
     simulate_adaptive_policy,
+    adaptive_selector_state_snapshot,
+    build_adaptive_competition_trace,
+    replay_selector_decision,
+    replay_selector_artifact,
 )
 from .adaptive_runtime import (
     AdaptiveSessionResult,
@@ -81,6 +86,8 @@ from .operator_session import (
     select_operator_session_targets,
 )
 from .adaptive_calibration import (
+    ADAPTIVE_LADDER_POLICY_VARIANT_POLICIES,
+    ALL_ADAPTIVE_POLICY_VARIANT_POLICIES,
     CALIBRATION_FIXED_CYCLES,
     CALIBRATION_PROFILES,
     CALIBRATION_PROTOCOL_VERSION,
@@ -126,6 +133,7 @@ __all__ = [
     "run_operator_characterization_trial",
     "summarize_stagnation",
     "ADAPTIVE_POLICY_VERSION",
+    "ADAPTIVE_NEW_POLICY_VERSIONS",
     "AdaptiveOperatorAttempt",
     "AdaptiveOperatorSpec",
     "AdaptivePolicyDecision",
@@ -141,6 +149,10 @@ __all__ = [
     "choose_adaptive_operator",
     "replay_adaptive_policy",
     "simulate_adaptive_policy",
+    "adaptive_selector_state_snapshot",
+    "build_adaptive_competition_trace",
+    "replay_selector_decision",
+    "replay_selector_artifact",
     "run_adaptive_local_search_diagnostic",
     "ContinuousOperatorSessionConfig",
     "ContinuousOperatorSessionRecord",
@@ -150,6 +162,8 @@ __all__ = [
     "operator_session_target_count",
     "select_operator_session_targets",
     "CALIBRATION_FIXED_CYCLES",
+    "ADAPTIVE_LADDER_POLICY_VARIANT_POLICIES",
+    "ALL_ADAPTIVE_POLICY_VARIANT_POLICIES",
     "CALIBRATION_PROFILES",
     "CALIBRATION_PROTOCOL_VERSION",
     "CALIBRATION_SESSION_OVERRIDES",

@@ -434,3 +434,6 @@ selected candidate pool equals the changed-student cap, dynamic sessions
 retarget after adoption, and fixed sessions retain their supplied scope.
 This capability remains diagnostic-only; no ordinary production portfolio or
 adaptive controller has been changed.
+
+For the versioned adaptive selector-policy ladder and its solver-free replay
+boundary, see [STUDENT_ASSIGNMENT_ADAPTIVE_SEARCH.md](STUDENT_ASSIGNMENT_ADAPTIVE_SEARCH.md).

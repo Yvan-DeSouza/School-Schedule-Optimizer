@@ -1697,3 +1697,22 @@ timing evidence, rejected experiments, and future validation research are
 maintained in [STUDENT_ASSIGNMENT_VALIDATION.md](STUDENT_ASSIGNMENT_VALIDATION.md).
 This quality document focuses on schedule-quality semantics; candidate
 adoption remains fail-closed on the unchanged full-model CP-SAT validator.
+
+### Adaptive objective trajectories (2026-09-05)
+
+Adaptive diagnostic sessions may now include an
+`adaptive_objective_trajectory_v1` record. It is a compact audit trail over the
+same five Objective Semantics v2 components already produced by
+`evaluate_student_assignment_quality`: raw penalty, normalization denominator,
+normalized penalty, counselor importance, and weighted contribution. It also
+preserves fulfillment counts, special-commitment counts, assignment and
+unmet-request counts, and source fingerprints.
+
+For each adopted transition, the record stores before/after component facts,
+raw/normalized/weighted deltas, and explicit lower-is-better improvements.
+Only a full-model-validated, strictly adopted transition enters selector
+evidence. Search `UNKNOWN`, validation errors, scope mismatches, and other
+unresolved discovery observations remain separate and cannot become schedule
+quality or authority facts. This telemetry explains which existing v2
+components changed; it does not introduce metrics, alter normalization, or
+turn section utilization into a student-local objective.
