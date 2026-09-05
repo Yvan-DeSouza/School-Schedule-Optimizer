@@ -2220,3 +2220,28 @@ schedule outcome. The new `adaptive_selector_trace_v1` and
 questions. Historical replay is explicitly classified as partial when those
 fields are absent; a replay-selected operator is not presented as a schedule
 performance result.
+
+### First target-scale lockstep horizon fork (2026-09-05)
+
+The existing detached `reference_target` fixture was used without mutation:
+1,400 students, v2 semantics, seed `101`, eight CP-SAT workers, sequential
+execution, a 300-second selected-operator limit, and a 180-second validation
+allowance. At the first prospective decision, the complete selector
+competition diverged: `adaptive_horizon_aware` selected
+`targeted_utilization_r16_s4` for students `(1392, 423, 750, 1025)`, while the
+fixed control selected `targeted_r4_s2`. The prospective trace replayed as
+`exact`, and no alternative schedule outcome was inferred from replay.
+
+The common lineage stopped before executing an operator. Matched one-operation
+forks from the same complete, full-model-validated incumbent produced:
+
+| Fork | Final weighted v2 value | Validated and adopted | Gain from 42,750 |
+| --- | ---: | --- | ---: |
+| `r4_s2_only` | `42,726` | yes | `24` |
+| Horizon-selected utilization | `42,732` | yes | `18` |
+
+This is a qualified target-scale divergence with classification B: R4-only
+remained stronger after the fork. It is not repeated policy-superiority
+evidence; it does not justify production promotion or a longer target solve.
+The full crash-safe research record is under
+`C:\Users\desou\research_runs\v2_overnight_lockstep_horizon_vs_r4_20260905`.

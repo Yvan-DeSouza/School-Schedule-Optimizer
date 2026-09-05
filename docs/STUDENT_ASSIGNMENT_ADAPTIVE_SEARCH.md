@@ -1861,3 +1861,38 @@ long/short crossover occurred, no fork was needed, no threshold was fitted,
 and no target-scale, one-hour, or 4–8-hour study was launched. The four-step
 ladder is therefore qualified only through bounded medium-state diagnostics;
 whether to design a later target study remains a separate closeout decision.
+
+### First target-scale lockstep horizon fork (2026-09-05)
+
+The first target-scale maturity study used the existing detached
+`reference_target` fixture: 1,400 students, Objective Semantics v2, seed `101`,
+eight CP-SAT workers, sequential outer execution, a `300`-second selected
+operator limit, and a `180`-second full-model validation allowance. The study
+used one common validated incumbent and compared the fixed `r4_s2_only`
+control with the diagnostic `adaptive_horizon_aware` ladder variant. No target
+benchmark, solver objective, authority rule, or production wiring was changed.
+
+At the first prospective decision, complete 16-row competition traces were
+recorded for the evidence-guided and four ladder variants. The horizon-aware
+score winner was `targeted_utilization_r16_s4`; the fixed control was
+`targeted_r4_s2`. This was a genuine operator/scope divergence, not a replay
+inference. Exact solver-free replay reproduced the horizon winner and was
+classified `exact`; it explicitly inferred no alternative schedule outcome.
+
+The common lineage stopped before executing a shared operator, as required by
+the lockstep protocol. Two one-operation forks then started from the same
+authoritatively validated source incumbent with weighted v2 substantive value
+`42,750`:
+
+| Fork | Operator and scope | Validation | Strict adoption | Final weighted v2 value | Gain |
+| --- | --- | --- | --- | ---: | ---: |
+| R4 control | `targeted_r4_s2` | complete, full-model validated | yes | `42,726` | `24` |
+| Horizon-selected | `targeted_utilization_r16_s4` on `(1392, 423, 750, 1025)` | complete, full-model validated | yes | `42,732` | `18` |
+
+This is classification B: **target long-horizon adaptive divergence qualified —
+R4-only remained stronger after the fork**. It demonstrates real target-scale
+operator divergence while preserving the existing authority boundary, but it
+is only one matched one-operation fork. It does not establish a general policy
+winner, justify a 4--8-hour solve, or authorize production promotion. Durable
+artifacts are under
+`C:\Users\desou\research_runs\v2_overnight_lockstep_horizon_vs_r4_20260905`.
