@@ -1645,3 +1645,68 @@ question. The existing two-continuation rule is retained for this increment;
 only its competition and override facts are exposed. Alternate-seed retries,
 downstream/unlock rewards, conditional R4 anchoring, objective changes, and
 production wiring remain deferred or rejected at this research boundary.
+
+### Cheap selector promotion-gate results (2026-09-05)
+
+The deterministic gate is implemented in
+`scheduling_engine/tests/test_adaptive_selector_promotion_gate.py`. It uses
+only `AdaptiveSearchState`, recorded `AdaptiveOperatorAttempt` facts, the
+16-operator portfolio, and the pure selector/replay functions; it does not
+call CP-SAT. The selected operators were:
+
+| State | Historical evidence-guided | Hierarchical | Recent | Component-aware | Horizon-aware |
+| --- | --- | --- | --- | --- | --- |
+| R4 dominant | `targeted_r4_s2` | `targeted_r4_s2` | `targeted_r4_s2` | `targeted_r4_s2` | `targeted_r4_s2` |
+| Utilization dominant | `targeted_utilization_r16_s4` | `targeted_utilization_r16_s4` | `targeted_utilization_r16_s4` | `targeted_utilization_r16_s4` | `targeted_utilization_r16_s4` |
+| Stale R4 | `targeted_r8_s2` | `targeted_r4_s2` | `targeted_r8_s2` | `targeted_r8_s2` | `targeted_r4_s2` |
+| Component D1: difficulty remaining | `targeted_utilization_r16_s4` | `targeted_utilization_r16_s4` | `targeted_utilization_r16_s4` | `targeted_r4_s1` | `targeted_r4_s1` |
+| Component D2: utilization remaining | `targeted_utilization_r16_s4` | `targeted_utilization_r16_s4` | `targeted_utilization_r16_s4` | `targeted_utilization_r16_s4` | `targeted_utilization_r16_s4` |
+| Long horizon | `targeted_r4_s2` | `targeted_r4_s2` | `targeted_r4_s2` | `targeted_r4_s2` | `targeted_utilization_r16_s4` |
+| Short horizon | `targeted_r4_s2` | `targeted_r4_s2` | `targeted_r4_s2` | `targeted_r4_s2` | `targeted_r4_s2` |
+| Local descent justified | `r2` | `r2` | `r2` | `r2` | `r2` |
+
+Five of eight states had unanimous winners. Hierarchical evidence changed the
+historical winner in one state, recent evidence changed the hierarchical
+winner in one state, component awareness changed the recent winner in one
+state, and horizon awareness changed the component-aware winner in two states.
+Utilization won justified utilization-pressure states, R2 won when targeted
+students were unavailable and local descent was the actionable role, and R4
+remained dominant in the clear R4 state. No state awarded a winner merely for
+being untried: zero-opportunity exploration was exactly zero.
+
+All eligible rows in complete 16-operator traces reconstructed their final
+score from the recorded terms within `1e-9`; the observed maximum residual was
+approximately `3.34e-10`. The component term was decision-relevant without
+changing Objective Semantics: in the difficulty-composition crossover it
+changed the winner with a `0.02727` alignment-term advantage. A single
+transition remained bounded at one-third alignment because of the exact-level
+`k=2` shrinkage. Positive, negative, near-zero, and sequence-zero alignment
+cases were covered.
+
+For the six-attempt recent window, the audited exact-stratum values were:
+
+| Case | Lifetime yield | Recent yield | Recent weight | Blended yield |
+| --- | ---: | ---: | ---: | ---: |
+| no recent resolved evidence | 1.00 | 0.00 | 0.00 | 1.00 |
+| one recent resolved observation | 1.00 | 0.00 | 0.25 | 0.75 |
+| two recent resolved observations | 1.00 | 0.00 | 0.50 | 0.50 |
+
+Horizon exploration for a new, strongly opportunistic family was
+`0.200000 / 0.112500 / 0.041667 / 0.005208 / 0.000333` at horizon fractions
+`1.00 / 0.75 / 0.50 / 0.25 / 0.10`. Ten prior family attempts reduced the
+corresponding values to `0.060302 / 0.033920 / 0.012563 / 0.001570 /
+0.000101`; weak opportunity reduced them further, and zero opportunity made
+them all zero. An operation that could not fit the remaining budget was
+ineligible with `insufficient_remaining_budget`.
+
+The complete prospective trace replayed as `exact` after JSON serialization,
+including candidate rows, scores, ranking, winner, runner-up, margin, and
+derived views. A mocked runtime captured three sequential complete traces and
+three validated Objective Semantics transitions, which also replayed exactly. A historical
+18-cell result replayed as `partial` and explicitly inferred no schedule
+outcome. The resulting classification is **SELECTOR LOGIC PASSES BUT REAL
+RUNTIME DIVERGENCE NOT YET DEMONSTRATED**. The simplest candidate showing
+non-R4 decision discrimination is `adaptive_hierarchical_evidence`; however,
+the horizon-aware variant also demonstrates the explicitly horizon-caused
+long/short crossover. Selecting a target-study policy remains a separate
+study-design decision and was not performed by this gate.
