@@ -2272,16 +2272,68 @@ def _state_from_selector_snapshot(snapshot, history):
         "student_pressure_components": dict(
             snapshot.get("student_pressure_components") or {}
         ),
+        "substantive_aggregate": float(
+            snapshot.get("substantive_aggregate", 0.0) or 0.0
+        ),
+        "utilization_raw_penalty": float(
+            snapshot.get("utilization_raw_penalty", 0.0) or 0.0
+        ),
+        "utilization_normalized_value": float(
+            snapshot.get("utilization_normalized_value", 0.0) or 0.0
+        ),
+        "utilization_weighted_value": float(
+            snapshot.get("utilization_weighted_value", 0.0) or 0.0
+        ),
+        "pressured_delivery_group_count": int(
+            snapshot.get("pressured_delivery_group_count", 0) or 0
+        ),
+        "top_utilization_group_share": float(
+            snapshot.get("top_utilization_group_share", 0.0) or 0.0
+        ),
+        "top_three_utilization_group_share": float(
+            snapshot.get("top_three_utilization_group_share", 0.0) or 0.0
+        ),
+        "top_five_utilization_group_share": float(
+            snapshot.get("top_five_utilization_group_share", 0.0) or 0.0
+        ),
+        "optimistic_utilization_leverage": float(
+            snapshot.get("optimistic_utilization_leverage", 0.0) or 0.0
+        ),
+        "useful_utilization_student_count": int(
+            snapshot.get("useful_utilization_student_count", 0) or 0
+        ),
         "grade_opportunities": tuple(snapshot.get("grade_opportunities") or ()),
+        "recent_operation_seconds": float(
+            snapshot.get("recent_operation_seconds", 0.0) or 0.0
+        ),
+        "recent_memory_peak_bytes": int(
+            snapshot.get("recent_memory_peak_bytes", 0) or 0
+        ),
+        "consecutive_no_improvement_attempts": int(
+            snapshot.get("consecutive_no_improvement_attempts", 0) or 0
+        ),
+        "unknown_streak": int(snapshot.get("unknown_streak", 0) or 0),
+        "validation_unknown_count": int(
+            snapshot.get("validation_unknown_count", 0) or 0
+        ),
+        "hard_invalid_count": int(snapshot.get("hard_invalid_count", 0) or 0),
         "utilization_ranked_student_ids": tuple(
             snapshot.get("utilization_ranked_student_ids_prefix") or ()
         ),
         "last_target_scope": tuple(snapshot.get("last_target_scope") or ()),
+        "last_grade": snapshot.get("last_grade"),
         "last_utilization_cluster": tuple(
             snapshot.get("last_utilization_cluster") or ()
         ),
         "current_objective_vector": tuple(
             snapshot.get("current_objective_vector") or ()
+        ),
+        "estimated_operator_cost_seconds": float(
+            snapshot.get("estimated_operator_cost_seconds", 0.0) or 0.0
+        ),
+        "current_source_fingerprint": snapshot.get("current_source_fingerprint"),
+        "candidate_validation_time_limit_seconds": snapshot.get(
+            "candidate_validation_time_limit_seconds"
         ),
         "operator_history": tuple(history),
     })

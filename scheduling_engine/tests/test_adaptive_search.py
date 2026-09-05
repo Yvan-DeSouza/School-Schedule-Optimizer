@@ -988,6 +988,62 @@ def test_prospective_selector_snapshot_replays_exactly_without_schedule_inferenc
     assert replay["schedule_outcome_inferred"] is False
 
 
+def test_replay_rehydrates_all_selector_consumed_state_for_exact_scores():
+    history = (
+        AdaptiveOperatorAttempt(
+            operator="targeted_r4_s2",
+            status="optimal",
+            candidate_found=True,
+            candidate_validated=True,
+            adopted=True,
+            gain=10.0,
+            elapsed_seconds=30.0,
+            validation_classification="validated",
+            objective_improvement_weighted_delta={
+                "difficulty_balance": 10.0,
+            },
+        ),
+    )
+    state = replace(
+        _state(local_share=0.8, utilization_share=0.7, history=history),
+        substantive_aggregate=12.0,
+        utilization_raw_penalty=3.0,
+        utilization_normalized_value=2.0,
+        utilization_weighted_value=1.0,
+        pressured_delivery_group_count=4,
+        top_utilization_group_share=0.2,
+        top_three_utilization_group_share=0.3,
+        top_five_utilization_group_share=0.4,
+        optimistic_utilization_leverage=5.0,
+        useful_utilization_student_count=8,
+        recent_operation_seconds=2.0,
+        recent_memory_peak_bytes=3,
+        consecutive_no_improvement_attempts=1,
+        unknown_streak=2,
+        validation_unknown_count=3,
+        hard_invalid_count=4,
+        last_target_scope=(1, 2),
+        last_grade=9,
+        last_utilization_cluster=(1, 2),
+        estimated_operator_cost_seconds=33.0,
+        current_source_fingerprint="source-fingerprint",
+        candidate_validation_time_limit_seconds=30.0,
+        current_objective_vector=(1, 2),
+    )
+    decision = choose_adaptive_operator(
+        state,
+        ranked_students=(SimpleNamespace(student_id=7), SimpleNamespace(student_id=8)),
+        adaptive_policy_variant="horizon_aware",
+    )
+    trace = decision.signal_values["competition_trace"]
+    replay = replay_selector_decision(trace, history, policy_variant="horizon_aware")
+
+    assert replay["replay_classification"] == "exact"
+    replay_trace = replay["competition_trace"]
+    assert replay_trace["candidates"] == trace["candidates"]
+    assert replay_trace["derived"] == trace["derived"]
+
+
 def test_legacy_selector_artifact_replay_is_partial_not_counterfactual():
     replay = replay_selector_artifact({
         "decisions": [{"operator": {"name": "targeted_r4_s2"}}],

@@ -1788,3 +1788,76 @@ superiority may be inferred. The next isolated qualification is
 `adaptive_horizon_aware`; this result does not authorize horizon-aware testing
 in the current increment, a target-scale study, a 4–8-hour solve, or production
 wiring.
+
+### Real horizon-aware runtime qualification (2026-09-05)
+
+The final isolated ladder qualification compared
+`adaptive_component_aware` with `adaptive_horizon_aware`. It used the existing
+durable `reference_medium` input, with input fingerprint
+`9c9ffe0924a8d36b8673c14a7706b239a1d22cae31e06196ea850589b0556956`, one
+CP-SAT worker, seed `101`, sequential execution, unchanged full-model
+validation, and no target-scale solve. The stored Stage 1 source seed was
+validated before the common history; its source fingerprint was
+`b8798fd74fcc884701c39ffb5367890a9b588b8e0d6c7e642aca88a69747cf3b`.
+
+The smallest clean real history needed for the frozen state was one
+`targeted_r4_s2` transition. It was a complete, `optimal`, full-model
+`validated`, strict `adopted` transition with a gain of `414` substantive
+points in approximately `59.17` seconds. Its resulting frozen incumbent had
+source fingerprint
+`7cabef5d0c12dbdfe8656ff82aee5b66082262c684cbe908d3ea577f2cb436d9`, zero
+unmet requests, and weighted v2 value `42,138` from a starting value of
+`42,552`. Its before-minus-after weighted improvements were difficulty `150`,
+section utilization `36`, semester balance `228`, and zero for category and
+sequence. The history therefore contained one observed `targeted_r4` family
+attempt and zero attempts for the competing utilization and local families.
+The common history digest in the prospective selector trace was
+`ad1befd2133f39d947ba25b5f00e34711180aa09c0dc2eef72ebe13b7c53b01a`.
+
+This was a useful horizon state because the under-observed utilization family
+had genuine opportunity (`0.798772735`) and uncertainty `1.0`, while the
+proven R4 family had opportunity `0.6` and uncertainty
+`1/sqrt(2) = 0.707106781`. All relevant operators remained budget-fit across
+the sweep. The complete traces contained all 16 portfolio rows, with 12
+eligible rows; the unobserved families were not selected merely for being
+untried.
+
+Only the remaining-horizon input was varied. A synthetic total budget of
+`1,200` seconds represented the documented elapsed/remaining contract and
+produced fractions `1.00`, `0.75`, `0.50`, `0.25`, and `0.10`. The exact
+horizon exploration values for the principal competitors were:
+
+| Horizon fraction | R4 exploration | Utilization exploration | R2 exploration | Horizon-aware winner | Margin |
+| ---: | ---: | ---: | ---: | --- | ---: |
+| 1.00 | `0.084852814` | `0.159754547` | `0.060000000` | `targeted_r4_s2` | `0.308669380` |
+| 0.75 | `0.047729708` | `0.089861933` | `0.033750000` | `targeted_r4_s2` | `0.341438889` |
+| 0.50 | `0.021213203` | `0.039938637` | `0.015000000` | `targeted_r4_s2` | `0.364845681` |
+| 0.25 | `0.005303301` | `0.009984659` | `0.003750000` | `targeted_r4_s2` | `0.378889755` |
+| 0.10 | `0.000848528` | `0.001597545` | `0.000600000` | `targeted_r4_s2` | `0.382822096` |
+
+The component-aware winner was also `targeted_r4_s2` at every horizon point.
+Its fixed non-horizon exploration was `0.070710678` for R4 and `0.1` for the
+unobserved utilization families. At the long horizon, the component-aware
+scores were R4 `1.378054526` versus utilization `1.023772735`; horizon-aware
+exploration changed them to `1.392196662` versus `1.083527282`. The horizon
+term materially narrowed the gap but did not reverse it. At the shortest
+tested horizon the corresponding horizon-aware scores were `1.308192376` and
+`0.925370280`. The arithmetic counterfactual—replacing only horizon-aware
+exploration with the component-aware exploration term—returned the original
+component-aware ordering, but there was no winner change to attribute.
+
+The same prospective runtime trace was replayed through both pure selector
+policies at every horizon point. Every replay was classified `exact`, and
+candidate rows, scores, ranking, winner, runner-up, margin, and tie-break
+facts matched. The replay path was tightened to rehydrate every
+selector-consumed utilization, cost, budget, and source-identity field; replay
+remains solver-free and cannot imply an alternative schedule outcome.
+
+The result is **REAL HORIZON-AWARE RUNTIME DIVERGENCE NOT OBSERVED** and final
+classification B: **REAL HORIZON-DISCRIMINATIVE STATE COLLECTED BUT
+COMPONENT-AWARE AND HORIZON-AWARE SELECTORS REMAIN EQUIVALENT**. Horizon
+changed search-allocation scores and margins, not schedule quality. No
+long/short crossover occurred, no fork was needed, no threshold was fitted,
+and no target-scale, one-hour, or 4–8-hour study was launched. The four-step
+ladder is therefore qualified only through bounded medium-state diagnostics;
+whether to design a later target study remains a separate closeout decision.
