@@ -2245,3 +2245,23 @@ remained stronger after the fork. It is not repeated policy-superiority
 evidence; it does not justify production promotion or a longer target solve.
 The full crash-safe research record is under
 `C:\Users\desou\research_runs\v2_overnight_lockstep_horizon_vs_r4_20260905`.
+
+### Matched long-horizon continuation (2026-09-05)
+
+The one-operation target-scale fork was extended through two authoritative child lineages in `C:\Users\desou\research_runs\v2_long_continuation_r4_vs_horizon_20260905`. Because the parent fork JSONs did not contain semantic source decisions, the forks were recreated from the validated `42,750` source and independently validated before continuation. The recreated values matched the parent facts: `42,726` for R4-only and `42,732` for the horizon-selected utilization fork.
+
+The matched continuation retained the same 1,400-student `reference_target` input, v2 semantics, seed `101`, eight CP-SAT workers, sequential execution, 300-second operator allowance, 180-second full-model validation allowance, and 10,800-second per-branch policy budget. R4-only executed `targeted_r4_s2` for all 60 attempts; horizon-aware executed `targeted_utilization_r16_s4` for all 52 attempts. R4-only adopted 35 validated improvements and then produced resolved scope-exhaustion outcomes. Horizon-aware adopted all 52 validated improvements. Both final branches were complete, full-model validated, zero-unmet, scope-consistent, and retained all 140 special commitments.
+
+| Continuation time | R4-only | Horizon-aware | Difference (Horizon - R4) |
+| ---: | ---: | ---: | ---: |
+| 0 s | 42,726 | 42,732 | +6 |
+| 1,800 s | 42,582 | 42,630 | +48 |
+| 3,600 s | 42,486 | 42,528 | +42 |
+| 5,400 s | 42,354 | 42,288 | -66 |
+| 7,200 s | 42,252 | 42,108 | -144 |
+| 9,000 s | 42,252 | 42,012 | -240 |
+| 10,800 s | 42,252 | 41,880 | -372 |
+
+R4-only was stronger through 3,600 seconds; horizon-aware overtook it between 3,600 and 5,400 seconds and finished 372 points better. The study's authoritative classification is **mixed / crossing and requires replication**. This is a measured trajectory result for these two lineages, not evidence that the utilization operator is generally superior and not evidence that any solver-free shadow winner would have produced a better schedule.
+
+The horizon branch retained 53 selector snapshots. Each snapshot contains the five registered policy traces, all 16 effective-portfolio candidate rows, and complete `adaptive_selector_trace_v1` data. This provides prospective competition telemetry and exact replay evidence without converting shadow selections into operator-performance claims. The continuation preserved the frozen v2 component semantics: sequence preference remained fully satisfied, while the final horizon advantage was concentrated in category-diversity and section-utilization contributions and partly offset by higher difficulty and semester-load contributions.

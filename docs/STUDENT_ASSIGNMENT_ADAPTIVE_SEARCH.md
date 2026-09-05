@@ -1896,3 +1896,46 @@ is only one matched one-operation fork. It does not establish a general policy
 winner, justify a 4--8-hour solve, or authorize production promotion. Durable
 artifacts are under
 `C:\Users\desou\research_runs\v2_overnight_lockstep_horizon_vs_r4_20260905`.
+
+### Matched long-horizon continuation from the two authoritative forks (2026-09-05)
+
+The one-operation fork was followed by a separate, matched long-horizon continuation. The original fork JSON files did not retain semantic source decisions, so they were not treated as directly reusable schedules. Instead, the two forks were recreated from the validated `42,750` source, independently validated, and recorded as new child lineages. The recreated starting values matched the original fork facts: `42,726` for `r4_s2_only` and `42,732` for the horizon-selected utilization fork.
+
+The continuation used the unchanged detached `reference_target` input (`f56b5c0d5b745d919a57281a2f1e49959b4b23d8feb9486eda3c81afd8bb7906`), Objective Semantics v2, seed `101`, eight CP-SAT workers, sequential outer execution, a `300`-second selected-operator limit, a `180`-second full-model validation limit, and equal `10,800`-second per-branch policy budgets. The global wall contract was `27,000` seconds. The R4-only branch executed first; the horizon-aware branch started only after R4-only completed and passed final independent validation. No objective, constraint, validation-authority, or production-wiring change was made.
+
+| Branch | Executed operator path | Attempts | Validated/adopted | Start value | Final value |
+| --- | --- | ---: | ---: | ---: | ---: |
+| R4-only control | `targeted_r4_s2` for all 60 attempts | 60 | 35 | `42,726` | `42,252` |
+| Horizon-aware | `targeted_utilization_r16_s4` for all 52 attempts | 52 | 52 | `42,732` | `41,880` |
+
+All non-adopted R4 attempts were resolved scope-exhaustion outcomes, not validation UNKNOWNs or validation errors. Both final branches had 9,030 assignments, zero unmet requests, 140 preserved special commitments, complete full-model validation, and no scope mismatch. The horizon branch persisted 53 selector snapshots (including its terminal decision), each containing five policy traces, 16 candidate rows, and complete `adaptive_selector_trace_v1` telemetry. These shadows are selector evidence only; they do not imply that a shadow policy would have produced a better schedule.
+
+The quality trajectories use the existing weighted v2 substantive value, where lower is better:
+
+| Continuation time | R4-only | Horizon-aware | Horizon minus R4 |
+| ---: | ---: | ---: | ---: |
+| 0 s | 42,726 | 42,732 | +6 |
+| 1,800 s | 42,582 | 42,630 | +48 |
+| 3,600 s | 42,486 | 42,528 | +42 |
+| 5,400 s | 42,354 | 42,288 | -66 |
+| 7,200 s | 42,252 | 42,108 | -144 |
+| 9,000 s | 42,252 | 42,012 | -240 |
+| 10,800 s | 42,252 | 41,880 | -372 |
+
+R4-only was better at the recreated starting point and through 3,600 seconds. Horizon-aware overtook it between 3,600 and 5,400 seconds and ended 372 points lower. The authoritative study classification is **long-run policy result is mixed / crossing and requires replication**. This is evidence of a long-horizon crossover on this lineage, not proof of a general policy winner or of a better schedule from any shadow replay.
+
+At the final validated incumbents, the weighted v2 component totals were:
+
+| Component | R4-only | Horizon-aware |
+| --- | ---: | ---: |
+| Course category diversity | 12,906 | 12,858 |
+| Course sequence preferences | 0 | 0 |
+| Difficulty balance | 11,058 | 11,352 |
+| Section utilization balance | 9,252 | 8,382 |
+| Student semester-load balance | 9,036 | 9,288 |
+
+The horizon endpoint's advantage came primarily from lower category-diversity and section-utilization contributions, while its difficulty and semester-load contributions were higher. Sequence preference remained fully satisfied and therefore supplied no differentiating penalty. The result should be read as a tradeoff in the frozen v2 objective, not as a new objective definition.
+
+The continuation artifacts are under `C:\Users\desou\research_runs\v2_long_continuation_r4_vs_horizon_20260905`. The manifest records the passed AC-power/sleep preflight, no study-interval sleep contamination, the eight-worker contract, and the final independent validation results. Resource telemetry showed the expected single sequential runner and bounded approximately-gigabyte process-tree working sets; no competing solver, Celery, or Python study process was present. Artifact hashes were captured before the final summary, manifest, and log writes; the hash audit therefore has a known finalization boundary rather than an evidence mismatch.
+
+This study does not authorize production promotion, a 4--8-hour solve, or a new target experiment without replication. The next evidence-preserving step is to replicate the matched long-horizon comparison, keeping the same input, seed, worker contract, validation authority, and checkpoint rules. The continuation itself changed no repository runtime semantics and did not alter the completed parent study.
