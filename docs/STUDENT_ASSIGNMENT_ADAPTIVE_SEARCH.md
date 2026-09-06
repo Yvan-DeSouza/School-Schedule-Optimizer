@@ -4,6 +4,10 @@ This document owns the diagnostic adaptive-policy state machine and promotion
 boundary. It is not the owner of the underlying operator definitions or the
 production student-assignment contract.
 
+Long-running engine phase meanings and runtime accounting are owned by
+[Student Assignment Runtime Pipeline](STUDENT_ASSIGNMENT_RUNTIME_PIPELINE.md).
+This document remains the owner of selector behavior and policy promotion.
+
 ## Status
 
 The v2 adaptive allocator is implemented as a diagnostic-only, offline

@@ -5,6 +5,10 @@ assignment and opt-in diagnostic search guidance. Objective definitions,
 validation authority, and quality metrics are maintained in their specialized
 documents.
 
+Long-running execution phases and timing interpretation are owned by
+[Student Assignment Runtime Pipeline](STUDENT_ASSIGNMENT_RUNTIME_PIPELINE.md),
+not by this search-strategy document.
+
 ## Current status
 
 Objective Semantics v2 is the current quality contract for the diagnostic

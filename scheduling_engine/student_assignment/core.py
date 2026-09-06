@@ -124,6 +124,7 @@ from .runtime import (
     ProcessMemoryMonitor,
     ProcessResourceMonitor,
     HierarchicalTimingRecorder,
+    diagnostic_timed_phase,
     diagnostic_timing_span,
     semantic_student_assignment_input_fingerprint,
 )
@@ -3897,6 +3898,7 @@ def _solve_student_assignment(
     optimization_trace = []
     incumbent_timeline = []
 
+    @diagnostic_timed_phase("runtime_quality_evaluation")
     def _full_quality_for_solver(candidate_solver):
         """Evaluate one complete candidate without influencing CP-SAT."""
 

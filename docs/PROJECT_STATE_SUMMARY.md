@@ -553,6 +553,9 @@ Where the workflow stops today:
 | Student objective mathematics | `docs/STUDENT_ASSIGNMENT_OBJECTIVE_SEMANTICS.md` | `scheduling_engine/student_assignment/objective_semantics.py` |
 | Student validation authority | `docs/STUDENT_ASSIGNMENT_VALIDATION.md` | `scheduling_engine/student_assignment/validation.py`, `validation_benchmark.py`, and `validation_qualification.py` |
 | Student quality measurement | `docs/STUDENT_SCHEDULE_QUALITY.md` | `scheduling_engine/student_assignment/quality.py` |
+| Student-assignment runtime phases and wall-clock accounting | `docs/STUDENT_ASSIGNMENT_RUNTIME_PIPELINE.md` | `scheduling_engine/student_assignment/runtime.py`, `core.py`, `substantive_probe.py`, and `solver.py` |
+| Trusted validated-incumbent carry-forward | `docs/STUDENT_ASSIGNMENT_TRUSTED_BRANCH_CONTEXT.md` | `scheduling_engine/student_assignment/operator_session.py`, `core.py`, and `adaptive_runtime.py` |
+| Student-assignment model reuse boundaries | `docs/STUDENT_ASSIGNMENT_MODEL_REUSE.md` | `scheduling_engine/student_assignment/core.py`, `substantive_probe.py`, and `solver.py` |
 | Student search policy and operator evidence | `docs/STUDENT_ASSIGNMENT_SEARCH_STRATEGY.md`, `docs/STUDENT_ASSIGNMENT_ADAPTIVE_SEARCH.md`, and `docs/STUDENT_ASSIGNMENT_OPERATOR_CHARACTERIZATION.md` | the remaining operator-specific documents linked from those pages |
 | Worker operations and resource telemetry | `docs/SCHEDULING_WORKERS.md` and `docs/OBSERVABILITY_AND_MONITORING.md` | Celery tasks, runtime telemetry, and settings |
 

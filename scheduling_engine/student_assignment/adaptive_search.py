@@ -189,6 +189,15 @@ class AdaptiveOperatorAttempt:
     # objective_weighted_delta, whose trajectory schema retains after minus
     # before deltas for compatibility and explicit transition reporting.
     objective_improvement_weighted_delta: dict = field(default_factory=dict)
+    # Per-public-session runtime evidence.  This remains diagnostic metadata;
+    # it is not consulted by selector scoring or candidate authority.
+    hierarchical_phase_timing_v1: dict = field(default_factory=dict)
+    mature_seed_validation_reused_trusted_context: bool = False
+    mature_seed_validation_classification: str | None = None
+    mature_seed_validation_wall_time_seconds: float = 0.0
+    mature_seed_validation_solver_outcome: str | None = None
+    validation_error_facts: dict = field(default_factory=dict)
+    trusted_context_provenance: dict = field(default_factory=dict)
 
     @property
     def gain_per_minute(self):
@@ -2139,6 +2148,25 @@ def _attempt_from_record(item):
         objective_normalized_delta=dict(item.get("objective_normalized_delta", {}) or {}),
         objective_improvement_weighted_delta=dict(
             item.get("objective_improvement_weighted_delta", {}) or {}
+        ),
+        hierarchical_phase_timing_v1=dict(
+            item.get("hierarchical_phase_timing_v1", {}) or {}
+        ),
+        mature_seed_validation_reused_trusted_context=bool(
+            item.get("mature_seed_validation_reused_trusted_context", False)
+        ),
+        mature_seed_validation_classification=item.get(
+            "mature_seed_validation_classification"
+        ),
+        mature_seed_validation_wall_time_seconds=float(
+            item.get("mature_seed_validation_wall_time_seconds", 0.0) or 0.0
+        ),
+        mature_seed_validation_solver_outcome=item.get(
+            "mature_seed_validation_solver_outcome"
+        ),
+        validation_error_facts=dict(item.get("validation_error_facts", {}) or {}),
+        trusted_context_provenance=dict(
+            item.get("trusted_context_provenance", {}) or {}
         ),
     )
 

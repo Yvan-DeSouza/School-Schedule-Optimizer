@@ -13,6 +13,13 @@ validators, validation benchmarks, or rejected validation ideas must update
 this document. Other documents should link here rather than becoming separate
 validation notebooks.
 
+The canonical rules for carrying an already-authoritative incumbent inside one
+internal branch are documented separately in
+[Student Assignment Trusted Branch Context](STUDENT_ASSIGNMENT_TRUSTED_BRANCH_CONTEXT.md).
+This document remains the owner of what makes a source or candidate
+authoritative; the trusted-context document owns how that established
+authority may persist internally.
+
 ## Authority and purpose
 
 Student assignment produces semantic source decisions: the selected section,

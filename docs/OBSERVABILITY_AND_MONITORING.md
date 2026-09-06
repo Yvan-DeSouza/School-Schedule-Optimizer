@@ -4,6 +4,10 @@ This document is the canonical owner of scheduling telemetry meanings,
 sampling, and resource-monitoring boundaries. It does not define solver
 authority, scheduling constraints, or production objectives.
 
+Long-running student-assignment execution-phase and wall-clock accounting are
+owned by [Student Assignment Runtime Pipeline](STUDENT_ASSIGNMENT_RUNTIME_PIPELINE.md).
+This document remains the owner of psutil/resource semantics and sampling.
+
 This document defines the diagnostic observability contract for expensive
 scheduling operations. It describes measurements and their authority boundary;
 it does not change scheduling constraints, objectives, solver status, or

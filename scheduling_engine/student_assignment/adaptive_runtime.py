@@ -669,6 +669,31 @@ def run_adaptive_local_search_diagnostic(
     policy_selection_seconds = 0.0
     operator_execution_seconds = 0.0
     trusted_branch_context = None
+
+    def _trusted_context_facts(context):
+        if context is None:
+            return {}
+        return {
+            "present": True,
+            "authority": getattr(context, "authority", None),
+            "input_fingerprint": getattr(context, "input_fingerprint", None),
+            "objective_semantics_version": getattr(
+                context, "objective_semantics_version", None
+            ),
+            "objective_importance_scores": tuple(
+                getattr(context, "objective_importance_scores", ())
+            ),
+            "model_fingerprint": getattr(context, "model_fingerprint", None),
+            "required_decision_group_count": len(
+                getattr(context, "required_decision_group_indexes", ())
+            ),
+            "source_decision_count": len(
+                getattr(context, "source_decisions", ())
+            ),
+            "source_variable_value_count": len(
+                getattr(context, "source_variable_values", ())
+            ),
+        }
     # The core diagnostic operator already publishes exception-safe phase
     # callbacks. Aggregate those observations here so research artifacts can
     # separate model/solve/validation work from the enclosing operator wall
@@ -859,6 +884,7 @@ def run_adaptive_local_search_diagnostic(
         )
         decisions.append(decision_payload)
         context_holder = {"context": trusted_branch_context}
+        trusted_context_before = _trusted_context_facts(trusted_branch_context)
 
         def _capture_trusted_branch_context(context):
             context_holder["context"] = context
@@ -935,6 +961,7 @@ def run_adaptive_local_search_diagnostic(
                 )
                 validation_error_facts["exception_type"] = type(exc).__name__
                 validation_error_facts["exception_message"] = str(exc)
+        trusted_context_after = _trusted_context_facts(trusted_branch_context)
         operation_elapsed = monotonic() - operation_started
         operator_execution_seconds += operation_elapsed
         phase_timings["operator_execution"] = (
@@ -983,6 +1010,18 @@ def run_adaptive_local_search_diagnostic(
         candidate_found = bool(local.get("candidate_found", False))
         candidate_validated = bool(local.get("candidate_validated", False))
         probe_iterations = tuple(local.get("iterations", ()) or ())
+        operator_optimization_facts = (
+            dict(result.optimization_facts or {})
+            if operator_execution_error is None
+            else {}
+        )
+        operator_stage_1 = dict(
+            operator_optimization_facts.get("stage_1") or {}
+        )
+        operator_hierarchical_timing = dict(
+            operator_optimization_facts.get("hierarchical_phase_timing_v1")
+            or {}
+        )
         probe_candidate_source = _candidate_source_decisions_from_local(local)
         candidate_source = (
             probe_candidate_source
@@ -1375,6 +1414,31 @@ def run_adaptive_local_search_diagnostic(
                 objective_improvement_weighted_delta=dict(
                     objective_improvement_weighted_delta
                 ),
+                hierarchical_phase_timing_v1=operator_hierarchical_timing,
+                mature_seed_validation_reused_trusted_context=bool(
+                    operator_stage_1.get(
+                        "mature_seed_validation_reused_trusted_context", False
+                    )
+                ),
+                mature_seed_validation_classification=operator_stage_1.get(
+                    "mature_seed_validation_classification"
+                ),
+                mature_seed_validation_wall_time_seconds=float(
+                    operator_stage_1.get(
+                        "mature_seed_validation_wall_time_seconds", 0.0
+                    )
+                    or 0.0
+                ),
+                mature_seed_validation_solver_outcome=operator_stage_1.get(
+                    "mature_seed_validation_solver_outcome"
+                ),
+                validation_error_facts=dict(
+                    local.get("validation_error_facts") or {}
+                ),
+                trusted_context_provenance={
+                    "before": trusted_context_before,
+                    "after": trusted_context_after,
+                },
             )
         )
         if monotonic() - started >= configured_budget:
