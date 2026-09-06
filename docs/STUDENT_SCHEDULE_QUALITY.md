@@ -1716,3 +1716,22 @@ unresolved discovery observations remain separate and cannot become schedule
 quality or authority facts. This telemetry explains which existing v2
 components changed; it does not introduce metrics, alter normalization, or
 turn section utilization into a student-local objective.
+
+### R64/S8 two-hour endpoint comparison (2026-09-06)
+
+The single requested R64/S8 long-horizon diagnostic started from the exact
+common v2 source at weighted substantive value `42,750` and finished at
+`42,534` after 17 adopted validated improvements. The preserved R16/S4
+long-horizon control finished at `42,330`; lower is better, so R16/S4 was 204
+points lower. Both endpoints were complete, full-model validated, zero-unmet,
+and retained all 140 special commitments. The practical endpoint
+classification is **comparable over the observed two-hour horizon**, with no
+claim of repeatability or general R64/S8 superiority.
+
+The R64-minus-R16 component differences were `+18` category-diversity,
+`+24` difficulty, `+162` section-utilization, `0` sequence, and `0`
+semester-load weighted points. Sequence remained fully satisfied and did not
+differentiate the endpoints. The final unresolved validation error was not
+adopted, and no shadow selector result is a schedule-quality result. The
+external record is
+`C:\Users\desou\research_runs\v2_r64_s8_two_hour_long_horizon_20260906`.

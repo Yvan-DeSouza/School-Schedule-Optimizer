@@ -2265,3 +2265,52 @@ The matched continuation retained the same 1,400-student `reference_target` inpu
 R4-only was stronger through 3,600 seconds; horizon-aware overtook it between 3,600 and 5,400 seconds and finished 372 points better. The study's authoritative classification is **mixed / crossing and requires replication**. This is a measured trajectory result for these two lineages, not evidence that the utilization operator is generally superior and not evidence that any solver-free shadow winner would have produced a better schedule.
 
 The horizon branch retained 53 selector snapshots. Each snapshot contains the five registered policy traces, all 16 effective-portfolio candidate rows, and complete `adaptive_selector_trace_v1` data. This provides prospective competition telemetry and exact replay evidence without converting shadow selections into operator-performance claims. The continuation preserved the frozen v2 component semantics: sequence preference remained fully satisfied, while the final horizon advantage was concentrated in category-diversity and section-utilization contributions and partly offset by higher difficulty and semester-load contributions.
+
+### Single R64/S8 two-hour long-horizon run (2026-09-06)
+
+The requested follow-up ran exactly one new target-scale
+`targeted_utilization_r64_s8` branch from the byte-for-byte common source used
+by the preceding R16/S4 evidence. The contract remained Objective Semantics
+v2, balanced profile, seed `101`, eight CP-SAT workers, sequential execution,
+300 seconds per selected operator, 180 seconds for full-model validation, a
+7,200-second branch budget, strict adoption, and no production wiring. The
+existing R16/S4 `adaptive_horizon_aware` lineage remained the authoritative
+control and was not rerun.
+
+The R64/S8 branch adopted 17 strict, complete, full-model-validated
+improvements and finished at `42,534` from `42,750` after `7,233.887` seconds.
+Its final endpoint was complete, zero-unmet, source-consistent, and retained
+all `140` special commitments. The final attempted operation ended in a
+`validation_error` / `OPERATOR_UNRESOLVED` result; it was not adopted and the
+prior incumbent was retained. The control finished at `42,330` after 33
+adopted validated improvements. Since lower is better, R16/S4 was lower by
+`204` weighted v2 points, or about `0.48%` of the R16 endpoint. The endpoint
+classification is therefore **C: R16/S4 and R64/S8 are practically comparable
+over the observed two-hour horizon**. This is one clean R64 run, not evidence
+of repeatability or a general R64/S8 advantage.
+
+The difference was entirely within the unchanged v2 objective components:
+R64/S8 was 18 points worse in course-category diversity, 24 points worse in
+difficulty balance, and 162 points worse in section-utilization balance; the
+sequence and semester-load contributions were equal. Sequence remained fully
+satisfied, so it supplied no endpoint separation. The R64 branch used 17
+scoped attempts, 12 unique scopes, 17 unique targeted students, and a mean
+consecutive-scope Jaccard of `0.847`; the R16 control used 33 scoped attempts,
+29 unique scopes, 27 unique targeted students, and a mean Jaccard of `0.611`.
+The larger R64 neighborhoods were slower and produced fewer attempts in the
+same horizon; these are observed search-geometry facts, not proof of a policy
+winner.
+
+Complete solver-free shadow traces were captured at each R64 decision. At the
+first decision, horizon-aware's score winner was `targeted_utilization_r16_s4`
+and evidence-guided's was `targeted_r4_s2`; at the next 16 nonterminal
+decisions, both selected R64/S8 as their score winner. These shadows do not
+represent executed schedules and no alternative schedule outcome is inferred
+from them. The full record is under
+`C:\Users\desou\research_runs\v2_r64_s8_two_hour_long_horizon_20260906`.
+
+This result does not authorize another long-horizon solve, a 4--8-hour solve,
+Objective Semantics changes, validation-authority changes, or production
+promotion. Any future repeated comparison must be separately approved and
+must preserve the common source, v2 objective, full-model authority, and
+strict-adoption boundary.

@@ -1942,3 +1942,25 @@ The horizon endpoint's advantage came primarily from lower category-diversity an
 The continuation artifacts are under `C:\Users\desou\research_runs\v2_long_continuation_r4_vs_horizon_20260905`. The manifest records the passed AC-power/sleep preflight, no study-interval sleep contamination, the eight-worker contract, and the final independent validation results. Resource telemetry showed the expected single sequential runner and bounded approximately-gigabyte process-tree working sets; no competing solver, Celery, or Python study process was present. Artifact hashes were captured before the final summary, manifest, and log writes; the hash audit therefore has a known finalization boundary rather than an evidence mismatch.
 
 This study does not authorize production promotion, a 4--8-hour solve, or a new target experiment without replication. The next evidence-preserving step is to replicate the matched long-horizon comparison, keeping the same input, seed, worker contract, validation authority, and checkpoint rules. The continuation itself changed no repository runtime semantics and did not alter the completed parent study.
+
+### R64/S8 long-horizon evidence boundary (2026-09-06)
+
+One additional target-scale diagnostic branch ran with fixed
+`targeted_utilization_r64_s8` from the exact common source used by the
+authoritative R16/S4 long-horizon control. The run used the unchanged v2
+objective, seed `101`, eight CP-SAT workers, sequential execution, 300-second
+operator and 180-second validation allowances, strict adoption, and a
+7,200-second policy horizon. It adopted 17 validated improvements and ended
+at weighted v2 value `42,534`, compared with the preserved R16/S4 endpoint
+`42,330`. Lower is better; the 204-point difference is classified as
+practically comparable over this observed horizon, not as a general policy
+advantage.
+
+The branch retained complete selector competition traces as diagnostics.
+At the initial state the horizon-aware shadow selected R16/S4 and the
+evidence-guided shadow selected R4/S2; after the first transition both shadows
+selected R64/S8 through the nonterminal decisions. Shadow selection is
+solver-free and does not imply an alternative schedule outcome. The final
+validation error was unresolved and non-authoritative; the previous complete
+incumbent remained authoritative. No adaptive coefficients, tie-break order,
+objective semantics, candidate authority, or production wiring changed.
