@@ -7,6 +7,9 @@ from hashlib import sha256
 import json
 import os
 import threading
+from contextlib import contextmanager
+from contextvars import ContextVar
+from functools import wraps
 from time import monotonic, monotonic as _resource_monotonic
 
 
@@ -71,6 +74,119 @@ class OperationTimer:
 
     def snapshot(self):
         return dict(sorted(self._values.items()))
+
+
+_active_hierarchical_timing = ContextVar(
+    "student_assignment_hierarchical_timing", default=None
+)
+
+
+class HierarchicalTimingRecorder:
+    """Record nested inclusive and self (exclusive) wall-clock durations.
+
+    Existing phase callbacks are intentionally flat and frequently overlap.
+    This recorder is opt-in diagnostic telemetry: each span has one parent,
+    and its self time is the span duration minus the durations of its direct
+    children.  The recorder never participates in solver or authority
+    decisions and remains JSON-safe when serialized.
+    """
+
+    schema = "hierarchical_phase_timing_v1"
+
+    def __init__(self):
+        self._spans = []
+        self._stack = []
+        self._next_id = 0
+        self._token = None
+
+    def __enter__(self):
+        self._token = _active_hierarchical_timing.set(self)
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        if self._token is not None:
+            _active_hierarchical_timing.reset(self._token)
+            self._token = None
+        return False
+
+    @contextmanager
+    def span(self, name, **facts):
+        span_id = self._next_id
+        self._next_id += 1
+        parent_id = self._stack[-1]["id"] if self._stack else None
+        started = monotonic()
+        record = {
+            "id": span_id,
+            "parent_id": parent_id,
+            "name": str(name),
+            "started_at_monotonic": started,
+            "ended_at_monotonic": None,
+            "inclusive_seconds": None,
+            "exclusive_seconds": None,
+            "facts": dict(facts),
+        }
+        self._spans.append(record)
+        self._stack.append(record)
+        try:
+            yield record
+        finally:
+            ended = monotonic()
+            record["ended_at_monotonic"] = ended
+            record["inclusive_seconds"] = max(0.0, ended - started)
+            child_inclusive = sum(
+                float(child.get("inclusive_seconds") or 0.0)
+                for child in self._spans
+                if child.get("parent_id") == span_id
+            )
+            record["exclusive_seconds"] = max(
+                0.0, record["inclusive_seconds"] - child_inclusive
+            )
+            self._stack.pop()
+
+    def snapshot(self):
+        spans = []
+        for item in self._spans:
+            spans.append({
+                "id": item["id"],
+                "parent_id": item["parent_id"],
+                "name": item["name"],
+                "inclusive_seconds": item["inclusive_seconds"],
+                "exclusive_seconds": item["exclusive_seconds"],
+                "facts": item["facts"],
+            })
+        return {"schema": self.schema, "spans": spans}
+
+
+def current_hierarchical_timing():
+    """Return the active diagnostic recorder, if one exists."""
+
+    return _active_hierarchical_timing.get()
+
+
+@contextmanager
+def diagnostic_timing_span(name, **facts):
+    """Create a span only when a diagnostic recorder is active."""
+
+    recorder = current_hierarchical_timing()
+    if recorder is None:
+        yield None
+        return
+    with recorder.span(name, **facts) as span:
+        yield span
+
+
+def diagnostic_timed_phase(name):
+    """Decorate a pure-engine operation with one optional timing span."""
+
+    def decorate(function):
+        @wraps(function)
+        def wrapped(*args, **kwargs):
+            with diagnostic_timing_span(name):
+                return function(*args, **kwargs)
+
+        return wrapped
+
+    return decorate
 
 
 def _unavailable_resource_snapshot(source="unavailable"):

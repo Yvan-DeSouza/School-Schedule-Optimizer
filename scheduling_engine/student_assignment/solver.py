@@ -8,6 +8,8 @@ from time import monotonic
 
 from ortools.sat.python import cp_model
 
+from .runtime import diagnostic_timed_phase, diagnostic_timing_span
+
 
 def _has_solution(status):
     """Return whether CP-SAT produced a complete model assignment."""
@@ -581,6 +583,7 @@ def validate_source_decision_candidate(
     return outcome.solver if outcome.classification == "validated" else None
 
 
+@diagnostic_timed_phase("full_model_candidate_validation")
 def validate_source_decision_candidate_with_status(
     model,
     required_decision_groups,
@@ -729,11 +732,12 @@ def validate_source_decision_candidate_with_status(
             )
 
         phase_started = monotonic()
-        candidate_model = (
-            prepared_context.model.Clone()
-            if prepared_context is not None
-            else model.Clone()
-        )
+        with diagnostic_timing_span("candidate_validation_model_construction"):
+            candidate_model = (
+                prepared_context.model.Clone()
+                if prepared_context is not None
+                else model.Clone()
+            )
         telemetry["clone_wall_time_seconds"] = monotonic() - phase_started
         telemetry["candidate_model_variable_count_after_clone"] = len(
             candidate_model.Proto().variables
@@ -746,23 +750,27 @@ def validate_source_decision_candidate_with_status(
             telemetry["completion_constraint_wall_time_seconds"] = 0.0
         else:
             phase_started = monotonic()
-            for decision_group in required_decision_groups:
-                candidate_model.AddExactlyOne(
-                    candidate_model.GetIntVarFromProtoIndex(variable.Index())
-                    for variable in decision_group
-                )
+            with diagnostic_timing_span(
+                "candidate_validation_completion_constraints"
+            ):
+                for decision_group in required_decision_groups:
+                    candidate_model.AddExactlyOne(
+                        candidate_model.GetIntVarFromProtoIndex(variable.Index())
+                        for variable in decision_group
+                    )
             telemetry["completion_constraint_wall_time_seconds"] = (
                 monotonic() - phase_started
             )
 
         phase_started = monotonic()
-        for variable_index, value in source_variable_values.items():
+        with diagnostic_timing_span("candidate_validation_source_fixes"):
+            for variable_index, value in source_variable_values.items():
             # This is validation, not search guidance.  Equality constraints
             # avoid CP-SAT's ``fix_variables_to_their_hinted_value``
             # requirement that every auxiliary variable also carry a hint.
-            candidate_model.Add(
-                candidate_model.GetIntVarFromProtoIndex(variable_index) == int(value)
-            )
+                candidate_model.Add(
+                    candidate_model.GetIntVarFromProtoIndex(variable_index) == int(value)
+                )
         if base_model_variable_values is not None:
             expected_indexes = set(range(len(model.Proto().variables)))
             witness_indexes = {
@@ -832,12 +840,13 @@ def validate_source_decision_candidate_with_status(
             )
 
         phase_started = monotonic()
-        validator = new_solver(
-            time_limit_seconds,
-            worker_count=worker_count,
-            random_seed=random_seed,
-            max_deterministic_time=max_deterministic_time,
-        )
+        with diagnostic_timing_span("candidate_validation_solver_setup"):
+            validator = new_solver(
+                time_limit_seconds,
+                worker_count=worker_count,
+                random_seed=random_seed,
+                max_deterministic_time=max_deterministic_time,
+            )
         telemetry["solver_creation_wall_time_seconds"] = monotonic() - phase_started
 
         native_log_messages = []
@@ -856,13 +865,14 @@ def validate_source_decision_candidate_with_status(
             validator.log_callback = native_log_messages.append
 
         phase_started = monotonic()
-        try:
-            status = validator.Solve(candidate_model)
-        finally:
-            if collect_native_log:
-                # Native logging can retain a worker thread after Solve on
-                # Windows; detach the callback immediately after the audit.
-                validator.log_callback = None
+        with diagnostic_timing_span("candidate_validation_native_cp_sat"):
+            try:
+                status = validator.Solve(candidate_model)
+            finally:
+                if collect_native_log:
+                    # Native logging can retain a worker thread after Solve on
+                    # Windows; detach the callback immediately after the audit.
+                    validator.log_callback = None
         telemetry["cp_sat_solve_external_wall_time_seconds"] = (
             monotonic() - phase_started
         )
@@ -891,39 +901,40 @@ def validate_source_decision_candidate_with_status(
     telemetry["validation_wall_time_seconds"] = monotonic() - validation_started
 
     classification_started = monotonic()
-    if status in {cp_model.OPTIMAL, cp_model.FEASIBLE}:
+    with diagnostic_timing_span("candidate_validation_result_extraction"):
+        if status in {cp_model.OPTIMAL, cp_model.FEASIBLE}:
+            telemetry["result_classification_wall_time_seconds"] = (
+                monotonic() - classification_started
+            )
+            return SourceDecisionValidationOutcome(
+                classification="validated",
+                solver=validator,
+                solver_outcome=outcome_name(status),
+                telemetry=telemetry,
+            )
+        if status == cp_model.INFEASIBLE:
+            telemetry["result_classification_wall_time_seconds"] = (
+                monotonic() - classification_started
+            )
+            return SourceDecisionValidationOutcome(
+                classification="hard_invalid",
+                solver=None,
+                solver_outcome=outcome_name(status),
+                telemetry=telemetry,
+            )
         telemetry["result_classification_wall_time_seconds"] = (
             monotonic() - classification_started
         )
         return SourceDecisionValidationOutcome(
-            classification="validated",
-            solver=validator,
-            solver_outcome=outcome_name(status),
-            telemetry=telemetry,
-        )
-    if status == cp_model.INFEASIBLE:
-        telemetry["result_classification_wall_time_seconds"] = (
-            monotonic() - classification_started
-        )
-        return SourceDecisionValidationOutcome(
-            classification="hard_invalid",
+            classification=(
+                "validation_error"
+                if status == cp_model.MODEL_INVALID
+                else "validation_unknown"
+            ),
             solver=None,
             solver_outcome=outcome_name(status),
             telemetry=telemetry,
         )
-    telemetry["result_classification_wall_time_seconds"] = (
-        monotonic() - classification_started
-    )
-    return SourceDecisionValidationOutcome(
-        classification=(
-            "validation_error"
-            if status == cp_model.MODEL_INVALID
-            else "validation_unknown"
-        ),
-        solver=None,
-        solver_outcome=outcome_name(status),
-        telemetry=telemetry,
-    )
 
 
 def validated_initial_hint_solver(

@@ -460,7 +460,9 @@ def _operator_result(data, spec, *, selected_student_ids, current_source_decisio
                     cp_sat_random_seed=None,
                     cp_sat_max_deterministic_time_seconds=None,
                     diagnostic_parent_hard_wall_deadline_monotonic=None,
-                    phase_callback=None):
+                    phase_callback=None,
+                    trusted_branch_context=None,
+                    validated_branch_context_callback=None):
     # Every policy family uses the same reusable continuous-session boundary.
     # The policy spec describes the session granularity; the outer caller still
     # caps it by the remaining shared deadline.  This keeps multi-attempt
@@ -548,6 +550,8 @@ def _operator_result(data, spec, *, selected_student_ids, current_source_decisio
         collect_resource_telemetry=collect_resource_telemetry,
         capture_final_source_decisions=True,
         phase_callback=phase_callback,
+        _trusted_branch_context=trusted_branch_context,
+        _validated_branch_context_callback=validated_branch_context_callback,
     )
 
 
@@ -575,6 +579,7 @@ def run_adaptive_local_search_diagnostic(
     fixed_cycle=(),
     adaptive_policy_variant="balanced",
     phase_callback=None,
+    use_trusted_branch_context=False,
 ):
     """Run a diagnostic v2 operator session inside one shared wall-clock budget.
 
@@ -663,6 +668,7 @@ def run_adaptive_local_search_diagnostic(
     stopping_reason = "shared_budget_exhausted"
     policy_selection_seconds = 0.0
     operator_execution_seconds = 0.0
+    trusted_branch_context = None
     # The core diagnostic operator already publishes exception-safe phase
     # callbacks. Aggregate those observations here so research artifacts can
     # separate model/solve/validation work from the enclosing operator wall
@@ -852,6 +858,11 @@ def run_adaptive_local_search_diagnostic(
             signal_values=dict(decision.signal_values),
         )
         decisions.append(decision_payload)
+        context_holder = {"context": trusted_branch_context}
+
+        def _capture_trusted_branch_context(context):
+            context_holder["context"] = context
+
         operation_started = monotonic()
         source_fingerprint_before = source_decision_fingerprint(
             current_source_decisions
@@ -863,6 +874,7 @@ def run_adaptive_local_search_diagnostic(
             operator=decision.operator.name,
         )
         validation_error = None
+        validation_error_facts = {}
         operator_execution_error = None
         try:
             result = _operator_result(
@@ -893,6 +905,16 @@ def run_adaptive_local_search_diagnostic(
                     started + configured_budget
                 ),
                 phase_callback=_operator_phase_callback,
+                trusted_branch_context=(
+                    trusted_branch_context
+                    if use_trusted_branch_context
+                    else None
+                ),
+                validated_branch_context_callback=(
+                    _capture_trusted_branch_context
+                    if use_trusted_branch_context
+                    else None
+                ),
             )
         except ValueError as exc:
             # An operator may be given too little of the shared budget to
@@ -902,6 +924,17 @@ def run_adaptive_local_search_diagnostic(
             result = current_result
             operator_execution_error = str(exc)
             validation_error = operator_execution_error
+        if use_trusted_branch_context:
+            trusted_branch_context = context_holder["context"]
+            if operator_execution_error is not None:
+                validation_error_facts = dict(
+                    getattr(exc, "validation_facts", {}) or {}
+                )
+                validation_error_facts["hierarchical_phase_timing_v1"] = dict(
+                    getattr(exc, "hierarchical_timing", {}) or {}
+                )
+                validation_error_facts["exception_type"] = type(exc).__name__
+                validation_error_facts["exception_message"] = str(exc)
         operation_elapsed = monotonic() - operation_started
         operator_execution_seconds += operation_elapsed
         phase_timings["operator_execution"] = (
@@ -943,6 +976,9 @@ def run_adaptive_local_search_diagnostic(
                 "validation_classification": "validation_error",
                 "validation_error": validation_error,
                 "stopping_reason": "candidate_validation_error",
+                "validation_error_facts": dict(
+                    locals().get("validation_error_facts", {}) or {}
+                ),
             })
         candidate_found = bool(local.get("candidate_found", False))
         candidate_validated = bool(local.get("candidate_validated", False))

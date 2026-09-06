@@ -43,6 +43,62 @@ PREPARED_VALIDATION_STRATEGIES = (
 )
 
 
+_VALIDATED_BRANCH_CONTEXT_TOKEN = object()
+
+
+@dataclass(frozen=True)
+class ValidatedStudentAssignmentBranchContext:
+    """Internal proof-carrying incumbent for trusted branch continuation.
+
+    This object is created only by the canonical full-model validation path.
+    It is deliberately not a public source-decision bypass: callers must use
+    the public diagnostic entry point for arbitrary source decisions.  The
+    cached solver is used only as an indexed witness for an identical model
+    lineage; candidate generation and candidate validation still use fresh
+    model clones and fresh solvers.
+    """
+
+    input_fingerprint: str
+    objective_semantics_version: str
+    objective_importance_scores: tuple
+    model_fingerprint: str
+    required_decision_group_indexes: tuple
+    source_decisions: tuple
+    source_variable_values: tuple
+    validated_solver: object = field(repr=False, compare=False)
+    authority: str = "canonical_full_model_validator"
+
+    @classmethod
+    def _from_canonical_validation(cls, *, validation_token, **kwargs):
+        if validation_token is not _VALIDATED_BRANCH_CONTEXT_TOKEN:
+            raise ValueError("validated branch context requires canonical validation")
+        return cls(**kwargs)
+
+    def is_compatible(
+        self,
+        *,
+        input_fingerprint,
+        objective_semantics_version,
+        objective_importance_scores,
+        model_fingerprint,
+        required_decision_group_indexes,
+    ):
+        return (
+            self.authority == "canonical_full_model_validator"
+            and self.input_fingerprint == input_fingerprint
+            and self.objective_semantics_version == objective_semantics_version
+            and tuple(self.objective_importance_scores)
+            == tuple(objective_importance_scores)
+            and self.model_fingerprint == model_fingerprint
+            and tuple(self.required_decision_group_indexes)
+            == tuple(required_decision_group_indexes)
+        )
+
+    @property
+    def source_variable_values_dict(self):
+        return dict(self.source_variable_values)
+
+
 def measured_lazy_prepared_context_decision(
     *,
     completed_attempts,
@@ -490,6 +546,7 @@ def build_continuous_operator_session_record(
 __all__ = [
     "ContinuousOperatorSessionConfig",
     "ContinuousOperatorSessionRecord",
+    "ValidatedStudentAssignmentBranchContext",
     "build_continuous_operator_session_record",
     "OPERATOR_FAMILIES",
     "TARGET_POLICIES",

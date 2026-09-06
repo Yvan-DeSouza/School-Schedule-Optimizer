@@ -88,6 +88,7 @@ from .occupancy import (
     request_occupied_half_segments as _request_occupied_half_segments,
 )
 from .solver import (
+    model_proto_fingerprint as _model_proto_fingerprint,
     outcome_name as _outcome_name,
     solve_complete_hard_feasibility_seed as _solve_complete_hard_feasibility_seed,
     solve_lexicographically as _solve_lexicographically,
@@ -122,6 +123,8 @@ from .runtime import (
     MonotonicDeadline,
     ProcessMemoryMonitor,
     ProcessResourceMonitor,
+    HierarchicalTimingRecorder,
+    diagnostic_timing_span,
     semantic_student_assignment_input_fingerprint,
 )
 from .search_experiments import source_decision_fingerprint as _source_decision_fingerprint_hash
@@ -139,6 +142,8 @@ from .grade_guidance import build_grade_opportunity_facts
 from .operator_session import (
     measured_lazy_prepared_context_decision,
     select_operator_session_targets,
+    ValidatedStudentAssignmentBranchContext,
+    _VALIDATED_BRANCH_CONTEXT_TOKEN,
 )
 
 
@@ -1193,6 +1198,8 @@ def run_student_assignment_operator_session_diagnostic(
     skip_candidate_validation=False,
     timeline_max_events=128,
     phase_callback=None,
+    _trusted_branch_context=None,
+    _validated_branch_context_callback=None,
 ):
     """Run one operator family continuously in one diagnostic engine call.
 
@@ -1204,6 +1211,18 @@ def run_student_assignment_operator_session_diagnostic(
     """
 
     from .operator_session import ContinuousOperatorSessionConfig
+
+    hierarchical_timing = HierarchicalTimingRecorder()
+    hierarchical_timing.__enter__()
+    session_span = hierarchical_timing.span(
+        "public_operator_session",
+        operator_family=operator_family,
+    )
+    session_span.__enter__()
+    initialization_span = diagnostic_timing_span(
+        "public_session_initialization"
+    )
+    initialization_span.__enter__()
 
     selected_student_ids = tuple(
         sorted(set(int(student_id) for student_id in selected_student_ids))
@@ -1277,7 +1296,9 @@ def run_student_assignment_operator_session_diagnostic(
     )
     if not initial_source_decisions and initial_source_variable_values is None:
         raise ValueError("initial_source_decisions is required")
-    return _solve_student_assignment(
+    initialization_span.__exit__(None, None, None)
+    try:
+        result = _solve_student_assignment(
         data,
         include_lock_costs=False,
         include_candidate_ledger=False,
@@ -1347,6 +1368,10 @@ def run_student_assignment_operator_session_diagnostic(
                 config.prepared_validation_safety_factor
             ),
             "candidate_capture_callback": candidate_capture_callback,
+            "trusted_branch_context": _trusted_branch_context,
+            "validated_branch_context_callback": (
+                _validated_branch_context_callback
+            ),
             "skip_candidate_validation": bool(skip_candidate_validation),
             "diagnostic_parent_hard_wall_deadline_monotonic": (
                 diagnostic_parent_hard_wall_deadline_monotonic
@@ -1383,7 +1408,20 @@ def run_student_assignment_operator_session_diagnostic(
         diagnostic_cp_sat_max_deterministic_time_seconds=(
             config.cp_sat_max_deterministic_time_seconds
         ),
+        trusted_branch_context=_trusted_branch_context,
     )
+    except BaseException as exc:
+        try:
+            exc.hierarchical_timing = hierarchical_timing.snapshot()
+        except Exception:
+            pass
+        raise
+    finally:
+        session_span.__exit__(None, None, None)
+        hierarchical_timing.__exit__(None, None, None)
+    result_facts = dict(result.optimization_facts or {})
+    result_facts["hierarchical_phase_timing_v1"] = hierarchical_timing.snapshot()
+    return replace(result, optimization_facts=result_facts)
 
 
 def run_student_assignment_variable_neighborhood_diagnostic(
@@ -1653,6 +1691,7 @@ def _solve_student_assignment(
     validation_telemetry_callback=None,
     use_prepared_validation_context=False,
     collect_validation_telemetry=False,
+    trusted_branch_context=None,
 ):
     # This monitor covers the complete diagnostic/engine operation, including
     # input validation, model construction, Stage 1, Stage 2, extraction, and
@@ -1680,7 +1719,8 @@ def _solve_student_assignment(
                 )
             ),
         )
-    offering_sections = _validate_input(data)
+    with diagnostic_timing_span("student_assignment_input_preparation"):
+        offering_sections = _validate_input(data)
     _notify_phase(
         phase_callback,
         "student_assignment_input",
@@ -1712,6 +1752,11 @@ def _solve_student_assignment(
         scores=data.objective_importance_scores if objective_semantics_v2 else None,
     )
     input_semantic_fingerprint = semantic_student_assignment_input_fingerprint(data)
+    production_model_span = diagnostic_timing_span(
+        "production_base_model_construction",
+        objective_semantics_version=data.objective_semantics_version,
+    )
+    production_model_span.__enter__()
     model = cp_model.CpModel()
     model_build_started = monotonic()
     _notify_phase(phase_callback, "model_construction", "started")
@@ -3407,6 +3452,7 @@ def _solve_student_assignment(
         variable_count=len(model.Proto().variables),
         constraint_count=len(model.Proto().constraints),
     )
+    production_model_span.__exit__(None, None, None)
 
     stage_1_seed_time_limit = (
         max(
@@ -3541,8 +3587,44 @@ def _solve_student_assignment(
     alternate_seed_validation_classification = None
     alternate_seed_validation_solver_outcome = None
     alternate_seed_validation_telemetry = {}
+    trusted_mature_seed_reused = False
 
-    if alternate_source_decisions:
+    if trusted_branch_context is not None:
+        requested_source = tuple(sorted(
+            dict(alternate_source_decisions or ()).items(), key=repr
+        ))
+        context_source = tuple(
+            sorted(dict(trusted_branch_context.source_decisions).items(), key=repr)
+        )
+        requested_groups = tuple(
+            tuple(int(variable.Index()) for variable in decision_group)
+            for decision_group in complete_required_decision_groups
+        )
+        if requested_source != context_source:
+            raise ValueError(
+                "Trusted branch context incumbent does not match supplied source"
+            )
+        if not trusted_branch_context.is_compatible(
+            input_fingerprint=input_semantic_fingerprint,
+            objective_semantics_version=data.objective_semantics_version,
+            objective_importance_scores=tuple(sorted(
+                objective_importance_scores.items(), key=repr
+            )),
+            model_fingerprint=_model_proto_fingerprint(model),
+            required_decision_group_indexes=requested_groups,
+        ):
+            raise ValueError("Trusted branch context identity does not match model")
+        alternate_values = trusted_branch_context.source_variable_values_dict
+        stage_2_seed_solver = trusted_branch_context.validated_solver
+        alternate_seed_validated = stage_2_seed_solver is not None
+        trusted_mature_seed_reused = alternate_seed_validated
+        alternate_seed_validation_classification = (
+            "trusted_context_reused" if alternate_seed_validated else "validation_error"
+        )
+        alternate_seed_validation_solver_outcome = (
+            "validated" if alternate_seed_validated else "error"
+        )
+    elif alternate_source_decisions:
         if alternate_source_variable_values is not None:
             alternate_values = dict(alternate_source_variable_values)
         else:
@@ -3552,9 +3634,10 @@ def _solve_student_assignment(
                 "mature_seed_materialization",
                 "started",
             )
-            alternate_values, alternate_seed_resolution_failure = (
-                _source_variable_values(alternate_source_decisions)
-            )
+            with diagnostic_timing_span("mature_seed_materialization"):
+                alternate_values, alternate_seed_resolution_failure = (
+                    _source_variable_values(alternate_source_decisions)
+                )
             alternate_seed_materialization_elapsed = (
                 monotonic() - alternate_materialization_started
             )
@@ -3584,34 +3667,35 @@ def _solve_student_assignment(
                 "mature_seed_validation",
                 "started",
             )
-            alternate_validation_outcome = (
-                _validate_source_decision_candidate_with_status(
-                    model,
-                    complete_required_decision_groups,
-                    alternate_values,
-                    alternate_validation_time_limit,
-                    worker_count=(
-                        hard_feasibility_validation_worker_count
-                        if hard_feasibility_validation_worker_count is not None
-                        else STUDENT_ASSIGNMENT_HARD_FEASIBILITY_VALIDATION_WORKER_COUNT
-                    ),
-                    random_seed=(
-                        0
-                        if diagnostic_cp_sat_random_seed is None
-                        else int(diagnostic_cp_sat_random_seed)
-                    ),
-                    max_deterministic_time=(
-                        diagnostic_cp_sat_max_deterministic_time_seconds
-                    ),
-                    collect_presolve_telemetry=(
-                        collect_validation_presolve_telemetry
-                    ),
-                    collect_search_start_telemetry=(
-                        collect_validation_search_start_telemetry
-                    ),
-                    collect_validation_telemetry=collect_validation_telemetry,
+            with diagnostic_timing_span("mature_seed_validation"):
+                alternate_validation_outcome = (
+                    _validate_source_decision_candidate_with_status(
+                        model,
+                        complete_required_decision_groups,
+                        alternate_values,
+                        alternate_validation_time_limit,
+                        worker_count=(
+                            hard_feasibility_validation_worker_count
+                            if hard_feasibility_validation_worker_count is not None
+                            else STUDENT_ASSIGNMENT_HARD_FEASIBILITY_VALIDATION_WORKER_COUNT
+                        ),
+                        random_seed=(
+                            0
+                            if diagnostic_cp_sat_random_seed is None
+                            else int(diagnostic_cp_sat_random_seed)
+                        ),
+                        max_deterministic_time=(
+                            diagnostic_cp_sat_max_deterministic_time_seconds
+                        ),
+                        collect_presolve_telemetry=(
+                            collect_validation_presolve_telemetry
+                        ),
+                        collect_search_start_telemetry=(
+                            collect_validation_search_start_telemetry
+                        ),
+                        collect_validation_telemetry=collect_validation_telemetry,
+                    )
                 )
-            )
             stage_2_seed_solver = (
                 alternate_validation_outcome.solver
                 if alternate_validation_outcome.classification == "validated"
@@ -3649,6 +3733,51 @@ def _solve_student_assignment(
             alternate_seed_validated = stage_2_seed_solver is not None
             if not alternate_seed_validated:
                 stage_2_seed_solver = validated_seed_solver
+
+    validated_context_callback = (
+        stage_2_local_bootstrap.get("validated_branch_context_callback")
+        if stage_2_local_bootstrap is not None
+        else None
+    )
+
+    def _publish_validated_context(source_decisions, source_values, solver):
+        if validated_context_callback is None or solver is None:
+            return
+        group_indexes = tuple(
+            tuple(int(variable.Index()) for variable in decision_group)
+            for decision_group in complete_required_decision_groups
+        )
+        context = ValidatedStudentAssignmentBranchContext._from_canonical_validation(
+            validation_token=_VALIDATED_BRANCH_CONTEXT_TOKEN,
+            input_fingerprint=input_semantic_fingerprint,
+            objective_semantics_version=data.objective_semantics_version,
+            objective_importance_scores=tuple(sorted(
+                objective_importance_scores.items(), key=repr
+            )),
+            model_fingerprint=_model_proto_fingerprint(model),
+            required_decision_group_indexes=group_indexes,
+            source_decisions=tuple(sorted(
+                dict(source_decisions).items(), key=repr
+            )),
+            source_variable_values=tuple(sorted(
+                (int(index), int(value))
+                for index, value in dict(source_values).items()
+            )),
+            validated_solver=solver,
+        )
+        try:
+            validated_context_callback(context)
+        except Exception:
+            # Context publication is diagnostic orchestration only.  It must
+            # never affect canonical validation or candidate authority.
+            pass
+
+    if alternate_seed_validated and not trusted_mature_seed_reused:
+        _publish_validated_context(
+            alternate_source_decisions,
+            alternate_values,
+            stage_2_seed_solver,
+        )
 
     if mature_checkpoint_only:
         if not alternate_seed_validated:
@@ -3705,6 +3834,9 @@ def _solve_student_assignment(
             ),
             "mature_seed_validation_telemetry": dict(
                 alternate_seed_validation_telemetry
+            ),
+            "mature_seed_validation_reused_trusted_context": (
+                trusted_mature_seed_reused
             ),
             "operation_wall_time_seconds": (
                 alternate_seed_materialization_elapsed
@@ -4808,6 +4940,11 @@ def _solve_student_assignment(
                         stage_2_seed_solver = local_validator
                         alternate_seed_validated = True
                         any_improvement_adopted = True
+                        _publish_validated_context(
+                            local_result.candidate_source_decisions,
+                            local_result.candidate_source_variable_values,
+                            local_validator,
+                        )
                     iterations.append({
                         "iteration": iteration_count + 1,
                         "radius": radii[radius_index],

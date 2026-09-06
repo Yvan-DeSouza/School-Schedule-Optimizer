@@ -22,7 +22,7 @@ from .solver import (
     outcome_name,
     set_solver_hints,
 )
-from .runtime import OperationTimer
+from .runtime import OperationTimer, diagnostic_timed_phase, diagnostic_timing_span
 from ..constants import VALID_STUDENT_GRADE_LEVELS
 
 
@@ -540,6 +540,7 @@ def _objective_vector(solver, model, objective_metadata):
     )
 
 
+@diagnostic_timed_phase("probe_invocation")
 def probe_substantive_soft_tier(
     context: SubstantiveSoftTierProbeContext,
     *,
@@ -736,6 +737,8 @@ def probe_substantive_soft_tier(
     _emit_phase("attempt_preparation", "started")
     probe_phase_started = monotonic()
     _emit_phase("probe_model_clone", "started")
+    probe_model_clone_span = diagnostic_timing_span("probe_model_clone")
+    probe_model_clone_span.__enter__()
     with timing.measure("model_clone_seconds"):
         probe_model = context.model.Clone()
     base_model_variable_count = len(context.model.Proto().variables)
@@ -749,8 +752,11 @@ def probe_substantive_soft_tier(
         "completed",
         elapsed_seconds=monotonic() - probe_phase_started,
     )
+    probe_model_clone_span.__exit__(None, None, None)
     probe_phase_started = monotonic()
     _emit_phase("probe_completion_constraints", "started")
+    completion_span = diagnostic_timing_span("probe_completion_constraints")
+    completion_span.__enter__()
     with timing.measure("completion_constraints_seconds"):
         for decision_group in context.complete_required_decision_groups:
             probe_model.AddExactlyOne(
@@ -763,6 +769,7 @@ def probe_substantive_soft_tier(
         elapsed_seconds=monotonic() - probe_phase_started,
         constraint_count=len(probe_model.Proto().constraints),
     )
+    completion_span.__exit__(None, None, None)
 
     projected_active_source_variable_count = 0
     projected_frozen_source_variable_count = 0
@@ -833,6 +840,8 @@ def probe_substantive_soft_tier(
     elif neighborhood_radius is not None:
         probe_phase_started = monotonic()
         _emit_phase("probe_neighborhood_constraints", "started")
+        neighborhood_span = diagnostic_timing_span("probe_neighborhood_constraints")
+        neighborhood_span.__enter__()
         with timing.measure("neighborhood_constraints_seconds"):
             changed_group_terms = []
             changed_literals_by_student = {}
@@ -901,6 +910,7 @@ def probe_substantive_soft_tier(
             "completed",
             elapsed_seconds=monotonic() - probe_phase_started,
         )
+        neighborhood_span.__exit__(None, None, None)
     elif max_changed_students is not None:
         raise ValueError(
             "max_changed_students requires a source-decision neighborhood radius"
@@ -911,6 +921,10 @@ def probe_substantive_soft_tier(
     # caller's input. The production lexicographic ordering is untouched.
     probe_phase_started = monotonic()
     _emit_phase("probe_objective_bound_constraints", "started")
+    objective_bound_span = diagnostic_timing_span(
+        "probe_objective_bound_constraints"
+    )
+    objective_bound_span.__enter__()
     with timing.measure("objective_and_bound_constraints_seconds"):
         for index, metadata in enumerate(context.objective_metadata):
             if index >= target_index:
@@ -951,8 +965,11 @@ def probe_substantive_soft_tier(
         elapsed_seconds=monotonic() - probe_phase_started,
         constraint_count=len(probe_model.Proto().constraints),
     )
+    objective_bound_span.__exit__(None, None, None)
     probe_phase_started = monotonic()
     _emit_phase("probe_hint_application", "started")
+    hint_span = diagnostic_timing_span("probe_hint_application")
+    hint_span.__enter__()
     with timing.measure("hint_application_seconds"):
         set_solver_hints(
             probe_model,
@@ -964,6 +981,7 @@ def probe_substantive_soft_tier(
         "completed",
         elapsed_seconds=monotonic() - probe_phase_started,
     )
+    hint_span.__exit__(None, None, None)
 
     _emit_phase(
         "attempt_preparation",
@@ -1004,6 +1022,10 @@ def probe_substantive_soft_tier(
             selected_grade=selected_grade,
             projected_grade_scope=projected_grade_scope,
         )
+    probe_solver_span = diagnostic_timing_span("probe_solver_and_cp_sat")
+    probe_solver_span.__enter__()
+    probe_cp_sat_span = diagnostic_timing_span("probe_native_cp_sat")
+    probe_cp_sat_span.__enter__()
     _emit_phase("cp_sat", "started")
     with timing.measure("cp_solver_solve_external_wall_seconds"):
         started = monotonic()
@@ -1023,6 +1045,8 @@ def probe_substantive_soft_tier(
         elapsed_seconds=elapsed,
         status=outcome_name(status_code),
     )
+    probe_cp_sat_span.__exit__(None, None, None)
+    probe_solver_span.__exit__(None, None, None)
     presolve_telemetry = (
         _build_presolve_telemetry(
             probe_model,
@@ -1054,6 +1078,8 @@ def probe_substantive_soft_tier(
     candidate_quality_summary = {}
     quality_comparison = {}
     if complete_candidate_found:
+        extraction_span = diagnostic_timing_span("probe_candidate_extraction")
+        extraction_span.__enter__()
         _emit_phase("candidate_extraction", "started")
         with timing.measure("candidate_quality_evaluation_seconds"):
             candidate_component_values = dict(context.solver_objective_components(solver))
@@ -1126,6 +1152,7 @@ def probe_substantive_soft_tier(
                     quality_facts.get("comparison", {})
                 )
         _emit_phase("candidate_extraction", "completed")
+        extraction_span.__exit__(None, None, None)
 
     component_deltas = (
         {
