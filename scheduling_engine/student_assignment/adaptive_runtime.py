@@ -663,6 +663,44 @@ def run_adaptive_local_search_diagnostic(
     stopping_reason = "shared_budget_exhausted"
     policy_selection_seconds = 0.0
     operator_execution_seconds = 0.0
+    # The core diagnostic operator already publishes exception-safe phase
+    # callbacks. Aggregate those observations here so research artifacts can
+    # separate model/solve/validation work from the enclosing operator wall
+    # time without changing the operator request or authority boundary.
+    engine_phase_timings = {}
+    engine_phase_starts = {}
+
+    def _observe_engine_phase(phase, event="completed", **facts):
+        phase = str(phase)
+        event = str(event)
+        if event == "started":
+            engine_phase_starts.setdefault(phase, []).append(monotonic())
+        elif event == "completed":
+            elapsed = facts.get("elapsed_seconds")
+            if elapsed is None:
+                starts = engine_phase_starts.get(phase) or []
+                elapsed = monotonic() - starts.pop() if starts else 0.0
+            else:
+                starts = engine_phase_starts.get(phase) or []
+                if starts:
+                    starts.pop()
+            try:
+                elapsed = max(0.0, float(elapsed))
+            except (TypeError, ValueError):
+                elapsed = 0.0
+            engine_phase_timings[phase] = (
+                engine_phase_timings.get(phase, 0.0) + elapsed
+            )
+        # This is telemetry only. A broken downstream status sink must not
+        # affect the solver, validation, or policy selection.
+        if phase_callback is not None:
+            try:
+                phase_callback(phase, event=event, **facts)
+            except Exception:
+                pass
+
+    def _operator_phase_callback(phase, event="completed", **facts):
+        _observe_engine_phase(phase, event=event, **facts)
 
     while monotonic() - started < configured_budget:
         if iteration_limit is not None and len(history) >= iteration_limit:
@@ -847,15 +885,15 @@ def run_adaptive_local_search_diagnostic(
                 candidate_validation_time_limit_seconds=(
                     candidate_validation_time_limit_seconds
                 ),
-                    cp_sat_random_seed=cp_sat_random_seed,
-                    cp_sat_max_deterministic_time_seconds=(
-                        cp_sat_max_deterministic_time_seconds
-                    ),
-                    diagnostic_parent_hard_wall_deadline_monotonic=(
-                        started + configured_budget
-                    ),
-                    phase_callback=phase_callback,
-                )
+                cp_sat_random_seed=cp_sat_random_seed,
+                cp_sat_max_deterministic_time_seconds=(
+                    cp_sat_max_deterministic_time_seconds
+                ),
+                diagnostic_parent_hard_wall_deadline_monotonic=(
+                    started + configured_budget
+                ),
+                phase_callback=_operator_phase_callback,
+            )
         except ValueError as exc:
             # An operator may be given too little of the shared budget to
             # validate its supplied incumbent. Treat that as a recorded
@@ -1327,6 +1365,10 @@ def run_adaptive_local_search_diagnostic(
     )
     elapsed_seconds = monotonic() - started
     phase_timings["total"] = elapsed_seconds
+    phase_timings["engine"] = dict(engine_phase_timings)
+    phase_timings["engine_incomplete_phases"] = tuple(
+        sorted(name for name, starts in engine_phase_starts.items() if starts)
+    )
     _emit_phase("total", "completed", elapsed_seconds=elapsed_seconds)
     record = AdaptiveSessionRecord(
         session_id=str(session_id or uuid4()),

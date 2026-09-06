@@ -77,6 +77,9 @@ evidence-guided scoring after the anchor is unavailable, resolved without
 improvement, unresolved, or exhausted. Both policies may continue an
 operator after a validated source change, for at most two productive
 continuations, provided the recomputed scope is fresh and still eligible.
+This cap applies to the forced productive-continuation selection path. The
+separate `+0.20` same-operator productive-continuation score term remains an
+ordinary scoring input after the cap; the cap does not remove that term.
 
 The evidence-guided constants are policy-allocation controls only. The
 current research priors are `0.20` for `targeted_r4_s2`, `0.05` for `r2`, and
