@@ -174,35 +174,48 @@ separately.
 
 ### Target-scale trusted-runtime qualification
 
-In the September 6, 2026 bounded qualification, the exact validated
-`reference_target` source was used: source-artifact fingerprint
-`f5cfd15465bab1815ad21a3565236f1ff383e8ffff82a4c783ab62ff410c9fb1`, input
+The final September 6, 2026 bounded runtime-infrastructure qualification used
+the exact validated `reference_target` source: source-artifact fingerprint
+`f5cfd15465bab1815ad21a3565236f1ff383e8ffff82a4c783ab62ff410c9fb1`, semantic
+source-decision fingerprint
+`aa49dde149fe927ff1bb8707d139d44a12a28459170b292d3da06ca5082327c4`, input
 fingerprint `f56b5c0d5b745d919a57281a2f1e49959b4b23d8feb9486eda3c81afd8bb7906`,
 Objective Semantics v2, substantive value 42,750, and 140 special
 commitments. The run used one `targeted_utilization_r16_s4` workload only,
 seed 101, eight CP-SAT workers, a 300-second operator allowance, a
 180-second candidate-validation allowance, strict improvement, and four
 sequential attempts. It was runtime qualification, not a policy-quality
-comparison.
+comparison. The qualification persisted model fingerprint
+`ab929407fe3daed51c48e9280bc2f05f5e1610eeda2b316c8bb375ba30999cec` and
+required decision-group count 9,170.
 
-The bootstrap public-session root was 187.665 seconds. The three steady-state
-roots averaged 219.771 seconds (p50 191.851 seconds). Mature validation was
-present only in the bootstrap at 38.186 seconds; the three later attempts had
-no mature-validation span and reused the trusted incumbent. The steady-state
-additive profile was: probe invocation 342.486 seconds total, candidate full
-validation 203.791 seconds, base-model construction 41.519 seconds, and root
-self/exclusive residual 71.510 seconds. Native probe CP-SAT was 271.123
-seconds, or 41.12% of steady-state root wall. Candidate validation was
-245.330 seconds across four candidates overall, with native authoritative
-validation CP-SAT at 95.55% and reconstructive/setup/extraction work at
-4.45%.
+The bootstrap public-session root was 183.161 seconds. The three steady-state
+roots totaled 583.854 seconds, averaging 194.618 seconds (p50 148.327
+seconds). Mature validation was present only in the bootstrap; the three later
+attempts reused the trusted incumbent and had no mature-validation span. The
+steady-state additive profile was: productive optimization CP-SAT 339.201
+seconds (58.10%), authoritative candidate-validation CP-SAT 126.686 seconds
+(21.70%), all native CP-SAT 465.888 seconds (79.80%), and non-CP-SAT work
+117.966 seconds (20.20%). Base-model construction was 25.788 seconds (4.42%).
+Candidate validation overall was 181.747 seconds, 95.91% native CP-SAT.
 
-The residual was 10.85% of steady-state root wall, above the 10% inspection
-threshold. A `runtime_quality_evaluation` diagnostic span has therefore been
-added for subsequent measurements; this qualification’s reported residual
-must not be treated as a fully decomposed optimization opportunity. The
-immutable qualification lineage is
-`C:\Users\desou\research_runs\v2_target_scale_trusted_runtime_20260906`.
+The previous 71.510-second residual (10.85%) was decomposed with additional
+observational spans. Named direct children accounted for the work in the
+qualification artifact; the remaining unexplained root self/exclusive residual
+was 12.383 seconds (2.12%). The largest named non-CP phases were result-review
+diagnostics (15.254 seconds), optimization-result assembly (7.160 seconds),
+and the quality/extraction/reconstruction phases, each below 3 seconds in
+aggregate. This is classified as a small residual rather than a safe repeated
+infrastructure opportunity.
+
+The qualification lineage is
+`C:\Users\desou\research_runs\v2_target_scale_runtime_optimization_pass_20260906`.
+The earlier trusted-runtime lineage remains the source of the historical
+baseline figures in this document. During this pass, the first runner
+invocation briefly targeted that prior output directory before the new lineage
+path was corrected; therefore its compact qualification/attempt files must not
+be treated as an untouched immutable copy. The new lineage is the authoritative
+artifact set for the final timing measurements.
 
 ## Interpretation and limitations
 

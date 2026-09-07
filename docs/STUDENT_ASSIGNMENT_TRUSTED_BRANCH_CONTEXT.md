@@ -159,15 +159,20 @@ reference target, four sequential R16 workload attempts, seed 101, and eight
 CP-SAT workers. Attempt 0 performed the bootstrap mature validation. Attempts
 1–3 carried the prior adopted source fingerprints forward and recorded no
 mature-validation span; each retained probe execution and canonical candidate
-validation. The complete target-scale evidence is in
-`C:\Users\desou\research_runs\v2_target_scale_trusted_runtime_20260906`.
+validation. The historical target-scale evidence is in
+`C:\Users\desou\research_runs\v2_target_scale_trusted_runtime_20260906`; the
+final runtime-infrastructure evidence is in
+`C:\Users\desou\research_runs\v2_target_scale_runtime_optimization_pass_20260906`.
 
-The compact qualification artifact records source-chain equality and the
-successful trusted-guard outcome. It does not persist the full model-proto
-fingerprint or every decision-group index for each attempt, so those facts are
-reported as guard-passed but not reproduced verbatim in that artifact. Future
-qualification runners should persist those exact identity values through the
-context provenance callback.
+The earlier compact qualification artifact recorded source-chain equality and
+the successful trusted-guard outcome without reproducing the full identity
+values. The follow-up runtime-infrastructure qualification corrected that
+observability gap in its new lineage. It persisted model fingerprint
+`ab929407fe3daed51c48e9280bc2f05f5e1610eeda2b316c8bb375ba30999cec`, required
+decision-group count `9170`, source decision count `9170`, and source variable
+value count `57666` for each trusted-context identity snapshot. These values
+are evidence of the guarded lineage used by that qualification; they do not
+change the authority contract or authorize a generic validation bypass.
 
 Focused coverage is in
 `scheduling_engine/tests/test_trusted_branch_context.py`. Tests must continue

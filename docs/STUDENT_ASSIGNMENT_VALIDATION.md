@@ -758,3 +758,37 @@ ordinary full-model validator remains the sole authority. Exact-witness
 validation remains diagnostic-only and is not reopened by this study.
 Dependency-scoped and deterministic validators remain deferred; this work did
 not prove that either can safely replace the full validator.
+
+## September 6, 2026 target-scale runtime diagnostics
+
+The current target-scale runtime uses eight CP-SAT workers for the optimization
+probe and one worker for the canonical candidate-validation call
+(`hard_feasibility_validation_worker_count=1`). A validation-only diagnostic
+replayed one exact captured target candidate through the same full validator at
+worker counts 1, 2, 4, and 8. Each count was observed once, rebuilt the full
+model, and completed with the same source fingerprint, complete result, zero
+unmet requests, and no `UNKNOWN` outcome:
+
+| Validation workers | Total wall | Peak tree working set | Native subphase |
+| ---: | ---: | ---: | --- |
+| 1 | 109.977 s | 0.721 GiB | not emitted by the direct diagnostic API |
+| 2 | 140.570 s | 0.732 GiB | not emitted by the direct diagnostic API |
+| 4 | 152.343 s | 0.735 GiB | not emitted by the direct diagnostic API |
+| 8 | 130.287 s | 0.737 GiB | not emitted by the direct diagnostic API |
+
+This is performance-only evidence with host and solver variance, not a worker
+promotion qualification. The default remains one validation worker. The
+target-scale qualification itself measured candidate-validation CP-SAT as
+95.91% of candidate-validation wall at the existing default, so the remaining
+validation work is primarily native solve time rather than a proven static
+reuse opportunity.
+
+The reject-before-validation audit found no material historical opportunity in
+the available R16/R64 artifacts. In the 33-attempt R16 branch, all 33 found
+candidates were validated and adopted. In the 18-attempt R64 branch, 17
+candidates were found, validated, and adopted; the remaining attempt had a
+validation error and no candidate that could have been safely rejected before
+the validator. Scope mismatches and validated-but-non-improving candidates
+were zero in both histories. The existing incomplete-candidate gate remains a
+reject-only check; no new prevalidation gate was added because the measured
+avoided-validation count was zero.

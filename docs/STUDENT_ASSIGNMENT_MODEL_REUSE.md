@@ -104,30 +104,37 @@ consumed 1,613.089 seconds. Those are dated external measurements, not fixed
 costs. The bounded 80-student trusted-context fixture demonstrated mature
 validation reuse but did not measure target-scale construction.
 
-The September 6, 2026 target-scale qualification measured 41.519 seconds of
-base-model construction across three steady-state attempts, 6.30% of their
-additive root wall. Because that is meaningful enough to inspect but the
-structural equivalence boundary for a prepared base model has not been proven,
-the current base-model assessment is:
+The first September 6, 2026 target-scale qualification measured 41.519 seconds
+of base-model construction across three steady-state attempts, 6.30% of their
+additive root wall. The follow-up runtime-infrastructure qualification measured
+25.788 seconds across three steady-state attempts, 4.42% of steady-state root
+wall, with per-attempt values of 8.442, 8.815, and 8.532 seconds. The earlier
+8.418, 8.559, and 24.542-second sequence therefore remains an observed timing
+outlier, not a demonstrated retained-model or pagefile cause: the available
+compact artifact does not contain enough per-attempt allocator/GC/model-lifetime
+detail to identify one. The follow-up result makes base-model construction too
+small to prioritize, while structural equivalence remains unproven:
 
-> **D — STRUCTURAL SAFETY / PARITY IS NOT YET SUFFICIENT TO CONSIDER REUSE.**
+> **C — BASE-MODEL CONSTRUCTION IS NOW TOO SMALL TO PRIORITIZE.**
 
-No base-model reuse was implemented. Candidate validation totaled 245.330
-seconds across four candidates; 95.55% was native authoritative validation
-CP-SAT and 4.45% was reconstructive/setup/extraction work. Its assessment is:
+No base-model reuse was implemented. Candidate validation in the follow-up
+qualification totaled 181.747 seconds across four candidates; 95.91% was
+native authoritative validation CP-SAT and 4.09% was reconstructive/setup/
+extraction work. Its assessment is:
 
 > **A — VALIDATION IS DOMINATED BY NATIVE CP-SAT; NO MAJOR INFRASTRUCTURE
 > OPTIMIZATION IS JUSTIFIED.**
 
-The target-scale root self/exclusive residual was 10.85% of steady-state root
-wall. Additional quality-evaluation timing has been instrumented after that
-measurement, so the residual should be decomposed in a later bounded runtime
-check before any base-model optimization is designed.
+The earlier target-scale root self/exclusive residual was 10.85% of
+steady-state root wall. After additional observational timing, the follow-up
+qualification accounted for the named direct-child phases and reduced the
+unexplained residual to 12.383 seconds, or 2.12% of steady-state root wall.
+That is below the materiality threshold for another infrastructure pass.
 
-The target-scale qualification required to classify the next opportunity is
-currently pending the host-memory launch gate. Until it runs, no base-model
-reuse classification is promoted and no model-reuse implementation should be
-started. After measurement, the assessment must distinguish:
+The target-scale qualification completed after the host-memory launch gate on
+September 6, 2026. It did not promote base-model reuse because structural
+parity remains unproven, but the measured cost is now non-blocking. The
+assessment distinguishes:
 
 - large, well-defined, safely removable base-model work;
 - meaningful but non-blocking base-model work;

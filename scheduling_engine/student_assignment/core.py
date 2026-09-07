@@ -232,6 +232,7 @@ def _candidate_semester_from_occupancy(occupancy, semester_by_timeslot):
     return next(iter(semesters))
 
 
+@diagnostic_timed_phase("candidate_result_extraction")
 def _extract_solver_candidate(
     *, solver, data, request_candidates, commitment_variables,
     commitment_candidates, commitment_metadata, previous_enrollment_by_request,
@@ -3852,34 +3853,35 @@ def _solve_student_assignment(
     stage_1_quality = None
     stage_1_quality_elapsed = 0.0
     if validated_seed_solver is not None:
-        stage_1_quality_started = monotonic()
-        (
-            stage_1_assignments,
-            stage_1_commitment_assignments,
-            _stage_1_assigned_request_ids,
-            _stage_1_selected_by_section,
-            _stage_1_assigned_commitment_sources,
-        ) = _extract_solver_candidate(
-            solver=validated_seed_solver,
-            data=data,
-            request_candidates=request_candidates,
-            commitment_variables=commitment_variables,
-            commitment_candidates=commitment_candidates,
-            commitment_metadata=commitment_metadata,
-            previous_enrollment_by_request=previous_enrollment_by_request,
-        )
-        stage_1_quality = _evaluate_student_assignment_quality(
-            data,
-            assignments=stage_1_assignments,
-            commitment_assignments=stage_1_commitment_assignments,
-            sequence_opportunities=sequence_opportunities,
-            fixed_enrollments=fixed_rows,
-            fixed_schedule_commitments=quality_fixed_schedule_commitments,
-            solver_objective_components=_solver_objective_components(
-                validated_seed_solver
-            ),
-            include_entity_metrics=True,
-        )
+        with diagnostic_timing_span("stage_1_quality_evaluation"):
+            stage_1_quality_started = monotonic()
+            (
+                stage_1_assignments,
+                stage_1_commitment_assignments,
+                _stage_1_assigned_request_ids,
+                _stage_1_selected_by_section,
+                _stage_1_assigned_commitment_sources,
+            ) = _extract_solver_candidate(
+                solver=validated_seed_solver,
+                data=data,
+                request_candidates=request_candidates,
+                commitment_variables=commitment_variables,
+                commitment_candidates=commitment_candidates,
+                commitment_metadata=commitment_metadata,
+                previous_enrollment_by_request=previous_enrollment_by_request,
+            )
+            stage_1_quality = _evaluate_student_assignment_quality(
+                data,
+                assignments=stage_1_assignments,
+                commitment_assignments=stage_1_commitment_assignments,
+                sequence_opportunities=sequence_opportunities,
+                fixed_enrollments=fixed_rows,
+                fixed_schedule_commitments=quality_fixed_schedule_commitments,
+                solver_objective_components=_solver_objective_components(
+                    validated_seed_solver
+                ),
+                include_entity_metrics=True,
+            )
         stage_1_quality_elapsed = monotonic() - stage_1_quality_started
     stage_1_timings["quality_extraction_wall_time_seconds"] = stage_1_quality_elapsed
     # Retain the existing independent-request hint as the documented fallback
@@ -5676,6 +5678,10 @@ def _solve_student_assignment(
         timeline_max_events=timeline_max_events,
         skip_optimization=local_only,
     )
+    optimization_result_span = diagnostic_timing_span(
+        "optimization_result_assembly"
+    )
+    optimization_result_span.__enter__()
     optimization_facts = _optimization_facts(
         hard_feasibility_outcome=_hard_feasibility_outcome,
         required_group_count=len(complete_required_decision_groups),
@@ -5724,6 +5730,7 @@ def _solve_student_assignment(
             for index, metadata in enumerate(objective_metadata)
         ),
     )
+    optimization_result_span.__exit__(None, None, None)
     optimization_facts["objective_semantics"] = {
         "version": data.objective_semantics_version,
         "importance_scores": dict(objective_importance_scores),
@@ -5910,6 +5917,10 @@ def _solve_student_assignment(
             )
         return result
 
+    final_candidate_extraction_span = diagnostic_timing_span(
+        "final_candidate_extraction"
+    )
+    final_candidate_extraction_span.__enter__()
     final_candidate_extraction_started = monotonic()
     (
         assignments,
@@ -5927,6 +5938,9 @@ def _solve_student_assignment(
         previous_enrollment_by_request=previous_enrollment_by_request,
     )
     final_candidate_extraction_elapsed = monotonic() - final_candidate_extraction_started
+    final_candidate_extraction_span.__exit__(None, None, None)
+    final_quality_span = diagnostic_timing_span("final_quality_evaluation")
+    final_quality_span.__enter__()
     final_quality_started = monotonic()
     stage_2_quality = _evaluate_student_assignment_quality(
         data,
@@ -5939,6 +5953,7 @@ def _solve_student_assignment(
         include_entity_metrics=True,
     )
     final_quality_elapsed = monotonic() - final_quality_started
+    final_quality_span.__exit__(None, None, None)
     if stage_1_quality is not None:
         optimization_facts["quality"] = {
             "stage_1": _compact_student_assignment_quality(stage_1_quality),
@@ -5947,6 +5962,8 @@ def _solve_student_assignment(
                 stage_1_quality, stage_2_quality,
             ),
         }
+    review_span = diagnostic_timing_span("result_review_diagnostics")
+    review_span.__enter__()
     review_started = monotonic()
     review_items = []
 
@@ -6167,6 +6184,11 @@ def _solve_student_assignment(
         ))
 
     review_diagnostics_elapsed = monotonic() - review_started
+    review_span.__exit__(None, None, None)
+    result_reconstruction_span = diagnostic_timing_span(
+        "result_reconstruction"
+    )
+    result_reconstruction_span.__enter__()
     result_reconstruction_started = monotonic()
     result = StudentAssignmentResultDTO(
         status=(
@@ -6245,12 +6267,17 @@ def _solve_student_assignment(
         ),
     )
     result_reconstruction_elapsed = monotonic() - result_reconstruction_started
+    result_reconstruction_span.__exit__(None, None, None)
     optimization_facts["finalization_timings"] = {
         "candidate_extraction_wall_time_seconds": final_candidate_extraction_elapsed,
         "quality_evaluation_wall_time_seconds": final_quality_elapsed,
         "review_diagnostics_wall_time_seconds": review_diagnostics_elapsed,
         "result_reconstruction_wall_time_seconds": result_reconstruction_elapsed,
     }
+    final_observability_span = diagnostic_timing_span(
+        "final_observability_and_lock_costs"
+    )
+    final_observability_span.__enter__()
     optimization_facts["operation_resource_monitor"] = (
         operation_resource_monitor.stop()
     )
@@ -6259,6 +6286,7 @@ def _solve_student_assignment(
         optimization_facts["operation_resource_monitor"] = (
             operation_resource_monitor.stop()
         )
+    final_observability_span.__exit__(None, None, None)
     if local_bootstrap_facts and local_bootstrap_facts.get("operator_session"):
         final_operation_wall_time = monotonic() - stage_2_started
         optimization_facts["stage_2"]["operation_wall_time_seconds"] = (
