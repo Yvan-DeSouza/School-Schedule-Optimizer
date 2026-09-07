@@ -1947,6 +1947,40 @@ The continuation artifacts are under `C:\Users\desou\research_runs\v2_long_conti
 
 This study does not authorize production promotion, a 4--8-hour solve, or a new target experiment without replication. The next evidence-preserving step is to replicate the matched long-horizon comparison, keeping the same input, seed, worker contract, validation authority, and checkpoint rules. The continuation itself changed no repository runtime semantics and did not alter the completed parent study.
 
+## Research-only fixed-family phase controller
+
+The repository also contains a research-only
+`FixedFamilyPhaseController` in
+`scheduling_engine/student_assignment/adaptive_runtime.py`. It is not used by
+ordinary scheduling or by the historical adaptive policies. It exists for
+matched long-horizon studies that need a fixed operator family without
+invoking the adaptive productive-continuation override.
+
+Each controller step recomputes quality, student pressure, utilization
+ranking, and the target scope from the current authoritative incumbent. The
+effective operator session is one CP-SAT probe with a 300-second ceiling. The
+existing operator-session boundary, full-model validation, strict lower-value
+adoption rule, and trusted branch context remain authoritative.
+
+The controller carries trusted context only after an authoritative validated
+adoption. A validated result returned after the configured phase deadline is
+recorded as boundary-truncated and cannot replace the incumbent or advance
+trusted context. Exact scopes previously proven exhausted or non-improving are
+blocked; unresolved scopes may be retried and remain explicitly labelled.
+
+The controller emits complete solver-free competition traces for the
+evidence-guided, component-aware, and horizon-aware policies at each real
+state. These traces explain what a selector would have chosen, but they never
+execute shadow operators and never imply an alternative schedule outcome.
+
+`FixedPhaseArtifactWriter` in
+`scheduling_engine/student_assignment/fixed_phase_study.py` provides atomic
+JSON/state publication, append-and-flush event streams, exclusive lineage
+creation with lineage confirmation/path-overlap guards, checkpoint SHA-256
+sidecars, and pre-seal artifact hashing. It is an offline artifact layer
+only; it does not build models, validate candidates, or alter candidate
+authority.
+
 ### R64/S8 long-horizon evidence boundary (2026-09-06)
 
 One additional target-scale diagnostic branch ran with fixed

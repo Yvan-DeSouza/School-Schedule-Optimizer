@@ -8,7 +8,9 @@ validation before it can become the next incumbent.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, field, replace
+import hashlib
+import json
 from time import monotonic
 from uuid import uuid4
 
@@ -18,12 +20,14 @@ from .adaptive_search import (
     AdaptiveOperatorAttempt,
     AdaptiveSessionRecord,
     DEFAULT_ADAPTIVE_OPERATOR_PORTFOLIO,
+    build_adaptive_competition_trace,
     build_operator_session_request,
     build_adaptive_search_state,
     choose_adaptive_operator,
     select_fixed_cycle_operator,
     select_stateless_role_operator,
     _role_signals,
+    _scope_status,
     operator_family,
 )
 from .core import (
@@ -33,6 +37,7 @@ from .core import (
 from .runtime import semantic_student_assignment_input_fingerprint
 from .search_experiments import source_decision_fingerprint
 from .search_guidance import rank_students_by_quality_pressure
+from .utilization_guidance import build_utilization_cluster_guidance
 from .quality import evaluate_student_assignment_quality
 
 
@@ -43,6 +48,55 @@ class AdaptiveSessionResult:
     record: AdaptiveSessionRecord
     result: object
     source_decisions: tuple
+    # Research-only continuation handoff.  The trusted context is an
+    # in-memory authority object and is deliberately not serialized in the
+    # historical session record.  Fixed-phase research can carry it from one
+    # one-attempt call to the next without rebuilding mature validation.
+    history: tuple[AdaptiveOperatorAttempt, ...] = ()
+    trusted_branch_context: object | None = None
+
+
+@dataclass(frozen=True)
+class FixedFamilyPhase:
+    """One immutable phase in a research-only fixed-family branch plan."""
+
+    phase_id: str
+    operator_name: str
+    start_seconds: float
+    end_seconds: float
+
+    def __post_init__(self):
+        if not str(self.phase_id):
+            raise ValueError("phase_id must be non-empty")
+        if self.end_seconds <= self.start_seconds:
+            raise ValueError("phase end must be after phase start")
+        if self.start_seconds < 0:
+            raise ValueError("phase start cannot be negative")
+
+    def to_dict(self):
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class FixedFamilyAttemptEvent:
+    """JSON-safe event emitted by one fixed-family controller step."""
+
+    schema: str
+    event_type: str
+    branch_elapsed_seconds: float
+    phase_elapsed_seconds: float
+    phase_id: str
+    operator: str
+    attempt_index: int | None
+    attempt: dict = field(default_factory=dict)
+    selector_state: dict = field(default_factory=dict)
+    selector_traces: dict = field(default_factory=dict)
+    targeting_snapshot: dict = field(default_factory=dict)
+    blocked_reason: str | None = None
+    boundary_overrun_seconds: float = 0.0
+
+    def to_dict(self):
+        return asdict(self)
 
 
 def _canonical_student_scope(student_ids):
@@ -580,6 +634,9 @@ def run_adaptive_local_search_diagnostic(
     adaptive_policy_variant="balanced",
     phase_callback=None,
     use_trusted_branch_context=False,
+    initial_history=(),
+    initial_trusted_branch_context=None,
+    parent_hard_wall_deadline_monotonic=None,
 ):
     """Run a diagnostic v2 operator session inside one shared wall-clock budget.
 
@@ -619,7 +676,7 @@ def run_adaptive_local_search_diagnostic(
     configured_budget = max(0.001, float(total_time_limit_seconds))
     per_operator = max(0.001, float(per_operator_time_limit_seconds))
     started = monotonic()
-    history = []
+    history = list(initial_history or ())
     decisions = []
     current_result = initial_result
     initial_components = dict(current_result.objective_components or {})
@@ -668,7 +725,7 @@ def run_adaptive_local_search_diagnostic(
     stopping_reason = "shared_budget_exhausted"
     policy_selection_seconds = 0.0
     operator_execution_seconds = 0.0
-    trusted_branch_context = None
+    trusted_branch_context = initial_trusted_branch_context
 
     def _trusted_context_facts(context):
         if context is None:
@@ -928,7 +985,9 @@ def run_adaptive_local_search_diagnostic(
                     cp_sat_max_deterministic_time_seconds
                 ),
                 diagnostic_parent_hard_wall_deadline_monotonic=(
-                    started + configured_budget
+                    parent_hard_wall_deadline_monotonic
+                    if parent_hard_wall_deadline_monotonic is not None
+                    else started + configured_budget
                 ),
                 phase_callback=_operator_phase_callback,
                 trusted_branch_context=(
@@ -1537,7 +1596,525 @@ def run_adaptive_local_search_diagnostic(
         record=record,
         result=current_result,
         source_decisions=current_source_decisions,
+        history=tuple(history),
+        trusted_branch_context=trusted_branch_context,
     )
 
 
-__all__ = ["AdaptiveSessionResult", "run_adaptive_local_search_diagnostic"]
+class FixedFamilyPhaseController:
+    """Research-only controller for fixed-family, phase-based branches.
+
+    This controller deliberately sits above the existing operator and
+    validation boundaries. It does not implement CP-SAT constraints or
+    candidate authority. Each call to :meth:`run_next_attempt` delegates to
+    the existing diagnostic runtime for exactly one operator-session attempt,
+    while retaining the trusted branch context and authoritative incumbent in
+    this object for the next call.
+
+    Existing adaptive and ``fixed_cycle`` entry points are intentionally not
+    routed through this class, preserving their historical behavior.
+    """
+
+    EVENT_SCHEMA = "fixed_family_attempt_event_v1"
+    SHADOW_VARIANTS = (
+        "evidence_guided",
+        "component_aware",
+        "horizon_aware",
+    )
+
+    def __init__(
+        self,
+        data,
+        *,
+        initial_result,
+        initial_source_decisions=(),
+        phases,
+        branch_time_limit_seconds=None,
+        worker_count=8,
+        candidate_validation_time_limit_seconds=180.0,
+        validation_worker_count=1,
+        cp_sat_random_seed=101,
+        search_time_limit_seconds=300.0,
+        portfolio=DEFAULT_ADAPTIVE_OPERATOR_PORTFOLIO,
+        phase_callback=None,
+        clock=None,
+        collect_resource_telemetry=False,
+        targeting_snapshot_callback=None,
+    ):
+        if data.objective_semantics_version != "v2":
+            raise ValueError("fixed-family research requires Objective Semantics v2")
+        if initial_result.status != "complete" or initial_result.unmet_requests:
+            raise ValueError("fixed-family research requires a complete incumbent")
+        source = tuple(initial_source_decisions) or _source_decisions_from_result(
+            initial_result
+        )
+        if not source:
+            raise ValueError("fixed-family research requires source decisions")
+
+        normalized_phases = tuple(
+            phase if isinstance(phase, FixedFamilyPhase)
+            else FixedFamilyPhase(**dict(phase))
+            for phase in phases
+        )
+        if not normalized_phases:
+            raise ValueError("at least one fixed-family phase is required")
+        for previous, current in zip(normalized_phases, normalized_phases[1:]):
+            if abs(float(previous.end_seconds) - float(current.start_seconds)) > 1e-9:
+                raise ValueError("fixed-family phases must be contiguous")
+        if normalized_phases[0].start_seconds != 0:
+            raise ValueError("the first phase must start at zero")
+        inferred_budget = float(normalized_phases[-1].end_seconds)
+        configured_budget = (
+            inferred_budget
+            if branch_time_limit_seconds is None
+            else float(branch_time_limit_seconds)
+        )
+        if abs(configured_budget - inferred_budget) > 1e-9:
+            raise ValueError("branch budget must equal the final phase boundary")
+
+        specs = {}
+        search_time_limit_seconds = max(0.001, float(search_time_limit_seconds))
+        for spec in tuple(portfolio):
+            specs[spec.name] = replace(
+                spec,
+                session_time_limit_seconds=search_time_limit_seconds,
+                session_max_attempts=1,
+                per_attempt_cp_sat_limit_seconds=search_time_limit_seconds,
+            )
+        missing = sorted(
+            {
+                phase.operator_name
+                for phase in normalized_phases
+                if phase.operator_name not in specs
+            }
+        )
+        if missing:
+            raise ValueError(f"unknown fixed-family operator(s): {missing}")
+
+        self.data = data
+        self.current_result = initial_result
+        self.current_source_decisions = source
+        self.phases = normalized_phases
+        self.branch_time_limit_seconds = configured_budget
+        self.worker_count = int(worker_count)
+        self.candidate_validation_time_limit_seconds = float(
+            candidate_validation_time_limit_seconds
+        )
+        self.validation_worker_count = int(validation_worker_count)
+        self.cp_sat_random_seed = (
+            int(cp_sat_random_seed) if cp_sat_random_seed is not None else None
+        )
+        self.search_time_limit_seconds = search_time_limit_seconds
+        self.portfolio = tuple(specs.values())
+        self.specs = specs
+        self.phase_callback = phase_callback
+        self.collect_resource_telemetry = bool(collect_resource_telemetry)
+        self.targeting_snapshot_callback = targeting_snapshot_callback
+        self._clock = clock or monotonic
+        self._started = self._clock()
+        self._trusted_branch_context = None
+        self._history = []
+        self._events = []
+        self._attempt_count = 0
+        self._phase_blocked = set()
+        self._phase_event_emitted = set()
+
+    @property
+    def history(self):
+        return tuple(self._history)
+
+    @property
+    def trusted_branch_context(self):
+        return self._trusted_branch_context
+
+    @property
+    def source_decisions(self):
+        return tuple(self.current_source_decisions)
+
+    @property
+    def attempt_count(self):
+        return self._attempt_count
+
+    @property
+    def elapsed_seconds(self):
+        return max(0.0, float(self._clock() - self._started))
+
+    @property
+    def authoritative_result(self):
+        return self.current_result
+
+    def _phase_for_elapsed(self, elapsed):
+        for phase in self.phases:
+            if elapsed < phase.end_seconds:
+                return phase
+        return None
+
+    def _phase_elapsed(self, phase, elapsed):
+        return max(0.0, float(elapsed - phase.start_seconds))
+
+    def _emit(self, phase, event="completed", **facts):
+        if self.phase_callback is None:
+            return
+        try:
+            self.phase_callback(str(phase), event=str(event), **facts)
+        except Exception:
+            return
+
+    def _quality_state(self, *, phase, elapsed):
+        quality = _quality_report(self.data, self.current_result)
+        ranked = rank_students_by_quality_pressure(self.data, quality)
+        source_fingerprint = source_decision_fingerprint(
+            self.current_source_decisions
+        )
+        remaining_branch = max(0.0, self.branch_time_limit_seconds - elapsed)
+        remaining_phase = max(0.0, phase.end_seconds - elapsed)
+        state = build_adaptive_search_state(
+            self.data,
+            quality,
+            elapsed_seconds=elapsed,
+            remaining_seconds=min(remaining_branch, remaining_phase),
+            history=tuple(self._history),
+            source_decisions=self.current_source_decisions,
+            current_source_fingerprint=source_fingerprint,
+            candidate_validation_time_limit_seconds=(
+                self.candidate_validation_time_limit_seconds
+            ),
+            current_objective_vector=tuple(
+                (self.current_result.optimization_facts or {})
+                .get("stage_2", {})
+                .get("objective_values", ())
+                or ()
+            ),
+        )
+        return quality, ranked, state
+
+    def _shadow_traces(self, state, ranked):
+        return {
+            variant: build_adaptive_competition_trace(
+                state,
+                portfolio=self.portfolio,
+                ranked_students=ranked,
+                adaptive_policy_variant=variant,
+            )
+            for variant in self.SHADOW_VARIANTS
+        }
+
+    def _targeting_snapshot(self, *, phase, elapsed, quality, ranked, state, decision):
+        """Build observational targeting facts without changing selection."""
+
+        utilization = build_utilization_cluster_guidance(
+            self.data,
+            quality,
+            self.current_source_decisions,
+            target_scope_size=max(1, int(decision.operator.student_count or 1)),
+            policy="interaction_aware",
+        )
+        pressure_rows = [asdict(item) for item in ranked]
+        leverage_rows = [asdict(item) for item in utilization.leverage_facts]
+        group_rows = [asdict(item) for item in utilization.pressure_facts]
+        selected = tuple(decision.selected_student_ids)
+        pressure_rank = {
+            int(item.student_id): int(item.rank) for item in ranked
+        }
+        leverage_rank = {
+            int(item.student_id): int(item.rank)
+            for item in utilization.leverage_facts
+        }
+        role = str(decision.operator.portfolio_role)
+        if role == "utilization_repair":
+            selected_ranks = [leverage_rank.get(int(student_id)) for student_id in selected]
+            candidate_count = len(leverage_rows)
+            ranking_kind = "utilization_leverage"
+        else:
+            selected_ranks = [pressure_rank.get(int(student_id)) for student_id in selected]
+            candidate_count = len(pressure_rows)
+            ranking_kind = "student_pressure"
+        return {
+            "schema": "adaptive_targeting_snapshot_v1",
+            "branch_elapsed_seconds": float(elapsed),
+            "phase_id": phase.phase_id,
+            "operator": decision.operator.name,
+            "operator_family": operator_family(decision.operator),
+            "source_fingerprint": source_decision_fingerprint(
+                self.current_source_decisions
+            ),
+            "substantive_value": float(state.substantive_aggregate),
+            "objective_vector": list(state.current_objective_vector),
+            "targeting_algorithm": "existing_adaptive_search_targeting_v1",
+            "ranking_kind": ranking_kind,
+            "selected_student_ids": list(selected),
+            "selected_ranks": selected_ranks,
+            "candidate_population_count": candidate_count,
+            "pressure_candidates": pressure_rows,
+            "utilization_candidates": leverage_rows,
+            "utilization_groups": group_rows,
+            "utilization_guidance_facts": dict(utilization.guidance_facts),
+            "selector_state": state.to_dict(),
+        }
+
+    def _event(
+        self,
+        *,
+        event_type,
+        phase,
+        elapsed,
+        attempt=None,
+        selector_state=None,
+        selector_traces=None,
+        targeting_snapshot=None,
+        blocked_reason=None,
+        boundary_overrun_seconds=0.0,
+    ):
+        event = FixedFamilyAttemptEvent(
+            schema=self.EVENT_SCHEMA,
+            event_type=event_type,
+            branch_elapsed_seconds=float(elapsed),
+            phase_elapsed_seconds=self._phase_elapsed(phase, elapsed),
+            phase_id=phase.phase_id,
+            operator=phase.operator_name,
+            attempt_index=(self._attempt_count if attempt is not None else None),
+            attempt=(
+                {**asdict(attempt), "gain_per_minute": attempt.gain_per_minute}
+                if attempt is not None
+                else {}
+            ),
+            selector_state=dict(selector_state or {}),
+            selector_traces=dict(selector_traces or {}),
+            targeting_snapshot=dict(targeting_snapshot or {}),
+            blocked_reason=blocked_reason,
+            boundary_overrun_seconds=float(boundary_overrun_seconds),
+        )
+        self._events.append(event)
+        return event
+
+    def run_next_attempt(self):
+        """Execute one legal fixed-family attempt, or emit a phase event."""
+
+        elapsed = self.elapsed_seconds
+        phase = self._phase_for_elapsed(elapsed)
+        if phase is None or phase.phase_id in self._phase_blocked:
+            return None
+        if phase.end_seconds - elapsed <= 1.0:
+            return None
+
+        quality, ranked, state = self._quality_state(phase=phase, elapsed=elapsed)
+        selector_state = state.to_dict()
+        selector_traces = self._shadow_traces(state, ranked)
+        spec = self.specs[phase.operator_name]
+        decision = select_fixed_cycle_operator(
+            state,
+            (spec,),
+            ranked_students=ranked,
+        )
+        if decision is None:
+            self._phase_blocked.add(phase.phase_id)
+            if phase.phase_id not in self._phase_event_emitted:
+                self._phase_event_emitted.add(phase.phase_id)
+                return self._event(
+                    event_type="phase_blocked",
+                    phase=phase,
+                    elapsed=elapsed,
+                    selector_state=selector_state,
+                    selector_traces=selector_traces,
+                    blocked_reason="no_legal_target_scope",
+                )
+            return None
+
+        selected = _canonical_student_scope(decision.selected_student_ids)
+        targeting_snapshot = {}
+        source_fingerprint = source_decision_fingerprint(
+            self.current_source_decisions
+        )
+        scope_key = (spec.name, source_fingerprint, selected, spec.selected_grade)
+        scope_state = _scope_status(tuple(self._history), scope_key)
+        if scope_state in {"exhausted", "non_improving"}:
+            self._phase_blocked.add(phase.phase_id)
+            if phase.phase_id not in self._phase_event_emitted:
+                self._phase_event_emitted.add(phase.phase_id)
+                return self._event(
+                    event_type="phase_blocked",
+                    phase=phase,
+                    elapsed=elapsed,
+                    selector_state=selector_state,
+                    selector_traces=selector_traces,
+                    blocked_reason=f"scope_{scope_state}",
+                )
+            return None
+
+        if self.targeting_snapshot_callback is not None:
+            try:
+                targeting_snapshot = dict(self.targeting_snapshot_callback(
+                    self._targeting_snapshot(
+                        phase=phase,
+                        elapsed=elapsed,
+                        quality=quality,
+                        ranked=ranked,
+                        state=state,
+                        decision=decision,
+                    )
+                ) or {})
+            except Exception:
+                # Targeting telemetry is strictly observational. A failed
+                # serializer must never alter selection or candidate authority.
+                self._emit(
+                    "targeting_snapshot",
+                    "failed",
+                    phase_id=phase.phase_id,
+                    operator=spec.name,
+                )
+
+        attempt_started = self._clock()
+        phase_deadline = self._started + phase.end_seconds
+        call_budget = max(
+            0.001,
+            min(self.search_time_limit_seconds, phase_deadline - attempt_started),
+        )
+        self._emit(
+            "fixed_family_attempt",
+            "started",
+            phase_id=phase.phase_id,
+            operator=spec.name,
+            attempt_index=self._attempt_count + 1,
+            selected_student_ids=selected,
+            source_fingerprint=source_fingerprint,
+        )
+        session_result = run_adaptive_local_search_diagnostic(
+            self.data,
+            initial_result=self.current_result,
+            initial_source_decisions=self.current_source_decisions,
+            total_time_limit_seconds=call_budget,
+            per_operator_time_limit_seconds=self.search_time_limit_seconds,
+            worker_count=self.worker_count,
+            portfolio=self.portfolio,
+            # The runtime's iteration limit includes carried history. Add one
+            # so every controller step gets exactly one new probe.
+            max_iterations=len(self._history) + 1,
+            collect_resource_telemetry=self.collect_resource_telemetry,
+            candidate_validation_time_limit_seconds=(
+                self.candidate_validation_time_limit_seconds
+            ),
+            hard_feasibility_validation_time_limit_seconds=(
+                self.candidate_validation_time_limit_seconds
+            ),
+            hard_feasibility_validation_worker_count=self.validation_worker_count,
+            cp_sat_random_seed=self.cp_sat_random_seed,
+            session_id=f"fixed-phase-{phase.phase_id}-{self._attempt_count + 1}",
+            selection_policy="fixed_cycle",
+            fixed_cycle=(spec,),
+            adaptive_policy_variant="balanced",
+            phase_callback=self.phase_callback,
+            use_trusted_branch_context=True,
+            initial_history=tuple(self._history),
+            initial_trusted_branch_context=self._trusted_branch_context,
+            parent_hard_wall_deadline_monotonic=phase_deadline,
+        )
+        attempt_completed = self._clock()
+        late_seconds = max(0.0, attempt_completed - phase_deadline)
+        if not session_result.history or len(session_result.history) <= len(self._history):
+            return self._event(
+                event_type="attempt_missing",
+                phase=phase,
+                elapsed=self.elapsed_seconds,
+                selector_state=selector_state,
+                selector_traces=selector_traces,
+                blocked_reason="runtime_returned_without_new_attempt",
+            )
+
+        attempt = session_result.history[-1]
+        self._attempt_count += 1
+        if late_seconds > 0.0:
+            attempt = replace(
+                attempt,
+                adopted=False,
+                gain=0.0,
+                stopping_reason="phase_boundary_overrun_discarded",
+            )
+            self._history.append(attempt)
+            return self._event(
+                event_type="boundary_truncated_attempt",
+                phase=phase,
+                elapsed=self.elapsed_seconds,
+                attempt=attempt,
+                selector_state=selector_state,
+                selector_traces=selector_traces,
+                targeting_snapshot=targeting_snapshot,
+                boundary_overrun_seconds=late_seconds,
+            )
+
+        self._history.append(attempt)
+        if attempt.adopted:
+            self.current_result = session_result.result
+            self.current_source_decisions = tuple(session_result.source_decisions)
+            self._trusted_branch_context = session_result.trusted_branch_context
+        return self._event(
+            event_type="attempt_completed",
+            phase=phase,
+            elapsed=self.elapsed_seconds,
+            attempt=attempt,
+            selector_state=selector_state,
+            selector_traces=selector_traces,
+            targeting_snapshot=targeting_snapshot,
+        )
+
+    def wait_seconds(self):
+        """Return the maximum safe sleep before another controller action."""
+
+        elapsed = self.elapsed_seconds
+        phase = self._phase_for_elapsed(elapsed)
+        if phase is None:
+            return 0.0
+        if phase.phase_id in self._phase_blocked:
+            return max(0.0, phase.end_seconds - elapsed)
+        return max(0.0, min(1.0, phase.end_seconds - elapsed))
+
+    def snapshot(self):
+        """Return bounded, JSON-safe controller state for a checkpoint."""
+
+        elapsed = self.elapsed_seconds
+        phase = self._phase_for_elapsed(elapsed)
+        history_bytes = json.dumps(
+            [asdict(item) for item in self._history],
+            sort_keys=True,
+            separators=(",", ":"),
+            default=repr,
+        ).encode("utf-8")
+        return {
+            "schema": "fixed_family_controller_state_v1",
+            "branch_elapsed_seconds": elapsed,
+            "phase_id": phase.phase_id if phase else None,
+            "phase_elapsed_seconds": (
+                self._phase_elapsed(phase, elapsed) if phase else None
+            ),
+            "attempt_count": self._attempt_count,
+            "source_fingerprint": source_decision_fingerprint(
+                self.current_source_decisions
+            ),
+            "history_digest": hashlib.sha256(history_bytes).hexdigest(),
+            "phase_blocked": sorted(self._phase_blocked),
+            "trusted_context_present": self._trusted_branch_context is not None,
+            "trusted_context_facts": (
+                {
+                    "authority": getattr(self._trusted_branch_context, "authority", None),
+                    "input_fingerprint": getattr(
+                        self._trusted_branch_context, "input_fingerprint", None
+                    ),
+                    "model_fingerprint": getattr(
+                        self._trusted_branch_context, "model_fingerprint", None
+                    ),
+                }
+                if self._trusted_branch_context is not None
+                else {}
+            ),
+        }
+
+    def events(self):
+        return tuple(self._events)
+
+
+__all__ = [
+    "AdaptiveSessionResult",
+    "FixedFamilyAttemptEvent",
+    "FixedFamilyPhase",
+    "FixedFamilyPhaseController",
+    "run_adaptive_local_search_diagnostic",
+]
