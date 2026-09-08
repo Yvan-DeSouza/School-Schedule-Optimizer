@@ -23,6 +23,7 @@ from .solver import (
     set_solver_hints,
 )
 from .runtime import OperationTimer, diagnostic_timed_phase, diagnostic_timing_span
+from .hint_observability import build_exact_hint_identity_mapping
 from ..constants import VALID_STUDENT_GRADE_LEVELS
 
 
@@ -53,6 +54,9 @@ class SubstantiveSoftTierProbeContext:
     # model builder remains the authority for source semantics; the probe uses
     # these indexes only to report overlapping family counts.
     model_family_variable_indexes: tuple = ()
+    # Explicit model-builder semantics for research-only exact hint identity.
+    # Empty in all ordinary and historical diagnostic calls.
+    source_decision_identity_rows: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -452,6 +456,8 @@ def _build_hint_telemetry(
     selected_grade_student_ids,
     selected_grade,
     projected_grade_scope,
+    selected_student_ids=(),
+    include_exact_identity=False,
 ):
     """Describe incumbent hints and fixed source structure without identities."""
 
@@ -499,7 +505,7 @@ def _build_hint_telemetry(
             if owner not in selected_grade_student_ids
             for index in indexes
         } if projected_grade_scope else explicitly_fixed_indexes
-    return {
+    result = {
         "hint_count": len(hint_indexes),
         "hinted_source_variable_count": len(hint_indexes & source_indexes),
         "hinted_auxiliary_variable_count": len(hint_indexes - source_indexes),
@@ -515,6 +521,16 @@ def _build_hint_telemetry(
         "hinted_frozen_source_variable_count": len(hint_indexes & frozen_source_indexes),
         "projected_grade_scope": bool(projected_grade_scope),
     }
+    if include_exact_identity:
+        result["exact_identity"] = build_exact_hint_identity_mapping(
+            model,
+            context.source_decision_identity_rows,
+            context.seed_source_decision_variable_values(
+                context.validated_seed_solver
+            ),
+            selected_student_ids=selected_student_ids,
+        )
+    return result
 
 
 def _expression(model, term_specs):
@@ -561,6 +577,7 @@ def probe_substantive_soft_tier(
     phase_callback=None,
     collect_presolve_telemetry: bool = False,
     collect_search_start_telemetry: bool = False,
+    collect_hint_identity_telemetry: bool = False,
     capture_base_model_witness: bool = False,
 ) -> SubstantiveSoftTierProbeResult:
     """Ask whether the unchanged full model can beat one soft tier.
@@ -1014,13 +1031,18 @@ def probe_substantive_soft_tier(
             solver.parameters.stop_after_presolve = True
         solver.log_callback = native_log_messages.append
     hint_telemetry = {}
-    if collect_native_log:
+    if collect_native_log or collect_hint_identity_telemetry:
         hint_telemetry = _build_hint_telemetry(
             probe_model,
             context,
             selected_grade_student_ids=selected_grade_student_ids,
             selected_grade=selected_grade,
             projected_grade_scope=projected_grade_scope,
+            selected_student_ids=(
+                selected_grade_student_ids
+                if selected_grade is not None else selected_student_ids
+            ),
+            include_exact_identity=bool(collect_hint_identity_telemetry),
         )
     probe_solver_span = diagnostic_timing_span("probe_solver_and_cp_sat")
     probe_solver_span.__enter__()

@@ -1185,6 +1185,7 @@ def run_student_assignment_operator_session_diagnostic(
     cp_sat_max_deterministic_time_seconds=None,
     collect_presolve_telemetry=False,
     collect_search_start_telemetry=False,
+    collect_hint_identity_telemetry=False,
     collect_resource_telemetry=True,
     capture_final_source_decisions=True,
     collect_validation_presolve_telemetry=False,
@@ -1338,6 +1339,9 @@ def run_student_assignment_operator_session_diagnostic(
             "collect_presolve_telemetry": bool(collect_presolve_telemetry),
             "collect_search_start_telemetry": bool(
                 collect_search_start_telemetry
+            ),
+            "collect_hint_identity_telemetry": bool(
+                collect_hint_identity_telemetry
             ),
             "candidate_validation_time_limit_seconds": (
                 config.candidate_validation_time_limit_seconds
@@ -4111,6 +4115,102 @@ def _solve_student_assignment(
         )
         for family, indexes in sorted(probe_model_family_variable_indexes.items())
     )
+    probe_source_decision_identity_rows = ()
+    if (
+        stage_2_local_bootstrap
+        and stage_2_local_bootstrap.get("collect_hint_identity_telemetry", False)
+    ):
+        identity_rows = []
+        for request in sorted(data.requests, key=lambda item: item.request_id):
+            if request.delivery_kind == "co_op":
+                source_key = ("course", request.request_id)
+                for index, (placement, occupancy, pair) in enumerate(
+                    commitment_candidates.get(source_key, ())
+                ):
+                    variable = commitment_variables[source_key, index]
+                    identity_rows.append({
+                        "student_id": request.student_id,
+                        "request_id": request.request_id,
+                        "source_key": source_key,
+                        "model_source_key": source_key,
+                        "assignment_kind": "co_op_commitment",
+                        "assignment_option": {
+                            "placement": placement,
+                            "occupancy": occupancy,
+                            "co_op_block_pair": pair,
+                        },
+                        "section_id": None,
+                        "online_supervision_session_id": None,
+                        "variable_index": variable.Index(),
+                    })
+                continue
+            source_key = ("course", request.request_id)
+            for section, variable in request_candidates.get(request.request_id, ()):
+                semantic_section_id = (
+                    None
+                    if request.delivery_kind == "online" and section.section_id < 0
+                    else section.section_id
+                )
+                online_session_id = (
+                    -section.section_id
+                    if request.delivery_kind == "online" and section.section_id < 0
+                    else None
+                )
+                identity_rows.append({
+                    "student_id": request.student_id,
+                    "request_id": request.request_id,
+                    "source_key": source_key,
+                    "model_source_key": source_key,
+                    "assignment_kind": "course",
+                    "assignment_option": {
+                        "section_id": semantic_section_id,
+                        "online_supervision_session_id": online_session_id,
+                        "semester": section.semester,
+                        "timeslot_id": section.timeslot_id,
+                        "half_semester_segment": (
+                            request.half_semester_segment
+                            if request.delivery_kind == "online"
+                            else section.half_semester_segment
+                        ),
+                    },
+                    "section_id": semantic_section_id,
+                    "online_supervision_session_id": online_session_id,
+                    "variable_index": variable.Index(),
+                })
+        for source_key, choices in sorted(
+            commitment_candidates.items(), key=lambda item: repr(item[0])
+        ):
+            if source_key[0] == "course":
+                continue
+            student_id, kind, course_request_id, _offering_id, _course_id = (
+                commitment_metadata[source_key]
+            )
+            for index, (placement, occupancy, pair) in enumerate(choices):
+                variable = commitment_variables[source_key, index]
+                identity_rows.append({
+                    "student_id": student_id,
+                    "request_id": source_key[1],
+                    "source_key": ("commitment", source_key[1]),
+                    "model_source_key": source_key,
+                    "assignment_kind": f"{kind}_commitment",
+                    "assignment_option": {
+                        "placement": placement,
+                        "occupancy": occupancy,
+                        "co_op_block_pair": pair,
+                        "course_request_id": course_request_id,
+                    },
+                    "section_id": None,
+                    "online_supervision_session_id": None,
+                    "variable_index": variable.Index(),
+                })
+        probe_source_decision_identity_rows = tuple(sorted(
+            identity_rows,
+            key=lambda row: (
+                int(row["student_id"]),
+                repr(row["source_key"]),
+                int(row["variable_index"]),
+            ),
+        ))
 
     def _build_probe_context(seed_solver):
         # The model, source groups, owner map, and objective metadata are
@@ -4134,6 +4234,7 @@ def _solve_student_assignment(
             student_grades=tuple(data.student_grades),
             source_variable_groups=probe_source_variable_groups,
             model_family_variable_indexes=probe_model_family_variable_indexes,
+            source_decision_identity_rows=probe_source_decision_identity_rows,
             seed_objective_vector=_objective_values(
                 seed_solver, objectives
             ) if seed_solver is not None else (),
@@ -4805,6 +4906,11 @@ def _solve_student_assignment(
                         collect_search_start_telemetry=bool(
                             local_config.get(
                                 "collect_search_start_telemetry", False
+                            )
+                        ),
+                        collect_hint_identity_telemetry=bool(
+                            local_config.get(
+                                "collect_hint_identity_telemetry", False
                             )
                         ),
                         capture_base_model_witness=bool(

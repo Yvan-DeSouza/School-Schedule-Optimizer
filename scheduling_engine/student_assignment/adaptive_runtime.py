@@ -499,6 +499,7 @@ def _compact_inner_probe_summary(
         "component_deltas": dict(iteration.get("component_deltas") or {}),
         "affected_student_ids": tuple(iteration.get("affected_student_ids") or ()),
         "affected_section_ids": tuple(iteration.get("affected_section_ids") or ()),
+        "hint_telemetry": dict(iteration.get("hint_telemetry") or {}),
         "stopping_reason": iteration.get("stopping_reason"),
     }
 
@@ -517,7 +518,8 @@ def _operator_result(data, spec, *, selected_student_ids, current_source_decisio
                     phase_callback=None,
                     trusted_branch_context=None,
                     validated_branch_context_callback=None,
-                    collect_search_start_telemetry=False):
+                    collect_search_start_telemetry=False,
+                    collect_hint_identity_telemetry=False):
     # Every policy family uses the same reusable continuous-session boundary.
     # The policy spec describes the session granularity; the outer caller still
     # caps it by the remaining shared deadline.  This keeps multi-attempt
@@ -604,6 +606,9 @@ def _operator_result(data, spec, *, selected_student_ids, current_source_decisio
         ),
         collect_resource_telemetry=collect_resource_telemetry,
         collect_search_start_telemetry=bool(collect_search_start_telemetry),
+        collect_hint_identity_telemetry=bool(
+            collect_hint_identity_telemetry
+        ),
         capture_final_source_decisions=True,
         phase_callback=phase_callback,
         _trusted_branch_context=trusted_branch_context,
@@ -641,6 +646,7 @@ def run_adaptive_local_search_diagnostic(
     parent_hard_wall_deadline_monotonic=None,
     fixed_target_scope=(),
     collect_search_start_telemetry=False,
+    collect_hint_identity_telemetry=False,
 ):
     """Run a diagnostic v2 operator session inside one shared wall-clock budget.
 
@@ -1015,6 +1021,7 @@ def run_adaptive_local_search_diagnostic(
                     else None
                 ),
                 collect_search_start_telemetry=collect_search_start_telemetry,
+                collect_hint_identity_telemetry=collect_hint_identity_telemetry,
             )
         except ValueError as exc:
             # An operator may be given too little of the shared budget to

@@ -94,6 +94,42 @@ production-like eight-worker contract, repeated clean processes, and
 pre-state strata. It must not infer a policy rule from branch labels or build a
 third heuristic without a transparent supported mechanism.
 
+## All-70 scope-structure evidence (2026-09-08)
+
+A solver-free reconstruction covered all 70 authoritative R16/S4 attempts in
+the three-hour R16-only branch. The four jackpot attempts (27, 36, 60, and 63)
+supplied 396 of the branch's 1,212 validated v2 points, or 32.673%, while
+representing 4/70 attempts. The analysis joined each executed TOP scope to its
+persisted pre-solve legal-move guidance, source/destination overlap, possible
+chains, pressure concentration, and current component-pressure facts.
+
+No measured joint structural feature was a strong continuous gain predictor.
+Source-to-destination overlap was higher in the four jackpots, but its
+continuous correlation with gain was weak and the four-event sample is too
+small for a policy coefficient. No TOP scope had a guidance-level structural
+cycle candidate. Selected individual leverage was not positively associated
+with jackpot gain. These results do not support introducing a third
+coordination-aware target policy.
+
+The solver-free interaction-aware shadow nevertheless selected a materially
+different scope in every one of the 70 states: there were zero exact matches,
+median Jaccard overlap was zero, maximum overlap was 1/7, and all overlaps were
+below 0.5. That establishes policy separation, not IA schedule quality. It is
+enough to justify a held-out eight-worker comparison of the existing
+`top_individual` and `interaction_aware` policies.
+
+The frozen follow-up design uses eight pre-states not used in the original
+R16 discovery screen or the attempt-27/36/63 calibration. It spans utilization-
+dominant and mixed-component states, concentrated and diffuse pressure,
+high/low coordination proxies, high/low TOP-versus-IA overlap, and high
+source-to-destination overlap, with explicit high/low structural-interaction
+labels. With two policies and three clean repeats, it is a 48-cell design.
+Every cell retains R16/S4, eight optimization workers, seed
+101, current hints, a 300-second search ceiling, independent one-worker
+validation, strict v2 adoption, and a fresh authoritative reset. This design
+has not been run. Its sealed solver-free package is
+`C:\Users\desou\research_runs\v2_r16_scope_structure_forensics_20260908_9c4b71d8`.
+
 Related ownership: [Adaptive Search](STUDENT_ASSIGNMENT_ADAPTIVE_SEARCH.md)
 chooses the next operator; [Hint Strategy](STUDENT_ASSIGNMENT_HINT_STRATEGY.md)
 describes CP-SAT guidance inside the chosen scope; [Objective Semantics](STUDENT_ASSIGNMENT_OBJECTIVE_SEMANTICS.md)

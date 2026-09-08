@@ -441,3 +441,23 @@ adaptive controller has been changed.
 
 For the versioned adaptive selector-policy ladder and its solver-free replay
 boundary, see [STUDENT_ASSIGNMENT_ADAPTIVE_SEARCH.md](STUDENT_ASSIGNMENT_ADAPTIVE_SEARCH.md).
+
+## Future within-scope candidate-selection question
+
+R16/S4 currently uses a strict-threshold satisfiability probe: CP-SAT returns a
+qualifying feasible candidate rather than optimizing an ordered sequence of
+incumbents inside the fixed scope. The attempt-27 calibration demonstrated why
+this is a separate research question. From the same pre-state, exact scope,
+seed, eight-worker count, and hint strategy, one repeat returned a validated
++108 candidate while two repeats returned the same validated +114 candidate.
+Their request-level moves and component tradeoffs were materially different.
+
+A future study may therefore compare the current first-qualifying contract with
+a separately named bounded-refinement treatment after the first qualifying
+candidate is found. It must hold the target scope and hint treatment fixed,
+validate every reported candidate under the unchanged full-model authority,
+and count refinement time inside the same wall budget. This question must not
+be folded into TOP-versus-IA target selection or a current/no-hint/target-
+release experiment. The present evidence shows within-scope candidate
+multiplicity; it does not show that refinement will reliably improve quality
+or runtime, and no refinement behavior is implemented or production-wired.

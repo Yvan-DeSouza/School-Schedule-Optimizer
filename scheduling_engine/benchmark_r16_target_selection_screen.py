@@ -325,7 +325,7 @@ def targeting_snapshot(data, source, quality, state, policy, selection):
     }
 
 
-def target_hint_snapshot(data, source, scope):
+def target_hint_snapshot(data, source, scope, *, exact_identity_requested=False):
     target_rows = _target_decisions(data, source, scope)
     destinations = {}
     for row in target_rows:
@@ -342,7 +342,11 @@ def target_hint_snapshot(data, source, scope):
         "target_source_decision_fingerprint": sha256_bytes(json_bytes(target_rows)),
         "target_source_decision_rows": target_rows,
         "target_local_destination_observability": destinations,
-        "exact_variable_identity": "deferred_to_probe_hint_telemetry",
+        "exact_variable_identity": (
+            "captured_in_inner_probe_hint_telemetry"
+            if exact_identity_requested
+            else "deferred_to_probe_hint_telemetry"
+        ),
         "target_dependent_hint_facts_are_observational": True,
     }
 
@@ -361,7 +365,8 @@ def run_cell(data, state_record, *, seed, policy, output_root,
              collect_search_start_telemetry=False,
              worker_count=WORKER_COUNT,
              fixed_scope=None,
-             parent_time_limit_seconds=None):
+             parent_time_limit_seconds=None,
+             collect_hint_identity_telemetry=False):
     checkpoint = PRIOR_STUDY_ROOT / state_record["checkpoint_path"]
     branch = read_diagnostic_branch_checkpoint(checkpoint, data=data)
     source = tuple(branch["source_decisions"])
@@ -432,7 +437,16 @@ def run_cell(data, state_record, *, seed, policy, output_root,
         "proxy": snapshot["actionability_proxy"],
         "proxy_used_for_selection": False,
     }, compressed=True)
-    atomic_write(cell_dir / "target_hint_snapshot.json.gz", target_hint_snapshot(data, source, scope), compressed=True)
+    atomic_write(
+        cell_dir / "target_hint_snapshot.json.gz",
+        target_hint_snapshot(
+            data,
+            source,
+            scope,
+            exact_identity_requested=collect_hint_identity_telemetry,
+        ),
+        compressed=True,
+    )
 
     before_fp = source_decision_fingerprint(source)
     session = run_adaptive_local_search_diagnostic(
@@ -461,6 +475,7 @@ def run_cell(data, state_record, *, seed, policy, output_root,
         # only and can perturb CP-SAT setup/wall behavior; semantic
         # target/destination telemetry above remains available without it.
         collect_search_start_telemetry=collect_search_start_telemetry,
+        collect_hint_identity_telemetry=collect_hint_identity_telemetry,
         use_trusted_branch_context=True,
         initial_trusted_branch_context=trusted_context,
     )

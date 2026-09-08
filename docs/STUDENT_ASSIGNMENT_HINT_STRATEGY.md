@@ -56,26 +56,36 @@ These are separate hint treatments. A target-policy experiment must not silently
 change hints, and a hint experiment must not silently change target selection.
 No such comparison is qualified by the current one-worker screen. The current
 artifacts record semantic source decisions, selected scopes, and compact
-destination summaries, but they do not provide a deterministic mapping for
-every student/request/source key to every CP-SAT variable index, assignment
-option, and destination-variable hint. Exact per-variable hint identity and
-destination predictability are therefore incomplete.
+destination summaries. Historical artifacts do not contain the live model's
+complete variable namespace, so exact variable identities cannot be added to
+them retroactively.
+
+The repository now has an opt-in, research-only exact identity mapping in
+`student_assignment/hint_observability.py`. When
+`collect_hint_identity_telemetry=True`, the model-building path records each
+student and semantic request/source key, each explicit assignment option, its
+CP-SAT variable index, current or alternate section, incumbent variable value,
+and actual incumbent hint value. The mapping uses model-builder objects and
+variable indexes directly; it does not parse variable names, use fuzzy
+matching, or assume numeric ID offsets. Duplicate semantic identities and
+duplicate variable indexes are rejected, and the canonical row set receives a
+stable fingerprint. The default remains off, so current hint behavior and
+historical telemetry contracts are unchanged.
 
 ## Readiness boundary
 
-Current hints remain the frozen control for the eight-worker jackpot calibration.
-No production hint change was made. A current/no-hint/target-release study is
-not ready until variable identity, release accounting, and per-variable hint
-fingerprints are durable. Directional hints are not ready until pre-state
-destination candidates and deterministic destination ranks are replayable. An
-oracle positive control is not ready until a known semantic target candidate
-can be mapped exactly to its CP-SAT destinations and independently validated.
+Current hints remain the frozen control. No production hint change was made.
+Exact target-release accounting is now technically observable, but it is not
+experimentally qualified: before any heavy hint study, one small opt-in smoke
+cell must capture the mapping, reproduce its fingerprint, and prove that merely
+recording identity leaves the incumbent hint vector and candidate-authority
+path unchanged. Only then may a separately approved fixed-state/fixed-scope
+study compare current hints, no hints, and exact target-release hints.
 
-The forensic evidence records this as three separate “not ready” findings. It
-does not claim that current hints are harmful; it identifies missing
-observability. The next hint study should use clean matched processes and
-retain candidate discovery, validation, adoption, source-decision, destination,
-and worker/resource facts without changing production defaults.
+Directional hints remain unready until pre-state destination candidates and
+deterministic destination ranks are replayable. An oracle positive control
+also remains later work. No hint experiment was run as part of the all-70
+scope analysis, and the evidence does not claim that current hints are harmful.
 
 Related ownership: [Target Selection](STUDENT_ASSIGNMENT_TARGET_SELECTION.md)
 chooses the scope; [Adaptive Search](STUDENT_ASSIGNMENT_ADAPTIVE_SEARCH.md)

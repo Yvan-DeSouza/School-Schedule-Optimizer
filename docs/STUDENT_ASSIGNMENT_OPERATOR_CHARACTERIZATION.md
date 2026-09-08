@@ -2344,3 +2344,50 @@ general R16 guarantee, and not evidence that the one-worker screen's IA or TOP
 policy would have produced the same outcome under eight workers. A later
 held-out target-policy study must use new pre-states and repeated clean
 eight-worker trials.
+
+### All-70 R16/S4 scope-structure forensics (2026-09-08)
+
+The sealed solver-free package at
+`C:\Users\desou\research_runs\v2_r16_scope_structure_forensics_20260908_9c4b71d8`
+reconstructs all 70 validated, adopted R16-only attempts without launching
+CP-SAT, validation, or an operator. Total authoritative gain was 1,212 v2
+points. Attempts 27/36/60/63 contributed 396 points (32.673%) from 4/70
+attempts (5.714%).
+
+The pre-solve move graph did not reveal a reliable jackpot discriminator. Its
+largest absolute continuous association with gain was only 0.133 (Spearman,
+graph density). Source-to-destination overlap had jackpot median 9.5 versus 8
+for ordinary scopes and Cliff's delta 0.439, but gain correlation was only
+0.058 and leave-one-jackpot-out separation was not uniformly stable. Potential
+chain count did not separate jackpots positively, and no scope contained a
+guidance-level structural cycle candidate. Category-local pressure was zero
+throughout, semester-local pressure was constant, and selected leverage was
+lower—not higher—in the jackpot group. With only four jackpot labels, these
+are descriptive mechanism facts rather than fitted policy coefficients.
+
+The exact current-namespace semantic diff for attempt 27 explains the +108 and
++114 candidates. Both changed 16 source decisions, but changed-key Jaccard was
+0.455 and destination-section Jaccard was 0.077. Relative to +108, the +114
+candidate improved category diversity by 6 more points and difficulty balance
+by 12 more, while improving utilization by 12 fewer; sequence and semester
+movement were equal. Those component differences sum to the exact six-point
+total. Repeats two and three produced the same +114 semantic identity.
+
+Observed historical solve walls had median 65.1 seconds and maximum 82.6;
+jackpot median was 66.3 and maximum 82.6. Duration-gain Spearman correlation
+was -0.097, so the 70-run trajectory does not show that jackpots inherently
+required more search time. The nine fixed-scope calibration walls ranged from
+62.6 to 172.7 seconds, including identical +96 and +102 outcomes with large
+runtime variation. Three of nine exceeded 120 seconds and none exceeded 180.
+This supports retaining the 300-second control and studying 180 seconds later;
+it does not establish what any shorter or longer ceiling would have returned.
+
+Solver-free IA shadows differed from TOP in all 70 states: zero exact matches,
+median Jaccard zero, maximum 0.143, and all 70 below 0.5. IA sacrificed 60.5
+TOP-leverage points on average, selected 6.5 fewer positive move facts, but
+added 9.1 potential chains and 161.7 same-structure interactions. These facts
+justify a held-out eight-worker TOP-versus-IA experiment because the policies
+actually choose different scopes; they infer no IA schedule outcome. No third
+coordination-aware policy is justified by the current evidence. The package
+contains an eight-state, 48-cell design, but neither it nor a hint experiment
+was executed.
