@@ -1115,6 +1115,7 @@ def run_student_assignment_source_decision_validation_diagnostic(
     collect_validation_search_start_telemetry=False,
     validation_telemetry_callback=None,
     collect_validation_telemetry=False,
+    _validated_branch_context_callback=None,
 ):
     """Validate detached semantic decisions against the current full model.
 
@@ -1154,6 +1155,7 @@ def run_student_assignment_source_decision_validation_diagnostic(
         ),
         validation_telemetry_callback=validation_telemetry_callback,
         collect_validation_telemetry=collect_validation_telemetry,
+        validated_branch_context_callback=_validated_branch_context_callback,
     )
 
 
@@ -1694,6 +1696,7 @@ def _solve_student_assignment(
     use_prepared_validation_context=False,
     collect_validation_telemetry=False,
     trusted_branch_context=None,
+    validated_branch_context_callback=None,
 ):
     # This monitor covers the complete diagnostic/engine operation, including
     # input validation, model construction, Stage 1, Stage 2, extraction, and
@@ -3737,9 +3740,12 @@ def _solve_student_assignment(
                 stage_2_seed_solver = validated_seed_solver
 
     validated_context_callback = (
-        stage_2_local_bootstrap.get("validated_branch_context_callback")
-        if stage_2_local_bootstrap is not None
-        else None
+        validated_branch_context_callback
+        or (
+            stage_2_local_bootstrap.get("validated_branch_context_callback")
+            if stage_2_local_bootstrap is not None
+            else None
+        )
     )
 
     def _publish_validated_context(source_decisions, source_values, solver):

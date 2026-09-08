@@ -516,7 +516,8 @@ def _operator_result(data, spec, *, selected_student_ids, current_source_decisio
                     diagnostic_parent_hard_wall_deadline_monotonic=None,
                     phase_callback=None,
                     trusted_branch_context=None,
-                    validated_branch_context_callback=None):
+                    validated_branch_context_callback=None,
+                    collect_search_start_telemetry=False):
     # Every policy family uses the same reusable continuous-session boundary.
     # The policy spec describes the session granularity; the outer caller still
     # caps it by the remaining shared deadline.  This keeps multi-attempt
@@ -602,6 +603,7 @@ def _operator_result(data, spec, *, selected_student_ids, current_source_decisio
             diagnostic_parent_hard_wall_deadline_monotonic
         ),
         collect_resource_telemetry=collect_resource_telemetry,
+        collect_search_start_telemetry=bool(collect_search_start_telemetry),
         capture_final_source_decisions=True,
         phase_callback=phase_callback,
         _trusted_branch_context=trusted_branch_context,
@@ -637,6 +639,8 @@ def run_adaptive_local_search_diagnostic(
     initial_history=(),
     initial_trusted_branch_context=None,
     parent_hard_wall_deadline_monotonic=None,
+    fixed_target_scope=(),
+    collect_search_start_telemetry=False,
 ):
     """Run a diagnostic v2 operator session inside one shared wall-clock budget.
 
@@ -891,6 +895,16 @@ def run_adaptive_local_search_diagnostic(
         # output before passing it to the operator so the request and the
         # operator-session telemetry use the same representation.
         selected = _canonical_student_scope(decision.selected_student_ids)
+        # Research-only target-policy experiments may supply a scope selected
+        # by an explicit, solver-neutral policy.  The default is empty and
+        # therefore preserves the historical fixed-cycle behavior exactly.
+        if fixed_target_scope:
+            if selection_policy != "fixed_cycle":
+                raise ValueError(
+                    "fixed_target_scope is supported only for fixed_cycle research calls"
+                )
+            selected = _canonical_student_scope(fixed_target_scope)
+            decision = replace(decision, selected_student_ids=selected)
         operation_limit = min(per_operator, remaining)
         effective_spec = _effective_operator_spec(
             decision.operator,
@@ -1000,6 +1014,7 @@ def run_adaptive_local_search_diagnostic(
                     if use_trusted_branch_context
                     else None
                 ),
+                collect_search_start_telemetry=collect_search_start_telemetry,
             )
         except ValueError as exc:
             # An operator may be given too little of the shared budget to
