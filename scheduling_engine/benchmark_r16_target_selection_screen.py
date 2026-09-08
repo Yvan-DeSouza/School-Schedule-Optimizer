@@ -358,7 +358,10 @@ def run_cell(data, state_record, *, seed, policy, output_root,
              search_seconds=SEARCH_SECONDS,
              validation_seconds=VALIDATION_SECONDS,
              run_label=None,
-             collect_search_start_telemetry=False):
+             collect_search_start_telemetry=False,
+             worker_count=WORKER_COUNT,
+             fixed_scope=None,
+             parent_time_limit_seconds=None):
     checkpoint = PRIOR_STUDY_ROOT / state_record["checkpoint_path"]
     branch = read_diagnostic_branch_checkpoint(checkpoint, data=data)
     source = tuple(branch["source_decisions"])
@@ -388,7 +391,7 @@ def run_cell(data, state_record, *, seed, policy, output_root,
         data, quality_report, source, target_scope_size=TARGET_SCOPE_SIZE, policy="interaction_aware"
     )
     selection = top if policy == "top_individual" else interaction
-    scope = tuple(selection.selected_student_ids)
+    scope = tuple(fixed_scope) if fixed_scope is not None else tuple(selection.selected_student_ids)
     cell_dir = Path(output_root) / "cells" / cell_identity(
         state_record, seed, policy, run_label=run_label
     )
@@ -400,10 +403,16 @@ def run_cell(data, state_record, *, seed, policy, output_root,
         "policy": policy,
         "seed": seed,
         "operator": asdict(OPERATOR),
-        "worker_count": WORKER_COUNT,
+        "worker_count": worker_count,
         "validation_worker_count": VALIDATION_WORKERS,
         "search_seconds": search_seconds,
         "validation_seconds": VALIDATION_SECONDS,
+        "parent_time_limit_seconds": (
+            float(parent_time_limit_seconds)
+            if parent_time_limit_seconds is not None
+            else search_seconds
+        ),
+        "fixed_scope": list(scope),
         "source_identity": identity,
         "initial_validation": initial_validation,
     })
@@ -430,9 +439,13 @@ def run_cell(data, state_record, *, seed, policy, output_root,
         data,
         initial_result=initial,
         initial_source_decisions=source,
-        total_time_limit_seconds=search_seconds,
+        total_time_limit_seconds=(
+            float(parent_time_limit_seconds)
+            if parent_time_limit_seconds is not None
+            else search_seconds
+        ),
         per_operator_time_limit_seconds=search_seconds,
-        worker_count=WORKER_COUNT,
+        worker_count=worker_count,
         portfolio=(OPERATOR,),
         max_iterations=1,
         collect_resource_telemetry=False,
@@ -460,6 +473,12 @@ def run_cell(data, state_record, *, seed, policy, output_root,
         "cell_id": cell_dir.name,
         "policy": policy,
         "seed": seed,
+        "worker_count": worker_count,
+        "parent_time_limit_seconds": (
+            float(parent_time_limit_seconds)
+            if parent_time_limit_seconds is not None
+            else search_seconds
+        ),
         "source_fingerprint_before": before_fp,
         "source_fingerprint_after": after_fp,
         "attempt": attempt_payload,

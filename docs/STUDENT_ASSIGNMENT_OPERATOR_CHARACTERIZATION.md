@@ -4,6 +4,12 @@ This document owns the empirical evidence catalog and capability
 classification for diagnostic search operators. It must not be read as a
 production optimization policy.
 
+Target-policy and hint-policy evidence have separate canonical owners:
+[Student Assignment Target Selection](STUDENT_ASSIGNMENT_TARGET_SELECTION.md)
+and [Student Assignment Hint Strategy](STUDENT_ASSIGNMENT_HINT_STRATEGY.md).
+The operator catalog records their measured interactions only as empirical
+facts; it does not turn them into production rules.
+
 ## Status and evidence boundary
 
 This document is the evidence catalog for diagnostic student-assignment search
@@ -2314,3 +2320,27 @@ Objective Semantics changes, validation-authority changes, or production
 promotion. Any future repeated comparison must be separately approved and
 must preserve the common source, v2 objective, full-model authority, and
 strict-adoption boundary.
+
+### Eight-worker jackpot repeatability calibration (2026-09-08)
+
+The sealed calibration lineage
+`C:\Users\desou\research_runs\v2_r16_target_selection_jackpot_calibration_20260908T000500Z_b42e7d91`
+ran nine sequential fresh-process repeats of the exact historical TOP scopes
+for R16/S4 attempts 27, 36, and 63. It used seed 101, eight optimization
+workers, one validation worker, current incumbent-derived hints, a 300-second
+CP-SAT ceiling, and a 480-second parent allowance reserving 180 seconds for
+full-model validation. All nine candidates were complete, validated, and
+adopted. Attempt 27 produced gains 108/114/114 (median 114; two exact
+candidate fingerprints); attempt 36 produced 96/96/96 (three exact); attempt
+63 produced 102/102/102 (three exact). Eight of nine repeats matched the
+historical candidate fingerprint and eight of nine met or exceeded the
+historical gain. All nine met at least +90, and every repeat changed four
+students.
+
+This is strong evidence that these three historical TOP jackpots are highly
+reproducible under the intended eight-worker configuration for these exact
+states and seed. It is not a TOP-versus-interaction-aware ranking, not a
+general R16 guarantee, and not evidence that the one-worker screen's IA or TOP
+policy would have produced the same outcome under eight workers. A later
+held-out target-policy study must use new pre-states and repeated clean
+eight-worker trials.

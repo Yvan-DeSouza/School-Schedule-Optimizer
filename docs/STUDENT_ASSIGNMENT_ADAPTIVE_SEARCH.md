@@ -4,6 +4,12 @@ This document owns the diagnostic adaptive-policy state machine and promotion
 boundary. It is not the owner of the underlying operator definitions or the
 production student-assignment contract.
 
+Target selection after an operator is chosen is owned by
+[Student Assignment Target Selection](STUDENT_ASSIGNMENT_TARGET_SELECTION.md).
+CP-SAT guidance inside that fixed scope is owned by
+[Student Assignment Hint Strategy](STUDENT_ASSIGNMENT_HINT_STRATEGY.md).
+Those layers are separate from adaptive operator selection.
+
 Long-running engine phase meanings and runtime accounting are owned by
 [Student Assignment Runtime Pipeline](STUDENT_ASSIGNMENT_RUNTIME_PIPELINE.md).
 This document remains the owner of selector behavior and policy promotion.
