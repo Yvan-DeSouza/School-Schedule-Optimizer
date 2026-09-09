@@ -442,6 +442,29 @@ adaptive controller has been changed.
 For the versioned adaptive selector-policy ladder and its solver-free replay
 boundary, see [STUDENT_ASSIGNMENT_ADAPTIVE_SEARCH.md](STUDENT_ASSIGNMENT_ADAPTIVE_SEARCH.md).
 
+### Production-like TOP-versus-IA targeting qualification
+
+The 2026-09-08 qualification used eight selected R16 pre-states, two target
+policies (`top_individual` and `interaction_aware`), and three clean repeats
+per policy. All 48 R16/S4 cells used the unchanged v2 objective, current
+incumbent-derived hints, seed 101, eight CP-SAT workers, one validation worker,
+a 300-second CP-SAT ceiling, a 180-second validation allowance, strict
+full-model validation, and strict adoption. All cells completed validly.
+
+TOP's mean/median validated gain was 17/18 v2 points; IA's was 13.5/15.
+TOP led four state-level median comparisons, IA led three, and one tied; after
+excluding the known TOP-jackpot positive-control state 60, the split was 3--3.
+The result is classified **C: state-dependent complementary value**. It does
+not establish general superiority, change the production targeting policy, or
+justify dynamic continuation. The sealed results and limitations are recorded
+in the qualification lineage
+`C:\Users\desou\research_runs\v2_r16_top_vs_ia_eight_worker_20260908_0245_a7c1e9f3`.
+
+A separate solver-free post-run audit is sealed at
+`C:\Users\desou\research_runs\v2_r16_top_vs_ia_eight_worker_postrun_audit_20260908T101415Z_3d199425`.
+It summarizes the immutable qualification artifacts without changing their
+quality or authority interpretation.
+
 ## Future within-scope candidate-selection question
 
 R16/S4 currently uses a strict-threshold satisfiability probe: CP-SAT returns a
@@ -461,3 +484,7 @@ be folded into TOP-versus-IA target selection or a current/no-hint/target-
 release experiment. The present evidence shows within-scope candidate
 multiplicity; it does not show that refinement will reliably improve quality
 or runtime, and no refinement behavior is implemented or production-wired.
+
+The complete research-only designs for the deferred continuation, fresh-state,
+near-tie, hint, refinement, and duration studies are in
+[STUDENT_ASSIGNMENT_TARGET_SELECTION_FUTURE_STUDIES.md](STUDENT_ASSIGNMENT_TARGET_SELECTION_FUTURE_STUDIES.md).

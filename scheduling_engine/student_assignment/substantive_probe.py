@@ -10,6 +10,8 @@ production solver's constraints, objective ordering, or returned result.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import hashlib
+import json
 from numbers import Real
 import re
 from time import monotonic
@@ -467,6 +469,18 @@ def _build_hint_telemetry(
         for index in indexes
     }
     hint_indexes = set(model.Proto().solution_hint.vars)
+    hint_vector_fingerprint = hashlib.sha256(
+        json.dumps(
+            sorted(
+                (int(index), int(value))
+                for index, value in zip(
+                    model.Proto().solution_hint.vars,
+                    model.Proto().solution_hint.values,
+                )
+            ),
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
     singleton_indexes = {
         index
         for index, variable in enumerate(model.Proto().variables)
@@ -520,6 +534,7 @@ def _build_hint_telemetry(
         "hinted_singleton_domain_variable_count": len(hint_indexes & singleton_indexes),
         "hinted_frozen_source_variable_count": len(hint_indexes & frozen_source_indexes),
         "projected_grade_scope": bool(projected_grade_scope),
+        "hint_vector_fingerprint": hint_vector_fingerprint,
     }
     if include_exact_identity:
         result["exact_identity"] = build_exact_hint_identity_mapping(
@@ -577,6 +592,7 @@ def probe_substantive_soft_tier(
     phase_callback=None,
     collect_presolve_telemetry: bool = False,
     collect_search_start_telemetry: bool = False,
+    collect_hint_vector_telemetry: bool = False,
     collect_hint_identity_telemetry: bool = False,
     capture_base_model_witness: bool = False,
 ) -> SubstantiveSoftTierProbeResult:
@@ -1031,7 +1047,11 @@ def probe_substantive_soft_tier(
             solver.parameters.stop_after_presolve = True
         solver.log_callback = native_log_messages.append
     hint_telemetry = {}
-    if collect_native_log or collect_hint_identity_telemetry:
+    if (
+        collect_native_log
+        or collect_hint_vector_telemetry
+        or collect_hint_identity_telemetry
+    ):
         hint_telemetry = _build_hint_telemetry(
             probe_model,
             context,

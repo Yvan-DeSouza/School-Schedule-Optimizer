@@ -1185,6 +1185,7 @@ def run_student_assignment_operator_session_diagnostic(
     cp_sat_max_deterministic_time_seconds=None,
     collect_presolve_telemetry=False,
     collect_search_start_telemetry=False,
+    collect_hint_vector_telemetry=False,
     collect_hint_identity_telemetry=False,
     collect_resource_telemetry=True,
     capture_final_source_decisions=True,
@@ -1339,6 +1340,9 @@ def run_student_assignment_operator_session_diagnostic(
             "collect_presolve_telemetry": bool(collect_presolve_telemetry),
             "collect_search_start_telemetry": bool(
                 collect_search_start_telemetry
+            ),
+            "collect_hint_vector_telemetry": bool(
+                collect_hint_vector_telemetry
             ),
             "collect_hint_identity_telemetry": bool(
                 collect_hint_identity_telemetry
@@ -4118,10 +4122,23 @@ def _solve_student_assignment(
     probe_source_decision_identity_rows = ()
     if (
         stage_2_local_bootstrap
-        and stage_2_local_bootstrap.get("collect_hint_identity_telemetry", False)
+        and (
+            stage_2_local_bootstrap.get("collect_hint_vector_telemetry", False)
+            or stage_2_local_bootstrap.get(
+                "collect_hint_identity_telemetry", False
+            )
+        )
     ):
+        identity_student_ids = {
+            int(student_id)
+            for student_id in stage_2_local_bootstrap.get(
+                "selected_student_ids", ()
+            )
+        }
         identity_rows = []
         for request in sorted(data.requests, key=lambda item: item.request_id):
+            if identity_student_ids and int(request.student_id) not in identity_student_ids:
+                continue
             if request.delivery_kind == "co_op":
                 source_key = ("course", request.request_id)
                 for index, (placement, occupancy, pair) in enumerate(
@@ -4185,6 +4202,8 @@ def _solve_student_assignment(
             student_id, kind, course_request_id, _offering_id, _course_id = (
                 commitment_metadata[source_key]
             )
+            if identity_student_ids and int(student_id) not in identity_student_ids:
+                continue
             for index, (placement, occupancy, pair) in enumerate(choices):
                 variable = commitment_variables[source_key, index]
                 identity_rows.append({
@@ -4911,6 +4930,11 @@ def _solve_student_assignment(
                         collect_hint_identity_telemetry=bool(
                             local_config.get(
                                 "collect_hint_identity_telemetry", False
+                            )
+                        ),
+                        collect_hint_vector_telemetry=bool(
+                            local_config.get(
+                                "collect_hint_vector_telemetry", False
                             )
                         ),
                         capture_base_model_witness=bool(

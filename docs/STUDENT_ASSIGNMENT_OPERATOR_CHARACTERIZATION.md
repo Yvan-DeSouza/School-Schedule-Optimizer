@@ -2341,8 +2341,8 @@ This is strong evidence that these three historical TOP jackpots are highly
 reproducible under the intended eight-worker configuration for these exact
 states and seed. It is not a TOP-versus-interaction-aware ranking, not a
 general R16 guarantee, and not evidence that the one-worker screen's IA or TOP
-policy would have produced the same outcome under eight workers. A later
-held-out target-policy study must use new pre-states and repeated clean
+policy would have produced the same outcome under eight workers. A genuinely
+held-out target-policy study would still need new pre-states and repeated clean
 eight-worker trials.
 
 ### All-70 R16/S4 scope-structure forensics (2026-09-08)
@@ -2385,9 +2385,44 @@ it does not establish what any shorter or longer ceiling would have returned.
 Solver-free IA shadows differed from TOP in all 70 states: zero exact matches,
 median Jaccard zero, maximum 0.143, and all 70 below 0.5. IA sacrificed 60.5
 TOP-leverage points on average, selected 6.5 fewer positive move facts, but
-added 9.1 potential chains and 161.7 same-structure interactions. These facts
-justify a held-out eight-worker TOP-versus-IA experiment because the policies
-actually choose different scopes; they infer no IA schedule outcome. No third
-coordination-aware policy is justified by the current evidence. The package
-contains an eight-state, 48-cell design, but neither it nor a hint experiment
-was executed.
+added 9.1 potential chains and 161.7 same-structure interactions. Those facts
+motivated the production-like qualification, but they did not predict its
+schedule outcomes.
+
+#### Production-like TOP-versus-IA R16/S4 qualification (2026-09-08)
+
+The sealed lineage
+`C:\Users\desou\research_runs\v2_r16_top_vs_ia_eight_worker_20260908_0245_a7c1e9f3`
+ran 8 states × 2 policies × 3 clean repeats = 48 one-transition cells. Each
+cell used R16/S4, seed 101, eight CP-SAT optimization workers, one validation
+worker, current incumbent-derived hints, a 300-second CP-SAT ceiling, a
+180-second validation allowance, a 720-second parent containment wall, strict
+full-model validation, and strict improvement adoption. Policy order
+alternated within state and inverted by state. State 60 was retained as a
+known TOP-jackpot positive control.
+
+All 48 cells were operationally valid, fully validated, and adopted; there
+were no reruns or sleep gaps. TOP's gain distribution was mean 17, median 18,
+range 6--84; IA's was mean 13.5, median 15, range 6--18. TOP won the
+state-level median comparison in four states, IA won three, and one tied.
+Excluding state 60, the split was still 3--3. The frozen classification was
+**C: TOP and IA show state-dependent complementary value**. The known control
+favored TOP (TOP gains 6/18/84 versus IA 6/6/6), while IA led in states 2,
+10, and 34; TOP led in states 6, 55, 60, and 67; and state 16 tied on the
+recorded median comparison. These are descriptive
+matched-study facts, not evidence of general superiority or production
+promotion.
+
+TOP changed one to four students and up to 16 source decisions; IA changed
+one student in every cell and at most two source decisions. That difference is
+useful search-geometry evidence, but it is not itself a quality objective.
+Objective Semantics v2, authority, candidate validation, and hint values were
+unchanged. The exact hint-identity smoke passed and exact identity telemetry
+was retained in all 48 cells; this was observability only, not a hint
+treatment. No third targeting policy or additional heavy experiment was run.
+
+A separate solver-free post-run audit was generated from the sealed lineage at
+`C:\Users\desou\research_runs\v2_r16_top_vs_ia_eight_worker_postrun_audit_20260908T101415Z_3d199425`.
+It rechecks the recorded cells, policy distributions, state-level results,
+component movement, resource samples, hint readiness, and interpretation
+limits without modifying the sealed experiment.

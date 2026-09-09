@@ -75,17 +75,19 @@ historical telemetry contracts are unchanged.
 ## Readiness boundary
 
 Current hints remain the frozen control. No production hint change was made.
-Exact target-release accounting is now technically observable, but it is not
-experimentally qualified: before any heavy hint study, one small opt-in smoke
-cell must capture the mapping, reproduce its fingerprint, and prove that merely
-recording identity leaves the incumbent hint vector and candidate-authority
-path unchanged. Only then may a separately approved fixed-state/fixed-scope
-study compare current hints, no hints, and exact target-release hints.
+The opt-in smoke gate passed before the eight-worker qualification: recording
+exact identity reproduced the incumbent hint-vector fingerprint and preserved
+scope, source, candidate, validation, adoption, gain, and status outcomes.
+The qualification then retained exact identity telemetry in all 48 cells.
+This qualifies observability of the current hint path only; it is not a hint
+treatment experiment and does not show that hints improve or harm schedule
+quality.
 
 Directional hints remain unready until pre-state destination candidates and
 deterministic destination ranks are replayable. An oracle positive control
-also remains later work. No hint experiment was run as part of the all-70
-scope analysis, and the evidence does not claim that current hints are harmful.
+also remains later work. The TOP-versus-IA qualification changed neither hint
+values nor target-release behavior, so its policy result must not be read as
+evidence for a hint change.
 
 Related ownership: [Target Selection](STUDENT_ASSIGNMENT_TARGET_SELECTION.md)
 chooses the scope; [Adaptive Search](STUDENT_ASSIGNMENT_ADAPTIVE_SEARCH.md)

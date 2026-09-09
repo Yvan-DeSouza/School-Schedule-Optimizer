@@ -519,6 +519,7 @@ def _operator_result(data, spec, *, selected_student_ids, current_source_decisio
                     trusted_branch_context=None,
                     validated_branch_context_callback=None,
                     collect_search_start_telemetry=False,
+                    collect_hint_vector_telemetry=False,
                     collect_hint_identity_telemetry=False):
     # Every policy family uses the same reusable continuous-session boundary.
     # The policy spec describes the session granularity; the outer caller still
@@ -606,6 +607,7 @@ def _operator_result(data, spec, *, selected_student_ids, current_source_decisio
         ),
         collect_resource_telemetry=collect_resource_telemetry,
         collect_search_start_telemetry=bool(collect_search_start_telemetry),
+        collect_hint_vector_telemetry=bool(collect_hint_vector_telemetry),
         collect_hint_identity_telemetry=bool(
             collect_hint_identity_telemetry
         ),
@@ -646,6 +648,7 @@ def run_adaptive_local_search_diagnostic(
     parent_hard_wall_deadline_monotonic=None,
     fixed_target_scope=(),
     collect_search_start_telemetry=False,
+    collect_hint_vector_telemetry=False,
     collect_hint_identity_telemetry=False,
 ):
     """Run a diagnostic v2 operator session inside one shared wall-clock budget.
@@ -1021,6 +1024,7 @@ def run_adaptive_local_search_diagnostic(
                     else None
                 ),
                 collect_search_start_telemetry=collect_search_start_telemetry,
+                collect_hint_vector_telemetry=collect_hint_vector_telemetry,
                 collect_hint_identity_telemetry=collect_hint_identity_telemetry,
             )
         except ValueError as exc:

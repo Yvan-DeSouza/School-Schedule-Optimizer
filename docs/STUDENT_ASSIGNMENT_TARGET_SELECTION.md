@@ -86,13 +86,13 @@ repeatability analysis; a different scope or candidate does not imply a better
 alternative schedule unless it is actually produced and independently
 validated.
 
-The one-worker screen was classified C and is not an eight-worker qualification.
-The subsequent calibration deliberately fixes the historical TOP scopes to
-separate worker/search variance from target-policy comparison. A future
-held-out TOP-versus-IA study must use new authoritative R16 pre-states, the
-production-like eight-worker contract, repeated clean processes, and
-pre-state strata. It must not infer a policy rule from branch labels or build a
-third heuristic without a transparent supported mechanism.
+The one-worker screen was classified C and was not an eight-worker
+qualification. The subsequent calibration deliberately fixed the historical
+TOP scopes to separate worker/search variance from target-policy comparison.
+The production-like TOP-versus-IA qualification described below has now been
+run, but its states were selected from the already analyzed 70-state TOP
+trajectory. It is therefore a repeated, diverse-prestate qualification rather
+than a fully independent state-aware generalization test.
 
 ## All-70 scope-structure evidence (2026-09-08)
 
@@ -114,21 +114,40 @@ coordination-aware target policy.
 The solver-free interaction-aware shadow nevertheless selected a materially
 different scope in every one of the 70 states: there were zero exact matches,
 median Jaccard overlap was zero, maximum overlap was 1/7, and all overlaps were
-below 0.5. That establishes policy separation, not IA schedule quality. It is
-enough to justify a held-out eight-worker comparison of the existing
+below 0.5. That establishes policy separation, not IA schedule quality. It was
+enough to motivate an eight-worker comparison of the existing
 `top_individual` and `interaction_aware` policies.
 
-The frozen follow-up design uses eight pre-states not used in the original
-R16 discovery screen or the attempt-27/36/63 calibration. It spans utilization-
-dominant and mixed-component states, concentrated and diffuse pressure,
-high/low coordination proxies, high/low TOP-versus-IA overlap, and high
-source-to-destination overlap, with explicit high/low structural-interaction
-labels. With two policies and three clean repeats, it is a 48-cell design.
-Every cell retains R16/S4, eight optimization workers, seed
-101, current hints, a 300-second search ceiling, independent one-worker
-validation, strict v2 adoption, and a fresh authoritative reset. This design
-has not been run. Its sealed solver-free package is
-`C:\Users\desou\research_runs\v2_r16_scope_structure_forensics_20260908_9c4b71d8`.
+The qualification used eight diverse pre-states selected from the analyzed
+trajectory, including state 60 as a known TOP-jackpot positive control. With
+two policies and three clean repeats it produced 48 one-transition cells.
+Every cell retained R16/S4, eight optimization workers, seed 101, current
+incumbent-derived hints, a 300-second CP-SAT ceiling, independent one-worker
+validation, strict v2 adoption, and a fresh authoritative reset. The sealed
+lineage is
+`C:\Users\desou\research_runs\v2_r16_top_vs_ia_eight_worker_20260908_0245_a7c1e9f3`.
+
+All 48 cells were operationally valid and fully validated/adopted, with no
+sleep contamination or rerun. TOP had mean/median gain 17/18 v2 points and
+IA had 13.5/15. TOP won the state-level median comparison in three states,
+IA won three, TOP won four, and one was tied; excluding the known state-60
+control, the split remained 3--3. The primary classification was therefore
+**C: TOP and IA show state-dependent complementary value**. TOP produced the
+largest observed gain (+84 at the known positive-control state), while IA's
+largest gain was +18. These are observed outcomes of this matched
+production-like qualification, not a general policy-superiority claim.
+
+The qualification also showed that IA consistently made smaller changes: all
+24 IA cells changed one student and at most two source decisions, whereas TOP
+changed one to four students and reached 16 source decisions in the positive
+control. This describes the observed search geometry; it does not prove that
+the larger TOP moves are preferable in future states. No third targeting
+policy, hint treatment, or dynamic continuation treatment was added.
+
+The solver-free post-run audit of this sealed lineage is at
+`C:\Users\desou\research_runs\v2_r16_top_vs_ia_eight_worker_postrun_audit_20260908T101415Z_3d199425`.
+It is a derived integrity and analysis package; it does not contain or infer
+alternative schedules.
 
 Related ownership: [Adaptive Search](STUDENT_ASSIGNMENT_ADAPTIVE_SEARCH.md)
 chooses the next operator; [Hint Strategy](STUDENT_ASSIGNMENT_HINT_STRATEGY.md)

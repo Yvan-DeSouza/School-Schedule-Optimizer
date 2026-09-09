@@ -366,6 +366,7 @@ def run_cell(data, state_record, *, seed, policy, output_root,
              worker_count=WORKER_COUNT,
              fixed_scope=None,
              parent_time_limit_seconds=None,
+             collect_hint_vector_telemetry=False,
              collect_hint_identity_telemetry=False):
     checkpoint = PRIOR_STUDY_ROOT / state_record["checkpoint_path"]
     branch = read_diagnostic_branch_checkpoint(checkpoint, data=data)
@@ -423,6 +424,20 @@ def run_cell(data, state_record, *, seed, policy, output_root,
     })
     snapshot = targeting_snapshot(data, source, initial_quality, state, policy, selection)
     atomic_write(cell_dir / "targeting_snapshot.json.gz", snapshot, compressed=True)
+    atomic_write(cell_dir / "targeting_comparison_snapshot.json.gz", {
+        "schema": "r16_targeting_comparison_snapshot_v1",
+        "source_fingerprint": source_decision_fingerprint(source),
+        "operator": OPERATOR.name,
+        "target_scope_size": TARGET_SCOPE_SIZE,
+        "top_individual": targeting_snapshot(
+            data, source, initial_quality, state, "top_individual", top
+        ),
+        "interaction_aware": targeting_snapshot(
+            data, source, initial_quality, state, "interaction_aware", interaction
+        ),
+        "guidance_only": True,
+        "objective_attribution": False,
+    }, compressed=True)
     atomic_write(cell_dir / "cluster_construction_trace.json.gz", {
         "schema": "r16_cluster_construction_trace_v1",
         "policy": policy,
@@ -475,6 +490,7 @@ def run_cell(data, state_record, *, seed, policy, output_root,
         # only and can perturb CP-SAT setup/wall behavior; semantic
         # target/destination telemetry above remains available without it.
         collect_search_start_telemetry=collect_search_start_telemetry,
+        collect_hint_vector_telemetry=collect_hint_vector_telemetry,
         collect_hint_identity_telemetry=collect_hint_identity_telemetry,
         use_trusted_branch_context=True,
         initial_trusted_branch_context=trusted_context,
