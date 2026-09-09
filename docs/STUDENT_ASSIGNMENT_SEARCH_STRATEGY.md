@@ -439,6 +439,23 @@ retarget after adoption, and fixed sessions retain their supplied scope.
 This capability remains diagnostic-only; no ordinary production portfolio or
 adaptive controller has been changed.
 
+### Dynamic interaction-aware three-hour follow-up (2026-09-09)
+
+The single research-only dynamic IA trajectory was operationally invalid. Its
+supervisor resource guard terminated the lineage
+`C:\Users\desou\research_runs\v2_r16_ia_three_hour_20260909_021418_001ceb5d`
+at 10,365.442 seconds, before the 10,800-second wall; endpoint validation was
+not run. The 63 completed adoptions and 1,098 accumulated points are partial
+diagnostic telemetry only, not a valid quality comparison with the historical
+TOP trajectory. The branch had no detected sleep gap and no surviving worker
+after cleanup. No alternative TOP schedule outcome was inferred, and the
+fixed-scope refinement design remains unexecuted.
+
+The complete solver-free audit of this invalid prefix is sealed at
+`C:\Users\desou\research_runs\v2_r16_ia_three_hour_postrun_audit_20260909_052301_001ceb5d_v3`.
+It reports checkpoint coverage, scope churn, component movement, probe
+semantics, resource termination, and the deferred-study design.
+
 For the versioned adaptive selector-policy ladder and its solver-free replay
 boundary, see [STUDENT_ASSIGNMENT_ADAPTIVE_SEARCH.md](STUDENT_ASSIGNMENT_ADAPTIVE_SEARCH.md).
 

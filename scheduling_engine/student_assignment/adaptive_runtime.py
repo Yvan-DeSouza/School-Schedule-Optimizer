@@ -1666,6 +1666,8 @@ class FixedFamilyPhaseController:
         clock=None,
         collect_resource_telemetry=False,
         targeting_snapshot_callback=None,
+        initial_trusted_branch_context=None,
+        target_scope_selector=None,
     ):
         if data.objective_semantics_version != "v2":
             raise ValueError("fixed-family research requires Objective Semantics v2")
@@ -1736,9 +1738,10 @@ class FixedFamilyPhaseController:
         self.phase_callback = phase_callback
         self.collect_resource_telemetry = bool(collect_resource_telemetry)
         self.targeting_snapshot_callback = targeting_snapshot_callback
+        self.target_scope_selector = target_scope_selector
         self._clock = clock or monotonic
         self._started = self._clock()
-        self._trusted_branch_context = None
+        self._trusted_branch_context = initial_trusted_branch_context
         self._history = []
         self._events = []
         self._attempt_count = 0
@@ -1946,7 +1949,18 @@ class FixedFamilyPhaseController:
                 )
             return None
 
-        selected = _canonical_student_scope(decision.selected_student_ids)
+        if self.target_scope_selector is not None:
+            selected = _canonical_student_scope(
+                self.target_scope_selector(
+                    quality=quality,
+                    state=state,
+                    decision=decision,
+                    source_decisions=tuple(self.current_source_decisions),
+                )
+            )
+            decision = replace(decision, selected_student_ids=selected)
+        else:
+            selected = _canonical_student_scope(decision.selected_student_ids)
         targeting_snapshot = {}
         source_fingerprint = source_decision_fingerprint(
             self.current_source_decisions
@@ -2027,6 +2041,7 @@ class FixedFamilyPhaseController:
             session_id=f"fixed-phase-{phase.phase_id}-{self._attempt_count + 1}",
             selection_policy="fixed_cycle",
             fixed_cycle=(spec,),
+            fixed_target_scope=selected,
             adaptive_policy_variant="balanced",
             phase_callback=self.phase_callback,
             use_trusted_branch_context=True,

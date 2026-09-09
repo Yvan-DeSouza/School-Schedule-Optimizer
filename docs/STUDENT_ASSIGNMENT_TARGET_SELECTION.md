@@ -149,6 +149,45 @@ The solver-free post-run audit of this sealed lineage is at
 It is a derived integrity and analysis package; it does not contain or infer
 alternative schedules.
 
+## Dynamic interaction-aware three-hour follow-up (2026-09-09)
+
+The research-only runner then attempted one continuous IA-only trajectory from
+the same authoritative common source as the historical TOP R16 branch:
+`C:\Users\desou\research_runs\v2_r16_ia_three_hour_20260909_021418_001ceb5d`.
+It recomputed an `interaction_aware` four-student scope after each adopted
+incumbent, used R16/S4, seed 101, eight CP-SAT workers, current-incumbent
+hints, a 300-second probe ceiling, a 180-second validation allowance, one
+validation worker, trusted branch context, and strict v2 adoption. The
+historical TOP policy was recorded only as a solver-free shadow; no TOP probe
+was run and no alternative schedule outcome was inferred.
+
+This lineage is **E: operationally invalid**. The independent supervisor
+terminated the branch at 10,365.442 seconds because its resource guard fired;
+the requested 10,800-second wall was not reached, and endpoint validation was
+not run. There was no detected sleep gap and no surviving worker process after
+cleanup. The branch completed 63 strict adoptions before termination. Its
+partial trajectory accumulated 1,098 v2 points and reached a partial value of
+41,652, but these numbers are diagnostic telemetry only—not an authoritative
+endpoint and not a valid comparison against the historical TOP total of 1,212
+points.
+
+The partial trajectory is still useful for mechanism telemetry: 53 unique
+scopes were observed, with 10 duplicate observations beyond first occurrence
+and a maximum repeated-scope streak of four scopes (three repeat events).
+Utilization improvement totaled 1,128 points, while
+the other component changes summed to -30; sequence and semester-load
+components were unchanged. These facts describe this interrupted branch and
+must not be generalized into a policy-quality claim. The future fixed-scope
+first-qualifying versus minimum-coordination/refinement study remains
+design-only and was not executed.
+
+The complete solver-free post-run audit, including checkpoint coverage,
+scope-churn, concentration, component, resource, probe-semantics, and
+59-item handoff fields, is sealed at
+`C:\Users\desou\research_runs\v2_r16_ia_three_hour_postrun_audit_20260909_052301_001ceb5d_v3`.
+It is derived from the sealed branch and does not mutate it or infer TOP
+schedule outcomes.
+
 Related ownership: [Adaptive Search](STUDENT_ASSIGNMENT_ADAPTIVE_SEARCH.md)
 chooses the next operator; [Hint Strategy](STUDENT_ASSIGNMENT_HINT_STRATEGY.md)
 describes CP-SAT guidance inside the chosen scope; [Objective Semantics](STUDENT_ASSIGNMENT_OBJECTIVE_SEMANTICS.md)

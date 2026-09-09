@@ -2426,3 +2426,29 @@ A separate solver-free post-run audit was generated from the sealed lineage at
 It rechecks the recorded cells, policy distributions, state-level results,
 component movement, resource samples, hint readiness, and interpretation
 limits without modifying the sealed experiment.
+
+#### Dynamic interaction-aware three-hour follow-up (2026-09-09)
+
+One research-only dynamic `interaction_aware` R16/S4 trajectory was attempted
+from the same common source as the sealed historical TOP branch. The lineage
+`C:\Users\desou\research_runs\v2_r16_ia_three_hour_20260909_021418_001ceb5d`
+was terminated by its independent resource supervisor at 10,365.442 seconds,
+before the 10,800-second branch wall, and did not receive endpoint validation.
+It is therefore classified **E: operationally invalid**. The worker was
+cleaned up and no sleep gap was detected.
+
+The interrupted branch completed 63 strict adoptions, with 1,098 partial
+trajectory points and 53 unique scopes. Those are diagnostic facts about the
+observed prefix only. They are not a valid quality result and must not be
+compared as if they were an endpoint against the historical TOP branch's 70
+adoptions and 1,212 validated points. TOP was only a solver-free shadow in
+this follow-up; no alternative TOP schedule was run or inferred. The existing
+eight-worker TOP-versus-IA qualification remains the authoritative matched
+comparison for target-policy observations, and the fixed-scope candidate
+selection/refinement study remains future work.
+
+The complete solver-free post-run audit is sealed at
+`C:\Users\desou\research_runs\v2_r16_ia_three_hour_postrun_audit_20260909_052301_001ceb5d_v3`.
+It contains the full checkpoint comparison, scope trajectory, component and
+resource analysis, probe-semantics evidence, and requirement audit without
+modifying the invalid source lineage.
