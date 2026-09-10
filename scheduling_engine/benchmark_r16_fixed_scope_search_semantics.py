@@ -151,6 +151,14 @@ def load_contract(path):
 
 
 def contract_payload_fingerprint(contract):
+    """Hash the frozen contract payload, excluding only its hash field.
+
+    ``code_identity.prepared_from_git_head`` and the implementation file
+    hashes are frozen provenance/identity inputs and therefore participate in
+    this payload.  Runtime ``execution_git_head`` is deliberately never a
+    contract field; it is written to a created lineage instead.
+    """
+
     payload = dict(contract)
     payload.pop("contract_payload_fingerprint", None)
     return sha256_bytes(json_bytes(payload))
@@ -202,6 +210,15 @@ def validate_contract(contract):
         "contract_payload_fingerprint"
     ):
         raise ValueError("frozen contract payload fingerprint mismatch")
+    code_identity = contract.get("code_identity") or {}
+    if not code_identity.get("prepared_from_git_head"):
+        raise ValueError("frozen preparation-base Git provenance is missing")
+    if "git_head" in code_identity:
+        raise ValueError("self-referential frozen git_head is not supported")
+    if not code_identity.get("fingerprinted_files"):
+        raise ValueError("experiment implementation fingerprint file set is empty")
+    if not code_identity.get("implementation_fingerprint"):
+        raise ValueError("experiment implementation fingerprint is missing")
     if contract.get("objective_semantics_version") != "v2":
         raise ValueError("the frozen contract requires Objective Semantics v2")
     if set(contract.get("objective_importance_scores", {}).values()) != {6}:
@@ -282,6 +299,27 @@ def implementation_fingerprint(contract):
     return sha256_bytes(json_bytes(rows)), rows
 
 
+def code_identity_is_authorized(
+    *,
+    ancestry_ok,
+    worktree_clean,
+    implementation_fingerprint_matches,
+):
+    """Return the stable code-identity launch authority.
+
+    A committed contract cannot require the repository's current HEAD to be
+    equal to a value recorded inside that same contract.  Ancestry establishes
+    preparation provenance; the exact implementation fingerprint and clean
+    worktree establish the executable code identity.
+    """
+
+    return bool(
+        ancestry_ok
+        and worktree_clean
+        and implementation_fingerprint_matches
+    )
+
+
 def code_identity_facts(contract):
     head = subprocess.run(
         ["git", "rev-parse", "HEAD"], cwd=REPOSITORY_ROOT,
@@ -291,20 +329,52 @@ def code_identity_facts(contract):
         ["git", "status", "--short"], cwd=REPOSITORY_ROOT,
         capture_output=True, text=True, check=False,
     ).stdout
+    prepared_from_git_head = contract["code_identity"]["prepared_from_git_head"]
+    ancestry = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", prepared_from_git_head, head],
+        cwd=REPOSITORY_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
     fingerprint, rows = implementation_fingerprint(contract)
+    worktree_clean = not status.strip()
+    implementation_matches = (
+        fingerprint == contract["code_identity"]["implementation_fingerprint"]
+    )
     return {
-        "git_head": head,
+        "execution_git_head": head,
+        "prepared_from_git_head": prepared_from_git_head,
+        "preparation_base_is_ancestor": ancestry.returncode == 0,
         "git_status": status,
+        "worktree_clean": worktree_clean,
         "implementation_fingerprint": fingerprint,
         "file_hashes": dict(rows),
-        "expected_git_head": contract["code_identity"]["git_head"],
+        "expected_prepared_from_git_head": prepared_from_git_head,
         "expected_implementation_fingerprint": contract["code_identity"][
             "implementation_fingerprint"
         ],
-        "matches": (
-            head == contract["code_identity"]["git_head"]
-            and fingerprint == contract["code_identity"]["implementation_fingerprint"]
+        "matches": code_identity_is_authorized(
+            ancestry_ok=ancestry.returncode == 0,
+            worktree_clean=worktree_clean,
+            implementation_fingerprint_matches=implementation_matches,
         ),
+    }
+
+
+def execution_provenance(contract, identity):
+    """Build lineage-only execution identity without mutating the contract."""
+
+    return {
+        "schema": "r16_fixed_scope_execution_provenance_v1",
+        "contract_payload_fingerprint": contract["contract_payload_fingerprint"],
+        "prepared_from_git_head": contract["code_identity"][
+            "prepared_from_git_head"
+        ],
+        "execution_git_head": identity["execution_git_head"],
+        "implementation_fingerprint": identity["implementation_fingerprint"],
+        "worktree_clean": identity["worktree_clean"],
+        "captured_at_utc": utc_now(),
     }
 
 
@@ -501,6 +571,9 @@ def create_lineage(contract, parent=RESEARCH_PARENT, lineage_id=None):
     root = (parent / lineage_id).resolve()
     if root.parent != parent:
         raise ValueError("lineage must be a direct child of the research parent")
+    identity = code_identity_facts(contract)
+    if not identity["matches"]:
+        raise RuntimeError("code identity changed after preflight")
     root.mkdir(parents=True, exist_ok=False)
     with (root / "lineage.lock").open("x", encoding="utf-8") as stream:
         stream.write(contract["experiment_id"] + "\n")
@@ -509,6 +582,7 @@ def create_lineage(contract, parent=RESEARCH_PARENT, lineage_id=None):
     for name in ("source", "cells", "analysis", "report", "logs"):
         (root / name).mkdir(exist_ok=False)
     atomic_write(root / "frozen_contract.json", contract)
+    atomic_write(root / "execution_provenance.json", execution_provenance(contract, identity))
     for source in contract["source_cells"]:
         target = root / "source" / f"{source['id']}.json.gz"
         shutil.copyfile(source["source_path"], target)

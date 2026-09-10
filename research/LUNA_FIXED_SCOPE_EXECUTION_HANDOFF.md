@@ -43,10 +43,28 @@ semantic fingerprints, v2 balanced source quality/counts, focused parity and
 infrastructure tests, available memory, and competing processes. It executes
 zero study cells.
 
-If code identity differs, stop. Do not edit the contract to bless an
-unreviewed diff. If a historical seal or source identity differs, stop. If
-available memory is below 4 GiB, stop. Remove competing research/Celery solver
-processes before trying preflight again.
+Stage 0 treats Git commit identity as provenance, not as a self-referential
+exact-equality gate. It requires the current execution HEAD to descend from
+the contract's `prepared_from_git_head`, the exact experiment-relevant
+`implementation_fingerprint` to match, and the worktree to be clean. A
+documentation-only or reviewed preparation descendant may therefore advance
+HEAD without changing the scientific identity; implementation drift still
+fails the gate. Do not edit the contract to bless an unreviewed diff. If a
+historical seal or source identity differs, stop. If available memory is below
+4 GiB, stop. Remove competing research/Celery solver processes before trying
+preflight again.
+
+When a future grid is actually created, the runner records the current
+`execution_git_head` in lineage-only `execution_provenance.json`, alongside
+the preparation base and implementation fingerprint. It never writes that
+runtime value into the frozen contract or requires it to equal the preparation
+base.
+
+The contract payload fingerprint covers the frozen scientific contract,
+including its preparation-base provenance and implementation-file set/hash.
+The ancestry result, current worktree status, and execution HEAD are runtime
+preflight or lineage facts; they are not recursively hashed back into the
+contract.
 
 ## Stage 1: infrastructure confidence
 
@@ -159,6 +177,7 @@ Do not write anything under the lineage after `SEALED` exists.
 <lineage>/
   lineage.lock
   frozen_contract.json
+  execution_provenance.json
   cell_order.json
   preflight.json
   runner_state.json

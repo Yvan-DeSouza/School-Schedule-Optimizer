@@ -52,6 +52,11 @@ def _contract():
         "neighborhood_radius": 16,
         "max_changed_students": 4,
         "max_changed_source_decisions": 16,
+        "code_identity": {
+            "prepared_from_git_head": "test-preparation-base",
+            "fingerprinted_files": ["scheduling_engine/student_assignment/core.py"],
+            "implementation_fingerprint": "test-implementation",
+        },
     }
     contract["cell_order"] = runner.expected_cell_order(contract)
     contract["decision_criteria"] = {"practical_gain_points": 12}
@@ -222,3 +227,51 @@ def test_default_contract_has_the_six_frozen_scopes_when_present():
         "top60": [67, 87, 597, 1392],
         "top27": [263, 273, 283, 1170],
     }
+
+
+def test_code_identity_accepts_prepare_commit_descendant_when_clean():
+    assert runner.code_identity_is_authorized(
+        ancestry_ok=True,
+        worktree_clean=True,
+        implementation_fingerprint_matches=True,
+    )
+
+
+def test_code_identity_rejects_descendant_with_implementation_drift():
+    assert not runner.code_identity_is_authorized(
+        ancestry_ok=True,
+        worktree_clean=True,
+        implementation_fingerprint_matches=False,
+    )
+
+
+def test_code_identity_rejects_dirty_worktree():
+    assert not runner.code_identity_is_authorized(
+        ancestry_ok=True,
+        worktree_clean=False,
+        implementation_fingerprint_matches=True,
+    )
+
+
+def test_code_identity_rejects_non_descendant_lineage():
+    assert not runner.code_identity_is_authorized(
+        ancestry_ok=False,
+        worktree_clean=True,
+        implementation_fingerprint_matches=True,
+    )
+
+
+def test_execution_head_is_lineage_provenance_not_contract_identity():
+    contract = _contract()
+    identity = {
+        "execution_git_head": "execution-head",
+        "implementation_fingerprint": "test-implementation",
+        "worktree_clean": True,
+    }
+
+    provenance = runner.execution_provenance(contract, identity)
+
+    assert provenance["prepared_from_git_head"] == "test-preparation-base"
+    assert provenance["execution_git_head"] == "execution-head"
+    assert "execution_git_head" not in contract
+    assert "execution_git_head" not in contract["code_identity"]

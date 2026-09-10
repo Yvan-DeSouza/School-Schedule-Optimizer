@@ -4,7 +4,7 @@
   "experiment_version": 1,
   "status": "PREPARED_NOT_EXECUTED",
   "documentation_version": "2026-09-09",
-  "contract_payload_fingerprint": "7a449cd8bbff8e2f2644ff0fd85c5d411cf8f3d5efffc2b424b6fa33f586f9d2",
+  "contract_payload_fingerprint": "bed8d1df410ba2f52b639e82cae4c4ab40ce7d06a833b002be81748aecb9b3c5",
   "objective_semantics_version": "v2",
   "objective_importance_scores": {
     "course_category_diversity": 6,
@@ -140,14 +140,33 @@
     "direct_vs_iterative": {"minimum_scope_wins": 2, "maximum_scope_losses": 1, "no_worse_validation": "winning treatment must have at least as many authoritative validated cells"}
   },
   "code_identity": {
-    "git_head": "4a4212a1b09383a7a74b913a068d42031d5f8924",
+    "prepared_from_git_head": "4a4212a1b09383a7a74b913a068d42031d5f8924",
     "fingerprinted_files": [
-      "scheduling_engine/student_assignment/substantive_probe.py",
+      "scheduling_engine/constants.py",
+      "scheduling_engine/dto.py",
       "scheduling_engine/student_assignment/core.py",
+      "scheduling_engine/student_assignment/substantive_probe.py",
+      "scheduling_engine/student_assignment/solver.py",
+      "scheduling_engine/student_assignment/quality.py",
+      "scheduling_engine/student_assignment/objective_semantics.py",
+      "scheduling_engine/student_assignment/validation.py",
+      "scheduling_engine/student_assignment/locks.py",
+      "scheduling_engine/student_assignment/occupancy.py",
+      "scheduling_engine/student_assignment/initial_hint.py",
+      "scheduling_engine/student_assignment/lock_costs.py",
+      "scheduling_engine/student_assignment/candidate_evidence.py",
+      "scheduling_engine/student_assignment/stage2_benchmark.py",
+      "scheduling_engine/student_assignment/search_experiments.py",
+      "scheduling_engine/student_assignment/runtime.py",
+      "scheduling_engine/student_assignment/hint_observability.py",
+      "scheduling_engine/student_assignment/operator_session.py",
+      "scheduling_engine/student_assignment/search_guidance.py",
+      "scheduling_engine/student_assignment/utilization_guidance.py",
+      "scheduling_engine/student_assignment/grade_guidance.py",
       "scheduling_engine/benchmark_r16_fixed_scope_search_semantics.py",
       "scheduling_engine/analyze_r16_fixed_scope_search_semantics.py"
     ],
-    "implementation_fingerprint": "c7f1b9a604dd460a72f3766709c7f9a99201016b60fd06850a575b9d372a67ea"
+    "implementation_fingerprint": "3a4feb4a7e177e5e0898d1328c0088adf41b042c9e8249137dc8e608865f46e9"
   },
   "cell_order": [
     {"ordinal":1,"cell_id":"cell_001_ia13_control_first_qualifying_repeat_01","source_cell_id":"ia13","treatment":"control_first_qualifying","repeat":1},
