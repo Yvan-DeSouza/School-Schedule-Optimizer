@@ -5,6 +5,18 @@ assignment and opt-in diagnostic search guidance. Objective definitions,
 validation authority, and quality metrics are maintained in their specialized
 documents.
 
+The research search architecture has four distinct layers:
+
+1. **Operator selection** chooses a neighborhood family such as R4 or R16.
+2. **Target selection** chooses the students that a targeted operator inspects.
+3. **Within-scope search semantics** determines what CP-SAT is asked to do once
+   that exact scope is fixed.
+4. **Hint guidance** supplies a starting assignment without changing quality or
+   authority.
+
+The third layer is owned by
+[Student Assignment Within-Scope Search](STUDENT_ASSIGNMENT_WITHIN_SCOPE_SEARCH.md).
+
 Long-running execution phases and timing interpretation are owned by
 [Student Assignment Runtime Pipeline](STUDENT_ASSIGNMENT_RUNTIME_PIPELINE.md),
 not by this search-strategy document.
@@ -482,7 +494,7 @@ A separate solver-free post-run audit is sealed at
 It summarizes the immutable qualification artifacts without changing their
 quality or authority interpretation.
 
-## Future within-scope candidate-selection question
+## Prepared within-scope candidate-selection study
 
 R16/S4 currently uses a strict-threshold satisfiability probe: CP-SAT returns a
 qualifying feasible candidate rather than optimizing an ordered sequence of
@@ -492,15 +504,14 @@ seed, eight-worker count, and hint strategy, one repeat returned a validated
 +108 candidate while two repeats returned the same validated +114 candidate.
 Their request-level moves and component tradeoffs were materially different.
 
-A future study may therefore compare the current first-qualifying contract with
-a separately named bounded-refinement treatment after the first qualifying
-candidate is found. It must hold the target scope and hint treatment fixed,
-validate every reported candidate under the unchanged full-model authority,
-and count refinement time inside the same wall budget. This question must not
-be folded into TOP-versus-IA target selection or a current/no-hint/target-
-release experiment. The present evidence shows within-scope candidate
-multiplicity; it does not show that refinement will reliably improve quality
-or runtime, and no refinement behavior is implemented or production-wired.
+The research-only implementation and frozen, unexecuted study now compare the
+current control with minimum coordination, iterative strict-bound refinement,
+and direct exact-v2 optimization. They hold source, scope, hint treatment,
+seed, worker count, budget, and full-model validation fixed. Their precise
+semantics, parity gate, hybrid assessment, and promotion rules are owned by
+[Student Assignment Within-Scope Search](STUDENT_ASSIGNMENT_WITHIN_SCOPE_SEARCH.md).
+The implementation is not production-wired, and no result may be inferred
+before the frozen 72-cell screen is actually run.
 
 The complete research-only designs for the deferred continuation, fresh-state,
 near-tie, hint, refinement, and duration studies are in

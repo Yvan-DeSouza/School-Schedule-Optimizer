@@ -126,6 +126,22 @@ class SubstantiveSoftTierProbeResult:
     candidate_base_model_fingerprint: str | None = None
     candidate_base_model_variable_values: dict = field(default_factory=dict)
     candidate_base_model_witness_error: str | None = None
+    # Research-only fixed-scope search-semantics telemetry.  Defaults preserve
+    # every historical diagnostic caller and serialized result.
+    search_semantics: str = "first_qualifying"
+    min_changed_students: int | None = None
+    min_changed_source_decisions: int | None = None
+    solve_rounds: tuple = ()
+    first_qualifying_latency_seconds: float | None = None
+    first_candidate_substantive_value: float | None = None
+    cumulative_native_solve_wall_seconds: float = 0.0
+    cumulative_external_solve_wall_seconds: float = 0.0
+    search_termination_classification: str | None = None
+    objective_absolute_gap: float | None = None
+    objective_relative_gap: float | None = None
+    seed_quality_objective_semantics: dict = field(default_factory=dict)
+    candidate_quality_objective_semantics: dict = field(default_factory=dict)
+    probe_base_model_fingerprint: str | None = None
 
 
 def _model_family_variable_counts(model, variable_family_indexes=()):
@@ -584,6 +600,9 @@ def probe_substantive_soft_tier(
     minimize_component: str | None = None,
     strict_improvement: bool = False,
     max_changed_students: int | None = None,
+    min_changed_students: int | None = None,
+    min_changed_source_decisions: int | None = None,
+    search_semantics: str = "first_qualifying",
     selected_student_ids=(),
     selected_grade: int | None = None,
     projected_grade_scope: bool = False,
@@ -600,10 +619,11 @@ def probe_substantive_soft_tier(
 
     Every completion-defining source group receives an exactly-one constraint
     on the clone.  All objective expressions before the requested soft tier
-    are fixed to their validated Stage 1 values.  The requested tier is then
-    bounded, but not minimized: this is a satisfiability question, so CP-SAT
-    remains free to change any source decision while preserving every hard
-    rule and higher-priority fulfillment result.
+    are fixed to their validated Stage 1 values.  Historical/default calls
+    bound the requested tier as a satisfiability question.  Explicit
+    research-only search semantics may instead repeat strict-bound calls or
+    minimize the exact v2 tier expression, without changing the source model,
+    higher tiers, or candidate authority.
     ``strict_improvement=True`` means a strict-improvement query against the
     validated seed's existing substantive value.  This keeps diagnostic
     callers from depending on an objective-vector index while preserving the
@@ -611,6 +631,38 @@ def probe_substantive_soft_tier(
     """
 
     operation_started = monotonic()
+
+    allowed_search_semantics = {
+        "first_qualifying",
+        "minimum_coordination",
+        "iterative_strict_bound_refinement",
+        "direct_exact_v2_optimization",
+    }
+    if search_semantics not in allowed_search_semantics:
+        raise ValueError(f"Unsupported research search semantics: {search_semantics!r}")
+    if search_semantics == "minimum_coordination":
+        if min_changed_students is None:
+            min_changed_students = 3
+        if min_changed_source_decisions is None:
+            min_changed_source_decisions = 10
+    elif min_changed_students is not None or min_changed_source_decisions is not None:
+        raise ValueError(
+            "minimum change bounds require search_semantics='minimum_coordination'"
+        )
+    if search_semantics == "direct_exact_v2_optimization" and minimize_component is not None:
+        raise ValueError(
+            "direct exact-v2 optimization cannot be combined with component minimization"
+        )
+    if search_semantics == "iterative_strict_bound_refinement" and minimize_component is not None:
+        raise ValueError(
+            "iterative strict-bound refinement cannot be combined with component minimization"
+        )
+    for name, value in (
+        ("min_changed_students", min_changed_students),
+        ("min_changed_source_decisions", min_changed_source_decisions),
+    ):
+        if value is not None and int(value) < 0:
+            raise ValueError(f"{name} must be non-negative")
 
     if collect_presolve_telemetry and collect_search_start_telemetry:
         raise ValueError(
@@ -745,6 +797,13 @@ def probe_substantive_soft_tier(
             f"at importance level {target_importance_level}; found {len(target_entries)}."
         )
     target_index, target_metadata = target_entries[0]
+    if (
+        search_semantics == "direct_exact_v2_optimization"
+        and target_metadata.get("semantics_version") != "v2"
+    ):
+        raise ValueError(
+            "direct exact-v2 optimization requires Objective Semantics v2"
+        )
 
     seed_component_values = dict(context.solver_objective_components(seed_solver))
     seed_objective_vector = context.seed_objective_vector
@@ -919,7 +978,7 @@ def probe_substantive_soft_tier(
                     # be moved by a student-targeted repair.
                     probe_model.Add(selected_clone_variable == 1)
             probe_model.Add(sum(changed_group_terms or [0]) <= neighborhood_radius)
-            if max_changed_students is not None:
+            if max_changed_students is not None or min_changed_students is not None:
                 changed_student_variables = []
                 for student_id, literals in sorted(
                     changed_literals_by_student.items(), key=repr
@@ -934,9 +993,31 @@ def probe_substantive_soft_tier(
                     probe_model.AddBoolAnd(
                         [literal.Not() for literal in literals]
                     ).OnlyEnforceIf(indicator.Not())
+                if max_changed_students is not None:
+                    probe_model.Add(
+                        sum(changed_student_variables or [0])
+                        <= max(0, int(max_changed_students))
+                    )
+                if min_changed_students is not None:
+                    if (
+                        max_changed_students is not None
+                        and int(min_changed_students) > int(max_changed_students)
+                    ):
+                        raise ValueError(
+                            "min_changed_students cannot exceed max_changed_students"
+                        )
+                    probe_model.Add(
+                        sum(changed_student_variables or [0])
+                        >= int(min_changed_students)
+                    )
+            if min_changed_source_decisions is not None:
+                if int(min_changed_source_decisions) > int(neighborhood_radius):
+                    raise ValueError(
+                        "min_changed_source_decisions cannot exceed neighborhood_radius"
+                    )
                 probe_model.Add(
-                    sum(changed_student_variables or [0])
-                    <= max(0, int(max_changed_students))
+                    sum(changed_group_terms or [0])
+                    >= int(min_changed_source_decisions)
                 )
         _emit_phase(
             "probe_neighborhood_constraints",
@@ -944,9 +1025,22 @@ def probe_substantive_soft_tier(
             elapsed_seconds=monotonic() - probe_phase_started,
         )
         neighborhood_span.__exit__(None, None, None)
-    elif max_changed_students is not None:
+    elif (
+        max_changed_students is not None
+        or min_changed_students is not None
+        or min_changed_source_decisions is not None
+    ):
+        bound_names = ", ".join(
+            name
+            for name, value in (
+                ("max_changed_students", max_changed_students),
+                ("min_changed_students", min_changed_students),
+                ("min_changed_source_decisions", min_changed_source_decisions),
+            )
+            if value is not None
+        )
         raise ValueError(
-            "max_changed_students requires a source-decision neighborhood radius"
+            f"{bound_names} requires a source-decision neighborhood radius"
         )
 
     # Preserve every objective that precedes the target tier. This includes
@@ -992,6 +1086,8 @@ def probe_substantive_soft_tier(
                 probe_model, term_specs
             )
             probe_model.Minimize(component_expressions[minimize_component])
+        elif search_semantics == "direct_exact_v2_optimization":
+            probe_model.Minimize(target_expression)
     _emit_phase(
         "probe_objective_bound_constraints",
         "completed",
@@ -1022,30 +1118,10 @@ def probe_substantive_soft_tier(
         elapsed_seconds=monotonic() - attempt_setup_started,
     )
 
-    with timing.measure("solver_creation_seconds"):
-        solver = new_solver(
-            time_limit_seconds,
-            worker_count=worker_count,
-            random_seed=(
-                0 if cp_sat_random_seed is None else int(cp_sat_random_seed)
-            ),
-            max_deterministic_time=cp_sat_max_deterministic_time_seconds,
-        )
     native_log_messages = []
     collect_native_log = (
         collect_presolve_telemetry or collect_search_start_telemetry
     )
-    if collect_native_log:
-        # OR-Tools exposes presolved model counts through its supported log
-        # stream, not through a structured Python response. These opt-in audit
-        # modes capture that stream and suppress stdout. The presolve mode
-        # stops before search; the search-start mode runs the normal solve and
-        # records only bounded native milestones.
-        solver.parameters.log_search_progress = True
-        solver.parameters.log_to_stdout = False
-        if collect_presolve_telemetry:
-            solver.parameters.stop_after_presolve = True
-        solver.log_callback = native_log_messages.append
     hint_telemetry = {}
     if (
         collect_native_log
@@ -1069,23 +1145,179 @@ def probe_substantive_soft_tier(
     probe_cp_sat_span = diagnostic_timing_span("probe_native_cp_sat")
     probe_cp_sat_span.__enter__()
     _emit_phase("cp_sat", "started")
+    solve_rounds = []
+    best_solver = None
+    best_substantive_value = None
+    first_candidate_substantive_value = None
+    first_qualifying_latency_seconds = None
+    cumulative_external_solve_wall_seconds = 0.0
+    cumulative_native_solve_wall_seconds = 0.0
+    total_branches = 0
+    total_conflicts = 0
+    last_solver = None
+    last_status_code = cp_model.UNKNOWN
+    strict_bound_proven_infeasible = False
+    search_termination_classification = None
+    current_strict_upper_bound = effective_threshold
+    search_started = monotonic()
     with timing.measure("cp_solver_solve_external_wall_seconds"):
-        started = monotonic()
-        try:
-            status_code = solver.Solve(probe_model)
-        finally:
-            # The OR-Tools logging callback can retain a native logging
-            # thread after Solve returns on Windows.  Detach it immediately
-            # after the opt-in native-log audit so a completed test/process is
-            # not held open by diagnostic plumbing.
+        while True:
+            remaining_seconds = max(
+                0.0,
+                float(time_limit_seconds) - cumulative_external_solve_wall_seconds,
+            )
+            if remaining_seconds <= 0.001:
+                search_termination_classification = (
+                    "shared_search_budget_exhausted_with_candidate"
+                    if best_solver is not None
+                    else "shared_search_budget_exhausted_without_candidate"
+                )
+                break
+            with timing.measure("solver_creation_seconds"):
+                solver = new_solver(
+                    remaining_seconds,
+                    worker_count=worker_count,
+                    random_seed=(
+                        0 if cp_sat_random_seed is None else int(cp_sat_random_seed)
+                    ),
+                    max_deterministic_time=cp_sat_max_deterministic_time_seconds,
+                )
+            round_log_messages = []
             if collect_native_log:
-                solver.log_callback = None
-        elapsed = monotonic() - started
+                # Native log capture remains opt-in and observational.  Each
+                # refinement round has a fresh solver, so detach every callback
+                # before constructing the next one.
+                solver.parameters.log_search_progress = True
+                solver.parameters.log_to_stdout = False
+                if collect_presolve_telemetry:
+                    solver.parameters.stop_after_presolve = True
+                solver.log_callback = round_log_messages.append
+            started = monotonic()
+            try:
+                round_status_code = solver.Solve(probe_model)
+            finally:
+                if collect_native_log:
+                    solver.log_callback = None
+            round_external_wall = monotonic() - started
+            round_native_wall = float(
+                solver.WallTime()
+                if hasattr(solver, "WallTime")
+                else round_external_wall
+            )
+            native_log_messages.extend(round_log_messages)
+            cumulative_external_solve_wall_seconds += round_external_wall
+            cumulative_native_solve_wall_seconds += round_native_wall
+            total_branches += int(solver.NumBranches())
+            total_conflicts += int(solver.NumConflicts())
+            last_solver = solver
+            last_status_code = round_status_code
+            round_has_candidate = round_status_code in {
+                cp_model.OPTIMAL,
+                cp_model.FEASIBLE,
+            }
+            round_candidate_value = None
+            improved_best = False
+            if round_has_candidate:
+                round_candidate_value = float(
+                    sum(
+                        coefficient * solver.Value(
+                            probe_model.GetIntVarFromProtoIndex(variable_index)
+                        )
+                        for variable_index, coefficient in target_metadata["term_specs"]
+                    )
+                )
+                if first_candidate_substantive_value is None:
+                    first_candidate_substantive_value = round_candidate_value
+                    # A callback is intentionally not installed.  This is the
+                    # solve-return latency of the first reportable candidate.
+                    # Direct optimization may find incumbents before Solve
+                    # returns; without a callback that time is unavailable.
+                    if search_semantics != "direct_exact_v2_optimization":
+                        first_qualifying_latency_seconds = monotonic() - search_started
+                if (
+                    best_substantive_value is None
+                    or round_candidate_value < best_substantive_value
+                ):
+                    best_solver = solver
+                    best_substantive_value = round_candidate_value
+                    improved_best = True
+            solve_rounds.append({
+                "round_index": len(solve_rounds) + 1,
+                "requested_time_limit_seconds": remaining_seconds,
+                "external_solve_wall_seconds": round_external_wall,
+                "native_solve_wall_seconds": round_native_wall,
+                "status": outcome_name(round_status_code),
+                "candidate_found": round_has_candidate,
+                "candidate_substantive_value": round_candidate_value,
+                "active_strict_upper_bound": current_strict_upper_bound,
+                "best_substantive_value_after_round": best_substantive_value,
+                "improved_best": improved_best,
+                "branches": int(solver.NumBranches()),
+                "conflicts": int(solver.NumConflicts()),
+                "hint_contract": "validated_seed_unchanged",
+            })
+
+            if search_semantics != "iterative_strict_bound_refinement":
+                search_termination_classification = (
+                    "direct_objective_optimal"
+                    if search_semantics == "direct_exact_v2_optimization"
+                    and round_status_code == cp_model.OPTIMAL
+                    else "direct_objective_budget_or_search_end_with_candidate"
+                    if search_semantics == "direct_exact_v2_optimization"
+                    and round_has_candidate
+                    else "first_qualifying_candidate_returned"
+                    if round_has_candidate
+                    else outcome_name(round_status_code)
+                )
+                break
+            if collect_presolve_telemetry:
+                search_termination_classification = "presolve_telemetry_only"
+                break
+            if not round_has_candidate:
+                if round_status_code == cp_model.INFEASIBLE and best_solver is not None:
+                    strict_bound_proven_infeasible = True
+                    search_termination_classification = "next_strict_bound_proven_infeasible"
+                else:
+                    search_termination_classification = (
+                        "next_strict_bound_unresolved_with_candidate"
+                        if best_solver is not None
+                        else outcome_name(round_status_code)
+                    )
+                break
+            # Keep the original incumbent-derived hint vector unchanged.  The
+            # new strict bound is the only state carried between rounds.
+            current_strict_upper_bound = int(best_substantive_value) - 1
+            probe_model.Add(target_expression <= current_strict_upper_bound)
+
+    elapsed = cumulative_external_solve_wall_seconds
+    solver = best_solver or last_solver
+    if best_solver is not None:
+        if search_semantics in {
+            "first_qualifying",
+            "minimum_coordination",
+        }:
+            # Preserve the solver's historical status exactly for the two
+            # single-call feasibility modes.  Research result normalization
+            # must not turn an OPTIMAL return into FEASIBLE.
+            status_code = last_status_code
+        else:
+            status_code = (
+                cp_model.OPTIMAL
+                if (
+                    search_semantics == "direct_exact_v2_optimization"
+                    and last_status_code == cp_model.OPTIMAL
+                ) or strict_bound_proven_infeasible
+                else cp_model.FEASIBLE
+            )
+    else:
+        status_code = last_status_code
     _emit_phase(
         "cp_sat",
         "completed",
         elapsed_seconds=elapsed,
         status=outcome_name(status_code),
+        solve_round_count=len(solve_rounds),
+        cumulative_native_solve_wall_seconds=cumulative_native_solve_wall_seconds,
     )
     probe_cp_sat_span.__exit__(None, None, None)
     probe_solver_span.__exit__(None, None, None)
@@ -1102,7 +1334,7 @@ def probe_substantive_soft_tier(
         _parse_cp_sat_search_start_facts(native_log_messages)
         if collect_search_start_telemetry else {}
     )
-    complete_candidate_found = status_code in {cp_model.OPTIMAL, cp_model.FEASIBLE}
+    complete_candidate_found = best_solver is not None
 
     candidate_component_values = {}
     candidate_substantive_value = None
@@ -1119,6 +1351,8 @@ def probe_substantive_soft_tier(
     candidate_summary = {}
     candidate_quality_summary = {}
     quality_comparison = {}
+    seed_quality_objective_semantics = {}
+    candidate_quality_objective_semantics = {}
     if complete_candidate_found:
         extraction_span = diagnostic_timing_span("probe_candidate_extraction")
         extraction_span.__enter__()
@@ -1193,6 +1427,12 @@ def probe_substantive_soft_tier(
                 quality_comparison = dict(
                     quality_facts.get("comparison", {})
                 )
+                seed_quality_objective_semantics = dict(
+                    quality_facts.get("baseline_objective_semantics", {})
+                )
+                candidate_quality_objective_semantics = dict(
+                    quality_facts.get("candidate_objective_semantics", {})
+                )
         _emit_phase("candidate_extraction", "completed")
         extraction_span.__exit__(None, None, None)
 
@@ -1228,6 +1468,28 @@ def probe_substantive_soft_tier(
         }
     else:
         section_load_deltas = {}
+    reported_best_bound = (
+        float(solver.BestObjectiveBound())
+        if solver is not None
+        and (
+            minimize_component is not None
+            or search_semantics == "direct_exact_v2_optimization"
+        )
+        else None
+    )
+    objective_absolute_gap = (
+        max(0.0, float(candidate_substantive_value) - reported_best_bound)
+        if search_semantics == "direct_exact_v2_optimization"
+        and candidate_substantive_value is not None
+        and reported_best_bound is not None
+        else None
+    )
+    objective_relative_gap = (
+        objective_absolute_gap / max(1.0, abs(float(candidate_substantive_value)))
+        if objective_absolute_gap is not None
+        and candidate_substantive_value is not None
+        else None
+    )
     return SubstantiveSoftTierProbeResult(
         status=outcome_name(status_code),
         seed_solver_outcome=seed_outcome,
@@ -1238,13 +1500,11 @@ def probe_substantive_soft_tier(
             if effective_threshold is not None else None
         ),
         elapsed_seconds=elapsed,
-        solver_wall_time_seconds=float(
-            solver.WallTime() if hasattr(solver, "WallTime") else elapsed
-        ),
+        solver_wall_time_seconds=cumulative_native_solve_wall_seconds,
         model_variable_count=len(probe_model.Proto().variables),
         model_constraint_count=len(probe_model.Proto().constraints),
-        conflicts=solver.NumConflicts(),
-        branches=solver.NumBranches(),
+        conflicts=total_conflicts,
+        branches=total_branches,
         complete_candidate_found=complete_candidate_found,
         candidate_substantive_value=candidate_substantive_value,
         seed_component_values=seed_component_values,
@@ -1259,10 +1519,7 @@ def probe_substantive_soft_tier(
         neighborhood_radius=neighborhood_radius,
         minimized_component=minimize_component,
         minimized_component_value=minimized_component_value,
-        best_bound=(
-            float(solver.BestObjectiveBound())
-            if minimize_component is not None else None
-        ),
+        best_bound=reported_best_bound,
         model_family_variable_counts=_model_family_variable_counts(
             probe_model,
             context.model_family_variable_indexes,
@@ -1279,9 +1536,7 @@ def probe_substantive_soft_tier(
         requested_time_limit_seconds=float(time_limit_seconds),
         timings={
             **timing.snapshot(),
-            "solver_reported_wall_time_seconds": float(
-                solver.WallTime() if hasattr(solver, "WallTime") else elapsed
-            ),
+            "solver_reported_wall_time_seconds": cumulative_native_solve_wall_seconds,
             "operation_total_seconds": monotonic() - operation_started,
         },
         candidate_quality_summary=candidate_quality_summary,
@@ -1314,4 +1569,20 @@ def probe_substantive_soft_tier(
             candidate_base_model_variable_values
         ),
         candidate_base_model_witness_error=candidate_base_model_witness_error,
+        search_semantics=search_semantics,
+        min_changed_students=min_changed_students,
+        min_changed_source_decisions=min_changed_source_decisions,
+        solve_rounds=tuple(solve_rounds),
+        first_qualifying_latency_seconds=first_qualifying_latency_seconds,
+        first_candidate_substantive_value=first_candidate_substantive_value,
+        cumulative_native_solve_wall_seconds=cumulative_native_solve_wall_seconds,
+        cumulative_external_solve_wall_seconds=cumulative_external_solve_wall_seconds,
+        search_termination_classification=search_termination_classification,
+        objective_absolute_gap=objective_absolute_gap,
+        objective_relative_gap=objective_relative_gap,
+        seed_quality_objective_semantics=seed_quality_objective_semantics,
+        candidate_quality_objective_semantics=(
+            candidate_quality_objective_semantics
+        ),
+        probe_base_model_fingerprint=base_model_fingerprint,
     )

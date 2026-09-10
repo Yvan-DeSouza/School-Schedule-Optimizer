@@ -835,6 +835,15 @@ def run_substantive_soft_tier_probe(
     alternate_source_variable_values=None,
     strict_improvement=False,
     max_changed_students=None,
+    min_changed_students=None,
+    min_changed_source_decisions=None,
+    search_semantics="first_qualifying",
+    selected_student_ids=(),
+    cp_sat_random_seed=None,
+    phase_callback=None,
+    mature_checkpoint_only=False,
+    collect_hint_identity_telemetry=False,
+    capture_base_model_witness=False,
     hard_feasibility_time_limit_seconds=None,
     hard_feasibility_validation_time_limit_seconds=None,
     hard_feasibility_worker_count=None,
@@ -865,9 +874,17 @@ def run_substantive_soft_tier_probe(
             "minimize_component": minimize_component,
             "strict_improvement": strict_improvement,
             "max_changed_students": max_changed_students,
+            "min_changed_students": min_changed_students,
+            "min_changed_source_decisions": min_changed_source_decisions,
+            "search_semantics": search_semantics,
+            "selected_student_ids": selected_student_ids,
+            "cp_sat_random_seed": cp_sat_random_seed,
+            "collect_hint_identity_telemetry": collect_hint_identity_telemetry,
+            "capture_base_model_witness": capture_base_model_witness,
         },
         alternate_source_decisions=alternate_source_decisions,
         alternate_source_variable_values=alternate_source_variable_values,
+        mature_checkpoint_only=mature_checkpoint_only,
         hard_feasibility_time_limit_seconds=hard_feasibility_time_limit_seconds,
         hard_feasibility_validation_time_limit_seconds=(
             hard_feasibility_validation_time_limit_seconds
@@ -875,6 +892,8 @@ def run_substantive_soft_tier_probe(
         hard_feasibility_worker_count=hard_feasibility_worker_count,
         hard_feasibility_validation_worker_count=hard_feasibility_validation_worker_count,
         collect_resource_telemetry=collect_resource_telemetry,
+        phase_callback=phase_callback,
+        diagnostic_cp_sat_random_seed=cp_sat_random_seed,
     )
 
 
@@ -3966,6 +3985,12 @@ def _solve_student_assignment(
             "comparison": _compare_student_assignment_quality(
                 baseline_quality,
                 candidate_quality,
+            ),
+            "baseline_objective_semantics": dict(
+                baseline_quality.get("objective_semantics", {})
+            ),
+            "candidate_objective_semantics": dict(
+                candidate_quality.get("objective_semantics", {})
             ),
         }
 

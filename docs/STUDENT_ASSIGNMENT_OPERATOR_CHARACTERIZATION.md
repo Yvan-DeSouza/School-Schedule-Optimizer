@@ -2452,3 +2452,29 @@ The complete solver-free post-run audit is sealed at
 It contains the full checkpoint comparison, scope trajectory, component and
 resource analysis, probe-semantics evidence, and requirement audit without
 modifying the invalid source lineage.
+
+#### Fixed-scope search-semantics readiness (2026-09-09)
+
+A research-only, not-yet-executed screen is prepared to isolate what CP-SAT
+does after an exact R16/S4 source and four-student scope are fixed. The frozen
+contract contains six source/scope states, four search treatments, and three
+clean eight-worker repeats per combination (72 cells). The treatments are the
+historical first-qualifying control, minimum coordination, iterative
+strict-bound refinement, and direct exact Objective Semantics v2 optimization.
+
+The six states include IA attempts 13, 32, 51, and 52 and TOP attempts 60 and
+27. They deliberately cover a coordinated high-positive scope, a broad
+low-quality negative control, the same IA scope at two consecutive but distinct
+authoritative states, a high-variance TOP scope, and a reproducible TOP jackpot.
+Exact source hashes, source-decision fingerprints, scopes, order, and decision
+rules are frozen in
+`research/contracts/r16_fixed_scope_search_semantics_v1.json`.
+
+Deterministic tests establish exact model/evaluator v2 parity and preserve the
+existing R16 upper bounds, incumbent-derived hints, hard constraints, and
+full-model validation authority. Compact per-cell telemetry replaces the
+duplicated full-population payload pattern implicated in the interrupted IA
+branch. This is implementation/readiness information only: no cell has run,
+there are no treatment outcomes, and no production promotion is authorized.
+Canonical semantics are documented in
+[Student Assignment Within-Scope Search](STUDENT_ASSIGNMENT_WITHIN_SCOPE_SEARCH.md).
