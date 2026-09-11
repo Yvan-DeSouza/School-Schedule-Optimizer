@@ -466,6 +466,12 @@ def test_search_start_parser_reports_only_supported_native_milestones():
     assert facts["complete_hint_reported"] is True
     assert facts["first_branch_seconds"] is None
     assert facts["first_branch_time_supported"] is False
+    assert facts["improvement_timeline"] == [{
+        "event_index": 1,
+        "elapsed_seconds": pytest.approx(2.10),
+        "objective": 42.0,
+        "objective_observed": True,
+    }]
 
 
 def test_operator_session_emits_live_phase_breadcrumbs_without_changing_result():

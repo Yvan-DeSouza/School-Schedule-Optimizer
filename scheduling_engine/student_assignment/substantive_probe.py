@@ -349,7 +349,8 @@ def _parse_cp_sat_search_start_facts(log_messages):
         r"Starting (?:sequential )?search at\s*([0-9.eE+-]+)s"
     )
     solution_pattern = re.compile(
-        r"^#(?:[0-9]+)\s+([0-9.eE+-]+)s\b"
+        r"^#(?P<index>[0-9]+)\s+(?P<seconds>[0-9.eE+-]+)s"
+        r"(?:\s+best:(?P<objective>[-0-9.eE+]+))?\b"
     )
     bound_pattern = re.compile(
         r"^#Bound\s+([0-9.eE+-]+)s\b"
@@ -364,7 +365,9 @@ def _parse_cp_sat_search_start_facts(log_messages):
 
     presolve_start = first_match(presolve_start_pattern)
     search_start = first_match(search_start_pattern)
-    first_solution = first_match(solution_pattern)
+    first_solution = first_match(
+        re.compile(r"^#[0-9]+\s+([0-9.eE+-]+)s\b")
+    )
     first_bound = first_match(bound_pattern)
     presolve_summary_emitted = any(
         line.strip().startswith("Presolve summary:") for line in lines
@@ -376,6 +379,18 @@ def _parse_cp_sat_search_start_facts(log_messages):
         "The solution hint is complete and is feasible." in line
         for line in lines
     )
+    improvement_timeline = []
+    for raw_line in lines:
+        match = solution_pattern.search(raw_line.strip())
+        if not match:
+            continue
+        objective = match.group("objective")
+        improvement_timeline.append({
+            "event_index": int(match.group("index")),
+            "elapsed_seconds": float(match.group("seconds")),
+            "objective": float(objective) if objective is not None else None,
+            "objective_observed": objective is not None,
+        })
     return {
         "enabled": True,
         "log_message_count": len(log_messages or ()),
@@ -394,6 +409,8 @@ def _parse_cp_sat_search_start_facts(log_messages):
         # measured time-to-first-branch fact.
         "first_branch_seconds": None,
         "first_branch_time_supported": False,
+        "improvement_timeline": improvement_timeline,
+        "improvement_timeline_source": "cp_sat_progress_log",
         "native_search_start_evidence": (
             "log_marker" if search_start is not None else "not_observed"
         ),

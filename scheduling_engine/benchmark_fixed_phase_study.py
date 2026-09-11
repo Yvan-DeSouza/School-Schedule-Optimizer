@@ -558,6 +558,12 @@ def validate_endpoint_worker(*, root, branch_id):
 
 
 def endpoint_is_authoritative(validation):
+    # The clean-process validator returns an envelope containing the branch
+    # materialization and the flat validation facts.  Accept that envelope as
+    # well as the flat shape used by direct callers; the authority decision is
+    # based only on the validation facts.
+    if isinstance(validation, dict) and isinstance(validation.get("validation"), dict):
+        validation = validation["validation"]
     return bool(
         validation.get("full_model_validation")
         and validation.get("complete")

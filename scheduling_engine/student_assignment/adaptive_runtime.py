@@ -490,6 +490,28 @@ def _compact_inner_probe_summary(
         "branches": iteration.get("branches"),
         "conflicts": iteration.get("conflicts"),
         "best_bound": iteration.get("best_bound"),
+        "search_semantics": iteration.get("search_semantics"),
+        "solve_rounds": tuple(dict(item) for item in (iteration.get("solve_rounds") or ())),
+        "first_qualifying_latency_seconds": iteration.get(
+            "first_qualifying_latency_seconds"
+        ),
+        "first_candidate_substantive_value": iteration.get(
+            "first_candidate_substantive_value"
+        ),
+        "cumulative_native_solve_wall_seconds": iteration.get(
+            "cumulative_native_solve_wall_seconds"
+        ),
+        "cumulative_external_solve_wall_seconds": iteration.get(
+            "cumulative_external_solve_wall_seconds"
+        ),
+        "search_termination_classification": iteration.get(
+            "search_termination_classification"
+        ),
+        "objective_absolute_gap": iteration.get("objective_absolute_gap"),
+        "objective_relative_gap": iteration.get("objective_relative_gap"),
+        "search_start_telemetry": dict(
+            iteration.get("search_start_telemetry") or {}
+        ),
         "model_variable_count": iteration.get("model_variable_count"),
         "model_constraint_count": iteration.get("model_constraint_count"),
         "changed_source_decision_count": iteration.get(
@@ -512,6 +534,7 @@ def _operator_result(data, spec, *, selected_student_ids, current_source_decisio
                     hard_feasibility_worker_count=None,
                     hard_feasibility_validation_worker_count=None,
                     candidate_validation_time_limit_seconds=None,
+                    search_semantics="first_qualifying",
                     cp_sat_random_seed=None,
                     cp_sat_max_deterministic_time_seconds=None,
                     diagnostic_parent_hard_wall_deadline_monotonic=None,
@@ -599,6 +622,7 @@ def _operator_result(data, spec, *, selected_student_ids, current_source_decisio
             candidate_validation_time_limit_seconds
         ),
         cp_sat_random_seed=cp_sat_random_seed,
+        search_semantics=search_semantics,
         cp_sat_max_deterministic_time_seconds=(
             cp_sat_max_deterministic_time_seconds
         ),
@@ -636,6 +660,7 @@ def run_adaptive_local_search_diagnostic(
     hard_feasibility_validation_worker_count=None,
     candidate_validation_time_limit_seconds=None,
     cp_sat_random_seed=None,
+    search_semantics="first_qualifying",
     cp_sat_max_deterministic_time_seconds=None,
     session_id=None,
     selection_policy="adaptive",
@@ -1004,6 +1029,7 @@ def run_adaptive_local_search_diagnostic(
                     candidate_validation_time_limit_seconds
                 ),
                 cp_sat_random_seed=cp_sat_random_seed,
+                search_semantics=search_semantics,
                 cp_sat_max_deterministic_time_seconds=(
                     cp_sat_max_deterministic_time_seconds
                 ),
@@ -1661,9 +1687,12 @@ class FixedFamilyPhaseController:
         validation_worker_count=1,
         cp_sat_random_seed=101,
         search_time_limit_seconds=300.0,
+        search_semantics="first_qualifying",
+        collect_search_start_telemetry=False,
         portfolio=DEFAULT_ADAPTIVE_OPERATOR_PORTFOLIO,
         phase_callback=None,
         clock=None,
+        started_at=None,
         collect_resource_telemetry=False,
         targeting_snapshot_callback=None,
         initial_trusted_branch_context=None,
@@ -1733,6 +1762,8 @@ class FixedFamilyPhaseController:
             int(cp_sat_random_seed) if cp_sat_random_seed is not None else None
         )
         self.search_time_limit_seconds = search_time_limit_seconds
+        self.search_semantics = str(search_semantics)
+        self.collect_search_start_telemetry = bool(collect_search_start_telemetry)
         self.portfolio = tuple(specs.values())
         self.specs = specs
         self.phase_callback = phase_callback
@@ -1740,7 +1771,7 @@ class FixedFamilyPhaseController:
         self.targeting_snapshot_callback = targeting_snapshot_callback
         self.target_scope_selector = target_scope_selector
         self._clock = clock or monotonic
-        self._started = self._clock()
+        self._started = self._clock() if started_at is None else float(started_at)
         self._trusted_branch_context = initial_trusted_branch_context
         self._history = []
         self._events = []
@@ -2038,6 +2069,8 @@ class FixedFamilyPhaseController:
             ),
             hard_feasibility_validation_worker_count=self.validation_worker_count,
             cp_sat_random_seed=self.cp_sat_random_seed,
+            search_semantics=self.search_semantics,
+            collect_search_start_telemetry=self.collect_search_start_telemetry,
             session_id=f"fixed-phase-{phase.phase_id}-{self._attempt_count + 1}",
             selection_policy="fixed_cycle",
             fixed_cycle=(spec,),

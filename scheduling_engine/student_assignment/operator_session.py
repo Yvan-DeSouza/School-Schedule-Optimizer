@@ -270,6 +270,10 @@ class ContinuousOperatorSessionConfig:
     hard_feasibility_validation_worker_count: int | None = None
     candidate_validation_time_limit_seconds: float | None = None
     cp_sat_random_seed: int | None = None
+    # Research-only probe semantics.  The historical default remains the
+    # first-qualifying satisfiability query; direct exact-v2 optimization is
+    # opt-in for explicitly named diagnostic studies.
+    search_semantics: str = "first_qualifying"
     cp_sat_max_deterministic_time_seconds: float | None = None
     use_prepared_validation_context: bool = False
     collect_validation_telemetry: bool = False
@@ -280,6 +284,16 @@ class ContinuousOperatorSessionConfig:
     prepared_validation_safety_factor: float = 1.25
 
     def __post_init__(self):
+        if self.search_semantics not in {
+            "first_qualifying",
+            "minimum_coordination",
+            "iterative_strict_bound_refinement",
+            "direct_exact_v2_optimization",
+        }:
+            raise ValueError(
+                "Unsupported search_semantics: "
+                f"{self.search_semantics!r}"
+            )
         if self.operator_family not in OPERATOR_FAMILIES:
             raise ValueError(f"Unsupported operator family: {self.operator_family}")
         if self.target_policy not in TARGET_POLICIES:

@@ -15,6 +15,7 @@ from scheduling_engine.student_assignment.adaptive_search import (
 from scheduling_engine.student_assignment.search_experiments import (
     source_decision_fingerprint,
 )
+from scheduling_engine.benchmark_r16_direct_ia_vs_top_90m import source_diff
 
 
 def _result(source):
@@ -296,3 +297,47 @@ def test_targeting_callback_is_observational_and_attached_to_event(monkeypatch):
 
     assert snapshots[0]["selected_student_ids"] == [1, 2]
     assert event.targeting_snapshot["sha256"] == "snapshot-hash"
+
+
+def test_fixed_family_controller_passes_research_search_semantics(monkeypatch):
+    clock = [100.0]
+    calls = _patch_controller_runtime(monkeypatch, clock=clock)
+    controller = FixedFamilyPhaseController(
+        _data(),
+        initial_result=_result((("initial", 0),)),
+        initial_source_decisions=(("initial", 0),),
+        phases=(FixedFamilyPhase("r16", "targeted_utilization_r16_s4", 0, 10),),
+        clock=lambda: clock[0],
+        started_at=100.0,
+        search_semantics="direct_exact_v2_optimization",
+    )
+
+    event = controller.run_next_attempt()
+
+    assert event.event_type == "attempt_completed"
+    assert calls[0]["search_semantics"] == "direct_exact_v2_optimization"
+
+
+def test_fixed_family_controller_started_at_includes_bootstrap_time(monkeypatch):
+    clock = [105.0]
+    _patch_controller_runtime(monkeypatch, clock=clock)
+    controller = FixedFamilyPhaseController(
+        _data(),
+        initial_result=_result((("initial", 0),)),
+        initial_source_decisions=(("initial", 0),),
+        phases=(FixedFamilyPhase("r16", "targeted_utilization_r16_s4", 0, 10),),
+        clock=lambda: clock[0],
+        started_at=100.0,
+    )
+
+    assert controller.elapsed_seconds == 5.0
+
+
+def test_dynamic_target_study_source_diff_accepts_pair_sequences():
+    changed, students = source_diff(
+        ((("course", 1), (7, 10)),),
+        ((("course", 1), (7, 11)), (("course", 2), (8, 12))),
+    )
+
+    assert len(changed) == 2
+    assert students == [7, 8]

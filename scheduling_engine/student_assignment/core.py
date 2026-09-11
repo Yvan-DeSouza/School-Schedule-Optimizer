@@ -1201,6 +1201,7 @@ def run_student_assignment_operator_session_diagnostic(
     candidate_validation_time_limit_seconds=None,
     diagnostic_parent_hard_wall_deadline_monotonic=None,
     cp_sat_random_seed=None,
+    search_semantics="first_qualifying",
     cp_sat_max_deterministic_time_seconds=None,
     collect_presolve_telemetry=False,
     collect_search_start_telemetry=False,
@@ -1302,6 +1303,7 @@ def run_student_assignment_operator_session_diagnostic(
         cp_sat_random_seed=(
             int(cp_sat_random_seed) if cp_sat_random_seed is not None else None
         ),
+        search_semantics=search_semantics,
         cp_sat_max_deterministic_time_seconds=(
             cp_sat_max_deterministic_time_seconds
         ),
@@ -1353,6 +1355,7 @@ def run_student_assignment_operator_session_diagnostic(
             "utilization_cluster_policy": config.utilization_cluster_policy,
             "minimum_next_attempt_seconds": config.minimum_next_attempt_seconds,
             "cp_sat_random_seed": config.cp_sat_random_seed,
+            "search_semantics": config.search_semantics,
             "cp_sat_max_deterministic_time_seconds": (
                 config.cp_sat_max_deterministic_time_seconds
             ),
@@ -4939,6 +4942,9 @@ def _solve_student_assignment(
                         time_limit_seconds=probe_limit,
                         worker_count=int(local_config.get("worker_count", 8)),
                         cp_sat_random_seed=local_config.get("cp_sat_random_seed"),
+                        search_semantics=local_config.get(
+                            "search_semantics", "first_qualifying"
+                        ),
                         cp_sat_max_deterministic_time_seconds=(
                             local_config.get(
                                 "cp_sat_max_deterministic_time_seconds"
@@ -5322,6 +5328,25 @@ def _solve_student_assignment(
                             )
                         ),
                         "best_bound": local_result.best_bound,
+                        "search_semantics": local_result.search_semantics,
+                        "solve_rounds": tuple(local_result.solve_rounds),
+                        "first_qualifying_latency_seconds": (
+                            local_result.first_qualifying_latency_seconds
+                        ),
+                        "first_candidate_substantive_value": (
+                            local_result.first_candidate_substantive_value
+                        ),
+                        "cumulative_native_solve_wall_seconds": (
+                            local_result.cumulative_native_solve_wall_seconds
+                        ),
+                        "cumulative_external_solve_wall_seconds": (
+                            local_result.cumulative_external_solve_wall_seconds
+                        ),
+                        "search_termination_classification": (
+                            local_result.search_termination_classification
+                        ),
+                        "objective_absolute_gap": local_result.objective_absolute_gap,
+                        "objective_relative_gap": local_result.objective_relative_gap,
                         "attempt_number_for_radius": radius_attempts[current_radius],
                         "cumulative_session_elapsed_seconds": (
                             monotonic() - local_session_started
