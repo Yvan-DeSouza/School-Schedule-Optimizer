@@ -25,6 +25,15 @@ python -m scheduling_engine.paul_desmarais_stress_benchmark
 
 Any material change must update the fixture/manifest, this document, deterministic audit expectations, and fixture fingerprint/version together.
 
+Before a target-scale run, the bounded fixture suite also performs an exact
+per-student completion preflight over the detached candidate input. It proves
+that every generated student has an isolated, collision-free completion of
+mandatory requests; it deliberately ignores other students' competition for
+shared capacity. It is therefore an acceptance gate against individually
+impossible generated programs, **not** proof that the 1,400-student allocation
+is globally feasible or a substitute for the production section-placement
+workflow.
+
 ## Scope and topology
 
 | Fact | Provenance | Meaning |

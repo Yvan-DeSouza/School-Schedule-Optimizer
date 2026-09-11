@@ -1,5 +1,7 @@
 """Bounded static checks for the versioned Paul-Desmarais-shaped benchmark."""
 
+from dataclasses import replace
+
 from scheduling_engine.paul_desmarais_stress_benchmark import (
     BENCHMARK_ID,
     BENCHMARK_ROTATION,
@@ -9,6 +11,11 @@ from scheduling_engine.paul_desmarais_stress_benchmark import (
     fixed_context_co_op_coverage,
     summarize_paul_desmarais_shaped_g9_12_stress_fixture,
 )
+from scheduling_engine.benchmark_individual_feasibility import (
+    check_individual_feasibility,
+    preflight_individual_feasibility,
+)
+from scheduling_engine.student_assignment import solve_student_assignment
 
 
 def _fixture_and_audit():
@@ -104,3 +111,61 @@ def test_special_programs_are_compositional_and_other_co_op_shapes_are_not_silen
     fixed = fixed_context_co_op_coverage()
     assert fixed[0].credit_value == 1.0 and len(fixed[0].occupancy) == 2
     assert fixed[1].credit_value == 4.0 and len(fixed[1].occupancy) == 8
+
+
+def test_student_352_is_feasible_under_the_actual_detached_candidate_contract():
+    fixture, _audit = _fixture_and_audit()
+    result = check_individual_feasibility(fixture.input_data, 352)
+
+    assert result.status == "feasible"
+    assert len(result.decision_groups) == 8  # Seven full course groups plus CHV2O/GLC2O.
+    group_by_request = {
+        request_id: group
+        for group in result.decision_groups
+        for request_id in group.source_request_ids
+    }
+    assert [candidate.identity for candidate in group_by_request[2813].candidates] == [
+        (13,), (14,), (-1,), (-2,), (-3,), (-4,), (-5,), (-6,), (-7,), (-8,),
+    ]
+    half_group = group_by_request[2814]
+    assert half_group.source_request_ids == (2814, 2815)
+    assert [candidate.identity for candidate in half_group.candidates] == [(77, 78), (79, 80)]
+    occupied = [item for candidate in result.selected_candidates for item in candidate.occupancy]
+    assert len(occupied) == len(set(occupied)) == 16
+
+
+def test_every_stress_fixture_student_has_an_individually_feasible_completion():
+    fixture, _audit = _fixture_and_audit()
+    preflight = preflight_individual_feasibility(fixture.input_data)
+
+    assert preflight["student_count"] == 1_400
+    assert preflight["feasible_count"] == 1_400
+    assert preflight["infeasible_count"] == 0
+    assert preflight["unresolved_count"] == 0
+    assert preflight["by_status_grade"]["feasible"] == {9: 350, 10: 350, 11: 350, 12: 350}
+
+
+def test_student_352_preflight_matches_the_bounded_engine_completion_model():
+    fixture, _audit = _fixture_and_audit()
+    data = fixture.input_data
+    student_data = replace(
+        data,
+        requests=tuple(request for request in data.requests if request.student_id == 352),
+        schedule_commitment_requests=(),
+        student_grades=((352, 10),),
+        time_limit_seconds=2.0,
+    )
+    result = solve_student_assignment(student_data)
+    request_by_id = {request.request_id: request for request in student_data.requests}
+
+    assert result.status == "complete"
+    assert not result.unmet_requests
+    # This is the current detached input contract: negative engine-only online
+    # section identities are candidates whenever their offering membership says
+    # so, even for a request whose delivery kind is normal_instruction.
+    assert any(
+        assignment.section_id is not None
+        and assignment.section_id < 0
+        and request_by_id[assignment.request_id].delivery_kind == "normal_instruction"
+        for assignment in result.assignments
+    )
