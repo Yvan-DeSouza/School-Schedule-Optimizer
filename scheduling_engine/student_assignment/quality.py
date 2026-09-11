@@ -780,7 +780,27 @@ def evaluate_student_assignment_quality(
             metric = metrics.get(metric_name, {})
             scale = dict(normalization.get(raw_name, {}))
             denominator = scale.get("denominator")
-            raw_penalty = metric.get("solver_aligned_penalty", 0)
+            if metric_name == "course_sequence_preferences":
+                # The diagnostic reconstruction exposes the legacy reward
+                # (-satisfied) for historical comparison. Normalized v2
+                # semantics instead penalize the unsatisfied opportunities.
+                if (
+                    solver_objective_components is not None
+                    and "soft_sequence_preferences_satisfied" in solver_objective_components
+                    and denominator is not None
+                ):
+                    raw_penalty = max(
+                        0,
+                        int(denominator) - int(
+                            solver_objective_components[
+                                "soft_sequence_preferences_satisfied"
+                            ]
+                        ),
+                    )
+                else:
+                    raw_penalty = metric.get("unsatisfied_opportunity_count", 0)
+            else:
+                raw_penalty = metric.get("solver_aligned_penalty", 0)
             normalized = normalized_values.get(raw_name)
             if normalized is None:
                 # A non-applicable objective has denominator zero and still

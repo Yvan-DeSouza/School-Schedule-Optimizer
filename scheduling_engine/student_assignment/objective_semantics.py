@@ -82,7 +82,7 @@ def importance_score_for_label(label: str) -> int:
 def resolve_importance_scores(*, labels=None, scores=None) -> dict[str, int]:
     """Resolve labels/numeric input into one canonical score mapping.
 
-    Explicit scores are accepted for v2.  Missing scores fall back to the
+    Explicit scores are accepted for v2. Missing scores fall back to the
     compatibility preset, which lets a label-only v2 request use exactly the
     same engine semantics as an explicit request carrying that preset value.
     """
@@ -143,3 +143,27 @@ def denominator_from_maxima(maxima) -> int:
     """Return a deterministic sum of independent per-entity maxima."""
 
     return sum(max(0, int(value)) for value in maxima)
+
+
+def minimum_indivisible_credit_imbalance(
+    fixed_semester_1_units: int,
+    fixed_semester_2_units: int,
+    flexible_credit_units,
+) -> int:
+    """Return a provisional credit-quantum lower bound for research audits.
+
+    This is deliberately a credit-quantum lower bound, rather than a claim that a
+    whole-school timetable can attain it.  Fixed context is kept in its actual
+    term; every supplied flexible item may be placed in either term.  Pairing
+    callers should pass a paired half-course as one combined item.
+    """
+
+    reachable = {int(fixed_semester_1_units) - int(fixed_semester_2_units)}
+    for unit in flexible_credit_units:
+        amount = max(0, int(unit))
+        reachable = {
+            difference + sign * amount
+            for difference in reachable
+            for sign in (-1, 1)
+        }
+    return min((abs(difference) for difference in reachable), default=0)

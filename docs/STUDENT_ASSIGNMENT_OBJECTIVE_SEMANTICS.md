@@ -9,6 +9,11 @@ assignment soft-objective semantics. The hard assignment model, fulfillment
 priorities, special-commitment rules, approval workflow, and immutable snapshot
 rules are unchanged by this document.
 
+The Paul-Desmarais-shaped target-scale fixture's population, provenance, and
+special-program assumptions are owned by
+`docs/TARGET_SCALE_PRODUCTION_STRESS_BENCHMARK.md`; they are not objective
+semantics or measured institutional prevalence.
+
 ## Version selection
 
 Each detached `StudentAssignmentInputDTO` carries
@@ -130,6 +135,32 @@ They are not converted into ordinary sections or enrollments by v2.
 Normalization adds no hard constraint, capacity, lock, prerequisite,
 eligibility, collision, or approval rule. A v2 result must satisfy exactly the
 same hard model as a v1 result for the same input.
+
+## Sequence preferences are soft counselor configuration
+
+`CourseSequencePreference` is a planning-owned Django model with
+`earlier_course`, `later_course`, `is_active`, `created_by`, and audit time.
+The planning API exposes it through `CourseSequencePreferenceSerializer` and
+`CourseSequencePreferenceViewSet`; the adapter loads active records into the
+immutable `CourseSequencePreferenceDTO` tuple.
+
+The CP-SAT model constructs one opportunity for each `(student, preference)`
+where both sides have a fixed or candidate course presence. It rewards the
+Boolean `earlier in semester 1 AND later in semester 2`. V2 normalizes the
+penalty `eligible_opportunities - satisfied_opportunities` by exactly the
+number of eligible opportunities. Students with only one or neither course do
+not enter the denominator, and a student with multiple configured edges
+contributes one opportunity per independent edge.
+
+This is intentionally distinct from `CoursePrerequisite`: prerequisite edges
+are hard catalog constraints and make an invalid order infeasible. A sequence
+edge remains satisfiable or violable according to the complete weighted soft
+objective; it is never transformed into a hard prerequisite.
+
+Historical diagnostic fields may show `soft_sequence_preferences_satisfied`
+or a raw `-satisfied_count`, because the legacy soft tier rewarded satisfaction.
+The normalized v2 penalty is non-negative and is zero when every eligible
+opportunity is satisfied.
 
 ## Snapshot and API compatibility
 

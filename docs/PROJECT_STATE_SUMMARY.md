@@ -551,6 +551,7 @@ Where the workflow stops today:
 | Accepted stage contracts | `docs/decisions/*.md` | stage services, adapters, and tests |
 | API shape and stable-code policy | `docs/API_Contract_Strategy.md` | serializers, routes, and API tests |
 | Student objective mathematics | `docs/STUDENT_ASSIGNMENT_OBJECTIVE_SEMANTICS.md` | `scheduling_engine/student_assignment/objective_semantics.py` |
+| Target-scale benchmark-specific assumptions | `docs/TARGET_SCALE_PRODUCTION_STRESS_BENCHMARK.md` | `scheduling_engine/paul_desmarais_stress_benchmark.py` and its bounded static-audit tests |
 | Student validation authority | `docs/STUDENT_ASSIGNMENT_VALIDATION.md` | `scheduling_engine/student_assignment/validation.py`, `validation_benchmark.py`, and `validation_qualification.py` |
 | Student quality measurement | `docs/STUDENT_SCHEDULE_QUALITY.md` | `scheduling_engine/student_assignment/quality.py` |
 | Student-assignment runtime phases and wall-clock accounting | `docs/STUDENT_ASSIGNMENT_RUNTIME_PIPELINE.md` | `scheduling_engine/student_assignment/runtime.py`, `core.py`, `substantive_probe.py`, and `solver.py` |
