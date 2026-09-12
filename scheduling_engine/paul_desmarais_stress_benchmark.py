@@ -31,6 +31,10 @@ from .student_assignment.runtime import semantic_student_assignment_input_finger
 
 BENCHMARK_ID = "paul_desmarais_shaped_g9_12_stress_v2_2"
 BENCHMARK_VERSION = "v2.2"
+V2_2_AUTHORITATIVE_BENCHMARK_ID = "paul_desmarais_shaped_g9_12_stress_v2_2"
+V2_2_AUTHORITATIVE_FINGERPRINT = (
+    "3cbd268dea7afd2b34baaf0712d63296af5326c2592571a8c7476316ba581e35"
+)
 BENCHMARK_STUDENT_COUNT = 1400
 BENCHMARK_STUDENTS_PER_GRADE = 350
 BENCHMARK_DEFAULT_LOCALE = "fr-CA"
@@ -305,8 +309,15 @@ def _fixture_fingerprint(input_data, assumptions, co_op_shape_coverage, policy_e
     return sha256(json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode()).hexdigest()
 
 
-def build_paul_desmarais_shaped_g9_12_stress_fixture() -> PaulDesmaraisStressFixture:
-    """Build the deterministic fixture without constructing or solving CP-SAT."""
+def build_paul_desmarais_shaped_g9_12_stress_v2_2_fixture() -> PaulDesmaraisStressFixture:
+    """Reconstruct the immutable historical v2.2 detached input.
+
+    This is deliberately version-specific.  Future benchmark revisions must
+    add a new builder instead of changing this function's semantic input.
+    The identity guard in ``reconstruct_paul_desmarais_v2_2`` turns accidental
+    edits into an explicit failure rather than silently changing the negative
+    regression case.
+    """
 
     grade_students = {grade: list(range(1 + (grade - 9) * 350, 1 + (grade - 8) * 350)) for grade in range(9, 13)}
     study_once = set(range(1051, 1091)) | {1122, 1123}
@@ -543,6 +554,32 @@ def build_paul_desmarais_shaped_g9_12_stress_fixture() -> PaulDesmaraisStressFix
         policy_exception_coverage,
         _fixture_fingerprint(input_data, assumptions, co_op_shape_coverage, policy_exception_coverage),
     )
+
+
+def reconstruct_paul_desmarais_v2_2() -> PaulDesmaraisStressFixture:
+    """Return v2.2 only when its complete semantic fingerprint is unchanged."""
+
+    fixture = build_paul_desmarais_shaped_g9_12_stress_v2_2_fixture()
+    if fixture.benchmark_id != V2_2_AUTHORITATIVE_BENCHMARK_ID:
+        raise AssertionError(
+            "The preserved v2.2 builder returned an unexpected benchmark identity."
+        )
+    if fixture.fixture_fingerprint != V2_2_AUTHORITATIVE_FINGERPRINT:
+        raise AssertionError(
+            "The preserved v2.2 detached input fingerprint changed; create a new "
+            "version instead of mutating the historical negative case."
+        )
+    return fixture
+
+
+def build_paul_desmarais_shaped_g9_12_stress_fixture() -> PaulDesmaraisStressFixture:
+    """Backward-compatible alias for the currently supported v2.2 fixture.
+
+    New reproduction code should call ``reconstruct_paul_desmarais_v2_2`` so
+    it cannot accidentally follow a future generic benchmark revision.
+    """
+
+    return reconstruct_paul_desmarais_v2_2()
 
 
 def _topology_audit(data, course_by_id, *, include_individual_preflight):

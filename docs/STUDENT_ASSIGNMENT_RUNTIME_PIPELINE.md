@@ -172,6 +172,20 @@ workload. The target-scale trusted-runtime qualification is a separate,
 date-stamped lineage and must report bootstrap versus steady-state phases
 separately.
 
+### Preserved v2.2 negative-case runtime debt
+
+The exact v2.2 global-infeasibility reproduction recorded approximately
+`50.747s` for full-model construction and `29.114s` for the external Stage 1
+seed attempt. No seed was produced, so validation and Stage 2 did not run. The
+in-process wall time was approximately `1,946.726s`; roughly `1,867s` was
+outside the recorded construction/seed/validation spans. Source tracing points
+to uninstrumented initial-hint construction after Stage 1 failure, even though
+the later `local_only=True` path skips optimization. This is an open
+performance/instrumentation observation, not a solver-semantic result and not
+one of the three V1 product-readiness capabilities. It is intentionally
+recorded without changing runtime behavior; reproduce it only with the
+explicit `--full-stage1` command documented in the benchmark authority.
+
 ### Target-scale trusted-runtime qualification
 
 The final September 6, 2026 bounded runtime-infrastructure qualification used

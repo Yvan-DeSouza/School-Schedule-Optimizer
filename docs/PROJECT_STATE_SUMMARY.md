@@ -392,6 +392,7 @@ What this means in practice:
 | `docs/decisions/section-lifecycle.md` | The authoritative section identity, retirement, and reconciliation contract |
 | `docs/decisions/semester-placement-and-staffing-feasibility.md` | The accepted placement-stage contract that excludes rooms and named teachers |
 | `docs/decisions/named-teacher-assignment.md` | The accepted named-teacher stage contract after placement |
+| `docs/IMPORTANT_PRODUCT_IMPROVEMENTS.md` | V1 production-readiness requirements for whole-cohort certification, individually impossible-student triage, and programmatic infeasibility diagnosis |
 
 If you only read three documents before making changes, read:
 
@@ -559,6 +560,8 @@ Where the workflow stops today:
 | API shape and stable-code policy | `docs/API_Contract_Strategy.md` | serializers, routes, and API tests |
 | Student objective mathematics | `docs/STUDENT_ASSIGNMENT_OBJECTIVE_SEMANTICS.md` | `scheduling_engine/student_assignment/objective_semantics.py` |
 | Target-scale benchmark-specific assumptions | `docs/TARGET_SCALE_PRODUCTION_STRESS_BENCHMARK.md` | `scheduling_engine/paul_desmarais_stress_benchmark.py` and its bounded static-audit tests |
+| Preserved v2.2 negative benchmark reproduction | `docs/TARGET_SCALE_PRODUCTION_STRESS_BENCHMARK.md` | `scheduling_engine/paul_desmarais_v2_2_diagnostics.py` and `scheduling_engine/tests/test_paul_desmarais_v2_2_diagnostics.py` |
+| V1 production-readiness improvements | `docs/IMPORTANT_PRODUCT_IMPROVEMENTS.md` | Whole-cohort certification, impossible-student triage, and programmatic infeasibility diagnosis remain required before production readiness |
 | Student-assignment feasibility certification and partial triage (planned) | `docs/STUDENT_ASSIGNMENT_FEASIBILITY_CERTIFICATION_AND_TRIAGE.md` | Future-design boundary; no change to the accepted first-release contract |
 | Student validation authority | `docs/STUDENT_ASSIGNMENT_VALIDATION.md` | `scheduling_engine/student_assignment/validation.py`, `validation_benchmark.py`, and `validation_qualification.py` |
 | Student quality measurement | `docs/STUDENT_SCHEDULE_QUALITY.md` | `scheduling_engine/student_assignment/quality.py` |

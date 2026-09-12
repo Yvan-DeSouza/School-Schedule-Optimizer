@@ -82,6 +82,40 @@ topology/anchor-correlation defect, not an isolated-program, online-membership,
 or special-program failure. A repaired globally feasible topology requires a
 new semantic fixture version; no repair is made by this record.
 
+### Exact v2.2 negative-case reproduction
+
+The historical negative case is preserved by the explicit
+`reconstruct_paul_desmarais_v2_2()` builder. It asserts the complete detached
+input fingerprint and fails closed if a future edit changes the v2.2 semantic
+input. It is not an alias to a future benchmark revision.
+
+Run the normal, non-Stage-1 reproduction with:
+
+```powershell
+python -m scheduling_engine.paul_desmarais_v2_2_diagnostics
+```
+
+This command reconstructs and verifies the identity, runs the compact static
+audit, runs the 1,400-student isolated preflight, runs capacity-only matching,
+runs the reduced capacity-plus-collision diagnostic, and prints the known
+`MTH1W`/`CGC1W` witness. Its expected results are `1400/1400` isolated
+feasible, `10500/10500` capacity-only matching, reduced collision diagnostic
+`infeasible`, and witness deficiency `9`.
+
+The historical full Stage-1-only reproduction is explicit and expensive:
+
+```powershell
+python -m scheduling_engine.paul_desmarais_v2_2_diagnostics --full-stage1
+```
+
+That flag uses the exact v2.2 input, a 120-second Stage 1 limit, eight workers,
+and `local_only=True`; it does not run Stage 2, objective optimization, or
+search operators. The preserved expected result is CP-SAT `INFEASIBLE`.
+The small collision regression is covered by
+`scheduling_engine/tests/test_paul_desmarais_v2_2_diagnostics.py` and is not a
+replacement for the complete frozen benchmark. When v2.3 is eventually
+introduced, v2.2 remains retained as negative regression evidence.
+
 ## Scope and topology
 
 | Fact | Provenance | Meaning |
