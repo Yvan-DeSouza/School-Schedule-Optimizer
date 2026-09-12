@@ -34,6 +34,7 @@ from backend.apps.scheduling.services.engine_adapter import (
 from backend.apps.scheduling.services.review_explanations import (
     build_section_placement_review_summary,
 )
+from backend.apps.scheduling.codes import HALF_SEMESTER_PAIR_PLACEMENT_INVALID
 
 
 class SectionPlacementValidationError(DomainValidationError):
@@ -178,6 +179,15 @@ def _number_allocator(group_id, academic_year_id):
     return allocate
 
 
+def _half_pair_placement_error(detail):
+    """Return the stable fail-closed error for a broken physical half pair."""
+
+    raise SectionPlacementValidationError({
+        "code": HALF_SEMESTER_PAIR_PLACEMENT_INVALID,
+        "detail": detail,
+    })
+
+
 @transaction.atomic
 def approve_section_placement_run(run, *, approved_by, reason):
     """Materialize approved timing only after deterministic stale-state checks."""
@@ -259,7 +269,18 @@ def approve_section_placement_run(run, *, approved_by, reason):
         ).select_related("capacity_profile").prefetch_related("offerings__course")
     }
     allocators = {}
-    created_sections_by_course_semester = {}
+    created_sections_by_unit_key = {}
+    half_pairs_by_id = {
+        pair.id: pair
+        for pair in HalfSemesterCoursePair.objects.filter(is_active=True).order_by("id")
+    }
+    half_course_segments = {
+        pair.first_course_id: "first_half"
+        for pair in half_pairs_by_id.values()
+    } | {
+        pair.second_course_id: "second_half"
+        for pair in half_pairs_by_id.values()
+    }
     for item in assignments:
         online_session_id = item.get("online_supervision_session_id")
         if online_session_id is not None:
@@ -301,15 +322,18 @@ def approve_section_placement_run(run, *, approved_by, reason):
                 section_number=allocator(int(item["semester"])),
                 academic_year_id=run.academic_year_id,
                 semester=int(item["semester"]),
+                half_semester_segment=(
+                    half_course_segments.get(members[0].course_id)
+                    if len(members) == 1 else None
+                ),
                 capacity_min=group.capacity_profile.hard_min,
                 capacity_max=group.capacity_profile.hard_max,
                 annual_placement_approval=approval,
             )
-            if section.course_id is not None:
-                created_sections_by_course_semester.setdefault(
-                    (section.course_id, section.semester),
-                    [],
-                ).append(section)
+            created_sections_by_unit_key[item["unit_key"]] = (
+                section,
+                int(item["timeslot_id"]),
+            )
             annual_index = item.get("annual_index")
             lock = AnnualPlacementLock.objects.select_for_update().filter(
                 academic_year_id=run.academic_year_id, delivery_group=group,
@@ -333,24 +357,57 @@ def approve_section_placement_run(run, *, approved_by, reason):
             section=section, timeslot_id=item["timeslot_id"], room=None,
             placement_approval_assignment=line,
         )
-    # Annual placement materializes the physical sections itself rather than
-    # going through staffing approval.  Preserve the same supported
-    # half-semester pairing invariant as the other section materializers so
-    # the final-staffing adapter can expose paired CHV2O/GLC2O candidates.
-    for pair in HalfSemesterCoursePair.objects.filter(is_active=True).order_by("id"):
-        for semester in (1, 2):
-            first_sections = created_sections_by_course_semester.get(
-                (pair.first_course_id, semester),
-                (),
+    # Annual placement has a pre-solve semantic identity for each supported
+    # sequential-half physical position. Materialization must validate the
+    # reviewed result against that identity; pairing list order after the fact
+    # would falsely claim a shared position for sections in different blocks.
+    pair_unit_keys = {}
+    for unit in run.input_snapshot.get("units", ()):
+        pair_key = unit.get("shared_placement_key")
+        if pair_key:
+            pair_unit_keys.setdefault(pair_key, []).append(unit["key"])
+    for pair_key, unit_keys in sorted(pair_unit_keys.items()):
+        if len(unit_keys) != 2:
+            _half_pair_placement_error(
+                f"Half-semester placement key {pair_key} does not identify exactly two units."
             )
-            second_sections = created_sections_by_course_semester.get(
-                (pair.second_course_id, semester),
-                (),
+        try:
+            _prefix, pair_id_text, _annual, _index = pair_key.split(":", 3)
+            pair = half_pairs_by_id[int(pair_id_text)]
+        except (KeyError, ValueError):
+            _half_pair_placement_error(
+                f"Half-semester placement key {pair_key} has no active course-pair contract."
             )
-            for first, second in zip(first_sections, second_sections):
-                HalfSemesterSectionPair.objects.create(
-                    course_pair=pair,
-                    first_section=first,
-                    second_section=second,
-                )
+        rows = [created_sections_by_unit_key.get(unit_key) for unit_key in unit_keys]
+        if any(row is None for row in rows):
+            _half_pair_placement_error(
+                f"Half-semester placement key {pair_key} is missing a materialized annual section."
+            )
+        first_row = next((row for row in rows if row[0].course_id == pair.first_course_id), None)
+        second_row = next((row for row in rows if row[0].course_id == pair.second_course_id), None)
+        if first_row is None or second_row is None:
+            _half_pair_placement_error(
+                f"Half-semester placement key {pair_key} has incompatible course identities."
+            )
+        first, first_timeslot_id = first_row
+        second, second_timeslot_id = second_row
+        if (
+            first.academic_year_id != second.academic_year_id
+            or first.academic_year_id != run.academic_year_id
+            or first.semester != second.semester
+            or first_timeslot_id != second_timeslot_id
+            or first.half_semester_segment != "first_half"
+            or second.half_semester_segment != "second_half"
+            or first.capacity_max != second.capacity_max
+        ):
+            _half_pair_placement_error(
+                f"Half-semester placement key {pair_key} violates the shared-position contract."
+            )
+        pair_row = HalfSemesterSectionPair(
+            course_pair=pair,
+            first_section=first,
+            second_section=second,
+        )
+        pair_row.full_clean()
+        pair_row.save()
     return approval

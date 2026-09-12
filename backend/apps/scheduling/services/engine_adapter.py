@@ -1582,7 +1582,8 @@ def load_section_placement_input(*, academic_year_id, input_mode, budget_approva
     from backend.apps.constraints.models import CourseConflictMatrix, TeacherAvailability
     from backend.apps.control.models import ManualOverride, SectionLock
     from backend.apps.courses.models import (
-        DeliveryGroup, Enrollment, HalfSemesterSectionPair, Section,
+        DeliveryGroup, Enrollment, HalfSemesterCoursePair,
+        HalfSemesterSectionPair, Section,
     )
     from backend.apps.courses.selectors import active_delivery_groups_for_year, active_sections_for_year
     from backend.apps.scheduling.constants import (
@@ -1688,6 +1689,7 @@ def load_section_placement_input(*, academic_year_id, input_mode, budget_approva
                 locked_timeslot_id=lock.locked_timeslot_id if lock else None,
                 locked_teacher_id=lock.locked_teacher_id if lock else None,
                 source_mode=input_mode,
+                shared_placement_key=paired_section_key.get(section.id),
                 shared_staffing_key=paired_section_key.get(section.id),
                 capacity_max=section.capacity_max,
             ))
@@ -1708,6 +1710,43 @@ def load_section_placement_input(*, academic_year_id, input_mode, budget_approva
                 delivery_group_id__in=approval_group_ids,
             ).select_related("locked_timeslot")
         }
+        approved_count_by_group = {
+            row.delivery_group_id: row.approved_annual_count
+            for row in approval_rows
+        }
+        annual_pair_key_by_group_index = {}
+        single_course_group_ids = defaultdict(list)
+        for group in groups.values():
+            member_course_ids = tuple(sorted(
+                offering.course_id for offering in group.offerings.all()
+            ))
+            if len(member_course_ids) == 1:
+                single_course_group_ids[member_course_ids[0]].append(group.id)
+        for pair in HalfSemesterCoursePair.objects.filter(is_active=True).order_by("id"):
+            first_group_ids = sorted(single_course_group_ids.get(pair.first_course_id, ()))
+            second_group_ids = sorted(single_course_group_ids.get(pair.second_course_id, ()))
+            first_group_id = first_group_ids[0] if len(first_group_ids) == 1 else None
+            second_group_id = second_group_ids[0] if len(second_group_ids) == 1 else None
+            first_count = approved_count_by_group.get(first_group_id, 0)
+            second_count = approved_count_by_group.get(second_group_id, 0)
+            if not first_count and not second_count:
+                continue
+            if (
+                first_group_id is None
+                or second_group_id is None
+                or first_count != second_count
+                or groups[first_group_id].capacity_profile.hard_max
+                != groups[second_group_id].capacity_profile.hard_max
+            ):
+                raise ValueError(
+                    "Configured half-semester pair requires matching annual delivery "
+                    f"groups, counts, and capacity for each course: pair={pair.id}."
+                )
+            for annual_index in range(1, first_count + 1):
+                key = f"half_semester_course_pair:{pair.id}:annual:{annual_index}"
+                annual_pair_key_by_group_index[first_group_id, annual_index] = key
+                annual_pair_key_by_group_index[second_group_id, annual_index] = key
+
         for row in approval_rows:
             group = groups.get(row.delivery_group_id)
             if group is None:
@@ -1723,6 +1762,12 @@ def load_section_placement_input(*, academic_year_id, input_mode, budget_approva
                     allowed_semesters=allowed,
                     locked_timeslot_id=lock.locked_timeslot_id if lock else None,
                     annual_index=annual_index, source_mode=input_mode,
+                    shared_placement_key=annual_pair_key_by_group_index.get(
+                        (group.id, annual_index)
+                    ),
+                    shared_staffing_key=annual_pair_key_by_group_index.get(
+                        (group.id, annual_index)
+                    ),
                     capacity_max=group.capacity_profile.hard_max,
                 ))
         out_of_range = [

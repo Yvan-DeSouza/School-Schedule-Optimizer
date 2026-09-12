@@ -393,6 +393,7 @@ What this means in practice:
 | `docs/decisions/semester-placement-and-staffing-feasibility.md` | The accepted placement-stage contract that excludes rooms and named teachers |
 | `docs/decisions/named-teacher-assignment.md` | The accepted named-teacher stage contract after placement |
 | `docs/IMPORTANT_PRODUCT_IMPROVEMENTS.md` | V1 production-readiness requirements for whole-cohort certification, individually impossible-student triage, and programmatic infeasibility diagnosis |
+| `docs/IMPOSSIBLE_SCHEDULE_DIAGNOSIS.md` | Preserved impossible-schedule incidents, mathematical witnesses, repair ownership, and reproduction commands |
 
 If you only read three documents before making changes, read:
 
@@ -562,6 +563,7 @@ Where the workflow stops today:
 | Target-scale benchmark-specific assumptions and production-pipeline qualification | `docs/TARGET_SCALE_PRODUCTION_STRESS_BENCHMARK.md` | `scheduling_engine/paul_desmarais_stress_benchmark.py`, `scheduling_engine/paul_desmarais_production_pipeline_source.py`, and the explicit qualification harness |
 | Preserved v2.2 negative benchmark reproduction | `docs/TARGET_SCALE_PRODUCTION_STRESS_BENCHMARK.md` | `scheduling_engine/paul_desmarais_v2_2_diagnostics.py` and `scheduling_engine/tests/test_paul_desmarais_v2_2_diagnostics.py` |
 | V1 production-readiness improvements | `docs/IMPORTANT_PRODUCT_IMPROVEMENTS.md` | Whole-cohort certification, impossible-student triage, and programmatic infeasibility diagnosis remain required before production readiness |
+| Preserved impossible-schedule incidents | `docs/IMPOSSIBLE_SCHEDULE_DIAGNOSIS.md` | Historical witnesses and reproducibility; not the future counselor-facing diagnosis workflow |
 | Student-assignment feasibility certification and partial triage (planned) | `docs/STUDENT_ASSIGNMENT_FEASIBILITY_CERTIFICATION_AND_TRIAGE.md` | Future-design boundary; no change to the accepted first-release contract |
 | Student validation authority | `docs/STUDENT_ASSIGNMENT_VALIDATION.md` | `scheduling_engine/student_assignment/validation.py`, `validation_benchmark.py`, and `validation_qualification.py` |
 | Student quality measurement | `docs/STUDENT_SCHEDULE_QUALITY.md` | `scheduling_engine/student_assignment/quality.py` |

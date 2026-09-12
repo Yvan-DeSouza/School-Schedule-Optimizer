@@ -188,6 +188,71 @@ def test_post_placement_staffing_witness_rejects_a_double_booked_timing_candidat
     assert result.staffing_summary["witness_proven"] is False
 
 
+def test_shared_half_pair_placement_key_requires_one_common_timetable_cell():
+    """A sequential pair is one placement decision before staffing is chosen."""
+
+    result = _solve(
+        units=(
+            PlacementUnitDTO(
+                "annual:10:1", 10, (10,), (1, 2), annual_index=1,
+                source_mode="annual_total", locked_timeslot_id=11,
+                shared_placement_key="half:10:1", shared_staffing_key="half:10:1",
+            ),
+            PlacementUnitDTO(
+                "annual:11:1", 11, (11,), (1, 2), annual_index=1,
+                source_mode="annual_total",
+                shared_placement_key="half:10:1", shared_staffing_key="half:10:1",
+            ),
+        ),
+        teachers=(_teacher(1, (10, 11)),),
+    )
+
+    assert result.status == "complete"
+    assert {(item.semester, item.timeslot_id) for item in result.assignments} == {(1, 11)}
+
+
+def test_multiple_shared_half_pairs_can_use_distinct_cells():
+    result = _solve(
+        units=(
+            PlacementUnitDTO("annual:10:1", 10, (10,), (1,), annual_index=1,
+                             source_mode="annual_total", locked_timeslot_id=11,
+                             shared_placement_key="half:10:1", shared_staffing_key="half:10:1"),
+            PlacementUnitDTO("annual:11:1", 11, (11,), (1,), annual_index=1,
+                             source_mode="annual_total", shared_placement_key="half:10:1",
+                             shared_staffing_key="half:10:1"),
+            PlacementUnitDTO("annual:10:2", 10, (10,), (1,), annual_index=2,
+                             source_mode="annual_total", locked_timeslot_id=12,
+                             shared_placement_key="half:10:2", shared_staffing_key="half:10:2"),
+            PlacementUnitDTO("annual:11:2", 11, (11,), (1,), annual_index=2,
+                             source_mode="annual_total", shared_placement_key="half:10:2",
+                             shared_staffing_key="half:10:2"),
+        ),
+        teachers=(_teacher(1, (10, 11), semester_capacity=2, annual_capacity=2),),
+    )
+
+    assert result.status == "complete"
+    by_pair = {
+        index: {
+            (item.semester, item.timeslot_id)
+            for item in result.assignments if item.unit_key.endswith(f":{index}")
+        }
+        for index in (1, 2)
+    }
+    assert by_pair == {1: {(1, 11)}, 2: {(1, 12)}}
+
+
+def test_shared_half_pair_placement_key_requires_exactly_two_units():
+    try:
+        _solve(units=(PlacementUnitDTO(
+            "annual:10:1", 10, (10,), (1,), annual_index=1,
+            source_mode="annual_total", shared_placement_key="half:10:1",
+        ),))
+    except ValueError as error:
+        assert "exactly two units" in str(error)
+    else:
+        raise AssertionError("A singleton half-pair placement key must fail closed.")
+
+
 def test_unit_sort_key_uses_natural_numeric_identity_order():
     """Opaque database digits must not change deterministic search order."""
 

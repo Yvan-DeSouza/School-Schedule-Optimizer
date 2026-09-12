@@ -98,6 +98,7 @@ def compile_section_placement_constraints(data: PlacementInputDTO) -> dict:
     if len(timeslots) != len(data.timeslots):
         raise ValueError("Placement input contains a timeslot outside its academic year.")
     unit_keys = set()
+    shared_placement_units = defaultdict(list)
     for unit in data.units:
         if unit.key in unit_keys:
             raise ValueError(f"Duplicate placement unit key: {unit.key}.")
@@ -115,6 +116,13 @@ def compile_section_placement_constraints(data: PlacementInputDTO) -> dict:
             slot = timeslots.get(unit.locked_timeslot_id)
             if slot is None or slot.semester not in legal:
                 raise ValueError(f"Placement lock for {unit.key} is outside its year or legal semester.")
+        if unit.shared_placement_key:
+            shared_placement_units[unit.shared_placement_key].append(unit)
+    for pair_key, pair_units in shared_placement_units.items():
+        if len(pair_units) != 2:
+            raise ValueError(
+                f"Shared half-semester placement key {pair_key} must identify exactly two units."
+            )
     teacher_ids = {teacher.id for teacher in data.teachers}
     for fixed in data.fixed_placements:
         if fixed.timeslot_id not in timeslots:
@@ -1229,11 +1237,11 @@ def solve_section_placement(data: PlacementInputDTO) -> PlacementResultDTO:
     # objective would duplicate that hidden proof and reintroduce symmetry.
     paired_units = defaultdict(list)
     for unit in data.units:
-        if unit.shared_staffing_key:
-            paired_units[unit.shared_staffing_key].append(unit)
+        if unit.shared_placement_key:
+            paired_units[unit.shared_placement_key].append(unit)
     for pair_key, pair_units in paired_units.items():
         if len(pair_units) != 2:
-            raise ValueError(f"Shared half-semester staffing key {pair_key} must identify exactly two units.")
+            raise ValueError(f"Shared half-semester placement key {pair_key} must identify exactly two units.")
         first, second = sorted(pair_units, key=_unit_sort_key)
         first_vars = {
             slot_id: variable

@@ -739,6 +739,11 @@ class PlacementUnitDTO:
     # Keeping that distinction on the unit avoids a fake generic course.
     requires_course_qualification: bool = True
     online_supervision_session_id: Optional[int] = None
+    # Two sequential half-semester instructional units that form one physical
+    # A-D position carry the same deterministic key before placement. The
+    # placement solver must choose one shared semester/block for the pair;
+    # approval later materializes that exact physical relation.
+    shared_placement_key: Optional[str] = None
     shared_staffing_key: Optional[str] = None
     # Normal instructional capacity is used only by the private aggregate
     # student-timetable witness in placement. It never creates an enrollment

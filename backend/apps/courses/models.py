@@ -508,6 +508,8 @@ class HalfSemesterSectionPair(models.Model):
                 errors["first_section"] = "The first section must deliver the pair's first course."
             if second.course_id != self.course_pair.second_course_id:
                 errors["second_section"] = "The second section must deliver the pair's second course."
+            if first.capacity_max != second.capacity_max:
+                errors["second_section"] = "Paired half-semester sections must have matching capacity."
             # SectionSchedule and teacher equality are enforced by the workflow
             # once those later-stage facts exist; direct model validation must
             # still allow the legitimate pre-placement/pre-staffing draft state.

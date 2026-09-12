@@ -187,6 +187,11 @@ Therefore an important class of scheduling failures exists only because students
 interact through shared capacities, timing choices, and other global
 constraints.
 
+Preserved research incidents, their witnesses, and exact reproduction commands
+are maintained in [`IMPOSSIBLE_SCHEDULE_DIAGNOSIS.md`](IMPOSSIBLE_SCHEDULE_DIAGNOSIS.md).
+This document continues to own the future product requirement for counselor-
+facing diagnosis and resolution workflows.
+
 Without a diagnostic system, a counselor would know that the schedule is
 impossible but would have no practical explanation of what must change.
 

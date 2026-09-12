@@ -54,6 +54,7 @@ from backend.apps.courses.models import (
     DeliveryGroup,
     Enrollment,
     HalfSemesterCoursePair,
+    HalfSemesterSectionPair,
     Section,
     StudentScheduleCommitmentRequest,
 )
@@ -97,6 +98,7 @@ from backend.apps.scheduling.services.teacher_assignment import (
 )
 from scheduling_engine.benchmark_global_feasibility import (
     capacity_only_matching,
+    ordinary_and_half_pair_diagnostic,
     reduced_collision_diagnostic,
 )
 from scheduling_engine.benchmark_individual_feasibility import preflight_individual_feasibility
@@ -124,7 +126,11 @@ STAGE1_LIMIT_SECONDS = 120.0
 STAGE1_WORKERS = 8
 STAGE1_VALIDATION_LIMIT_SECONDS = 60.0
 STAGE1_VALIDATION_WORKERS = 8
-ARTIFACT_ROOT = Path("scheduling_engine/benchmarks/production_pipeline") / LINEAGE_ID
+QUALIFICATION_ATTEMPT_ID = "post_half_pair_placement_fix_20260912_r2"
+ARTIFACT_ROOT = (
+    Path("scheduling_engine/benchmarks/production_pipeline")
+    / LINEAGE_ID / "attempts" / QUALIFICATION_ATTEMPT_ID
+)
 
 
 class QualificationStopped(RuntimeError):
@@ -160,6 +166,45 @@ def _write_artifact(name, payload):
         encoding="utf-8",
     )
     return str(path)
+
+
+def _half_pair_topology(academic_year):
+    """Audit the accepted physical pair contract before student assignment."""
+
+    pairs = list(HalfSemesterSectionPair.objects.filter(
+        first_section__academic_year=academic_year,
+    ).select_related(
+        "first_section__course", "second_section__course",
+    ).order_by("id"))
+    schedules = {
+        row.section_id: row.timeslot_id
+        for row in SectionSchedule.objects.filter(
+            section_id__in=[
+                section_id for pair in pairs
+                for section_id in (pair.first_section_id, pair.second_section_id)
+            ],
+        )
+    }
+    co_timed = [
+        pair for pair in pairs
+        if (
+            pair.first_section.semester == pair.second_section.semester
+            and schedules.get(pair.first_section_id) == schedules.get(pair.second_section_id)
+            and pair.first_section.capacity_max == pair.second_section.capacity_max
+        )
+    ]
+    return {
+        "chv_section_count": Section.objects.filter(
+            academic_year=academic_year, course__course_code="CHV2O",
+        ).count(),
+        "glc_section_count": Section.objects.filter(
+            academic_year=academic_year, course__course_code="GLC2O",
+        ).count(),
+        "materialized_pair_count": len(pairs),
+        "co_timed_pair_count": len(co_timed),
+        "split_pair_count": len(pairs) - len(co_timed),
+        "valid_pair_capacity": sum(pair.first_section.capacity_max for pair in co_timed),
+    }
 
 
 def _downstream_counts(academic_year):
@@ -661,6 +706,16 @@ def run_qualification(*, counselor_user):
         ))
         report["placement"]["approval_id"] = placement_approval.id
         report["placement"]["materialized_counts"] = _downstream_counts(academic_year)
+        report["placement"]["half_pair_topology"] = _half_pair_topology(academic_year)
+        report["artifacts"].append(_write_artifact(
+            "accepted_half_pair_topology.json",
+            report["placement"]["half_pair_topology"],
+        ))
+        if report["placement"]["half_pair_topology"]["split_pair_count"]:
+            raise QualificationStopped(
+                "accepted_half_pair_topology",
+                report["placement"]["half_pair_topology"],
+            )
         report["placement"]["artifact"] = _accepted_placement_artifact(
             academic_year, placement_run, spec.fingerprint, context["roster"],
         )
@@ -726,6 +781,17 @@ def run_qualification(*, counselor_user):
         report["reduced_collision_diagnostic"] = collision
         if collision.get("status") not in {"optimal", "feasible"} or not collision.get("feasible", False):
             raise QualificationStopped("reduced_collision_diagnostic", collision)
+
+        half_pair = _timed(stage_times, "ordinary_and_half_pair_diagnostic", lambda: ordinary_and_half_pair_diagnostic(
+            student_input,
+            time_limit_seconds=120.0,
+        ))
+        report["ordinary_and_half_pair_diagnostic"] = half_pair
+        report["artifacts"].append(_write_artifact(
+            "ordinary_and_half_pair_diagnostic.json", half_pair,
+        ))
+        if half_pair.get("status") not in {"optimal", "feasible"} or not half_pair.get("feasible", False):
+            raise QualificationStopped("ordinary_and_half_pair_diagnostic", half_pair)
 
         stage1_result, stage1 = _timed(stage_times, "student_assignment_stage1", lambda: _run_stage1_only(student_input))
         report["stage1"] = stage1
