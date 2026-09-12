@@ -10,9 +10,11 @@ The detached fixtures are deterministic, synthetic
 Paul-Desmarais and Ontario rules. Neither is measured Paul-Desmarais enrollment,
 demand, or program-prevalence data.
 
-The production-pipeline lineage is separate from the detached fixtures. It is
-implemented but remains unqualified until its explicit manual target-scale run
-produces a complete, independently validated Stage-1 seed.
+The production-pipeline lineage is separate from the detached fixtures. Its
+historical `post_half_pair_placement_fix_20260912_r2` attempt is a valid
+hard-feasibility certificate, but it retained only summary seed facts rather
+than the exact selected decisions and complete detached input. It must not be
+used as an Objective-V3 measurement schedule.
 
 The intentionally upper-bound scale supplies capacity and runtime margin for the existing two-semester v1 product. It is not a universal Canadian timetable model.
 
@@ -105,7 +107,7 @@ does not run while the current reduced collision layer is infeasible. A complete
 validated Stage-1 seed has not been produced for v2.3; v2.3 is not globally
 certified and Objective V3 remains blocked.
 
-### Production-pipeline lineage (implemented, not yet qualified)
+### Production-pipeline lineage and research checkpointing
 
 `paul_desmarais_shaped_g9_12_production_pipeline_v1` is additive and does not
 modify the detached v2.2 or v2.3 builders. Its deterministic source contains
@@ -124,7 +126,7 @@ python -m pytest --create-db -q -s backend/tests/paul_desmarais_production_pipel
 
 Its required order is:
 
-`source -> offerings -> online plan/approval -> section budget/approval -> staffing-count preflight -> conflict matrix -> annual_total placement/approval -> named teacher/supervisor assignment/approval -> final_staffing adapter -> isolated feasibility -> capacity-only matching -> reduced collision diagnostic -> Stage 1 only`
+`source -> offerings -> online plan/approval -> section budget/approval -> staffing-count preflight -> conflict matrix -> annual_total placement -> lossless placement checkpoint -> placement approval -> named teacher/supervisor assignment/approval -> final_staffing adapter -> isolated feasibility -> capacity-only matching -> reduced collision diagnostic -> Stage 1 only`
 
 The annual placement service, not the benchmark, chooses semester and A/B/C/D
 timing. The staffing-count preflight is deliberately not approved in this
@@ -135,9 +137,28 @@ No Stage 2 or Objective V3 work is part of this qualification.
 Successful stage artifacts are written under
 `scheduling_engine/benchmarks/production_pipeline/paul_desmarais_shaped_g9_12_production_pipeline_v1/`.
 They retain source, planning, placement, staffing, and final-input provenance.
+The historical R2 certificate remains valid global-feasibility evidence, not a
+corrupted run. Its research reproducibility gap established a stricter
+checkpoint contract: a successful real placement must first freeze the complete
+`PlacementInputDTO` and complete `PlacementResultDTO` immediately after the
+placement solver and before approval or named staffing. The later student
+assignment boundary must freeze both the complete detached
+`StudentAssignmentInputDTO` and the exact independently validated semantic
+source-decision ledger. The artifact-only verifier reloads both,
+replays the canonical full-model validation without Django/database state, and
+checks deterministic offline Objective Semantics v2 evaluation. This is
+research infrastructure, not a product persistence API.
 Multi-worker placement may produce a different valid topology on replay; a
 frozen accepted artifact is a downstream replay input only when its origin is
 linked to a real placement run.
+
+The placement checkpoint schemas are `section_placement_frozen_input_v1` and
+`section_placement_result_v1`. Their semantic fingerprints normalize
+database-specific placement identifiers while retaining collision, capacity,
+staffing, online-supervision, and paired-half semantics. The r5 checkpoint was
+verified in-process and by the fresh-process verifier
+`scheduling_engine.verify_placement_research_artifacts` before the harness
+stopped by design at the placement checkpoint.
 
 The first September 12, 2026 manual attempt passed every gate through reduced
 collision but was interrupted after the repository's existing post-bootstrap
@@ -366,3 +387,51 @@ as production-generated. Objective V3 remains blocked until the new lineage
 has accepted placement, final staffing, 1,400/1,400 isolated feasibility,
 feasible reduced diagnostics, and an independently validated complete Stage-1
 seed.
+
+### Frozen-checkpoint qualification attempts
+
+`post_half_pair_placement_fix_20260912_r2` remains valid historical global-
+feasibility evidence but is insufficient for exact objective measurement because
+its complete final input and selected Stage-1 decisions were not preserved.
+`post_half_pair_placement_fix_20260912_r3_frozen_checkpoint` reached accepted
+placement and then terminated unexpectedly during named staffing without an
+authoritative outcome. It is preserved as incomplete evidence.
+
+The authorized replacement `post_half_pair_placement_fix_20260912_r4_frozen_checkpoint`
+used the unchanged source fingerprint
+`40a68e5c8948c1526113b6f153c7fa1e6ee67802b69131b7674c62582f20d35e` and stopped
+at annual placement with raw `solver_outcome=unknown` after 382.813 seconds.
+No named-staffing result, final-input artifact, Stage-1 result, or validated
+seed was produced. The run is not a canonical Objective-V3 research baseline.
+The harness now writes a compact terminal failure artifact for this outcome;
+the lossless frozen-input and validated-seed contract remains ready for a later
+authorized qualification.
+
+The authorized lossless checkpoint attempt
+`post_half_pair_placement_fix_20260912_r5_lossless_placement_checkpoint` used
+the unchanged source fingerprint
+`40a68e5c8948c1526113b6f153c7fa1e6ee67802b69131b7674c62582f20d35e` and reached
+real annual placement with raw `solver_outcome=feasible` in `198.495` seconds.
+It produced 326/326 placement assignments, zero unplaced units, 20 paired-half
+units, 6 online-supervision units, 6 online sessions, 84 online demands, and
+11,200 student timetable demands. The input semantic fingerprint is
+`0c6d01bd752fbc60d81a7097e997747ac86e90368ad7996f1fa7200d58a734e3`; the
+result semantic fingerprint is
+`ea20219c2a620e749492029be334efa5494f94ef629d0764fa49e9cd94b0fee2`.
+The complete artifacts are under `attempts/r5_lossless_checkpoint/`; this
+shorter on-disk directory avoids the Windows path limit while every manifest
+retains the full human-readable attempt ID. Placement approval, named staffing,
+final staffing, student assignment, and Stage 1 were intentionally not run in
+r5, so this is a lossless placement replay checkpoint, not a global
+student-assignment certificate or Objective-V3 baseline.
+
+After capture, a separate replay-only qualification reconstructed the same
+source in a fresh Django test database, reran only the upstream source,
+offering, online-plan, budget, staffing-preflight, and conflict-matrix stages,
+then rebound the frozen result by semantic identities and called the existing
+placement approval/materialization service. It did not call placement CP-SAT.
+The persisted `fresh_orm_placement_replay_report.json` records
+`semantic_placement_replay_match=true`, 320 materialized sections, 6
+materialized online sessions, 10/10 co-timed half-pairs, 0 split pairs, 400
+valid paired-half seats, and a proven anonymous staffing witness. This is the
+first canonical replayable real-production placement for this lineage.

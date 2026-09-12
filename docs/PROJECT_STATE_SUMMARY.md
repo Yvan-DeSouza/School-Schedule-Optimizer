@@ -31,12 +31,35 @@ into operational state.
 
 ### Current diagnostic-search status
 
-The `paul_desmarais_shaped_g9_12_stress_v2_2` fixture passes its isolated
-1,400/1,400 student-program preflight but is not globally certified: its one
-authorized 120-second Stage-1-only hard-feasibility attempt returned
-`infeasible` without a complete seed. The benchmark authority and exact run
-record are in `docs/TARGET_SCALE_PRODUCTION_STRESS_BENCHMARK.md`. Objective V3
-remains blocked on a corrected, constructively certified topology.
+The detached `paul_desmarais_shaped_g9_12_stress_v2_2` fixture remains a
+preserved negative topology record. Separately, the real
+`paul_desmarais_shaped_g9_12_production_pipeline_v1` lineage was constructively
+hard-feasible in `post_half_pair_placement_fix_20260912_r2`: final-input
+fingerprint `237d991d4567f6fa68c087e8398b5c4096ce92e97c504663c6b0ce4c8fc103c4`,
+11,284 returned assignments, zero unmet mandatory requests, and independent
+full-model validation. That historical certificate did not preserve its exact
+input DTO and selected source decisions, so it is not an Objective-V3
+measurement checkpoint. Objective semantics research awaits a later frozen
+input plus validated-seed checkpoint; Stage 2 has not run on this lineage.
+The authorized replacement attempt `post_half_pair_placement_fix_20260912_r4_frozen_checkpoint`
+stopped at real annual placement with raw `solver_outcome=unknown`; it did not
+reach named staffing or Stage 1 and is not a research baseline.
+The subsequent `post_half_pair_placement_fix_20260912_r5_lossless_placement_checkpoint`
+used the unchanged source and reached real annual placement with
+`solver_outcome=feasible`, preserving complete
+`section_placement_frozen_input_v1` and `section_placement_result_v1` artifacts
+before approval. Its input fingerprint is
+`0c6d01bd752fbc60d81a7097e997747ac86e90368ad7996f1fa7200d58a734e3` and its
+result fingerprint is
+`ea20219c2a620e749492029be334efa5494f94ef629d0764fa49e9cd94b0fee2`.
+R5 intentionally stopped before placement approval, named staffing, final
+staffing, or Stage 1; it is a replayable placement checkpoint, not a global
+student-assignment certificate or Objective-V3 baseline.
+The separate replay-only qualification then rebuilt the same source in a fresh
+Django test database, rebound the frozen result without rerunning placement
+CP-SAT, and invoked the existing placement approval/materialization path. It
+matched the stored semantic placement fingerprint, materialized 320 sections
+and 6 online sessions, and preserved 10 co-timed half-pairs with 0 splits.
 
 The reusable continuous operator-session primitives have passed a detached
 Objective Semantics v2 target-scale qualification study using the 1,400-student

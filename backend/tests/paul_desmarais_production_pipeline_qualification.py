@@ -20,6 +20,8 @@ from decimal import Decimal
 from hashlib import sha256
 import json
 from pathlib import Path
+import subprocess
+import sys
 from time import perf_counter
 
 from django.contrib.auth.models import User
@@ -87,6 +89,7 @@ from backend.apps.scheduling.services.section_placement import (
     approve_section_placement_run,
     create_section_placement_run,
 )
+from backend.apps.scheduling.services.engine_adapter import load_section_placement_input
 from backend.apps.scheduling.services.staffing_configuration import (
     confirm_roster_ready,
     set_roster_members,
@@ -112,7 +115,22 @@ from scheduling_engine.paul_desmarais_production_pipeline_source import (
     source_summary,
 )
 from scheduling_engine.student_assignment import core as student_assignment_core
+from scheduling_engine.student_assignment.research_artifacts import (
+    serialize_frozen_student_assignment_input,
+    serialize_validated_stage1_seed,
+)
 from scheduling_engine.student_assignment.runtime import semantic_student_assignment_input_fingerprint
+from scheduling_engine.placement_research_artifacts import (
+    load_frozen_placement_input,
+    load_frozen_placement_result,
+    placement_input_semantic_fingerprint,
+    placement_result_from_mapping,
+    placement_result_semantic_fingerprint,
+    placement_pair_summary,
+    serialize_frozen_placement_input,
+    serialize_frozen_placement_result,
+)
+from scheduling_engine.constants import TEACHER_ASSIGNMENT_TIME_LIMIT_SECONDS, TEACHER_ASSIGNMENT_WORKER_COUNT
 
 
 SOFT_IMPORTANCE = {
@@ -126,10 +144,13 @@ STAGE1_LIMIT_SECONDS = 120.0
 STAGE1_WORKERS = 8
 STAGE1_VALIDATION_LIMIT_SECONDS = 60.0
 STAGE1_VALIDATION_WORKERS = 8
-QUALIFICATION_ATTEMPT_ID = "post_half_pair_placement_fix_20260912_r2"
+QUALIFICATION_ATTEMPT_ID = "post_half_pair_placement_fix_20260912_r5_lossless_placement_checkpoint"
+PLACEMENT_CAPTURE_ONLY = True
+EXPECTED_SOURCE_FINGERPRINT = "40a68e5c8948c1526113b6f153c7fa1e6ee67802b69131b7674c62582f20d35e"
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 ARTIFACT_ROOT = (
-    Path("scheduling_engine/benchmarks/production_pipeline")
-    / LINEAGE_ID / "attempts" / QUALIFICATION_ATTEMPT_ID
+    REPOSITORY_ROOT / "scheduling_engine/benchmarks/production_pipeline"
+    / LINEAGE_ID / "attempts" / "r5_lossless_checkpoint"
 )
 
 
@@ -166,6 +187,70 @@ def _write_artifact(name, payload):
         encoding="utf-8",
     )
     return str(path)
+
+
+def _verify_frozen_artifacts(input_path, seed_path):
+    """Run the checkpoint verification in a fresh Django-free process."""
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "scheduling_engine.student_assignment.verify_research_artifacts",
+            str(input_path),
+            str(seed_path),
+        ],
+        cwd=REPOSITORY_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=180,
+        check=False,
+    )
+    if completed.returncode:
+        raise QualificationStopped("detached_artifact_verification_process", {
+            "returncode": completed.returncode,
+            "stdout_tail": completed.stdout[-1000:],
+            "stderr_tail": completed.stderr[-1000:],
+        })
+    try:
+        return json.loads(completed.stdout)
+    except json.JSONDecodeError as error:
+        raise QualificationStopped("detached_artifact_verification_output", {
+            "stdout_tail": completed.stdout[-1000:],
+            "stderr_tail": completed.stderr[-1000:],
+        }) from error
+
+
+def _verify_frozen_placement_artifacts(input_path, result_path):
+    """Verify a placement checkpoint in a fresh Django-free process."""
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "scheduling_engine.verify_placement_research_artifacts",
+            str(input_path),
+            str(result_path),
+        ],
+        cwd=REPOSITORY_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=180,
+        check=False,
+    )
+    if completed.returncode:
+        raise QualificationStopped("detached_placement_artifact_verification", {
+            "returncode": completed.returncode,
+            "stdout_tail": completed.stdout[-1000:],
+            "stderr_tail": completed.stderr[-1000:],
+        })
+    try:
+        return json.loads(completed.stdout)
+    except json.JSONDecodeError as error:
+        raise QualificationStopped("detached_placement_artifact_verification_output", {
+            "stdout_tail": completed.stdout[-1000:],
+            "stderr_tail": completed.stderr[-1000:],
+        }) from error
 
 
 def _half_pair_topology(academic_year):
@@ -521,6 +606,7 @@ def _run_stage1_only(student_input):
         hard_feasibility_worker_count=STAGE1_WORKERS,
         hard_feasibility_validation_time_limit_seconds=STAGE1_VALIDATION_LIMIT_SECONDS,
         hard_feasibility_validation_worker_count=STAGE1_VALIDATION_WORKERS,
+        capture_final_source_decisions=True,
     )
     facts = result.optimization_facts.get("stage_1", {})
     stage2 = result.optimization_facts.get("stage_2", {})
@@ -554,6 +640,7 @@ def run_qualification(*, counselor_user):
     academic_year = None
     report = {
         "lineage_id": LINEAGE_ID,
+        "attempt_id": QUALIFICATION_ATTEMPT_ID,
         "source_version": SOURCE_VERSION,
         "source_seed": SOURCE_SEED,
         "source_fingerprint": spec.fingerprint,
@@ -564,6 +651,11 @@ def run_qualification(*, counselor_user):
         "objective_v3_ran": False,
     }
     try:
+        if spec.fingerprint != EXPECTED_SOURCE_FINGERPRINT:
+            raise QualificationStopped("source_fingerprint_contract", {
+                "expected": EXPECTED_SOURCE_FINGERPRINT,
+                "actual": spec.fingerprint,
+            })
         context = _timed(stage_times, "source_materialization", lambda: _materialize_source(spec, counselor_user))
         academic_year = context["academic_year"]
         boundary = _assert_source_boundary(academic_year)
@@ -699,6 +791,153 @@ def run_qualification(*, counselor_user):
             raise QualificationStopped("annual_section_placement", report["placement"])
         if not placement_result.get("staffing_summary", {}).get("witness_proven", False):
             raise QualificationStopped("anonymous_staffing_witness", report["placement"])
+
+        # Persist the exact detached placement contract before approval or any
+        # downstream named-staffing work.  The ORM run snapshot is deliberately
+        # not sufficient: it is a JSON/asdict projection with database IDs and
+        # cannot by itself replay the full DTO semantics.
+        placement_input, placement_matrix, placement_roster = _timed(
+            stage_times,
+            "placement_checkpoint_input_reload",
+            lambda: load_section_placement_input(
+                academic_year_id=academic_year.id,
+                input_mode="annual_total",
+                budget_approval=budget_approval,
+                conflict_matrix=matrix,
+            ),
+        )
+        placement_result_dto = placement_result_from_mapping(placement_result)
+        placement_input_fingerprint = placement_input_semantic_fingerprint(placement_input)
+        placement_result_fingerprint = placement_result_semantic_fingerprint(
+            placement_input, placement_result_dto,
+        )
+        placement_input_path = ARTIFACT_ROOT / "frozen_section_placement_input.json"
+        placement_result_path = ARTIFACT_ROOT / "frozen_section_placement_result.json"
+        placement_input_artifact = serialize_frozen_placement_input(
+            placement_input_path,
+            data=placement_input,
+            provenance={
+                "lineage_id": LINEAGE_ID,
+                "attempt_id": QUALIFICATION_ATTEMPT_ID,
+                "source_fingerprint": spec.fingerprint,
+                "origin": "production_solver_generated",
+                "placement_run_id": placement_run.id,
+                "input_mode": "annual_total",
+                "matrix_revision": placement_matrix.revision,
+                "roster_id": placement_roster.id,
+                "orm_run_input_snapshot_fingerprint": placement_run.input_snapshot.get("fingerprint"),
+            },
+        )
+        placement_result_artifact = serialize_frozen_placement_result(
+            placement_result_path,
+            data=placement_input,
+            result=placement_result_dto,
+            provenance={
+                "lineage_id": LINEAGE_ID,
+                "attempt_id": QUALIFICATION_ATTEMPT_ID,
+                "source_fingerprint": spec.fingerprint,
+                "origin": "production_solver_generated",
+                "placement_run_id": placement_run.id,
+            },
+        )
+        if placement_input_artifact["semantic_fingerprint"] != placement_input_fingerprint:
+            raise QualificationStopped("placement_input_checkpoint_fingerprint", {
+                "adapter_semantic_fingerprint": placement_input_fingerprint,
+                "artifact_fingerprint": placement_input_artifact["semantic_fingerprint"],
+            })
+        if placement_result_artifact["semantic_fingerprint"] != placement_result_fingerprint:
+            raise QualificationStopped("placement_result_checkpoint_fingerprint", {
+                "adapter_semantic_fingerprint": placement_result_fingerprint,
+                "artifact_fingerprint": placement_result_artifact["semantic_fingerprint"],
+            })
+        # Verify immediately in-process before allowing any later stage to
+        # mutate the ORM context, then repeat the verification in a fresh
+        # Django-free process below.
+        load_frozen_placement_input(
+            placement_input_path,
+            expected_fingerprint=placement_input_fingerprint,
+        )
+        load_frozen_placement_result(
+            placement_result_path,
+            data=placement_input,
+            expected_input_fingerprint=placement_input_fingerprint,
+        )
+        report["placement_checkpoint"] = {
+            "input_artifact": str(placement_input_path),
+            "result_artifact": str(placement_result_path),
+            "input_semantic_fingerprint": placement_input_fingerprint,
+            "result_semantic_fingerprint": placement_result_fingerprint,
+            "unit_count": len(placement_input.units),
+            "assignment_count": len(placement_result_dto.assignments),
+            "half_pair_unit_count": sum(
+                unit.shared_placement_key is not None for unit in placement_input.units
+            ),
+            "online_unit_count": sum(
+                unit.online_supervision_session_id is not None for unit in placement_input.units
+            ),
+            "online_session_count": len(placement_input.online_supervision_sessions),
+            "online_demand_count": len(placement_input.online_supervision_demands),
+            "student_timetable_demand_count": len(placement_input.student_timetable_demands),
+            "source_fingerprint": spec.fingerprint,
+        }
+        pair_summary = placement_pair_summary(placement_input, placement_result_dto)
+        report["placement_checkpoint"]["half_pair_topology"] = pair_summary
+        report["artifacts"].extend([str(placement_input_path), str(placement_result_path)])
+        report["artifacts"].append(_write_artifact(
+            "placement_input_fingerprint_manifest.json",
+            report["placement_checkpoint"],
+        ))
+        report["artifacts"].append(_write_artifact(
+            "placement_result_fingerprint_manifest.json",
+            {
+                "input_semantic_fingerprint": placement_input_fingerprint,
+                "result_semantic_fingerprint": placement_result_fingerprint,
+                "solver_outcome": placement_result_dto.solver_outcome,
+                "assignment_count": len(placement_result_dto.assignments),
+                "placement_run_id": placement_run.id,
+            },
+        ))
+        detached_placement = _timed(
+            stage_times,
+            "detached_placement_artifact_verification",
+            lambda: _verify_frozen_placement_artifacts(
+                placement_input_path, placement_result_path,
+            ),
+        )
+        report["placement_checkpoint"]["detached_verification"] = detached_placement
+        report["artifacts"].append(_write_artifact(
+            "placement_checkpoint_verification.json", detached_placement,
+        ))
+        if detached_placement.get("input_semantic_fingerprint") != placement_input_fingerprint:
+            raise QualificationStopped("detached_placement_input_fingerprint", detached_placement)
+        if detached_placement.get("result_semantic_fingerprint") != placement_result_fingerprint:
+            raise QualificationStopped("detached_placement_result_fingerprint", detached_placement)
+        if (
+            pair_summary["missing_pair_count"]
+            or pair_summary["split_pair_count"]
+            or detached_placement.get("split_pair_count")
+        ):
+            raise QualificationStopped("placement_half_pair_checkpoint", {
+                "pair_summary": pair_summary,
+                "detached_verification": detached_placement,
+            })
+        if PLACEMENT_CAPTURE_ONLY:
+            report["pipeline_status"] = "placement_checkpoint_complete"
+            report["stopped_at"] = "placement_checkpoint"
+            report["placement_capture_only"] = True
+            _write_artifact("qualification_report.json", report)
+            print(json.dumps({
+                "lineage_id": LINEAGE_ID,
+                "attempt_id": QUALIFICATION_ATTEMPT_ID,
+                "pipeline_status": report["pipeline_status"],
+                "solver_outcome": placement_result_dto.solver_outcome,
+                "assignment_count": len(placement_result_dto.assignments),
+                "input_semantic_fingerprint": placement_input_fingerprint,
+                "result_semantic_fingerprint": placement_result_fingerprint,
+                "stage_times": report["stage_times"],
+            }, sort_keys=True, separators=(",", ":"), default=_json_default), flush=True)
+            return report
+
         placement_approval = _timed(stage_times, "placement_approval", lambda: approve_section_placement_run(
             placement_run,
             approved_by=counselor_user,
@@ -724,6 +963,17 @@ def run_qualification(*, counselor_user):
             report["placement"]["artifact"],
         ))
 
+        report["named_teacher_assignment_entry"] = {
+            "stage": "named_teacher_assignment",
+            "section_count": Section.objects.filter(academic_year=academic_year).count(),
+            "online_supervision_count": OnlineSupervisionSession.objects.filter(
+                academic_year=academic_year,
+            ).count(),
+            "teacher_roster_count": context["roster"].members.count(),
+            "time_limit_seconds": TEACHER_ASSIGNMENT_TIME_LIMIT_SECONDS,
+            "worker_count": TEACHER_ASSIGNMENT_WORKER_COUNT,
+            "source_fingerprint": spec.fingerprint,
+        }
         teacher_run = _timed(stage_times, "named_teacher_assignment", lambda: create_teacher_assignment_run(
             academic_year_id=academic_year.id,
             created_by=counselor_user,
@@ -734,6 +984,15 @@ def run_qualification(*, counselor_user):
             "assignment_count": len(teacher_run.result.get("assignments", [])),
             "run_id": teacher_run.id,
             "result": teacher_run.result,
+        }
+        report["named_teacher_assignment_exit"] = {
+            "stage": "named_teacher_assignment",
+            "status": teacher_run.status,
+            "result_status": teacher_run.result.get("status"),
+            "assignment_count": len(teacher_run.result.get("assignments", [])),
+            "online_supervisor_assignment_count": len(
+                teacher_run.result.get("online_supervision_assignments", [])
+            ),
         }
         if teacher_run.status != "complete" or teacher_run.result.get("status") != "complete":
             raise QualificationStopped("named_teacher_assignment", report["teacher_assignment"])
@@ -762,6 +1021,32 @@ def run_qualification(*, counselor_user):
             "special_commitment_request_count": len(student_input.schedule_commitment_requests),
             "staffing_context": staffing_context,
         }
+        frozen_input_path = ARTIFACT_ROOT / "frozen_final_student_assignment_input.json"
+        frozen_input = serialize_frozen_student_assignment_input(
+            frozen_input_path,
+            data=student_input,
+            provenance={
+                "lineage_id": LINEAGE_ID,
+                "attempt_id": QUALIFICATION_ATTEMPT_ID,
+                "source_fingerprint": spec.fingerprint,
+                "stage": "final_staffing_adapter",
+            },
+        )
+        if frozen_input["input_semantic_fingerprint"] != input_fingerprint:
+            raise QualificationStopped("frozen_final_input_fingerprint", {
+                "adapter_fingerprint": input_fingerprint,
+                "frozen_fingerprint": frozen_input["input_semantic_fingerprint"],
+            })
+        report["final_staffing_input"]["frozen_artifact"] = str(frozen_input_path)
+        report["artifacts"].append(str(frozen_input_path))
+        report["final_input_fingerprint"] = {
+            "semantic_fingerprint": input_fingerprint,
+            "artifact_schema": frozen_input["schema"],
+            "artifact": str(frozen_input_path),
+        }
+        report["artifacts"].append(_write_artifact(
+            "final_input_fingerprint_manifest.json", report["final_input_fingerprint"],
+        ))
         report["artifacts"].append(_write_artifact("final_staffing_input_manifest.json", report["final_staffing_input"]))
 
         isolated = _timed(stage_times, "isolated_student_feasibility", lambda: preflight_individual_feasibility(student_input))
@@ -810,7 +1095,32 @@ def run_qualification(*, counselor_user):
             "raw_solver_outcome": stage1["raw_solver_outcome"],
             "independent_full_model_validation": stage1["seed_validated_against_full_model"],
         }
+        frozen_seed_path = ARTIFACT_ROOT / "validated_stage1_seed.json"
+        frozen_seed = serialize_validated_stage1_seed(
+            frozen_seed_path,
+            data=student_input,
+            result=stage1_result,
+            independent_full_model_validation=stage1["seed_validated_against_full_model"],
+            provenance={
+                "lineage_id": LINEAGE_ID,
+                "attempt_id": QUALIFICATION_ATTEMPT_ID,
+                "source_fingerprint": spec.fingerprint,
+                "independent_full_model_validation": True,
+            },
+        )
+        report["stage1_seed"].update({
+            "artifact_schema": frozen_seed["schema"],
+            "seed_source_decision_fingerprint": frozen_seed["seed_source_decision_fingerprint"],
+            "frozen_artifact": str(frozen_seed_path),
+        })
+        report["artifacts"].append(str(frozen_seed_path))
         report["artifacts"].append(_write_artifact("validated_stage1_seed_manifest.json", report["stage1_seed"]))
+        detached = _timed(stage_times, "detached_artifact_verification", lambda: _verify_frozen_artifacts(
+            frozen_input_path, frozen_seed_path,
+        ))
+        report["detached_artifact_verification"] = detached
+        if not detached.get("independent_full_model_validation") or not detached.get("objective_v2_deterministic"):
+            raise QualificationStopped("detached_artifact_verification", detached)
         report["globally_feasibility_certified"] = True
         report["pipeline_status"] = "complete"
         report["stopped_at"] = None
@@ -836,6 +1146,23 @@ def run_qualification(*, counselor_user):
             "evidence": stopped.evidence,
             "stage_times": report["stage_times"],
         }, sort_keys=True, separators=(",", ":"), default=_json_default), flush=True)
+        raise
+    except Exception as error:
+        # Preserve enough terminal evidence to distinguish a harness/runtime
+        # error from a solver outcome.  This path must never emit a validated
+        # seed because seed persistence is below the successful validation gate.
+        report["pipeline_status"] = "failed"
+        report["stopped_at"] = next(reversed(stage_times), "initialization")
+        report["failure_evidence"] = {
+            "exception_type": type(error).__name__,
+            "exception": str(error),
+            "last_completed_stage": next(reversed(stage_times), "initialization"),
+            "attempt_id": QUALIFICATION_ATTEMPT_ID,
+            "source_fingerprint": spec.fingerprint,
+            "latest_persisted_artifacts": list(report.get("artifacts", ())),
+            "validated_seed_written": False,
+        }
+        _write_artifact("qualification_failure.json", report)
         raise
 
 
