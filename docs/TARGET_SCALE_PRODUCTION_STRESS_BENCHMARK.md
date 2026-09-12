@@ -69,6 +69,19 @@ explicit Stage 1 infeasibility finding. The fixture is therefore **not
 globally certified**. The isolated preflight remains a local-program check,
 not a constructive whole-cohort certificate.
 
+A subsequent reduced-model diagnosis established the cause without changing
+the fixture. Capacity-only matching assigns all 10,500 ordinary full-course
+groups, but adding the existing per-student no-double-booking rule is
+infeasible. For example, 329 Grade 9 students require both `MTH1W` and
+`CGC1W`; their only cells are S1-A and S2-B. Each such student must use one
+of those two courses in S1-A, while the two S1-A pools contain only 320 seats
+(`160 + 160`). The fixed anchor grid repeats positions with the same
+course-ID parity, so demand-driven odd section counts orient both courses
+alike rather than complementing each other. This is a proven synthetic
+topology/anchor-correlation defect, not an isolated-program, online-membership,
+or special-program failure. A repaired globally feasible topology requires a
+new semantic fixture version; no repair is made by this record.
+
 ## Scope and topology
 
 | Fact | Provenance | Meaning |
