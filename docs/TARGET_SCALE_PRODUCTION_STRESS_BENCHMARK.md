@@ -2,7 +2,7 @@
 
 ## Authority and purpose
 
-This is the single human-readable authority for the benchmark-specific assumptions of `paul_desmarais_shaped_g9_12_stress_v2`. It is a deterministic, synthetic **1,400-student Grades 9--12 production stress benchmark** shaped by verified Paul-Desmarais and Ontario rules. It is **not** measured Paul-Desmarais enrollment, demand, or program-prevalence data.
+This is the single human-readable authority for the benchmark-specific assumptions of `paul_desmarais_shaped_g9_12_stress_v2_2`. It is a deterministic, synthetic **1,400-student Grades 9--12 production stress benchmark** shaped by verified Paul-Desmarais and Ontario rules. It is **not** measured Paul-Desmarais enrollment, demand, or program-prevalence data.
 
 The intentionally upper-bound scale supplies capacity and runtime margin for the existing two-semester v1 product. It is not a universal Canadian timetable model.
 
@@ -10,7 +10,7 @@ The intentionally upper-bound scale supplies capacity and runtime margin for the
 
 | Field | Value |
 | --- | --- |
-| Fixture identity/version | `paul_desmarais_shaped_g9_12_stress_v2` / `v2` |
+| Fixture identity/version | `paul_desmarais_shaped_g9_12_stress_v2_2` / `v2.2` |
 | Generator | `scheduling_engine.paul_desmarais_stress_benchmark` |
 | Seed | None; deterministic construction, not sampled generation |
 | Fingerprint | SHA-256 of semantic input, curated metadata, assumptions, and coverage descriptors |
@@ -25,14 +25,49 @@ python -m scheduling_engine.paul_desmarais_stress_benchmark
 
 Any material change must update the fixture/manifest, this document, deterministic audit expectations, and fixture fingerprint/version together.
 
-Before a target-scale run, the bounded fixture suite also performs an exact
-per-student completion preflight over the detached candidate input. It proves
+Version `v2.1` corrected a material detached-candidate-contract defect in the
+superseded `v2` fixture: engine-only online-supervision sections had advertised
+normal instructional offerings. The corrected fixture uses distinct online
+offering identities and advertises only synthetic online requests, matching
+the production adapter's offering-membership contract. This is a new semantic
+fixture version within the same benchmark lineage; its fingerprint is
+intentionally different. Its two 900-seat sections per normal course then
+proved individually infeasible for 345 Grade 10 students because their timing
+cells formed a Hall deficiency.
+
+Version `v2.2` retains the corrected online-offering contract and replaces the
+unrealistic topology with deterministic demand-driven section multiplicity and
+a fixed two-cell anchor grid. It has 276 ordinary full-course sections, 18
+paired-half sections, and 6 online-supervision sections. Capacities, the
+approximately 300-section shape, online-session count, and anchor grid are
+synthetic stress assumptions, not measured Paul-Desmarais facts.
+
+Before a target-scale run, the bounded fixture suite performs an exact
+per-student completion preflight over the detached candidate input. It checks
 that every generated student has an isolated, collision-free completion of
 mandatory requests; it deliberately ignores other students' competition for
 shared capacity. It is therefore an acceptance gate against individually
 impossible generated programs, **not** proof that the 1,400-student allocation
 is globally feasible or a substitute for the production section-placement
-workflow.
+workflow. The v2.2 topology passes this isolated gate for all 1,400 students.
+
+### Stage 1 certification record (2026-09-11)
+
+One authorized replacement Stage-1-only hard-feasibility attempt was made on
+the v2.2 fixture. Its input copy was explicitly set to `120.0` seconds; the
+canonical fixture input remained `20.0` seconds, and both the requested and
+effective Stage 1 limits were verified as `120.0` seconds. The normal Stage 1
+worker count was `8`. The run used fixture fingerprint
+`3cbd268dea7afd2b34baaf0712d63296af5326c2592571a8c7476316ba581e35`.
+
+It returned `stage1_solver_outcome=infeasible` after `29.114` seconds of
+external seed-attempt time. No complete seed was produced, so independent
+full-model seed validation was not applicable and no Stage 2 or optimization
+operator ran. The enclosing result was `status=failed` with
+`solver_outcome=unknown`; that result-level field does not supersede the
+explicit Stage 1 infeasibility finding. The fixture is therefore **not
+globally certified**. The isolated preflight remains a local-program check,
+not a constructive whole-cohort certificate.
 
 ## Scope and topology
 
@@ -53,6 +88,7 @@ Abstract block identity is solver-relevant now. The cycle ordering is execution/
 | `verified_school_rule` | Paul-Desmarais/domain-owner fact or explicit v1 product scope. |
 | `verified_ontario_rule` | Provincial course/policy fact used by the fixture. |
 | `verified_code_behavior` | Current repository behavior; not an institutional claim. |
+| `explicit_project_domain_rule` | Explicit project/domain decision used by the fixture, without claiming a provincial or school-wide mandate. |
 | `synthetic_stress_assumption` | Deterministic scale/distribution selected for stress coverage, not measured prevalence. |
 | `synthetic_coverage_case` | Deliberately rare case used to exercise a boundary, not a prevalence claim. |
 | `unknown_deferred_domain_fact` | Important unknown that must not be promoted into a hard rule. |
@@ -67,7 +103,7 @@ Ontario facts used by this fixture are:
 | --- | --- |
 | CHV2O (Civisme / Civics and Citizenship) is 0.5 credit | `verified_ontario_rule` |
 | GLC2O (Choix/Exploration de carrière / Career Studies) is 0.5 credit | `verified_ontario_rule` |
-| The normal CHV2O/GLC2O pair represents one course position | `verified_ontario_rule` |
+| The normal CHV2O/GLC2O pair represents one course position | `explicit_project_domain_rule` |
 
 The bilingual curated course subset is not the complete current school offering. Future catalog work must distinguish valid Ontario courses, board/local courses, school-active offerings, and synthetic demand. Relevant sources are the [Ontario Ministry Defined Courses dataset](https://data.ontario.ca/dataset/ministry-defined-courses), [Ontario Locally Developed Courses dataset](https://data.ontario.ca/dataset/locally-developed-courses), and [Ontario course descriptions and prerequisites](https://www.dcp.edu.gov.on.ca/en/course-descriptions-and-prerequisites/).
 
@@ -86,6 +122,19 @@ All values below are deterministic benchmark choices, never measured school prev
 | Course/pathway demand mix | Curated deterministic code/pathway mix | `synthetic_stress_assumption` |
 
 Online is modeled as one 1.0-credit replacement where current data permits; it is not measured online enrollment.
+
+### Section topology
+
+Normal full-course section count is `ceil(normal instructional demand /
+capacity_max)`. Most sections use maximum/target capacity `40/35`; the
+MCF3M/MCR3U coverage courses use `30/28`. CHV2O/GLC2O have nine matched
+`40/35` section pairs. The six online-supervision sessions use `16/14`.
+
+Each ordinary course is offered in two deterministic cross-semester anchor
+cells, selected from S1-A/S2-B, S1-B/S2-C, S1-C/S2-D, and S1-D/S2-A according
+to its curriculum position. Multiple physical sections divide demand across
+those two cells; they do not make every course available in every block. The
+six zero-demand canonical courses have no synthetic instructional section.
 
 ## Synthetic coverage cases
 

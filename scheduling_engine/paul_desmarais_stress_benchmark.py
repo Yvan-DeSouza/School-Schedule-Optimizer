@@ -12,6 +12,7 @@ from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass
 from hashlib import sha256
 import json
+from math import ceil
 
 from .dto import (
     CourseCategoryRelationshipDTO,
@@ -28,8 +29,8 @@ from .dto import (
 from .student_assignment.runtime import semantic_student_assignment_input_fingerprint
 
 
-BENCHMARK_ID = "paul_desmarais_shaped_g9_12_stress_v2"
-BENCHMARK_VERSION = "v2"
+BENCHMARK_ID = "paul_desmarais_shaped_g9_12_stress_v2_2"
+BENCHMARK_VERSION = "v2.2"
 BENCHMARK_STUDENT_COUNT = 1400
 BENCHMARK_STUDENTS_PER_GRADE = 350
 BENCHMARK_DEFAULT_LOCALE = "fr-CA"
@@ -43,10 +44,37 @@ PROVENANCE_CLASSES = frozenset({
     "verified_school_rule",
     "verified_ontario_rule",
     "verified_code_behavior",
+    "explicit_project_domain_rule",
     "synthetic_stress_assumption",
     "synthetic_coverage_case",
     "unknown_deferred_domain_fact",
 })
+
+# Fixture-specific anchor pairs. This is intentionally not a second section
+# placement engine or a claim about measured school section topology.
+TOPOLOGY_ANCHOR_TIMESLOTS = (
+    (1, 6),  # S1-A / S2-B
+    (2, 7),  # S1-B / S2-C
+    (3, 8),  # S1-C / S2-D
+    (4, 5),  # S1-D / S2-A
+)
+COURSE_POSITION_BY_ID = {
+    **{course_id: index for index, course_id in enumerate(range(1, 9))},
+    **{course_id: index for index, course_id in enumerate((9, 10, 11, 12, 13, 14, 7, 8))},
+    **{course_id: index for index, course_id in enumerate(range(19, 27))},
+    **{course_id: index for index, course_id in enumerate(range(28, 36))},
+    15: 7,
+    16: 7,
+    17: 6,
+    18: 7,
+}
+ONLINE_SUPERVISION_TIMESLOTS = (1, 3, 4, 5, 6, 7)
+ORDINARY_SECTION_CAPACITY_MAX = 40
+ORDINARY_SECTION_TARGET_CAPACITY = 35
+SEQUENCE_SECTION_CAPACITY_MAX = 30
+SEQUENCE_SECTION_TARGET_CAPACITY = 28
+ONLINE_SUPERVISION_CAPACITY_MAX = 16
+ONLINE_SUPERVISION_TARGET_CAPACITY = 14
 
 
 @dataclass(frozen=True)
@@ -160,6 +188,11 @@ def _assumptions():
         BenchmarkAssumption("instructional_blocks_per_term", 4, "verified_school_rule", "Current Paul-Desmarais profile."),
         BenchmarkAssumption("cycle_rotation", BENCHMARK_ROTATION, "verified_code_behavior", "Repository-verified A--D realization."),
         BenchmarkAssumption("chv2o_glc2o_credit_value", 0.5, "verified_ontario_rule", "Each member of the supported Ontario half-course pair is 0.5 credit."),
+        BenchmarkAssumption("chv2o_glc2o_shared_position", True, "explicit_project_domain_rule", "Configured paired-half fixture semantics; not asserted as an Ontario timetable mandate."),
+        BenchmarkAssumption("section_topology", "demand_driven_anchor_grid_v1", "synthetic_stress_assumption", "Synthetic capacity, multiplicity, and timing pressure; not measured school topology."),
+        BenchmarkAssumption("ordinary_section_capacity", (40, 35), "synthetic_stress_assumption", "Maximum/target capacity for ordinary synthetic instructional sections."),
+        BenchmarkAssumption("sequence_section_capacity", (30, 28), "synthetic_stress_assumption", "Smaller synthetic capacity for non-vacuous MCF3M/MCR3U coverage."),
+        BenchmarkAssumption("online_supervision_topology", (6, 16, 14), "synthetic_stress_assumption", "Six synthetic sessions with maximum/target capacity; not measured prevalence or staffing."),
         BenchmarkAssumption("study_normal_grades", (12,), "verified_school_rule", "Normal fixture policy, not a hard solver law."),
         BenchmarkAssumption("study_request_count", 70, "synthetic_stress_assumption", "Stress-density coverage, not measured prevalence."),
         BenchmarkAssumption("focus_normal_grades", (11, 12), "verified_school_rule", "Normal fixture policy."),
@@ -193,7 +226,10 @@ def _request(request_id, student_id, course_id, *, delivery_kind="normal_instruc
         request_id=request_id,
         student_id=student_id,
         course_id=course_id,
-        course_offering_id=1000 + course_id,
+        # The production adapter exposes a separate offered identity for an
+        # online course. Retaining that distinction prevents normal requests
+        # from selecting engine-only online-supervision sections by course ID.
+        course_offering_id=(2000 if delivery_kind == "online" else 1000) + course_id,
         is_primary=True,
         is_mandatory=True,
         priority_tier=1,
@@ -215,7 +251,17 @@ def _base_courses(grade_level: int) -> list[int]:
     return [28, 29, 30, 31, 32, 33, 34, 35]
 
 
-def _section(section_id, course_id, semester, timeslot_id, *, half_semester_segment=None, half_semester_pair_key=None):
+def _section(
+    section_id,
+    course_id,
+    semester,
+    timeslot_id,
+    *,
+    capacity_max,
+    target_capacity,
+    half_semester_segment=None,
+    half_semester_pair_key=None,
+):
     return StudentAssignmentSectionDTO(
         section_id=section_id,
         delivery_group_id=course_id,
@@ -223,11 +269,27 @@ def _section(section_id, course_id, semester, timeslot_id, *, half_semester_segm
         member_course_ids=(course_id,),
         semester=semester,
         timeslot_id=timeslot_id,
-        capacity_max=900,
-        target_capacity=800,
+        capacity_max=capacity_max,
+        target_capacity=target_capacity,
         half_semester_segment=half_semester_segment,
         half_semester_pair_key=half_semester_pair_key,
     )
+
+
+def _ordinary_section_capacity(course_id):
+    if course_id in {17, 18}:
+        return SEQUENCE_SECTION_CAPACITY_MAX, SEQUENCE_SECTION_TARGET_CAPACITY
+    return ORDINARY_SECTION_CAPACITY_MAX, ORDINARY_SECTION_TARGET_CAPACITY
+
+
+def _topology_anchor_timeslots(course_id):
+    try:
+        position = COURSE_POSITION_BY_ID[course_id]
+    except KeyError as error:
+        raise ValueError(
+            f"No stress-topology position is configured for course {course_id}."
+        ) from error
+    return TOPOLOGY_ANCHOR_TIMESLOTS[position % len(TOPOLOGY_ANCHOR_TIMESLOTS)]
 
 
 def _fixture_fingerprint(input_data, assumptions, co_op_shape_coverage, policy_exception_coverage):
@@ -332,17 +394,56 @@ def build_paul_desmarais_shaped_g9_12_stress_fixture() -> PaulDesmaraisStressFix
     )
     sections = []
     section_id = 1
-    for course in COURSES:
-        if course.course_id in {15, 16, 41}:
-            continue
-        for semester in (1, 2):
-            sections.append(_section(section_id, course.course_id, semester, 1 + ((course.course_id + semester) % 4) + (semester - 1) * 4))
+    ordinary_demand = Counter(
+        request.course_id
+        for request in requests
+        if request.delivery_kind == "normal_instruction"
+        and request.duration == "full_semester"
+    )
+    for course_id in sorted(ordinary_demand):
+        capacity_max, target_capacity = _ordinary_section_capacity(course_id)
+        anchor_timeslots = _topology_anchor_timeslots(course_id)
+        for index in range(ceil(ordinary_demand[course_id] / capacity_max)):
+            timeslot_id = anchor_timeslots[(index + course_id) % len(anchor_timeslots)]
+            sections.append(_section(
+                section_id,
+                course_id,
+                1 if timeslot_id <= 4 else 2,
+                timeslot_id,
+                capacity_max=capacity_max,
+                target_capacity=target_capacity,
+            ))
             section_id += 1
-    for semester, timeslot_id in ((1, 1), (2, 5)):
-        pair_key = f"chv_glc_s{semester}"
-        sections.append(_section(section_id, 15, semester, timeslot_id, half_semester_segment="first_half", half_semester_pair_key=pair_key))
+
+    half_pair_demand = sum(
+        request.course_id == 15 and request.delivery_kind == "normal_instruction"
+        for request in requests
+    )
+    half_pair_timeslots = _topology_anchor_timeslots(15)
+    for index in range(ceil(half_pair_demand / ORDINARY_SECTION_CAPACITY_MAX)):
+        timeslot_id = half_pair_timeslots[(index + 15) % len(half_pair_timeslots)]
+        pair_key = f"chv_glc_pair_{index + 1}"
+        sections.append(_section(
+            section_id,
+            15,
+            1 if timeslot_id <= 4 else 2,
+            timeslot_id,
+            capacity_max=ORDINARY_SECTION_CAPACITY_MAX,
+            target_capacity=ORDINARY_SECTION_TARGET_CAPACITY,
+            half_semester_segment="first_half",
+            half_semester_pair_key=pair_key,
+        ))
         section_id += 1
-        sections.append(_section(section_id, 16, semester, timeslot_id, half_semester_segment="second_half", half_semester_pair_key=pair_key))
+        sections.append(_section(
+            section_id,
+            16,
+            1 if timeslot_id <= 4 else 2,
+            timeslot_id,
+            capacity_max=ORDINARY_SECTION_CAPACITY_MAX,
+            target_capacity=ORDINARY_SECTION_TARGET_CAPACITY,
+            half_semester_segment="second_half",
+            half_semester_pair_key=pair_key,
+        ))
         section_id += 1
 
     online_sessions = tuple(
@@ -350,22 +451,26 @@ def build_paul_desmarais_shaped_g9_12_stress_fixture() -> PaulDesmaraisStressFix
             session_id=slot.id,
             semester=slot.semester,
             timeslot_id=slot.id,
-            capacity_max=900,
-            target_capacity=800,
+            capacity_max=ONLINE_SUPERVISION_CAPACITY_MAX,
+            target_capacity=ONLINE_SUPERVISION_TARGET_CAPACITY,
         )
-        for slot in timeslots
+        for slot in timeslots if slot.id in ONLINE_SUPERVISION_TIMESLOTS
     )
-    online_course_ids = tuple(course.course_id for course in COURSES if course.course_id not in {15, 16, 41})
+    online_course_ids = tuple(sorted({
+        request.course_id for request in requests if request.delivery_kind == "online"
+    }))
     for slot in timeslots:
+        if slot.id not in ONLINE_SUPERVISION_TIMESLOTS:
+            continue
         sections.append(StudentAssignmentSectionDTO(
             section_id=-slot.id,
             delivery_group_id=-slot.id,
-            member_course_offering_ids=tuple(1000 + course_id for course_id in online_course_ids),
+            member_course_offering_ids=tuple(2000 + course_id for course_id in online_course_ids),
             member_course_ids=online_course_ids,
             semester=slot.semester,
             timeslot_id=slot.id,
-            capacity_max=900,
-            target_capacity=800,
+            capacity_max=ONLINE_SUPERVISION_CAPACITY_MAX,
+            target_capacity=ONLINE_SUPERVISION_TARGET_CAPACITY,
         ))
 
     difficulties = tuple(
@@ -440,7 +545,167 @@ def build_paul_desmarais_shaped_g9_12_stress_fixture() -> PaulDesmaraisStressFix
     )
 
 
-def summarize_paul_desmarais_shaped_g9_12_stress_fixture(fixture: PaulDesmaraisStressFixture):
+def _topology_audit(data, course_by_id, *, include_individual_preflight):
+    """Return compact topology facts without invoking CP-SAT."""
+
+    grades = dict(data.student_grades)
+    sections_by_offering = defaultdict(list)
+    for section in data.sections:
+        for offering_id in section.member_course_offering_ids:
+            sections_by_offering[offering_id].append(section)
+    normal_demand = Counter(
+        request.course_id
+        for request in data.requests
+        if request.delivery_kind == "normal_instruction"
+        and request.duration == "full_semester"
+    )
+    full_sections = [
+        section for section in data.sections
+        if section.section_id > 0 and section.half_semester_segment is None
+    ]
+    half_sections = [
+        section for section in data.sections if section.half_semester_segment is not None
+    ]
+    online_sections = [section for section in data.sections if section.section_id < 0]
+    sections_by_course = defaultdict(list)
+    for section in full_sections:
+        sections_by_course[section.member_course_ids[0]].append(section)
+
+    course_topology = {}
+    for course_id in sorted(normal_demand):
+        sections = sections_by_course[course_id]
+        demand = normal_demand[course_id]
+        course_topology[course_by_id[course_id].code] = {
+            "course_id": course_id,
+            "normal_demand": demand,
+            "section_count": len(sections),
+            "capacity_max_total": sum(section.capacity_max for section in sections),
+            "target_capacity_total": sum(section.target_capacity for section in sections),
+            "seat_surplus": sum(section.capacity_max for section in sections) - demand,
+            "section_to_demand_ratio": round(len(sections) / demand, 6),
+            "semesters": tuple(sorted({section.semester for section in sections})),
+            "timeslots": tuple(sorted({section.timeslot_id for section in sections})),
+        }
+
+    domains_by_grade = defaultdict(Counter)
+
+    def record_domain(student_id, kind, candidate_count, timing_count):
+        domains_by_grade[grades[student_id]][
+            f"{kind}:candidates={candidate_count}:timing_cells={timing_count}"
+        ] += 1
+
+    seen_half_students = set()
+    for request in data.requests:
+        if request.delivery_kind == "co_op":
+            record_domain(request.student_id, "connected_two_credit_co_op", 4, 4)
+            continue
+        if request.duration == "half_semester":
+            if request.student_id in seen_half_students or request.course_id != 15:
+                continue
+            seen_half_students.add(request.student_id)
+            left = {section.half_semester_pair_key: section for section in sections_by_offering[1015]}
+            right = {section.half_semester_pair_key: section for section in sections_by_offering[1016]}
+            pair_sections = [left[key] for key in left.keys() & right.keys()]
+            record_domain(
+                request.student_id,
+                "paired_half_course",
+                len(pair_sections),
+                len({section.timeslot_id for section in pair_sections}),
+            )
+            continue
+        candidates = sections_by_offering[request.course_offering_id]
+        record_domain(
+            request.student_id,
+            "online_course" if request.delivery_kind == "online" else "ordinary_course",
+            len(candidates),
+            len({section.timeslot_id for section in candidates}),
+        )
+    for commitment in data.schedule_commitment_requests:
+        if commitment.commitment_type == "study":
+            record_domain(commitment.student_id, "study", 8, 8)
+        elif commitment.commitment_type == "focus":
+            record_domain(commitment.student_id, "focus", 2, 2)
+
+    half_pair_demand = sum(
+        request.course_id == 15 and request.delivery_kind == "normal_instruction"
+        for request in data.requests
+    )
+    zero_demand_course_codes = tuple(
+        course.code
+        for course in COURSES
+        if course.course_id not in {15, 16, 41}
+        and course.course_id not in normal_demand
+    )
+    result = {
+        "profile": {
+            "name": "demand_driven_anchor_grid_v1",
+            "anchor_timeslots": TOPOLOGY_ANCHOR_TIMESLOTS,
+            "online_supervision_timeslots": ONLINE_SUPERVISION_TIMESLOTS,
+        },
+        "section_counts": {
+            "ordinary_full": len(full_sections),
+            "paired_half": len(half_sections),
+            "online_supervision": len(online_sections),
+            "total": len(data.sections),
+        },
+        "capacity_profiles": {
+            "ordinary": (ORDINARY_SECTION_CAPACITY_MAX, ORDINARY_SECTION_TARGET_CAPACITY),
+            "sequence": (SEQUENCE_SECTION_CAPACITY_MAX, SEQUENCE_SECTION_TARGET_CAPACITY),
+            "online_supervision": (ONLINE_SUPERVISION_CAPACITY_MAX, ONLINE_SUPERVISION_TARGET_CAPACITY),
+        },
+        "course_topology": course_topology,
+        "half_pair": {
+            "student_demand": half_pair_demand,
+            "section_pair_count": len(half_sections) // 2,
+            "capacity_max_per_member": sum(
+                section.capacity_max for section in half_sections if section.member_course_ids == (15,)
+            ),
+            "timeslots": tuple(sorted({section.timeslot_id for section in half_sections})),
+        },
+        "online_supervision": {
+            "request_demand": sum(request.delivery_kind == "online" for request in data.requests),
+            "capacity_max_total": sum(section.capacity_max for section in online_sections),
+            "target_capacity_total": sum(section.target_capacity for section in online_sections),
+        },
+        "zero_demand_courses_omitted": zero_demand_course_codes,
+        "candidate_domains_by_grade": {
+            grade: dict(sorted(domains.items()))
+            for grade, domains in sorted(domains_by_grade.items())
+        },
+        "sections_by_semester_block": {
+            f"S{semester}:slot_{timeslot_id}": count
+            for (semester, timeslot_id), count in sorted(Counter(
+                (section.semester, section.timeslot_id)
+                for section in data.sections if section.section_id > 0
+            ).items())
+        },
+    }
+    if include_individual_preflight:
+        from .benchmark_individual_feasibility import preflight_individual_feasibility
+
+        preflight = preflight_individual_feasibility(data)
+        result["individual_feasibility_preflight"] = {
+            key: preflight[key]
+            for key in (
+                "student_count", "feasible_count", "infeasible_count",
+                "unresolved_count", "by_status_grade",
+            )
+        }
+        result["hall_witnesses"] = tuple(
+            {
+                "student_id": item.student_id,
+                "certificate": item.conflict_certificate,
+            }
+            for item in preflight["results"] if item.conflict_certificate
+        )
+    return result
+
+
+def summarize_paul_desmarais_shaped_g9_12_stress_fixture(
+    fixture: PaulDesmaraisStressFixture,
+    *,
+    include_individual_preflight=False,
+):
     """Return a compact deterministic audit without invoking the solver."""
 
     data = fixture.input_data
@@ -553,6 +818,11 @@ def summarize_paul_desmarais_shaped_g9_12_stress_fixture(fixture: PaulDesmaraisS
         "difficulty_provenance": {"calculation_version": "metadata_and_relative_history_v2", "source": "metadata", "historical_observation_count": 0, "historical_confidence": 0.0, "study_intended_future_domain_difficulty": 0},
         "category_relationship_provenance": "synthetic_default_relationships",
         "provenance_class_counts": dict(sorted(provenance_counts.items())),
+        "topology": _topology_audit(
+            data,
+            course_by_id,
+            include_individual_preflight=include_individual_preflight,
+        ),
         "co_op_shape_coverage": [asdict(item) for item in fixture.co_op_shape_coverage],
         "policy_exception_coverage": [asdict(item) for item in fixture.policy_exception_coverage],
     }
@@ -576,7 +846,8 @@ def fixed_context_co_op_coverage():
 if __name__ == "__main__":
     print(json.dumps(
         summarize_paul_desmarais_shaped_g9_12_stress_fixture(
-            build_paul_desmarais_shaped_g9_12_stress_fixture()
+            build_paul_desmarais_shaped_g9_12_stress_fixture(),
+            include_individual_preflight=True,
         ),
         sort_keys=True,
         separators=(",", ":"),

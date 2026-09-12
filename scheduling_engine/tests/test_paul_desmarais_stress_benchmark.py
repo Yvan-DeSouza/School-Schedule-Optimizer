@@ -48,6 +48,10 @@ def test_provenance_and_static_population_counts_are_explicit():
     assert audit["focus_by_grade"] == {11: 14, 12: 14}
     assert audit["co_op_by_grade"] == {9: 1, 10: 1, 11: 20, 12: 20}
     assert audit["online_by_grade"] == {9: 21, 10: 21, 11: 21, 12: 21}
+    assert next(
+        item.provenance for item in fixture.assumptions
+        if item.key == "chv2o_glc2o_shared_position"
+    ) == "explicit_project_domain_rule"
 
 
 def test_half_courses_study_and_sequence_have_the_correct_fixture_semantics():
@@ -113,28 +117,104 @@ def test_special_programs_are_compositional_and_other_co_op_shapes_are_not_silen
     assert fixed[1].credit_value == 4.0 and len(fixed[1].occupancy) == 8
 
 
-def test_student_352_is_feasible_under_the_actual_detached_candidate_contract():
+def test_synthetic_online_sections_advertise_only_online_offerings():
     fixture, _audit = _fixture_and_audit()
+    requests = fixture.input_data.requests
+    online_offering_ids = {
+        request.course_offering_id for request in requests if request.delivery_kind == "online"
+    }
+    normal_offering_ids = {
+        request.course_offering_id for request in requests if request.delivery_kind == "normal_instruction"
+    }
+    synthetic_online_sections = [
+        section for section in fixture.input_data.sections if section.section_id < 0
+    ]
+
+    assert synthetic_online_sections
+    assert all(
+        set(section.member_course_offering_ids).issubset(online_offering_ids)
+        for section in synthetic_online_sections
+    )
+    assert online_offering_ids.isdisjoint(normal_offering_ids)
+
+
+def test_demand_driven_topology_has_the_expected_shape_and_capacity_pressure():
+    fixture, audit = _fixture_and_audit()
+    topology = audit["topology"]
+
+    assert topology["section_counts"] == {
+        "ordinary_full": 276,
+        "paired_half": 18,
+        "online_supervision": 6,
+        "total": 300,
+    }
+    assert topology["capacity_profiles"] == {
+        "ordinary": (40, 35),
+        "sequence": (30, 28),
+        "online_supervision": (16, 14),
+    }
+    assert topology["zero_demand_courses_omitted"] == (
+        "TCJ3C", "HHS4U", "HFA4U", "PPL4O", "AMU4M", "TCJ4C",
+    )
+    assert topology["course_topology"]["TIJ1O"] == {
+        "course_id": 7,
+        "normal_demand": 698,
+        "section_count": 18,
+        "capacity_max_total": 720,
+        "target_capacity_total": 630,
+        "seat_surplus": 22,
+        "section_to_demand_ratio": 0.025788,
+        "semesters": (1, 2),
+        "timeslots": (3, 8),
+    }
+    assert topology["course_topology"]["MCF3M"]["section_count"] == 2
+    assert topology["course_topology"]["MCF3M"]["capacity_max_total"] == 60
+    assert topology["half_pair"] == {
+        "student_demand": 350,
+        "section_pair_count": 9,
+        "capacity_max_per_member": 360,
+        "timeslots": (4, 5),
+    }
+    assert topology["online_supervision"] == {
+        "request_demand": 84,
+        "capacity_max_total": 96,
+        "target_capacity_total": 84,
+    }
+    assert all(
+        section.section_id < 0 or section.member_course_ids[0] in {
+            course.course_id for course in fixture.courses if course.code not in topology["zero_demand_courses_omitted"]
+        }
+        for section in fixture.input_data.sections
+    )
+
+
+def test_student_352_has_a_feasible_production_equivalent_candidate_contract():
+    fixture, audit = _fixture_and_audit()
     result = check_individual_feasibility(fixture.input_data, 352)
 
     assert result.status == "feasible"
+    assert not result.conflict_certificate
     assert len(result.decision_groups) == 8  # Seven full course groups plus CHV2O/GLC2O.
     group_by_request = {
         request_id: group
         for group in result.decision_groups
         for request_id in group.source_request_ids
     }
-    assert [candidate.identity for candidate in group_by_request[2813].candidates] == [
-        (13,), (14,), (-1,), (-2,), (-3,), (-4,), (-5,), (-6,), (-7,), (-8,),
+    assert len(group_by_request[2813].candidates) == 18
+    assert {candidate.timeslot_id for candidate in group_by_request[2813].candidates} == {3, 8}
+    assert [candidate.identity for candidate in group_by_request[2807].candidates] == [
+        (-1,), (-3,), (-4,), (-5,), (-6,), (-7,),
     ]
     half_group = group_by_request[2814]
     assert half_group.source_request_ids == (2814, 2815)
-    assert [candidate.identity for candidate in half_group.candidates] == [(77, 78), (79, 80)]
-    occupied = [item for candidate in result.selected_candidates for item in candidate.occupancy]
-    assert len(occupied) == len(set(occupied)) == 16
+    assert len(half_group.candidates) == 9
+    assert {candidate.timeslot_id for candidate in half_group.candidates} == {4, 5}
+    assert audit["topology"]["candidate_domains_by_grade"][10][
+        "paired_half_course:candidates=9:timing_cells=2"
+    ] == 345
 
 
-def test_every_stress_fixture_student_has_an_individually_feasible_completion():
+def test_corrected_topology_passes_all_individual_feasibility_checks():
     fixture, _audit = _fixture_and_audit()
     preflight = preflight_individual_feasibility(fixture.input_data)
 
@@ -143,9 +223,10 @@ def test_every_stress_fixture_student_has_an_individually_feasible_completion():
     assert preflight["infeasible_count"] == 0
     assert preflight["unresolved_count"] == 0
     assert preflight["by_status_grade"]["feasible"] == {9: 350, 10: 350, 11: 350, 12: 350}
+    assert preflight["by_status_grade"]["infeasible"] == {9: 0, 10: 0, 11: 0, 12: 0}
 
 
-def test_student_352_preflight_matches_the_bounded_engine_completion_model():
+def test_student_352_completes_in_the_bounded_engine_after_topology_correction():
     fixture, _audit = _fixture_and_audit()
     data = fixture.input_data
     student_data = replace(
@@ -160,12 +241,9 @@ def test_student_352_preflight_matches_the_bounded_engine_completion_model():
 
     assert result.status == "complete"
     assert not result.unmet_requests
-    # This is the current detached input contract: negative engine-only online
-    # section identities are candidates whenever their offering membership says
-    # so, even for a request whose delivery kind is normal_instruction.
-    assert any(
-        assignment.section_id is not None
-        and assignment.section_id < 0
-        and request_by_id[assignment.request_id].delivery_kind == "normal_instruction"
+    assert all(
+        request_by_id[assignment.request_id].delivery_kind == "online"
+        or assignment.section_id is None
+        or assignment.section_id > 0
         for assignment in result.assignments
     )

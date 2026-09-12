@@ -31,6 +31,13 @@ into operational state.
 
 ### Current diagnostic-search status
 
+The `paul_desmarais_shaped_g9_12_stress_v2_2` fixture passes its isolated
+1,400/1,400 student-program preflight but is not globally certified: its one
+authorized 120-second Stage-1-only hard-feasibility attempt returned
+`infeasible` without a complete seed. The benchmark authority and exact run
+record are in `docs/TARGET_SCALE_PRODUCTION_STRESS_BENCHMARK.md`. Objective V3
+remains blocked on a corrected, constructively certified topology.
+
 The reusable continuous operator-session primitives have passed a detached
 Objective Semantics v2 target-scale qualification study using the 1,400-student
 benchmark input and one validated source incumbent. Dynamic R4/S1, R8/S1,
@@ -552,6 +559,7 @@ Where the workflow stops today:
 | API shape and stable-code policy | `docs/API_Contract_Strategy.md` | serializers, routes, and API tests |
 | Student objective mathematics | `docs/STUDENT_ASSIGNMENT_OBJECTIVE_SEMANTICS.md` | `scheduling_engine/student_assignment/objective_semantics.py` |
 | Target-scale benchmark-specific assumptions | `docs/TARGET_SCALE_PRODUCTION_STRESS_BENCHMARK.md` | `scheduling_engine/paul_desmarais_stress_benchmark.py` and its bounded static-audit tests |
+| Student-assignment feasibility certification and partial triage (planned) | `docs/STUDENT_ASSIGNMENT_FEASIBILITY_CERTIFICATION_AND_TRIAGE.md` | Future-design boundary; no change to the accepted first-release contract |
 | Student validation authority | `docs/STUDENT_ASSIGNMENT_VALIDATION.md` | `scheduling_engine/student_assignment/validation.py`, `validation_benchmark.py`, and `validation_qualification.py` |
 | Student quality measurement | `docs/STUDENT_SCHEDULE_QUALITY.md` | `scheduling_engine/student_assignment/quality.py` |
 | Student-assignment runtime phases and wall-clock accounting | `docs/STUDENT_ASSIGNMENT_RUNTIME_PIPELINE.md` | `scheduling_engine/student_assignment/runtime.py`, `core.py`, `substantive_probe.py`, and `solver.py` |

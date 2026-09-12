@@ -8,6 +8,7 @@ and deliberately ignores competition from other students.
 from __future__ import annotations
 
 from collections import defaultdict
+from itertools import combinations
 from dataclasses import dataclass
 from time import perf_counter
 
@@ -39,6 +40,7 @@ class IndividualFeasibilityResult:
     decision_groups: tuple[IndividualDecisionGroup, ...]
     selected_candidates: tuple[IndividualCandidate, ...]
     reason: str | None = None
+    conflict_certificate: tuple[tuple[tuple[int, ...], tuple[int, ...]], ...] = ()
 
 
 def _candidate_sort_key(candidate):
@@ -267,6 +269,29 @@ def _choose_noncolliding(groups):
     return search(tuple(range(len(groups))), 0)
 
 
+def _whole_slot_hall_certificate(groups):
+    """Return a minimal Hall deficiency when every group uses one whole slot."""
+
+    slot_sets = []
+    for group in groups:
+        slots = set()
+        for candidate in group.candidates:
+            candidate_slots = {timeslot_id for timeslot_id, _segment in candidate.occupancy}
+            if len(candidate_slots) != 1 or len(candidate.occupancy) != len(HALF_SEMESTER_SEGMENTS):
+                return ()
+            slots.update(candidate_slots)
+        slot_sets.append(slots)
+    for size in range(2, len(groups) + 1):
+        for indexes in combinations(range(len(groups)), size):
+            slots = set().union(*(slot_sets[index] for index in indexes))
+            if len(slots) < len(indexes):
+                return ((
+                    tuple(request_id for index in indexes for request_id in groups[index].source_request_ids),
+                    tuple(sorted(slots)),
+                ),)
+    return ()
+
+
 def check_individual_feasibility(data, student_id):
     """Return an exact, isolated completion check for one detached student."""
 
@@ -282,8 +307,16 @@ def check_individual_feasibility(data, student_id):
         )
     selected = _choose_noncolliding(groups)
     if selected is None:
+        certificate = _whole_slot_hall_certificate(groups)
+        reason = "no collision-free completion assignment"
+        if certificate:
+            request_ids, slots = certificate[0]
+            reason = (
+                f"Hall deficiency: completion requests {request_ids} have only "
+                f"{len(slots)} whole-block candidates {slots}."
+            )
         return IndividualFeasibilityResult(
-            student_id, "infeasible", groups, (), "no collision-free completion assignment",
+            student_id, "infeasible", groups, (), reason, certificate,
         )
     return IndividualFeasibilityResult(
         student_id, "feasible", groups,
