@@ -3924,7 +3924,9 @@ def _solve_student_assignment(
     # when CP-SAT cannot produce a complete hard-feasibility seed in its
     # bounded stage.  A validated CP-SAT seed always takes precedence.
     initial_assignment_hints = (
-        {} if validated_seed_solver is not None else _build_initial_assignment_hints(
+        {}
+        if local_only or validated_seed_solver is not None
+        else _build_initial_assignment_hints(
             data=data,
             request_candidates=request_candidates,
             fixed_by_section=fixed_by_section,

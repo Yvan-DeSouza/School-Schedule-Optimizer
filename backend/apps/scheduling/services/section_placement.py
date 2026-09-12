@@ -198,7 +198,12 @@ def approve_section_placement_run(run, *, approved_by, reason):
         raise SectionPlacementValidationError({"detail": "A complete placement run has no timing assignments."})
 
     from backend.apps.control.models import SectionLock
-    from backend.apps.courses.models import DeliveryGroup, Section
+    from backend.apps.courses.models import (
+        DeliveryGroup,
+        HalfSemesterCoursePair,
+        HalfSemesterSectionPair,
+        Section,
+    )
 
     # Lock decision rows in a stable order before checking absent schedules. The
     # same ordering is used for both modes to keep concurrent approval behavior
@@ -254,6 +259,7 @@ def approve_section_placement_run(run, *, approved_by, reason):
         ).select_related("capacity_profile").prefetch_related("offerings__course")
     }
     allocators = {}
+    created_sections_by_course_semester = {}
     for item in assignments:
         online_session_id = item.get("online_supervision_session_id")
         if online_session_id is not None:
@@ -299,6 +305,11 @@ def approve_section_placement_run(run, *, approved_by, reason):
                 capacity_max=group.capacity_profile.hard_max,
                 annual_placement_approval=approval,
             )
+            if section.course_id is not None:
+                created_sections_by_course_semester.setdefault(
+                    (section.course_id, section.semester),
+                    [],
+                ).append(section)
             annual_index = item.get("annual_index")
             lock = AnnualPlacementLock.objects.select_for_update().filter(
                 academic_year_id=run.academic_year_id, delivery_group=group,
@@ -322,4 +333,24 @@ def approve_section_placement_run(run, *, approved_by, reason):
             section=section, timeslot_id=item["timeslot_id"], room=None,
             placement_approval_assignment=line,
         )
+    # Annual placement materializes the physical sections itself rather than
+    # going through staffing approval.  Preserve the same supported
+    # half-semester pairing invariant as the other section materializers so
+    # the final-staffing adapter can expose paired CHV2O/GLC2O candidates.
+    for pair in HalfSemesterCoursePair.objects.filter(is_active=True).order_by("id"):
+        for semester in (1, 2):
+            first_sections = created_sections_by_course_semester.get(
+                (pair.first_course_id, semester),
+                (),
+            )
+            second_sections = created_sections_by_course_semester.get(
+                (pair.second_course_id, semester),
+                (),
+            )
+            for first, second in zip(first_sections, second_sections):
+                HalfSemesterSectionPair.objects.create(
+                    course_pair=pair,
+                    first_section=first,
+                    second_section=second,
+                )
     return approval

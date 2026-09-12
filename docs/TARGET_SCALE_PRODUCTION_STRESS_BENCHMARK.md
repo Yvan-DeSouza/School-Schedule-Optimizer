@@ -3,11 +3,16 @@
 ## Authority and purpose
 
 This is the single human-readable authority for the benchmark-specific assumptions
-of the frozen `paul_desmarais_shaped_g9_12_stress_v2_2` fixture and its bounded
-`v2.3` topology-repair candidate. Both are deterministic, synthetic
+of the frozen `paul_desmarais_shaped_g9_12_stress_v2_2` fixture, its bounded
+`v2.3` topology-repair candidate, and the additive production-pipeline lineage.
+The detached fixtures are deterministic, synthetic
 **1,400-student Grades 9--12 production stress benchmarks** shaped by verified
 Paul-Desmarais and Ontario rules. Neither is measured Paul-Desmarais enrollment,
 demand, or program-prevalence data.
+
+The production-pipeline lineage is separate from the detached fixtures. It is
+implemented but remains unqualified until its explicit manual target-scale run
+produces a complete, independently validated Stage-1 seed.
 
 The intentionally upper-bound scale supplies capacity and runtime margin for the existing two-semester v1 product. It is not a universal Canadian timetable model.
 
@@ -17,8 +22,10 @@ The intentionally upper-bound scale supplies capacity and runtime margin for the
 | --- | --- |
 | Fixture identity/version | `paul_desmarais_shaped_g9_12_stress_v2_2` / `v2.2` |
 | v2.3 candidate identity/version | `paul_desmarais_shaped_g9_12_stress_v2_3` / `v2.3` |
+| Production-pipeline identity/version | `paul_desmarais_shaped_g9_12_production_pipeline_v1` / `v1` |
 | Generator | `scheduling_engine.paul_desmarais_stress_benchmark` |
-| Seed | None; deterministic construction, not sampled generation |
+| Production source generator | `scheduling_engine.paul_desmarais_production_pipeline_source` |
+| Production source seed | `20260912` |
 | Fingerprint | SHA-256 of semantic input, curated metadata, assumptions, and coverage descriptors |
 | Frozen v2.2 fingerprint | `3cbd268dea7afd2b34baaf0712d63296af5326c2592571a8c7476316ba581e35` |
 | v2.3 candidate fingerprint | `3ab28b4c95577d3acabaaa4c47a16e49456f5511702b690e84a40cbbe9ed4600` |
@@ -97,6 +104,51 @@ The `--full-stage1` flag is guarded by all qualification layers and therefore
 does not run while the current reduced collision layer is infeasible. A complete
 validated Stage-1 seed has not been produced for v2.3; v2.3 is not globally
 certified and Objective V3 remains blocked.
+
+### Production-pipeline lineage (implemented, not yet qualified)
+
+`paul_desmarais_shaped_g9_12_production_pipeline_v1` is additive and does not
+modify the detached v2.2 or v2.3 builders. Its deterministic source contains
+1,400 students split 350/grade across Grades 9--12, curated bilingual course
+rows, primary requests, Study/FOCUS/connected-Co-op/online demand, paired
+CHV2O/GLC2O semantics, a soft MCF3M -> MCR3U preference, and a ready synthetic
+teacher roster. The source setup asserts that it directly creates zero
+Sections, SectionSchedules, online-supervision sessions, named teachers, or
+enrollments.
+
+The qualification harness is intentionally outside ordinary fast pytest:
+
+```powershell
+python -m pytest --create-db -q -s backend/tests/paul_desmarais_production_pipeline_qualification.py
+```
+
+Its required order is:
+
+`source -> offerings -> online plan/approval -> section budget/approval -> staffing-count preflight -> conflict matrix -> annual_total placement/approval -> named teacher/supervisor assignment/approval -> final_staffing adapter -> isolated feasibility -> capacity-only matching -> reduced collision diagnostic -> Stage 1 only`
+
+The annual placement service, not the benchmark, chooses semester and A/B/C/D
+timing. The staffing-count preflight is deliberately not approved in this
+route because its approval materializes fixed-semester Sections. The run stops
+on any failed or unresolved stage; `UNKNOWN` is never relabeled as infeasible.
+No Stage 2 or Objective V3 work is part of this qualification.
+
+Successful stage artifacts are written under
+`scheduling_engine/benchmarks/production_pipeline/paul_desmarais_shaped_g9_12_production_pipeline_v1/`.
+They retain source, planning, placement, staffing, and final-input provenance.
+Multi-worker placement may produce a different valid topology on replay; a
+frozen accepted artifact is a downstream replay input only when its origin is
+linked to a real placement run.
+
+The first September 12, 2026 manual attempt passed every gate through reduced
+collision but was interrupted after the repository's existing post-bootstrap
+initial-hint path remained CPU-active for over an hour without returning a
+Stage-1 status. The Stage-1-only boundary was then corrected so `local_only`
+does not build unused Stage-2 hints. The one corrected qualification attempt
+again passed reduced collision and returned raw Stage-1 `infeasible` after the
+configured 120-second/8-worker attempt. No complete Stage-1 seed was produced,
+independent validation did not run, and the lineage is not globally certified.
+This is a hard-model infeasibility result, not UNKNOWN; no retry is authorized
+within this qualification task.
 
 ### Stage 1 certification record (2026-09-11)
 
@@ -216,6 +268,12 @@ All values below are deterministic benchmark choices, never measured school prev
 | Online course choices | 84: 21 per grade | `synthetic_stress_assumption` |
 | Course/pathway demand mix | Curated deterministic code/pathway mix | `synthetic_stress_assumption` |
 
+The production-pipeline source uses these accepted counts where the current
+ORM model supports them. Current production limitations remain explicit: only
+connected 2.0-credit Co-op is movable; Study indices are limited to one/two;
+prerequisite-waiver persistence is deferred; FOCUS internal credit accounting
+is unknown; and rooms are out of scope.
+
 Online is modeled as one 1.0-credit replacement where current data permits; it is not measured online enrollment.
 
 ### Section topology
@@ -288,3 +346,23 @@ Task 1 neither supplies a complete Ontario prerequisite graph nor implements wai
 This fixture adds neither Grades 7--8 scheduling, trimesters/quarters, five-block solver support, arbitrary half-course combinatorics, an Ontario-wide prerequisite catalog, a complete board catalog, Objective v3, nor Category Taxonomy v2. It does not call synthetic prevalence, category defaults, or current governance behavior institutional fact.
 
 Keep benchmark-specific facts here. Generic architecture belongs in dedicated architecture records; other documents should link here rather than duplicate these assumption tables.
+
+## Production-pipeline qualification status and replay boundary
+
+The lineage taxonomy is permanent:
+
+| Lineage | Meaning |
+| --- | --- |
+| `production_scale_v1` | Historical positive detached Student Assignment benchmark. |
+| `paul_desmarais_shaped_g9_12_stress_v2_2` | Frozen negative detached benchmark. |
+| `paul_desmarais_shaped_g9_12_stress_v2_3` | Failed detached topology-repair candidate. |
+| `paul_desmarais_shaped_g9_12_production_pipeline_v1` | True production-service qualification lineage; unqualified until its manual run passes every gate. |
+
+Pipeline replay reconstructs the deterministic source and reruns production
+services. Valid placement variation is permitted. Frozen-placement replay may
+consume only an accepted artifact whose provenance proves it came from the
+real annual placement service; manually authored timing must never be labeled
+as production-generated. Objective V3 remains blocked until the new lineage
+has accepted placement, final staffing, 1,400/1,400 isolated feasibility,
+feasible reduced diagnostics, and an independently validated complete Stage-1
+seed.
