@@ -2,7 +2,12 @@
 
 ## Authority and purpose
 
-This is the single human-readable authority for the benchmark-specific assumptions of `paul_desmarais_shaped_g9_12_stress_v2_2`. It is a deterministic, synthetic **1,400-student Grades 9--12 production stress benchmark** shaped by verified Paul-Desmarais and Ontario rules. It is **not** measured Paul-Desmarais enrollment, demand, or program-prevalence data.
+This is the single human-readable authority for the benchmark-specific assumptions
+of the frozen `paul_desmarais_shaped_g9_12_stress_v2_2` fixture and its bounded
+`v2.3` topology-repair candidate. Both are deterministic, synthetic
+**1,400-student Grades 9--12 production stress benchmarks** shaped by verified
+Paul-Desmarais and Ontario rules. Neither is measured Paul-Desmarais enrollment,
+demand, or program-prevalence data.
 
 The intentionally upper-bound scale supplies capacity and runtime margin for the existing two-semester v1 product. It is not a universal Canadian timetable model.
 
@@ -11,9 +16,12 @@ The intentionally upper-bound scale supplies capacity and runtime margin for the
 | Field | Value |
 | --- | --- |
 | Fixture identity/version | `paul_desmarais_shaped_g9_12_stress_v2_2` / `v2.2` |
+| v2.3 candidate identity/version | `paul_desmarais_shaped_g9_12_stress_v2_3` / `v2.3` |
 | Generator | `scheduling_engine.paul_desmarais_stress_benchmark` |
 | Seed | None; deterministic construction, not sampled generation |
 | Fingerprint | SHA-256 of semantic input, curated metadata, assumptions, and coverage descriptors |
+| Frozen v2.2 fingerprint | `3cbd268dea7afd2b34baaf0712d63296af5326c2592571a8c7476316ba581e35` |
+| v2.3 candidate fingerprint | `3ab28b4c95577d3acabaaa4c47a16e49456f5511702b690e84a40cbbe9ed4600` |
 | Static audit | `summarize_paul_desmarais_shaped_g9_12_stress_fixture(...)` |
 | Legacy relationship | Legacy fixtures are unchanged for historical replay; this is a distinct lineage |
 
@@ -50,6 +58,45 @@ shared capacity. It is therefore an acceptance gate against individually
 impossible generated programs, **not** proof that the 1,400-student allocation
 is globally feasible or a substitute for the production section-placement
 workflow. The v2.2 topology passes this isolated gate for all 1,400 students.
+
+### v2.3 topology-repair qualification (2026-09-12)
+
+The first topology repair is implemented as a separate candidate builder and
+does not mutate v2.2. It preserves the v2.2 demand-derived multiplicities and
+section capacities, but orients the two physical sections of each ordinary
+course using the program-position group: repeated positions 0--3 versus 4--7
+receive complementary anchor orientation. This is a deterministic fixture
+topology rule, not a production-engine change.
+
+The bounded qualification ladder is:
+
+| Layer | Result |
+| --- | --- |
+| Static identity/topology | Pass: 1,400 students; 350 per grade; 276 ordinary, 18 paired-half, 6 online, 300 total sections |
+| Isolated completion | Pass: 1,400 feasible; 0 infeasible; 0 unresolved |
+| Capacity-only matching | Pass: 10,500/10,500 ordinary groups; deficit 0 |
+| Correlated shared-course checks | Pass: 18 checked; 0 insufficient |
+| Reduced collision diagnosis | **Fail: infeasible** |
+| Full Stage 1 | Not reached; the ladder failed before authorization |
+
+The remaining reduced-model witness is deterministic: Grade 9 `FRA1W` and
+Grade 10 `FRA2D` both share `{S1-C,S2-D}` with `TIJ1O`. The two grade-specific
+French groups have 349 shared `TIJ1O` students each, and their S2-D French
+capacity forces at least 378 `TIJ1O` placements into S2-D, where `TIJ1O` has
+360 seats. The deficiency is therefore 18. This is a cross-grade shared-course
+capacity/collision defect in the candidate topology, not an isolated-program
+failure or an online-membership failure.
+
+The command below reproduces Layers A--D without running the full optimizer:
+
+```powershell
+python -m scheduling_engine.paul_desmarais_v2_3_qualification
+```
+
+The `--full-stage1` flag is guarded by all qualification layers and therefore
+does not run while the current reduced collision layer is infeasible. A complete
+validated Stage-1 seed has not been produced for v2.3; v2.3 is not globally
+certified and Objective V3 remains blocked.
 
 ### Stage 1 certification record (2026-09-11)
 
@@ -113,8 +160,9 @@ and `local_only=True`; it does not run Stage 2, objective optimization, or
 search operators. The preserved expected result is CP-SAT `INFEASIBLE`.
 The small collision regression is covered by
 `scheduling_engine/tests/test_paul_desmarais_v2_2_diagnostics.py` and is not a
-replacement for the complete frozen benchmark. When v2.3 is eventually
-introduced, v2.2 remains retained as negative regression evidence.
+replacement for the complete frozen benchmark. The v2.3 candidate does not
+replace v2.2; the frozen v2.2 negative case remains retained as regression
+evidence.
 
 ## Scope and topology
 

@@ -9,7 +9,7 @@ human-readable assumptions and provenance.
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from hashlib import sha256
 import json
 from math import ceil
@@ -34,6 +34,11 @@ BENCHMARK_VERSION = "v2.2"
 V2_2_AUTHORITATIVE_BENCHMARK_ID = "paul_desmarais_shaped_g9_12_stress_v2_2"
 V2_2_AUTHORITATIVE_FINGERPRINT = (
     "3cbd268dea7afd2b34baaf0712d63296af5326c2592571a8c7476316ba581e35"
+)
+V2_3_BENCHMARK_ID = "paul_desmarais_shaped_g9_12_stress_v2_3"
+V2_3_BENCHMARK_VERSION = "v2.3"
+V2_3_AUTHORITATIVE_FINGERPRINT = (
+    "3ab28b4c95577d3acabaaa4c47a16e49456f5511702b690e84a40cbbe9ed4600"
 )
 BENCHMARK_STUDENT_COUNT = 1400
 BENCHMARK_STUDENTS_PER_GRADE = 350
@@ -296,10 +301,18 @@ def _topology_anchor_timeslots(course_id):
     return TOPOLOGY_ANCHOR_TIMESLOTS[position % len(TOPOLOGY_ANCHOR_TIMESLOTS)]
 
 
-def _fixture_fingerprint(input_data, assumptions, co_op_shape_coverage, policy_exception_coverage):
+def _fixture_fingerprint(
+    input_data,
+    assumptions,
+    co_op_shape_coverage,
+    policy_exception_coverage,
+    *,
+    benchmark_id=BENCHMARK_ID,
+    benchmark_version=BENCHMARK_VERSION,
+):
     payload = {
-        "benchmark_id": BENCHMARK_ID,
-        "benchmark_version": BENCHMARK_VERSION,
+        "benchmark_id": benchmark_id,
+        "benchmark_version": benchmark_version,
         "input_fingerprint": semantic_student_assignment_input_fingerprint(input_data),
         "courses": [asdict(course) for course in COURSES],
         "assumptions": [asdict(item) for item in assumptions],
@@ -580,6 +593,89 @@ def build_paul_desmarais_shaped_g9_12_stress_fixture() -> PaulDesmaraisStressFix
     """
 
     return reconstruct_paul_desmarais_v2_2()
+
+
+def _v2_3_oriented_sections(data):
+    """Return v2.2 sections with only the proven odd-orientation defect repaired."""
+
+    sections = []
+    ordinary_index_by_course = defaultdict(int)
+    for section in data.sections:
+        is_ordinary = (
+            section.section_id > 0
+            and section.half_semester_pair_key is None
+            and len(section.member_course_ids) == 1
+        )
+        if not is_ordinary:
+            sections.append(section)
+            continue
+        course_id = section.member_course_ids[0]
+        index = ordinary_index_by_course[course_id]
+        ordinary_index_by_course[course_id] += 1
+        position = COURSE_POSITION_BY_ID[course_id]
+        anchor_timeslots = _topology_anchor_timeslots(course_id)
+        # Positions 0..3 and their repeated positions 4..7 receive opposite
+        # orientations. This derives from the curriculum-position structure,
+        # not from a course-code special case or course-ID parity.
+        orientation = (position // len(TOPOLOGY_ANCHOR_TIMESLOTS)) % 2
+        timeslot_id = anchor_timeslots[(index + orientation) % len(anchor_timeslots)]
+        sections.append(replace(
+            section,
+            semester=1 if timeslot_id <= 4 else 2,
+            timeslot_id=timeslot_id,
+        ))
+    return tuple(sections)
+
+
+def build_paul_desmarais_shaped_g9_12_stress_v2_3_fixture() -> PaulDesmaraisStressFixture:
+    """Build v2.3 from frozen v2.2 facts with one topology correction."""
+
+    base = reconstruct_paul_desmarais_v2_2()
+    data = replace(
+        base.input_data,
+        sections=_v2_3_oriented_sections(base.input_data),
+    )
+    assumptions = tuple(
+        replace(
+            item,
+            value=(
+                "demand_driven_complementary_anchor_grid_v2"
+                if item.key == "section_topology"
+                else item.value
+            ),
+            rationale=(
+                "Synthetic demand-derived topology with repeated-position-aware "
+                "complementary odd-section orientation."
+                if item.key == "section_topology"
+                else item.rationale
+            ),
+        )
+        for item in base.assumptions
+    ) + (
+        BenchmarkAssumption(
+            "odd_section_orientation",
+            "repeated_position_complement_v1",
+            "synthetic_stress_assumption",
+            "Repeated curriculum positions receive complementary orientation "
+            "for odd section counts; this is not measured school topology.",
+        ),
+    )
+    fingerprint = _fixture_fingerprint(
+        data,
+        assumptions,
+        base.co_op_shape_coverage,
+        base.policy_exception_coverage,
+        benchmark_id=V2_3_BENCHMARK_ID,
+        benchmark_version=V2_3_BENCHMARK_VERSION,
+    )
+    return replace(
+        base,
+        benchmark_id=V2_3_BENCHMARK_ID,
+        benchmark_version=V2_3_BENCHMARK_VERSION,
+        input_data=data,
+        assumptions=assumptions,
+        fixture_fingerprint=fingerprint,
+    )
 
 
 def _topology_audit(data, course_by_id, *, include_individual_preflight):

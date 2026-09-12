@@ -24,6 +24,10 @@ from .dto import (
 )
 from .paul_desmarais_stress_benchmark import (
     V2_2_AUTHORITATIVE_FINGERPRINT,
+    V2_3_AUTHORITATIVE_FINGERPRINT,
+    V2_3_BENCHMARK_ID,
+    V2_3_BENCHMARK_VERSION,
+    build_paul_desmarais_shaped_g9_12_stress_v2_3_fixture,
     reconstruct_paul_desmarais_v2_2,
     summarize_paul_desmarais_shaped_g9_12_stress_fixture,
 )
@@ -240,6 +244,199 @@ def mth1w_cgc1w_witness(data):
         "witness_cell": cell,
         "reachable_capacity": reachable_capacity[cell],
         "deficiency": len(common_students) - reachable_capacity[cell],
+    }
+
+
+def correlated_pair_capacity_checks(data):
+    """Check shared-student pairs that reuse the same two timing cells."""
+
+    sections_by_offering = _positive_sections_by_offering(data)
+    requests_by_course = defaultdict(list)
+    students_by_course = defaultdict(set)
+    for request in _ordinary_requests(data):
+        requests_by_course[request.course_id].append(request)
+        students_by_course[request.course_id].add(request.student_id)
+    sections_by_course = {}
+    cells_by_course = {}
+    capacity_by_course_cell = {}
+    for course_id, requests in requests_by_course.items():
+        sections = {
+            section.section_id: section
+            for request in requests
+            for section in sections_by_offering[request.course_offering_id]
+        }
+        sections_by_course[course_id] = sections
+        cells = tuple(sorted({
+            (section.semester, section.timeslot_id)
+            for section in sections.values()
+        }))
+        cells_by_course[course_id] = cells
+        capacity_by_course_cell[course_id] = {
+            cell: sum(
+                section.capacity_max
+                for section in sections.values()
+                if (section.semester, section.timeslot_id) == cell
+            )
+            for cell in cells
+        }
+
+    checks = []
+    course_ids = sorted(requests_by_course)
+    for index, left_id in enumerate(course_ids):
+        for right_id in course_ids[index + 1:]:
+            cells = cells_by_course[left_id]
+            if len(cells) != 2 or cells != cells_by_course[right_id]:
+                continue
+            shared = students_by_course[left_id] & students_by_course[right_id]
+            if not shared:
+                continue
+            capacity = {
+                cell: (
+                    capacity_by_course_cell[left_id][cell]
+                    + capacity_by_course_cell[right_id][cell]
+                )
+                for cell in cells
+            }
+            margins = {cell: capacity[cell] - len(shared) for cell in cells}
+            checks.append({
+                "course_ids": (left_id, right_id),
+                "shared_student_count": len(shared),
+                "cells": cells,
+                "capacity_by_cell": capacity,
+                "margin_by_cell": margins,
+                "sufficient": all(margin >= 0 for margin in margins.values()),
+            })
+    return tuple(checks)
+
+
+def v2_3_cross_grade_shared_course_witness(data):
+    """Return the smallest remaining Grade 9/10 cross-grade witness."""
+
+    sections_by_offering = _positive_sections_by_offering(data)
+    grades = dict(data.student_grades)
+    ordinary = _ordinary_requests(data)
+    fra1 = {
+        request.student_id
+        for request in ordinary
+        if request.course_id == 3 and grades[request.student_id] == 9
+    }
+    fra2 = {
+        request.student_id
+        for request in ordinary
+        if request.course_id == 11 and grades[request.student_id] == 10
+    }
+    tij9 = {
+        request.student_id
+        for request in ordinary
+        if request.course_id == 7 and grades[request.student_id] == 9
+    }
+    tij10 = {
+        request.student_id
+        for request in ordinary
+        if request.course_id == 7 and grades[request.student_id] == 10
+    }
+    left_courses = (3, 11)
+    left_cells = {}
+    left_capacity_by_cell = {}
+    for course_id in left_courses:
+        sections = {
+            section.section_id: section
+            for request in ordinary
+            if request.course_id == course_id
+            for section in sections_by_offering[request.course_offering_id]
+        }
+        cells = tuple(sorted({
+            (section.semester, section.timeslot_id)
+            for section in sections.values()
+        }))
+        left_cells[course_id] = cells
+        left_capacity_by_cell[course_id] = {
+            cell: sum(
+                section.capacity_max
+                for section in sections.values()
+                if (section.semester, section.timeslot_id) == cell
+            )
+            for cell in cells
+        }
+    shared_by_grade = {
+        9: len(fra1 & tij9),
+        10: len(fra2 & tij10),
+    }
+    s2d = (2, 8)
+    s1c = (1, 3)
+    required_tij_s2d = sum(
+        shared_count - left_capacity_by_cell[course_id][s2d]
+        for shared_count, course_id in zip(shared_by_grade.values(), left_courses)
+    )
+    tij_s2d_capacity = sum(
+        section.capacity_max
+        for section in {
+            section.section_id: section
+            for request in ordinary
+            if request.course_id == 7
+            for section in sections_by_offering[request.course_offering_id]
+        }.values()
+        if (section.semester, section.timeslot_id) == s2d
+    )
+    return {
+        "left_courses": ("FRA1W", "FRA2D"),
+        "shared_course": "TIJ1O",
+        "shared_by_grade": shared_by_grade,
+        "left_candidate_cells": {
+            3: left_cells[3],
+            11: left_cells[11],
+        },
+        "left_s2d_capacity": {
+            3: left_capacity_by_cell[3][s2d],
+            11: left_capacity_by_cell[11][s2d],
+        },
+        "witness_cell": s2d,
+        "paired_side_cell": s1c,
+        "required_shared_course_use_in_s2d": required_tij_s2d,
+        "shared_course_s2d_capacity": tij_s2d_capacity,
+        "deficiency": required_tij_s2d - tij_s2d_capacity,
+    }
+
+
+def run_v2_3_diagnostics():
+    fixture = build_paul_desmarais_shaped_g9_12_stress_v2_3_fixture()
+    audit = summarize_paul_desmarais_shaped_g9_12_stress_fixture(fixture)
+    preflight = preflight_individual_feasibility(fixture.input_data)
+    capacity = capacity_only_matching(fixture.input_data)
+    correlated = correlated_pair_capacity_checks(fixture.input_data)
+    collision = collision_diagnostic(fixture.input_data)
+    topology = audit["topology"]
+    return {
+        "fixture_id": fixture.benchmark_id,
+        "version": fixture.benchmark_version,
+        "fingerprint": fixture.fixture_fingerprint,
+        "static_audit": {
+            "student_count": audit["student_count"],
+            "grade_distribution": audit["grade_distribution"],
+            "section_counts": topology["section_counts"],
+            "ordinary_total_seats": sum(
+                section.capacity_max
+                for section in fixture.input_data.sections
+                if section.section_id > 0
+            ),
+            "zero_demand_courses_omitted": topology["zero_demand_courses_omitted"],
+        },
+        "isolated_preflight": {
+            "student_count": preflight["student_count"],
+            "feasible_count": preflight["feasible_count"],
+            "infeasible_count": preflight["infeasible_count"],
+            "unresolved_count": preflight["unresolved_count"],
+        },
+        "capacity_only_matching": capacity,
+        "correlated_pair_checks": {
+            "checked_count": len(correlated),
+            "failing_count": sum(not item["sufficient"] for item in correlated),
+            "checks": correlated,
+        },
+        "collision_diagnostic": collision,
+        "remaining_witness": v2_3_cross_grade_shared_course_witness(
+            fixture.input_data
+        ),
     }
 
 
